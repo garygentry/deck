@@ -3,9 +3,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import type { SnapshotProviderResult } from "@deck/server";
+import type { SnapshotProviderResult } from "@deck/contract";
 
-import { INVENTORY_SLOTS } from "../src/features/hosts-and-services/components/EntitySlots.js";
 import { hostHref, serviceHref } from "../src/features/hosts-and-services/model.js";
 import { INVENTORY_ENDPOINTS } from "../src/features/hosts-and-services/use-inventory-data.js";
 import { getPages } from "../src/registry/registry.js";
@@ -53,23 +52,23 @@ const FEATURE_TEXT = FEATURE_SOURCES.map((file) => readFileSync(file, "utf8"));
 // ---------------------------------------------------------------------------
 
 describe("frozen inventory registration and route contracts", () => {
-  const INVENTORY_IDS = new Set(["hosts", "services", "host-detail", "service-detail"]);
+  const INVENTORY_IDS = new Set(["page:inventory/hosts", "page:inventory/services", "page:inventory/host-detail", "page:inventory/service-detail"]);
   const inventoryPages = getPages().filter((page) => INVENTORY_IDS.has(page.id));
 
   it("registers exactly four inventory pages with the exact ids and paths", () => {
     const byId = new Map(inventoryPages.map((page) => [page.id, page]));
     expect(inventoryPages).toHaveLength(4);
-    expect(byId.get("hosts")?.path).toBe("/hosts");
-    expect(byId.get("services")?.path).toBe("/services");
-    expect(byId.get("host-detail")?.path).toBe("/hosts/:name");
-    expect(byId.get("service-detail")?.path).toBe("/services/:host/:name");
+    expect(byId.get("page:inventory/hosts")?.path).toBe("/hosts");
+    expect(byId.get("page:inventory/services")?.path).toBe("/services");
+    expect(byId.get("page:inventory/host-detail")?.path).toBe("/hosts/:name");
+    expect(byId.get("page:inventory/service-detail")?.path).toBe("/services/:host/:name");
   });
 
   it("exposes exactly two primary-navigation entries (Hosts and Services)", () => {
     const navVisible = inventoryPages.filter((page) => page.nav !== false).map((page) => page.id);
-    expect([...navVisible].sort()).toEqual(["hosts", "services"]);
+    expect([...navVisible].sort()).toEqual(["page:inventory/hosts", "page:inventory/services"]);
     // The two dynamic detail routes are routable but hidden from primary nav.
-    for (const id of ["host-detail", "service-detail"]) {
+    for (const id of ["page:inventory/host-detail", "page:inventory/service-detail"]) {
       expect(inventoryPages.find((page) => page.id === id)?.nav).toBe(false);
     }
   });
@@ -77,10 +76,6 @@ describe("frozen inventory registration and route contracts", () => {
   it("freezes the browser-facing snapshot provider endpoint and id", () => {
     expect(INVENTORY_ENDPOINTS.snapshot).toBe("/api/providers/snapshot");
     expect(INVENTORY_ENDPOINTS.config).toBe("/api/config");
-  });
-
-  it("freezes the two ordered fragment slot strings", () => {
-    expect([...INVENTORY_SLOTS]).toEqual(["findings", "configs"]);
   });
 
   it("freezes independently-encoded detail route segments", () => {
@@ -244,7 +239,6 @@ describe("Chromium configuration and CI installation", () => {
     // Bun parity stays Vitest-only; no Playwright/Chromium install leaks into it.
     expect(ciText).toContain("bunx vitest run");
     // Existing repository gates remain intact.
-    expect(ciText).toContain("Check provider barrel drift");
     expect(ciText).toContain("Check golden render");
     expect(ciText).toContain("Bare-Bun boot smoke");
   });

@@ -7,12 +7,19 @@ boots unchanged until an operator explicitly opts in and provisions a runner all
 
 ## Runtime flow
 
-1. `apps/server/src/server/boot.ts` resolves the actions capability once from
-   environment variables. When disabled, no manifest is read and every action route
-   refuses with `403`.
-2. When enabled, boot loads and validates the runner manifest (see Runner manifest
-   below), builds the append-only audit store, and injects an executor backed by a
-   real child-process spawner.
+1. The capability is the built-in `actions` module (`apps/server/src/actions/module.ts`).
+   The module host runs it only when `DECK_ACTIONS_ENABLED` is on. When it is off, no
+   module code runs and no manifest is read: the module's prefixes answer fixed,
+   declared responses instead, so the capability probe reports `{"enabled": false}` and
+   every other action route refuses with `403`.
+2. When enabled, the module's init loads and validates the runner manifest (see Runner
+   manifest below), builds the append-only audit store, and creates an executor backed
+   by a real child-process spawner. The runtime, executor and audit store exist only
+   inside that init, and no module API path reaches them: the module owns
+   `DECK_ACTIONS_ENABLED`, `DECK_RUNNERS_FILE` and `DECK_ACTION_TIMEOUT_MS`, so the host
+   refuses any other module that declares one, and a config pointer cannot unlock them
+   (nor the kernel's `DECK_DATA_DIR`). This is an API boundary, not an OS sandbox: any
+   in-process module code runs with deck's full privileges.
 3. A `POST /api/actions/:id` request passes four gates in order — capability enabled,
    action declared, runner resolved, parameters valid — and only then spawns the
    runner and streams its stdout/stderr as newline-delimited JSON (NDJSON) events over
@@ -26,14 +33,16 @@ boots unchanged until an operator explicitly opts in and provisions a runner all
 
 | Route | Method | Purpose |
 |---|---|---|
+| `/api/actions` | GET | Capability probe: `{"enabled": true|false}`, always 200 |
 | `/api/actions/:id` | POST | Invoke a declared action; streams NDJSON events |
 | `/api/actions/runs/:runId/cancel` | POST | Cancel an in-flight run |
 | `/api/actions/audit` | GET | List audit entries, newest first |
 | `/api/actions/audit/:runId` | GET | Read one run's full captured output |
 
-All four routes are registered before the SPA static/index fallback, so `/api/actions/*`
-always matches the API rather than being rewritten to `index.html`. None of the four
-routes require authentication — deck itself enforces no auth challenge on any route;
+The module serves these routes at `/api/m/actions` and keeps `/api/actions` as an alias
+with identical responses. Both are mounted before the SPA static/index fallback, so
+`/api/actions/*` always matches the API rather than being rewritten to `index.html`. None
+of the routes require authentication — deck itself enforces no auth challenge on any route;
 the only refusals below are the capability and declaration gates.
 
 Pre-run refusal codes (a non-2xx JSON body, never a stream):
@@ -53,7 +62,7 @@ Four environment variables control the capability, read once at boot:
 |---|---|---|---|
 | `DECK_ACTIONS_ENABLED` | — | `false` | Master switch. `"true"`/`"1"` (case-insensitive) enables; anything else is off |
 | `DECK_ACTION_TIMEOUT_MS` | no | `600000` (10 min) | Default max run duration in ms. If set, must be a positive integer — a malformed value fails boot rather than silently falling back |
-| `DECK_DATA_DIR` | yes | — | Audit store root directory |
+| `DECK_DATA_DIR` | yes | — | Module data root (absolute); the audit store is `$DECK_DATA_DIR/actions` |
 | `DECK_RUNNERS_FILE` | yes | — | Path to the runner manifest (see below) |
 
 ```bash
@@ -65,8 +74,9 @@ DECK_RUNNERS_FILE=/etc/deck/runners.json \
 
 **Fail-fast posture.** When the capability is enabled but `DECK_DATA_DIR` or
 `DECK_RUNNERS_FILE` is missing, or `DECK_ACTION_TIMEOUT_MS` isn't a positive integer,
-or the runner manifest fails validation, boot writes a plain-text error to stderr and
-exits — the same posture as a bad estate config. Deck will not start a half-configured
+or the runner manifest fails validation, the module's init fails and boot writes a
+plain-text error to stderr (`module "actions" failed to initialise: …`) and exits 2 — the
+same posture as a bad estate config. Deck will not start a half-configured
 write path. When the capability is disabled, none of this is required or read.
 
 ## Runner manifest
@@ -126,6 +136,16 @@ minutes) when the child spawns, using the same `AbortController` + `clearTimeout
 idiom as the provider registry. Expiry aborts the run's controller, which rejects the
 exit-wait promise and kills the child with `SIGTERM`; the outcome becomes `timed-out`
 unless a `cancel()` call already claimed the abort first.
+
+**Killing a run.** Each runner is spawned as the leader of its own process group, and a
+cancel or timeout signals the whole group. That covers anything the runner started
+locally, which may hold its output pipes open. The group gets `SIGTERM`, then `SIGKILL`
+if the runner has not exited within 1 s. Once it has exited, its pipes get 500 ms to drain
+before the run is recorded, so a lingering descendant can never stop the audit entry being
+written.
+
+**Shutdown.** When deck stops, it cancels every in-flight run (`cancelAll()`) and waits,
+within a bound, until each has been audited as `cancelled`.
 
 **Disconnect decoupling.** The run is driven independently of whoever is reading its
 event stream. A client that stops reading (tab closed, network drop) does not abort

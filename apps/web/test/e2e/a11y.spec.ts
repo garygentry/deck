@@ -53,7 +53,7 @@ for (const theme of ["light", "dark"] as const) {
   });
 }
 
-// The E2E estate has no llmUsage section, so the route list above only scans /usage's
+// The E2E estate has no modules.llm-usage section, so the route list above only scans /usage's
 // not-configured state; this pass routes a populated response (meters, tables, disclosure).
 for (const theme of ["light", "dark"] as const) {
   test(`populated llm usage (${theme}) has no serious or critical axe violations`, async ({ page }) => {

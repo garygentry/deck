@@ -1,5 +1,5 @@
 import type { HostStatus, ServiceState, ServiceStatus } from "@deck/schema";
-import type { HostCollectionState, HostState } from "@deck/server";
+import type { HostCollectionState, HostState } from "@deck/contract";
 import type { JSX } from "react";
 import {
   EmptyValue,

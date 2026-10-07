@@ -1,0 +1,831 @@
+{
+  "validate": {
+    "exitClass": 0,
+    "stdout": "clean\n",
+    "stderr": ""
+  },
+  "config": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "schemaVersion": 1,
+      "estate": {
+        "name": "example-estate",
+        "domains": {
+          "lan": "home.example",
+          "tailnet": "home-tail.example"
+        },
+        "timezone": "Etc/UTC",
+        "freshness": {
+          "snapshotStaleAfter": "P2D"
+        }
+      },
+      "hosts": [
+        {
+          "name": "gateway",
+          "kind": "appliance",
+          "purpose": "Router / firewall at the edge of the home network",
+          "addresses": [
+            {
+              "network": "lan",
+              "address": "192.0.2.1",
+              "primary": true
+            }
+          ],
+          "access": {
+            "reachable": true,
+            "method": "api",
+            "port": 443
+          },
+          "links": [
+            {
+              "title": "Gateway UI",
+              "href": "https://gateway.home.example/"
+            }
+          ]
+        },
+        {
+          "name": "nas",
+          "kind": "bare-metal",
+          "purpose": "Storage and backup target",
+          "addresses": [
+            {
+              "network": "lan",
+              "address": "192.0.2.10",
+              "primary": true
+            }
+          ],
+          "access": {
+            "reachable": true,
+            "method": "ssh",
+            "port": 22,
+            "user": "admin"
+          },
+          "backup": {
+            "expected": true,
+            "schedule": "nightly",
+            "target": "nas-local"
+          },
+          "links": [
+            {
+              "title": "NAS Console",
+              "href": "https://nas.home.example/"
+            }
+          ]
+        },
+        {
+          "name": "apps",
+          "kind": "vm",
+          "purpose": "Application host running the home services",
+          "hypervisor": "nas",
+          "vmid": 100,
+          "addresses": [
+            {
+              "network": "lan",
+              "address": "192.0.2.20",
+              "primary": true
+            }
+          ],
+          "access": {
+            "reachable": true,
+            "method": "ssh",
+            "port": 22,
+            "user": "admin"
+          }
+        },
+        {
+          "name": "media",
+          "kind": "vm",
+          "purpose": "Media server and transcoder",
+          "hypervisor": "nas",
+          "vmid": 101,
+          "addresses": [
+            {
+              "network": "lan",
+              "address": "192.0.2.21",
+              "primary": true
+            }
+          ],
+          "access": {
+            "reachable": true,
+            "method": "ssh",
+            "port": 22,
+            "user": "admin"
+          },
+          "links": [
+            {
+              "title": "Jellyfin",
+              "href": "https://media.home.example/"
+            }
+          ]
+        },
+        {
+          "name": "sensor",
+          "kind": "appliance",
+          "purpose": "Environmental sensor bridge (not yet under collection)",
+          "addresses": [
+            {
+              "network": "lan",
+              "address": "192.0.2.30",
+              "primary": true
+            }
+          ],
+          "access": {
+            "reachable": true,
+            "method": "none"
+          }
+        }
+      ],
+      "services": [
+        {
+          "name": "portal",
+          "host": "apps",
+          "kind": "docker-compose",
+          "purpose": "Home dashboard",
+          "status": "active",
+          "links": [
+            {
+              "title": "Portal",
+              "href": "https://portal.home.example/"
+            }
+          ]
+        },
+        {
+          "name": "reverse-proxy",
+          "host": "apps",
+          "kind": "docker-compose",
+          "purpose": "TLS termination and routing",
+          "status": "active"
+        },
+        {
+          "name": "files",
+          "host": "nas",
+          "kind": "systemd",
+          "purpose": "File sharing",
+          "status": "active",
+          "links": [
+            {
+              "title": "Files",
+              "href": "https://files.home.example/"
+            }
+          ]
+        },
+        {
+          "name": "backups",
+          "host": "nas",
+          "kind": "systemd",
+          "purpose": "Nightly backup job",
+          "status": "active"
+        },
+        {
+          "name": "router-ui",
+          "host": "gateway",
+          "kind": "appliance",
+          "purpose": "Gateway admin UI",
+          "status": "active"
+        },
+        {
+          "name": "jellyfin",
+          "host": "media",
+          "kind": "docker-compose",
+          "purpose": "Media streaming",
+          "status": "active",
+          "links": [
+            {
+              "title": "Jellyfin",
+              "href": "https://media.home.example/"
+            }
+          ]
+        }
+      ],
+      "groups": [
+        {
+          "id": "overview",
+          "title": "Overview",
+          "order": 1,
+          "items": [
+            {
+              "type": "service",
+              "host": "apps",
+              "name": "portal",
+              "title": "Portal"
+            },
+            {
+              "type": "service",
+              "host": "nas",
+              "name": "files",
+              "title": "Files"
+            },
+            {
+              "type": "service",
+              "host": "media",
+              "name": "jellyfin",
+              "title": "Jellyfin"
+            },
+            {
+              "type": "link",
+              "title": "Gateway",
+              "href": "https://gateway.home.example/"
+            }
+          ]
+        },
+        {
+          "id": "infrastructure",
+          "title": "Infrastructure",
+          "order": 2,
+          "items": [
+            {
+              "type": "link",
+              "title": "NAS Console",
+              "href": "https://nas.home.example/"
+            },
+            {
+              "type": "link",
+              "title": "Gateway UI",
+              "href": "https://gateway.home.example/"
+            }
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "id": "runbooks",
+          "kind": "markdown-tree",
+          "title": "Runbooks",
+          "location": {
+            "path": "test/fixtures/v1-estate/docs"
+          }
+        },
+        {
+          "id": "host-configs",
+          "kind": "file-tree",
+          "title": "Host configs",
+          "location": {
+            "path": "test/fixtures/v1-estate/configs"
+          }
+        }
+      ]
+    }
+  },
+  "providers": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "providers": [
+        {
+          "id": "host-configs",
+          "kind": "file-tree"
+        },
+        {
+          "id": "runbooks",
+          "kind": "markdown-tree"
+        },
+        {
+          "id": "snapshot",
+          "kind": "snapshot"
+        }
+      ]
+    }
+  },
+  "envelopes": {
+    "host-configs": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": "host-configs",
+        "kind": "file-tree",
+        "freshness": {
+          "state": "fresh",
+          "observedAt": "2026-01-01T00:00:00.000Z",
+          "ageMs": 0,
+          "ttlMs": 30000
+        },
+        "data": {
+          "sourceId": "host-configs",
+          "kind": "file-tree",
+          "title": "Host configs",
+          "fileCount": 4,
+          "tree": {
+            "path": "",
+            "name": "",
+            "type": "dir",
+            "children": [
+              {
+                "path": "apps",
+                "name": "apps",
+                "type": "dir",
+                "children": [
+                  {
+                    "path": "apps/portal",
+                    "name": "portal",
+                    "type": "dir",
+                    "children": [
+                      {
+                        "path": "apps/portal/Caddyfile",
+                        "name": "Caddyfile",
+                        "type": "file",
+                        "size": 128,
+                        "binary": false
+                      },
+                      {
+                        "path": "apps/portal/compose.yaml",
+                        "name": "compose.yaml",
+                        "type": "file",
+                        "size": 426,
+                        "binary": false
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "path": "gateway",
+                "name": "gateway",
+                "type": "dir",
+                "children": [
+                  {
+                    "path": "gateway/dnsmasq.conf",
+                    "name": "dnsmasq.conf",
+                    "type": "file",
+                    "size": 392,
+                    "binary": false
+                  }
+                ]
+              },
+              {
+                "path": "nas",
+                "name": "nas",
+                "type": "dir",
+                "children": [
+                  {
+                    "path": "nas/smb.conf",
+                    "name": "smb.conf",
+                    "type": "file",
+                    "size": 405,
+                    "binary": false
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "error": null
+      }
+    },
+    "runbooks": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": "runbooks",
+        "kind": "markdown-tree",
+        "freshness": {
+          "state": "fresh",
+          "observedAt": "2026-01-01T00:00:00.000Z",
+          "ageMs": 0,
+          "ttlMs": 30000
+        },
+        "data": {
+          "sourceId": "runbooks",
+          "kind": "markdown-tree",
+          "title": "Runbooks",
+          "fileCount": 4,
+          "tree": {
+            "path": "",
+            "name": "",
+            "type": "dir",
+            "children": [
+              {
+                "path": "runbooks",
+                "name": "runbooks",
+                "type": "dir",
+                "children": [
+                  {
+                    "path": "runbooks/gateway-failover.md",
+                    "name": "gateway-failover.md",
+                    "type": "file",
+                    "size": 851,
+                    "binary": false
+                  },
+                  {
+                    "path": "runbooks/nas-recovery.md",
+                    "name": "nas-recovery.md",
+                    "type": "file",
+                    "size": 972,
+                    "binary": false
+                  }
+                ]
+              },
+              {
+                "path": "services",
+                "name": "services",
+                "type": "dir",
+                "children": [
+                  {
+                    "path": "services/portal.md",
+                    "name": "portal.md",
+                    "type": "file",
+                    "size": 614,
+                    "binary": false
+                  }
+                ]
+              },
+              {
+                "path": "README.md",
+                "name": "README.md",
+                "type": "file",
+                "size": 574,
+                "binary": false
+              }
+            ]
+          }
+        },
+        "error": null
+      }
+    },
+    "snapshot": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": "snapshot",
+        "kind": "snapshot",
+        "freshness": {
+          "state": "fresh",
+          "observedAt": "2026-01-01T00:00:00.000Z",
+          "ageMs": 0,
+          "ttlMs": 60000
+        },
+        "data": {
+          "snapshot": {
+            "schemaVersion": 1,
+            "generatedAt": "2025-12-31T23:57:00.000Z",
+            "hosts": [
+              {
+                "name": "gateway",
+                "coverage": "collected",
+                "reachable": true,
+                "addresses": [
+                  {
+                    "network": "lan",
+                    "address": "192.0.2.1",
+                    "primary": true
+                  }
+                ],
+                "os": {
+                  "name": "EdgeOS",
+                  "version": "3.2",
+                  "kernel": "5.15.0"
+                },
+                "uptimeSeconds": 5346000,
+                "facts": {
+                  "role": "edge-router"
+                },
+                "collectedAt": "2025-12-31T23:56:00.000Z"
+              },
+              {
+                "name": "nas",
+                "coverage": "collected",
+                "reachable": true,
+                "addresses": [
+                  {
+                    "network": "lan",
+                    "address": "192.0.2.10",
+                    "primary": true
+                  }
+                ],
+                "os": {
+                  "name": "Debian",
+                  "version": "12",
+                  "kernel": "6.1.0"
+                },
+                "uptimeSeconds": 8640000,
+                "managedConfigs": [
+                  {
+                    "path": "/etc/samba/smb.conf",
+                    "inSync": true
+                  },
+                  {
+                    "path": "/srv/nas-local",
+                    "inSync": false
+                  }
+                ],
+                "facts": {
+                  "role": "storage"
+                },
+                "collectedAt": "2025-12-23T21:00:00.000Z"
+              },
+              {
+                "name": "apps",
+                "coverage": "partial",
+                "reachable": true,
+                "addresses": [
+                  {
+                    "network": "lan",
+                    "address": "192.0.2.20",
+                    "primary": true
+                  }
+                ],
+                "collectors": {
+                  "succeeded": [
+                    "system",
+                    "containers"
+                  ],
+                  "failed": [
+                    {
+                      "name": "configs",
+                      "reason": "SSH config collector timed out"
+                    }
+                  ]
+                },
+                "containers": [
+                  {
+                    "name": "portal",
+                    "image": "example/portal:1",
+                    "state": "running"
+                  },
+                  {
+                    "name": "reverse-proxy",
+                    "image": "caddy:2",
+                    "state": "running"
+                  }
+                ],
+                "facts": {
+                  "role": "apps"
+                },
+                "collectedAt": "2025-12-31T23:54:00.000Z"
+              },
+              {
+                "name": "media",
+                "coverage": "unreachable",
+                "reachable": false
+              }
+            ],
+            "services": [
+              {
+                "host": "apps",
+                "name": "portal",
+                "state": "running",
+                "facts": {
+                  "replicas": 1
+                }
+              },
+              {
+                "host": "apps",
+                "name": "reverse-proxy",
+                "state": "running",
+                "facts": {
+                  "replicas": 1
+                }
+              },
+              {
+                "host": "nas",
+                "name": "files",
+                "state": "running"
+              },
+              {
+                "host": "nas",
+                "name": "backups",
+                "state": "degraded"
+              },
+              {
+                "host": "gateway",
+                "name": "router-ui",
+                "state": "running"
+              },
+              {
+                "host": "media",
+                "name": "jellyfin",
+                "state": "unknown"
+              }
+            ],
+            "drift": [
+              {
+                "id": "nas-backup-target",
+                "severity": "error",
+                "location": {
+                  "host": "nas",
+                  "path": "/srv/nas-local"
+                },
+                "category": "config",
+                "message": "Backup target path differs from the declared managed config.",
+                "expected": "/srv/nas-local",
+                "observed": "/srv/backups-old"
+              },
+              {
+                "id": "apps-proxy-replicas",
+                "severity": "warning",
+                "location": {
+                  "host": "apps",
+                  "service": "reverse-proxy"
+                },
+                "category": "runtime",
+                "message": "reverse-proxy is running fewer replicas than expected.",
+                "expected": 2,
+                "observed": 1,
+                "waiver": {
+                  "reason": "Single replica accepted until the second apps node is provisioned.",
+                  "who": "ops@home.example",
+                  "until": "2026-01-31T00:00:00.000Z"
+                }
+              },
+              {
+                "id": "gateway-firmware",
+                "severity": "info",
+                "location": {
+                  "host": "gateway"
+                },
+                "category": "inventory",
+                "message": "Firmware update available for the gateway appliance."
+              }
+            ]
+          },
+          "findings": [
+            {
+              "code": "HOST_NOT_COLLECTED",
+              "severity": "info",
+              "path": "/hosts",
+              "message": "Configured host sensor was not collected."
+            }
+          ],
+          "hostStates": {
+            "gateway": {
+              "state": "fresh",
+              "collectedAt": "2025-12-31T23:56:00.000Z",
+              "ageMs": 240000,
+              "pastStaleThreshold": false
+            },
+            "nas": {
+              "state": "stale",
+              "collectedAt": "2025-12-23T21:00:00.000Z",
+              "ageMs": 702000000,
+              "pastStaleThreshold": true
+            },
+            "apps": {
+              "state": "partial",
+              "collectedAt": "2025-12-31T23:54:00.000Z",
+              "ageMs": 360000,
+              "pastStaleThreshold": false
+            },
+            "media": {
+              "state": "unreachable",
+              "collectedAt": null,
+              "ageMs": null,
+              "pastStaleThreshold": false
+            },
+            "sensor": {
+              "state": "never-collected",
+              "collectedAt": null,
+              "ageMs": null,
+              "pastStaleThreshold": false
+            }
+          },
+          "lastReadAt": "2026-01-01T00:00:00.000Z",
+          "readError": null
+        },
+        "error": null
+      }
+    },
+    "parity-unknown-provider": {
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "error": "No provider registered with id 'parity-unknown-provider'",
+        "code": "PROVIDER_NOT_FOUND"
+      }
+    }
+  },
+  "health": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "status": "ok",
+      "uptimeMs": 0,
+      "providerCount": 3,
+      "providers": {
+        "host-configs": {
+          "kind": "file-tree",
+          "ok": true,
+          "detail": "4 files"
+        },
+        "runbooks": {
+          "kind": "markdown-tree",
+          "ok": true,
+          "detail": "4 files"
+        },
+        "snapshot": {
+          "kind": "snapshot",
+          "ok": true,
+          "detail": "Snapshot clean"
+        }
+      },
+      "modules": {}
+    }
+  },
+  "actions": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "enabled": true
+    }
+  },
+  "actionRefusals": {
+    "unknownAction": {
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "error": "No action is declared with id 'parity-undeclared'.",
+        "code": "ACTION_UNKNOWN"
+      }
+    },
+    "runnerUnresolved": {
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "error": "No action is declared with id 'orphan'.",
+        "code": "ACTION_UNKNOWN"
+      }
+    },
+    "paramsInvalid": {
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "error": "No action is declared with id 'deploy'.",
+        "code": "ACTION_UNKNOWN"
+      }
+    }
+  },
+  "actionsAudit": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": [
+      {
+        "runId": "<uuid:string>",
+        "timestamp": "2026-01-01T00:00:00.000Z",
+        "actionId": "deploy",
+        "runner": "",
+        "outcome": "rejected",
+        "exitStatus": null,
+        "durationMs": 0,
+        "outputBytes": 0
+      },
+      {
+        "runId": "<uuid:string>",
+        "timestamp": "2026-01-01T00:00:00.000Z",
+        "actionId": "orphan",
+        "runner": "",
+        "outcome": "rejected",
+        "exitStatus": null,
+        "durationMs": 0,
+        "outputBytes": 0
+      },
+      {
+        "runId": "<uuid:string>",
+        "timestamp": "2026-01-01T00:00:00.000Z",
+        "actionId": "parity-undeclared",
+        "runner": "",
+        "outcome": "rejected",
+        "exitStatus": null,
+        "durationMs": 0,
+        "outputBytes": 0
+      }
+    ]
+  },
+  "llmUsage": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "enabled": false,
+      "now": 1767225600000,
+      "poll": {
+        "mode": "paused",
+        "nextPollAt": null,
+        "consecutiveErrors": 0
+      },
+      "thresholds": {
+        "warn": 75,
+        "danger": 90
+      },
+      "claude": null,
+      "codex": null
+    }
+  },
+  "routes": [
+    "ALL /* ×2",
+    "GET /*",
+    "GET /api/actions",
+    "GET /api/actions/audit",
+    "GET /api/actions/audit/:runId",
+    "GET /api/config",
+    "GET /api/health",
+    "GET /api/llm-usage",
+    "GET /api/llm-usage/refresh",
+    "GET /api/providers",
+    "GET /api/providers/:id",
+    "GET /api/sources/:id/file",
+    "GET /api/sources/:id/raw",
+    "GET /api/sources/:id/search",
+    "GET /api/sources/:id/tree",
+    "GET /metrics",
+    "POST /api/actions/:id",
+    "POST /api/actions/runs/:runId/cancel"
+  ]
+}

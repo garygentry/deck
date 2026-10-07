@@ -1,4 +1,4 @@
-import type { DriftFindingProjection } from "@deck/server";
+import type { DriftFindingProjection } from "@deck/drift";
 import { memo, type JSX } from "react";
 import {
   Callout,

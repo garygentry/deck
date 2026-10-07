@@ -5,14 +5,9 @@
  * the store subscription) and prime the singleton browse store directly, so every
  * envelope/file/search state renders deterministically without a network.
  */
-import type {
-  DeckConfig,
-  FreshnessState,
-  ProviderEnvelope,
-  SourceKind,
-  SourceManifest,
-  SourceTreeNode,
-} from "@deck/server";
+import type { FreshnessState, ProviderEnvelope } from "@deck/contract";
+import type { DeckConfig } from "@deck/server";
+import type { SourceKind, SourceManifest, SourceTreeNode } from "@deck/server/sources";
 
 export function fileNode(path: string, binary = false): SourceTreeNode {
   return { path, name: path.split("/").pop() ?? path, type: "file", size: 16, binary };
@@ -62,8 +57,10 @@ export function envelope(
 /** A config declaring `ids` of `kind`, plus one source of the other kind the page must ignore. */
 export function sourcesConfig(kind: SourceKind, ...ids: string[]): DeckConfig {
   const otherKind: SourceKind = kind === "markdown-tree" ? "file-tree" : "markdown-tree";
+  // The minimal shape the data layer accepts as an estate config document.
   return {
-    version: 1,
+    schemaVersion: 2,
+    estate: { name: "Test estate" },
     sources: [
       ...ids.map((id) => ({ id, kind, title: `Source ${id}`, location: { path: `/srv/${id}` } })),
       { id: "other", kind: otherKind, title: "Other", location: { path: "/srv/other" } },

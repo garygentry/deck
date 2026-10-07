@@ -24,7 +24,7 @@ describe("governed-actions feature registration", () => {
 
   it("registers exactly the /actions page with the ActionsPage component", async () => {
     const { registry, ActionsPage } = await loadFreshFeature();
-    const pages = registry.getPages().filter((page) => page.id === "actions");
+    const pages = registry.getPages().filter((page) => page.id === "page:actions/overview");
     expect(pages).toHaveLength(1);
     const [page] = pages;
     expect(page.path).toBe("/actions");
@@ -46,7 +46,7 @@ describe("governed-actions feature registration", () => {
     // no summary-slot contribution.
     const actionPages = registry
       .getPages()
-      .filter((page) => page.id === "actions" || page.path === "/actions");
+      .filter((page) => page.id === "page:actions/overview" || page.path === "/actions");
     expect(actionPages).toHaveLength(1);
   });
 
@@ -55,7 +55,7 @@ describe("governed-actions feature registration", () => {
     const { registry } = await loadFreshFeature();
     expect(() =>
       registry.registerPage({
-        id: "actions",
+        id: "page:actions/overview",
         path: "/actions-again",
         label: "Actions Again",
         component: () => null,
@@ -68,11 +68,11 @@ describe("governed-actions feature registration", () => {
     // Compile-time proof (checked by tsc over the test tree) that the registered
     // component typechecks against PageRegistration.
     const page: PageRegistration = {
-      id: "actions",
+      id: "page:actions/overview",
       path: "/actions",
       label: "Actions",
       component: ActionsPage,
     };
-    expect(page.id).toBe("actions");
+    expect(page.id).toBe("page:actions/overview");
   });
 });

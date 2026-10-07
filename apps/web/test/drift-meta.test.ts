@@ -340,7 +340,7 @@ describe("7. registration behavior is delegated to registry accessors", () => {
     // The authority for the exact four ids/paths/slots is behavioral: it imports
     // the feature entry and reads registry accessors rather than scanning source.
     expect(registrationText).toContain("../src/features/drift-and-coverage/index.js");
-    expect(registrationText).toMatch(/getPages|getEntityFragments|getSummaryFragments/);
+    expect(registrationText).toMatch(/getPages|getEntityFragments|getExtensions/);
   });
 });
 

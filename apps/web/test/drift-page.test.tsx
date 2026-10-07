@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { deriveDriftProjection } from "@deck/server";
-import type { SnapshotProviderResult } from "@deck/server";
+import { deriveDriftProjection } from "@deck/drift";
+import type { SnapshotProviderResult } from "@deck/contract";
 import {
   act,
   cleanup,
@@ -84,11 +84,7 @@ import {
   buildInventoryModel,
   type InventoryModel,
 } from "../src/features/hosts-and-services/model.js";
-import type {
-  CoverageRow,
-  DriftFindingProjection,
-  FindingHostGroup,
-} from "@deck/server";
+import type { CoverageRow, DriftFindingProjection, FindingHostGroup } from "@deck/drift";
 
 // ---------------------------------------------------------------------------
 // jsdom gaps used by Radix Popover / cmdk / Tooltip (this file only).

@@ -1,0 +1,245 @@
+{
+  "validate": {
+    "exitClass": 0,
+    "stdout": "clean\n",
+    "stderr": ""
+  },
+  "config": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "schemaVersion": 1,
+      "estate": {
+        "name": "Actions test estate"
+      },
+      "hosts": [
+        {
+          "name": "web01",
+          "kind": "vm",
+          "purpose": "Web host"
+        }
+      ],
+      "services": [
+        {
+          "name": "nginx",
+          "host": "web01",
+          "kind": "systemd",
+          "purpose": "Reverse proxy",
+          "status": "active"
+        }
+      ],
+      "actions": [
+        {
+          "id": "restart-quiet",
+          "title": "Restart quietly",
+          "runner": "echo-runner",
+          "confirm": "none",
+          "description": "A no-parameter action that runs without confirmation."
+        },
+        {
+          "id": "deploy",
+          "title": "Deploy release",
+          "runner": "echo-runner",
+          "confirm": "confirm",
+          "description": "A typed-parameter action requiring an explicit confirm.",
+          "params": [
+            {
+              "name": "name",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "count",
+              "type": "number"
+            },
+            {
+              "name": "verbose",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "mode",
+              "type": "enum",
+              "values": [
+                "fast",
+                "safe"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "danger",
+          "title": "Dangerous action",
+          "runner": "echo-runner",
+          "confirm": "typed-confirm",
+          "description": "Requires typing the action id to arm."
+        },
+        {
+          "id": "restart-service",
+          "title": "Restart nginx",
+          "runner": "echo-runner",
+          "confirm": "confirm",
+          "target": {
+            "host": "web01",
+            "service": "nginx"
+          }
+        },
+        {
+          "id": "orphan",
+          "title": "Orphaned action",
+          "runner": "missing-runner",
+          "confirm": "none",
+          "description": "Its runner is intentionally absent from the manifest."
+        }
+      ]
+    }
+  },
+  "providers": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "providers": []
+    }
+  },
+  "envelopes": {
+    "parity-unknown-provider": {
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "error": "No provider registered with id 'parity-unknown-provider'",
+        "code": "PROVIDER_NOT_FOUND"
+      }
+    }
+  },
+  "health": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "status": "ok",
+      "uptimeMs": 0,
+      "providerCount": 0,
+      "providers": {},
+      "modules": {}
+    }
+  },
+  "actions": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "enabled": true
+    }
+  },
+  "actionRefusals": {
+    "unknownAction": {
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "error": "No action is declared with id 'parity-undeclared'.",
+        "code": "ACTION_UNKNOWN"
+      }
+    },
+    "runnerUnresolved": {
+      "status": 422,
+      "contentType": "application/json",
+      "body": {
+        "error": "Runner 'missing-runner' is not provisioned on this deck host.",
+        "code": "RUNNER_UNRESOLVED"
+      }
+    },
+    "paramsInvalid": {
+      "status": 400,
+      "contentType": "application/json",
+      "body": {
+        "error": "One or more parameters are invalid.",
+        "code": "PARAMS_INVALID",
+        "paramErrors": [
+          {
+            "name": "name",
+            "message": "\"name\" is required."
+          },
+          {
+            "name": "count",
+            "message": "must be a number."
+          },
+          {
+            "name": "mode",
+            "message": "must be one of: fast, safe."
+          }
+        ]
+      }
+    }
+  },
+  "actionsAudit": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": [
+      {
+        "runId": "<uuid:string>",
+        "timestamp": "2026-01-01T00:00:00.000Z",
+        "actionId": "deploy",
+        "runner": "echo-runner",
+        "outcome": "rejected",
+        "exitStatus": null,
+        "durationMs": 0,
+        "outputBytes": 0
+      },
+      {
+        "runId": "<uuid:string>",
+        "timestamp": "2026-01-01T00:00:00.000Z",
+        "actionId": "orphan",
+        "runner": "missing-runner",
+        "outcome": "rejected",
+        "exitStatus": null,
+        "durationMs": 0,
+        "outputBytes": 0
+      },
+      {
+        "runId": "<uuid:string>",
+        "timestamp": "2026-01-01T00:00:00.000Z",
+        "actionId": "parity-undeclared",
+        "runner": "",
+        "outcome": "rejected",
+        "exitStatus": null,
+        "durationMs": 0,
+        "outputBytes": 0
+      }
+    ]
+  },
+  "llmUsage": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "enabled": false,
+      "now": 1767225600000,
+      "poll": {
+        "mode": "paused",
+        "nextPollAt": null,
+        "consecutiveErrors": 0
+      },
+      "thresholds": {
+        "warn": 75,
+        "danger": 90
+      },
+      "claude": null,
+      "codex": null
+    }
+  },
+  "routes": [
+    "ALL /*",
+    "GET /api/actions",
+    "GET /api/actions/audit",
+    "GET /api/actions/audit/:runId",
+    "GET /api/config",
+    "GET /api/health",
+    "GET /api/llm-usage",
+    "GET /api/llm-usage/refresh",
+    "GET /api/providers",
+    "GET /api/providers/:id",
+    "GET /api/sources/:id/file",
+    "GET /api/sources/:id/raw",
+    "GET /api/sources/:id/search",
+    "GET /api/sources/:id/tree",
+    "POST /api/actions/:id",
+    "POST /api/actions/runs/:runId/cancel"
+  ]
+}

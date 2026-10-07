@@ -43,7 +43,7 @@ can't escalate:
   scan or redact them, and says so in-product. **The operator curates what is exposed** via
   each source's `include` / `exclude` globs. Don't point a source at a tree containing secrets
   you don't want shown.
-- **LLM usage holds account credentials, and it's opt-in.** With an `llmUsage` section, deck
+- **LLM usage holds account credentials, and it's opt-in.** With a `modules.llm-usage` section, deck
   reads a Claude Code credentials file (read-only; never written, refreshed or returned by the
   API) and runs the host's own `codex app-server` binary (mounted; the image ships none)
   against a writable Codex home, which refreshes its own tokens. The Codex child inherits only a short env allowlist plus `CODEX_HOME`, so deck's

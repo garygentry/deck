@@ -6,7 +6,7 @@ import { LlmUsageSummary } from "./LlmUsageSummary.js";
 import { LlmUsagePage } from "./pages.js";
 
 registerPage({
-  id: "llm-usage",
+  id: "page:llm-usage/overview",
   path: "/usage",
   label: "LLM usage",
   icon: "gauge",
@@ -14,8 +14,8 @@ registerPage({
   component: LlmUsagePage,
 });
 registerSummaryFragment(HealthHeaderSlot, {
-  id: "llm-usage-summary",
+  id: "pill:llm-usage/summary",
   component: LlmUsageSummary,
   order: 40,
 });
-registerCard({ id: "llm-usage-portal", slot: PORTAL_SUMMARY_SLOT, component: LlmUsagePortalCard });
+registerCard({ id: "card:llm-usage/portal", slot: PORTAL_SUMMARY_SLOT, component: LlmUsagePortalCard });

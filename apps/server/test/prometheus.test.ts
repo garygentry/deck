@@ -1,51 +1,58 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { logger } from "../src/log/logger.js";
-import { PrometheusProvider, registerPrometheus } from "../src/providers/prometheus/index.js";
+import type { ModuleLogger } from "@deck/module-sdk";
+
+import { scopedLogger } from "../src/modules/context.js";
+import { PrometheusProvider } from "../src/providers/prometheus/index.js";
 import { parseSummaryCard, type SummaryQuery } from "../src/providers/prometheus/parse-card.js";
 import { providerCount, read, stopScheduler } from "../src/providers/registry.js";
+import { captureLogger } from "./util/modules.js";
+import { processEnv, registerPrometheus } from "./util/register-kinds.js";
 
 const fixture = (name: string): unknown => JSON.parse(readFileSync(
   fileURLToPath(new URL(`./fixtures/prometheus/${name}.json`, import.meta.url)),
   "utf8",
 ));
 
-describe("parseSummaryCard", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+/** The prometheus module's scoped logger over a captured sink, as the kernel injects it. */
+function moduleSink(): { logger: ModuleLogger; lines: Record<string, unknown>[] } {
+  const { logger, lines } = captureLogger();
+  return { logger: scopedLogger(logger, "prometheus"), lines };
+}
 
+describe("parseSummaryCard", () => {
   it.each([null, undefined, 1, "card", [], {}, { summaries: null }, { summaries: {} }])(
     "returns an empty list without throwing for %j",
-    (card) => expect(() => parseSummaryCard(card)).not.toThrow(),
+    (card) => expect(() => parseSummaryCard(card, moduleSink().logger)).not.toThrow(),
   );
 
   it("keeps only valid known fields in declaration order and keeps the first duplicate id", () => {
-    const warn = vi.spyOn(logger, "warn").mockImplementation(() => logger);
+    const { logger, lines } = moduleSink();
     const result = parseSummaryCard({ summaries: [
       { id: "first", label: "First", query: "up", extra: "ignored" },
       { id: "bad", label: "Bad", query: "secret-query", warning: 1 },
       { id: "second", label: "Second", query: "load", unit: "%", warning: 70, critical: 90, direction: "above" },
       { id: "first", label: "Duplicate", query: "other" },
       { id: "bare", label: "Bare direction", query: "temperature", direction: "below" },
-    ] });
+    ] }, logger);
 
     expect(result).toEqual([
       { id: "first", label: "First", query: "up" },
       { id: "second", label: "Second", query: "load", unit: "%", warning: 70, critical: 90, direction: "above" },
       { id: "bare", label: "Bare direction", query: "temperature", direction: "below" },
     ]);
-    expect(warn).toHaveBeenCalledTimes(2);
-    expect(warn.mock.calls.map(([fields]) => fields)).toEqual([
-      { event: "prometheus.summary.dropped", index: 1, id: "bad", reason: "direction_required" },
-      { event: "prometheus.summary.dropped", index: 3, id: "first", reason: "id_duplicate" },
+    // Drops go to the injected module logger: warn level, tagged with the module id.
+    expect(lines.map(({ level, module, event, index, id, reason }) => ({ level, module, event, index, id, reason }))).toEqual([
+      { level: 40, module: "prometheus", event: "prometheus.summary.dropped", index: 1, id: "bad", reason: "direction_required" },
+      { level: 40, module: "prometheus", event: "prometheus.summary.dropped", index: 3, id: "first", reason: "id_duplicate" },
     ]);
-    expect(JSON.stringify(warn.mock.calls)).not.toContain("secret-query");
+    expect(JSON.stringify(lines)).not.toContain("secret-query");
   });
 
   it("drops every mistyped field independently and never lets getters or logging throw", () => {
-    vi.spyOn(logger, "warn").mockImplementation(() => { throw new Error("logger down"); });
+    const down = (): never => { throw new Error("logger down"); };
+    const logger: ModuleLogger = { debug: down, info: down, warn: down, error: down };
     const unreadable = Object.defineProperty({}, "id", { get: () => { throw new Error("getter"); } });
     const invalid = [
       null, [], {}, { id: "", label: "x", query: "x" }, { id: "x", label: 1, query: "x" },
@@ -55,8 +62,8 @@ describe("parseSummaryCard", () => {
       { id: "x", label: "x", query: "x", critical: Infinity, direction: "above" },
       { id: "x", label: "x", query: "x", direction: "sideways" }, unreadable,
     ];
-    expect(() => parseSummaryCard({ summaries: invalid })).not.toThrow();
-    expect(parseSummaryCard({ summaries: invalid })).toEqual([]);
+    expect(() => parseSummaryCard({ summaries: invalid }, logger)).not.toThrow();
+    expect(parseSummaryCard({ summaries: invalid }, logger)).toEqual([]);
   });
 });
 
@@ -157,7 +164,7 @@ describe("PrometheusProvider", () => {
     await expect(empty.fetch()).resolves.toEqual({ summaries: [] });
     expect(fetchStub).not.toHaveBeenCalled();
 
-    const secured = new PrometheusProvider("secured", { baseUrl: "http://prom", credentialEnv: "DECK_PROM_TOKEN", summaries: [query("metric", "q")] });
+    const secured = new PrometheusProvider("secured", { baseUrl: "http://prom", credentialEnv: "DECK_PROM_TOKEN", env: processEnv, summaries: [query("metric", "q")] });
     process.env.DECK_PROM_TOKEN = "Bearer super-secret";
     await secured.fetch();
     delete process.env.DECK_PROM_TOKEN;

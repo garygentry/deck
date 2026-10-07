@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { apiErrorBody, type ServerModule, type UiManifest } from "@deck/module-sdk";
 import type { Finding } from "@deck/schema";
 
 import { formatFindings, formatToolError } from "../cli/findings-format.js";
@@ -8,39 +9,49 @@ import {
   createLogger,
   type ConfigLoadEvent,
   type ServerStartEvent,
+  type ServerStopForcedEvent,
+  type ServerStopStageTimeoutEvent,
 } from "../log/logger.js";
 import { registerAllProviders } from "../providers/index.js";
 import {
   listHealth,
-  listMetrics,
   listProviders,
   providerCount,
   read,
   startScheduler,
   stopScheduler,
 } from "../providers/registry.js";
-import { createAuditStore } from "../actions/audit.js";
-import { createActionExecutor } from "../actions/executor.js";
-import { resolveActionsRuntime, type ActionsDeps } from "../actions/runtime.js";
-import { createBunRunnerSpawner } from "../actions/spawn.js";
-import { LlmUsageCollector } from "../llm-usage/collector.js";
-import { resolveLlmUsageConfig } from "../llm-usage/config.js";
-import type { LlmUsageDeps } from "../llm-usage/routes.js";
-import { resolveMetricsRuntime } from "../metrics/runtime.js";
-import { resolveSourcesRuntime, type SourcesDeps } from "../sources/runtime.js";
-import { createApp, type ProviderReader } from "./app.js";
+import { BUILTIN_MODULES } from "../modules/builtin.js";
+import { buildUiManifest } from "../ui/manifest.js";
+import { createModuleHost, startModules, type ModuleHost } from "../modules/host.js";
+import { settlesWithin } from "./settle.js";
+import { FORCE_CLOSE_WAIT_MS, resolveStopTimings, type StopTimings } from "./stop-timings.js";
+import { installShutdown, type ShutdownOptions } from "./shutdown.js";
+import { createApp, planningRouteTable, RESERVED_ROOT_PATHS, type AppDeps, type ProviderReader } from "./app.js";
 
 declare const Bun: {
   serve(options: {
     port: number;
     fetch: (request: Request) => Response | Promise<Response>;
-  }): { stop(): void | Promise<void> };
+  }): { stop(closeActiveConnections?: boolean): void | Promise<void> };
 };
 
 export interface BootOptions {
   configDir?: string;
   port?: number;
   webDistDir?: string;
+  /** The server modules to run (default: the built-in modules). */
+  modules?: readonly ServerModule<any>[];
+  /** Shutdown stage bounds; defaults in `stop-timings.ts`. */
+  shutdown?: StopTimings;
+}
+
+/** What a request that arrives once shutdown has begun gets. */
+function shuttingDown(): Response {
+  return Response.json(apiErrorBody("Server is shutting down", "SHUTTING_DOWN"), {
+    status: 503,
+    headers: { connection: "close" },
+  });
 }
 
 export interface BootHandle {
@@ -66,12 +77,14 @@ export function failFast(
 
 /**
  * Load estate configuration, register providers, start polling, and serve Deck.
- * Runtime environment supplies defaults for the config directory, snapshot source,
- * and port. The returned handle stops both scheduler and HTTP server lifecycle.
+ * Runtime environment supplies defaults for the config directory and port; modules read
+ * the variables they own. The returned handle stops both scheduler and HTTP server lifecycle.
  */
 export async function boot(options: BootOptions = {}): Promise<BootHandle> {
   const startedAtMs = Date.now();
-  const result = load({ arg: options.configDir });
+  const serverModules = options.modules ?? BUILTIN_MODULES;
+  const stopTimings = resolveStopTimings(options.shutdown);
+  const result = load({ arg: options.configDir, boot: true, ...(options.modules === undefined ? {} : { modules: options.modules }) });
   const logger = createLogger();
   const configDir = resolve(
     options.configDir ?? process.env.DECK_CONFIG_DIR ?? "config",
@@ -88,31 +101,44 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
 
   failFast(result);
 
-  // Resolve the sources capability once from config + env. Its per-source stores are threaded
-  // into registerAllProviders (so registration stays the single register() site) and the same
-  // reader is injected into createApp as deps.sources. A misconfiguration (an unusable cache
-  // dir) fails fast with the same classified stderr + exit-2 posture as a bad estate config.
-  let sourcesRuntime: SourcesDeps;
+  // Plan modules from their manifests against the kernel's planning route table (the one
+  // config validation used). Modules that cannot coexist fail fast (classified stderr,
+  // exit 2); a module refused on its own (bad manifest, kernel route collision, API skew,
+  // missing dependency) is disabled with a logged finding and boot continues. Planning runs
+  // no module code: each enabled module's init runs later, in dependency order, so
+  // providers it registers start with the rest.
+  let modules: ModuleHost;
   try {
-    sourcesRuntime = resolveSourcesRuntime(result.config, process.env);
+    const moduleSections = (result.config as { modules?: Record<string, unknown> }).modules;
+    modules = createModuleHost({
+      modules: serverModules,
+      sectionOf: (id) => moduleSections?.[id],
+      instancesOf: (list) => result.config[list] ?? [],
+      env: process.env,
+      builtins: new Set(BUILTIN_MODULES),
+      logger,
+      // Modules config validation found broken (a contribution that did not compose, a
+      // config rule that failed) are disabled here, before their code runs.
+      manifestProblems: result.moduleProblems,
+      // The same config-independent table config loading planned with, so boot runs exactly
+      // the modules whose sections were validated.
+      kernelRoutes: planningRouteTable(),
+      reservedRootPaths: RESERVED_ROOT_PATHS,
+      drainTimeoutMs: stopTimings.drainTimeoutMs,
+      hookTimeoutMs: stopTimings.hookTimeoutMs,
+      stageTimeoutMs: stopTimings.modulesMs,
+    });
   } catch (cause) {
     process.stderr.write(`${(cause as Error).message}\n`);
     process.exit(2);
   }
-
-  // Read the optional snapshot source exactly once. It is never normalized, logged,
-  // or added to DeckConfig/BootOptions; createSnapshotSource owns its one-time conversion.
-  const snapshotSource = process.env.DECK_SNAPSHOT_SOURCE;
-  // Provider registration and scheduler start can throw on a bad estate (e.g. a
-  // duplicate provider id) or an unreadable snapshot source. Fail fast with the
-  // same classified-stderr + exit-2 posture as a bad config, rather than letting
-  // it surface as an unhandled rejection with a raw stack.
+  // Providers are registered once modules are planned, since enabled modules' kind handlers
+  // turn estate declarations into providers, and before any module init runs. Registration
+  // and scheduler start can throw on a bad estate (e.g. a duplicate provider id) or a
+  // deployment setting a built-in module cannot start with. Fail fast with the same classified-stderr + exit-2 posture
+  // as a bad config, rather than letting it surface as an unhandled rejection with a raw stack.
   try {
-    registerAllProviders(result.config, {
-      ...(snapshotSource === undefined ? {} : { snapshotSource }),
-      sourceStores: sourcesRuntime.stores,
-    });
-    startScheduler();
+    registerAllProviders(result.config, modules.kindHandlers());
   } catch (cause) {
     process.stderr.write(`${(cause as Error).message}\n`);
     process.exit(2);
@@ -122,69 +148,55 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
     count: providerCount,
     listHealth,
     listProviders,
-    listMetrics,
   };
-  // Resolve the opt-in /metrics capability once from env (DECK_METRICS_ENABLED; never throws).
-  const metricsRuntime = resolveMetricsRuntime(process.env);
 
-  // Resolve the actions capability once from env. When enabled, build the audit store
-  // and executor (real Bun spawner) and inject them; when disabled, omit deps.actions
-  // so every action route refuses 403. A misconfiguration (bad DECK_DATA_DIR,
-  // DECK_RUNNERS_FILE, or manifest) fails fast with the same classified stderr +
-  // exit-2 posture as a bad estate config, instead of an unhandled rejection.
-  let actionsRuntime: ReturnType<typeof resolveActionsRuntime>;
-  try {
-    actionsRuntime = resolveActionsRuntime(process.env);
-  } catch (cause) {
-    process.stderr.write(`${(cause as Error).message}\n`);
-    process.exit(2);
-  }
-  let actions: ActionsDeps | undefined;
-  if (actionsRuntime.enabled) {
-    const audit = createAuditStore(actionsRuntime.dataDir, logger);
-    const executor = createActionExecutor({
-      spawner: createBunRunnerSpawner(),
-      audit,
-      timeoutMs: actionsRuntime.timeoutMs,
-      logger,
-    });
-    actions = { runtime: actionsRuntime, executor, audit };
-  }
-
-  // Resolve the optional llmUsage section once. An absent section leaves the feature off
-  // (no collector, no polling, no ingest route); a bad value (e.g. an unparseable
-  // duration) fails fast like any other config error. The ingest token is read from the
-  // env var the config names, never from the config itself.
-  let llmUsage: LlmUsageDeps | undefined;
-  try {
-    const usageConfig = resolveLlmUsageConfig(result.config);
-    if (usageConfig !== null) {
-      const tokenEnv = usageConfig.claude?.statusLineCredentialEnv;
-      const ingestToken = tokenEnv ? process.env[tokenEnv] || null : null;
-      if (tokenEnv && ingestToken === null) {
-        logger.warn({ event: "llm-usage.ingest-disabled", credentialEnv: tokenEnv }, "statusLine ingest env var unset; ingest route not registered");
-      }
-      llmUsage = { collector: new LlmUsageCollector(usageConfig), ingestToken };
-    }
-  } catch (cause) {
-    process.stderr.write(`${(cause as Error).message}\n`);
-    process.exit(2);
-  }
-
-  const app = createApp({
+  const kernelDeps: AppDeps = {
     config: result.config,
     providers,
     logger,
-    ...(actions === undefined ? {} : { actions }),
-    sources: sourcesRuntime.reader,
-    ...(llmUsage === undefined ? {} : { llmUsage }),
-    metricsEnabled: metricsRuntime.enabled,
     ...(options.webDistDir === undefined ? {} : { webDistDir: options.webDistDir }),
     startedAtMs,
-  });
+  };
+  await startModules(modules);
+
+  try {
+    startScheduler();
+  } catch (cause) {
+    process.stderr.write(`${(cause as Error).message}\n`);
+    process.exit(2);
+  }
+
+  // The UI manifest, resolved once: config, modules and providers are fixed from here on.
+  let ui: UiManifest;
+  try {
+    ui = buildUiManifest({
+      config: result.config,
+      providers,
+      modules,
+      capabilities: {},
+    });
+  } catch (cause) {
+    process.stderr.write(`${(cause as Error).message}\n`);
+    process.exit(2);
+  }
+
+  // Mounting re-checks module routes against the live kernel table (a backstop).
+  let app: ReturnType<typeof createApp>;
+  try {
+    app = createApp({ ...kernelDeps, modules, ui });
+  } catch (cause) {
+    process.stderr.write(`${(cause as Error).message}\n`);
+    process.exit(2);
+  }
   const envPort = Number(process.env.DECK_PORT);
   const port = options.port ?? (Number.isFinite(envPort) && envPort > 0 ? envPort : 8080);
-  const server = Bun.serve({ port, fetch: app.fetch });
+  // Once shutdown begins nothing new reaches the app, including a request on a kept-alive
+  // connection the closed listener no longer governs: it gets a 503 and the connection closes.
+  let stopping = false;
+  const server = Bun.serve({
+    port,
+    fetch: (request) => (stopping ? shuttingDown() : app.fetch(request)),
+  });
   const webDist = options.webDistDir !== undefined && existsSync(options.webDistDir)
     ? "present"
     : "missing";
@@ -203,10 +215,27 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
   return {
     server,
     port,
+    /**
+     * Stop in stages, each bounded (defaults in `stop-timings.ts`):
+     * 1. close the listener (no new requests; in-flight ones continue);
+     * 2. stop the modules: early stop hooks start at once (cancelling in-flight work), beside
+     *    each module's ordered stop (drain, then its stop hooks);
+     * 3. stop provider polling;
+     * 4. give in-flight requests `graceMs` to finish, then close their connections.
+     */
     async stop() {
+      stopping = true;
+      const drained = Promise.resolve(server.stop());
+      if (!(await settlesWithin(modules.stop(), stopTimings.modulesMs))) {
+        logger.warn({ event: "server.stop-stage-timeout", stage: "modules", boundMs: stopTimings.modulesMs } satisfies ServerStopStageTimeoutEvent, "modules still stopping; continuing");
+      }
       stopScheduler();
-      llmUsage?.collector.stop();
-      await server.stop();
+      if (!(await settlesWithin(drained, stopTimings.graceMs))) {
+        logger.warn({ event: "server.stop-forced", graceMs: stopTimings.graceMs } satisfies ServerStopForcedEvent, "requests still in flight; closing their connections");
+        // Closing is immediate; Bun's promise can stay pending on a response stream that
+        // never ends, so it is not awaited past a short bound.
+        await settlesWithin(Promise.resolve(server.stop(true)), FORCE_CLOSE_WAIT_MS);
+      }
     },
   };
 }
@@ -217,14 +246,35 @@ function countFindings(findings: readonly Finding[]): ConfigLoadEvent["counts"] 
   return counts;
 }
 
+export interface MainOptions extends BootOptions {
+  /** Overall shutdown deadline after a signal (default 9s). */
+  shutdownDeadlineMs?: number;
+}
+
+/**
+ * Run deck as a process: boot, and stop cleanly on SIGTERM (`docker stop`) or SIGINT. The
+ * handler is installed before boot settles, so a signal during startup waits for boot and
+ * then stops, all within the shutdown deadline. A boot failure exits 1.
+ */
+export function main(options: MainOptions = {}): void {
+  const { shutdownDeadlineMs, ...bootOptions } = options;
+  const booted = boot(bootOptions);
+  booted.catch((cause: unknown) => {
+    // Any unexpected boot rejection (e.g. Bun.serve failing to bind the port) exits
+    // non-zero with a message instead of an unhandled rejection with a raw stack.
+    process.stderr.write(`${(cause as Error)?.message ?? String(cause)}\n`);
+    process.exit(1);
+  });
+  const shutdown: ShutdownOptions = {
+    logger: createLogger(),
+    ...(shutdownDeadlineMs === undefined ? {} : { deadlineMs: shutdownDeadlineMs }),
+  };
+  installShutdown({ stop: async () => (await booted).stop() }, shutdown);
+}
+
 if (import.meta.main) {
   // A built web app (vite build → dist) is served as static assets when
   // DECK_WEB_DIST points at it; unset means API-only (dev proxies /api instead).
   const webDistDir = process.env.DECK_WEB_DIST;
-  // Any unexpected boot rejection (e.g. Bun.serve failing to bind the port) exits
-  // non-zero with a message instead of an unhandled rejection with a raw stack.
-  boot(webDistDir ? { webDistDir: resolve(webDistDir) } : {}).catch((cause: unknown) => {
-    process.stderr.write(`${(cause as Error)?.message ?? String(cause)}\n`);
-    process.exit(1);
-  });
+  main(webDistDir ? { webDistDir: resolve(webDistDir) } : {});
 }

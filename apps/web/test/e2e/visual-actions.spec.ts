@@ -193,7 +193,8 @@ async function routeScenario(page: Page, scenario: Scenario): Promise<void> {
   await page.route("**/api/config", async (route) => {
     const response = await route.fetch();
     const config = (await response.json()) as JsonObject;
-    await route.fulfill({ json: { ...config, actions: ACTIONS } });
+    const modules = (config.modules ?? {}) as JsonObject;
+    await route.fulfill({ json: { ...config, modules: { ...modules, actions: { actions: ACTIONS } } } });
   });
   await page.route("**/api/actions", (route) => route.fulfill({ json: { enabled: scenario.enabled } }));
   await page.route("**/api/actions/audit", (route) =>

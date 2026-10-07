@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { POLL_DEFAULTS } from "@deck/server";
-import type { FreshnessStamp, ProviderEnvelope } from "@deck/server";
+import { POLL_DEFAULTS } from "@deck/contract";
+import type { FreshnessStamp, ProviderEnvelope } from "@deck/contract";
 import { createElement as h } from "react";
 import { mount as render } from "./support/render.js";
 import { act } from "./support/render.js";
@@ -103,8 +103,8 @@ describe("alerts-and-health data hooks", () => {
         error: null,
         freshness: fresh,
       };
-      // The hook first consults the provider index; list both alerts providers
-      // so it polls through to the endpoint exactly as before gating.
+      // The hook first consults the UI manifest; list both alerts providers
+      // so it polls through to the endpoint.
       const index = {
         providers: [
           { id: "prometheus", kind: "prometheus" },
@@ -112,7 +112,7 @@ describe("alerts-and-health data hooks", () => {
         ],
       };
       const fetchMock = vi.fn((reqUrl: string) =>
-        Promise.resolve(reqUrl === "/api/providers" ? jsonResponse(index) : jsonResponse(envelope)),
+        Promise.resolve(reqUrl === "/api/ui" ? jsonResponse(index) : jsonResponse(envelope)),
       );
       vi.stubGlobal("fetch", fetchMock);
       const providerCalls = (): number =>
@@ -121,8 +121,8 @@ describe("alerts-and-health data hooks", () => {
       const probe = mountHook(env, hook);
       await advance(0); // flush the immediate poll()
 
-      // The index is fetched once (memoized); the endpoint is polled per tick.
-      expect(fetchMock.mock.calls.some((call) => call[0] === "/api/providers")).toBe(true);
+      // The manifest is fetched once (cached); the endpoint is polled per tick.
+      expect(fetchMock.mock.calls.filter((call) => call[0] === "/api/ui")).toHaveLength(1);
       expect(providerCalls()).toBe(1);
 
       await advance(POLL_DEFAULTS.pollIntervalMs);
@@ -130,6 +130,7 @@ describe("alerts-and-health data hooks", () => {
 
       await advance(POLL_DEFAULTS.pollIntervalMs);
       expect(providerCalls()).toBe(3);
+      expect(fetchMock.mock.calls.filter((call) => call[0] === "/api/ui")).toHaveLength(1);
 
       // Interval cleanup: after unmount no further poll fires.
       probe.unmount();
@@ -137,14 +138,14 @@ describe("alerts-and-health data hooks", () => {
       expect(providerCalls()).toBe(3);
     });
 
-    it("never polls the endpoint when the provider is absent from the index (not configured)", async () => {
+    it("never polls the endpoint when the provider is absent from the manifest (not configured)", async () => {
       vi.useFakeTimers();
       const env = installEnv();
-      // The index lists a different provider, so this one is unregistered.
+      // The manifest lists a different provider, so this one is unregistered.
       const fetchMock = vi.fn((reqUrl: string) =>
         Promise.resolve(
           jsonResponse(
-            reqUrl === "/api/providers"
+            reqUrl === "/api/ui"
               ? { providers: [{ id: "something-else", kind: "other" }] }
               : {},
           ),

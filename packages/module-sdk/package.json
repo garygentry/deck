@@ -1,0 +1,25 @@
+{
+  "name": "@deck/module-sdk",
+  "version": "0.3.2",
+  "private": true,
+  "description": "The deck module contract: manifest types, server module context, and tiny runtime helpers.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "hono": "^4.6.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}

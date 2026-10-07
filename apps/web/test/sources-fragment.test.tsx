@@ -7,12 +7,9 @@
 
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  DeckConfig,
-  ProviderEnvelope,
-  SourceManifest,
-  SourceTreeNode,
-} from "@deck/server";
+import type { ProviderEnvelope } from "@deck/contract";
+import type { DeckConfig } from "@deck/server";
+import type { SourceManifest, SourceTreeNode } from "@deck/server/sources";
 import type { EntityRef } from "../src/registry/registry.js";
 
 import {
@@ -48,7 +45,8 @@ function source(
 }
 
 function config(sources: Source[]): DeckConfig {
-  return { sources } as unknown as DeckConfig;
+  // The minimal shape the data layer accepts as an estate config document.
+  return { schemaVersion: 2, estate: { name: "Test estate" }, sources } as unknown as DeckConfig;
 }
 
 function manifest(sourceId: string, children: SourceTreeNode[]): SourceManifest {

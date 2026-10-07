@@ -1,5 +1,6 @@
+import type { ModuleLogger, ProviderTiming } from "@deck/module-sdk";
 import {
-  supportedVersions,
+  supportedSnapshotVersions,
   validateSnapshot,
   type DeckConfigDocument,
   type Finding,
@@ -13,9 +14,8 @@ import {
   type ProviderFetchContext,
   type ProviderHealth,
 } from "../../contract/index.js";
-import type { HostState, SnapshotProviderResult } from "../../contract/snapshot.js";
+import type { HostState, SnapshotProviderResult } from "@deck/contract";
 import { logger, type SnapshotReadEvent } from "../../log/logger.js";
-import { register } from "../registry.js";
 import { SNAPSHOT_READ_MESSAGES, SnapshotReadFailure, normalizeSnapshotFailure } from "./errors.js";
 import { deriveHostStates, parseStaleAfterMs } from "./freshness.js";
 import type { SnapshotSource } from "./source.js";
@@ -28,6 +28,8 @@ export interface SnapshotProviderConfig {
   readonly config: DeckConfigDocument;
   /** Injectable clock for deterministic age and timestamp tests. */
   readonly now?: () => Date;
+  /** Where `snapshot.read` events go: the module's scoped logger; the shared logger when absent. */
+  readonly logger?: Pick<ModuleLogger, "info">;
 }
 
 /**
@@ -76,7 +78,7 @@ function requireAcceptedSnapshot(
   );
   if (hasUnsupportedVersion) {
     const found = readSchemaVersion(parsed);
-    const supported = [...supportedVersions].sort((a, b) => a - b).join(", ");
+    const supported = [...supportedSnapshotVersions].sort((a, b) => a - b).join(", ");
     throw new SnapshotReadFailure(
       "VERSION_UNSUPPORTED",
       `Snapshot schemaVersion ${found} is unsupported; supported version(s): ${supported}.`,
@@ -100,6 +102,7 @@ export class SnapshotProvider implements Provider<SnapshotProviderResult> {
   private readonly source: SnapshotSource;
   private readonly config: DeckConfigDocument;
   private readonly now: () => Date;
+  private readonly logger: Pick<ModuleLogger, "info"> | undefined;
 
   /** Retained accepted snapshot and findings, reused on an unchanged read. */
   private latestSnapshot: SnapshotDocument | null = null;
@@ -114,6 +117,7 @@ export class SnapshotProvider implements Provider<SnapshotProviderResult> {
     this.source = config.source;
     this.config = config.config;
     this.now = config.now ?? (() => new Date());
+    this.logger = config.logger;
   }
 
   /** Return the latest in-memory read health without source I/O. */
@@ -263,7 +267,8 @@ export class SnapshotProvider implements Provider<SnapshotProviderResult> {
    */
   private emitReadEvent(event: SnapshotReadEvent): void {
     try {
-      logger.info(event, "snapshot read");
+      if (this.logger === undefined) logger.info(event, "snapshot read");
+      else this.logger.info({ ...event }, "snapshot read");
     } catch {
       // Intentionally ignored: a logging failure must not change fetch behavior.
     }
@@ -299,17 +304,11 @@ function successHealth(classification: 0 | 1, findingsCount: number): ProviderHe
     : { ok: true, detail: `Snapshot accepted with ${findingsCount} finding(s)` };
 }
 
-/**
- * Register the stable singleton snapshot provider with its required engine policy.
- *
- * @throws {Error} `PROVIDER_DUPLICATE_ID` if `snapshot` is already registered.
- */
-export function registerSnapshot(id: "snapshot", config: SnapshotProviderConfig): void {
-  register(new SnapshotProvider(id, config), {
-    pollIntervalMs: 60_000,
-    ttlMs: 60_000,
-    unreachableAfterMs: 180_000,
-    timeoutMs: POLL_DEFAULTS.timeoutMs,
-    failureFreshness: "age-retained",
-  });
-}
+/** The snapshot provider's fixed schedule: slower than the default, retaining age on failure. */
+export const SNAPSHOT_TIMING = {
+  pollIntervalMs: 60_000,
+  ttlMs: 60_000,
+  unreachableAfterMs: 180_000,
+  timeoutMs: POLL_DEFAULTS.timeoutMs,
+  failureFreshness: "age-retained",
+} as const satisfies ProviderTiming;

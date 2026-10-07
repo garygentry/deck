@@ -243,6 +243,43 @@ describe("createActionExecutor", () => {
     expect(spawner.calls[0].handle?.killSignals).toContain("SIGTERM");
   });
 
+  it("cancelAll() cancels every live run and resolves once each is audited as cancelled (review N1)", async () => {
+    const spawner = createFakeSpawner({ stdout: [enc("go")], hang: true });
+    const audit = createFakeAudit();
+    const executor = createActionExecutor(baseOpts({ hang: true }, { spawner, audit: audit.store }));
+    const iterator = executor.start(invocation())[Symbol.asyncIterator]();
+    await iterator.next(); // the run event: registered and spawned
+
+    await expect(executor.cancelAll()).resolves.toBe(1);
+    expect(audit.appends.map((entry) => entry.outcome)).toEqual(["cancelled"]);
+    await expect(executor.cancelAll()).resolves.toBe(0);
+  });
+
+  it("escalates to SIGKILL when a cancelled child ignores SIGTERM (review N1)", async () => {
+    const spawner = createFakeSpawner({ stdout: [enc("go")], hang: true, ignoreTerm: true });
+    const audit = createFakeAudit();
+    const executor = createActionExecutor(baseOpts({ hang: true }, { spawner, audit: audit.store, killGraceMs: 20 }));
+    const iterator = executor.start(invocation())[Symbol.asyncIterator]();
+    await iterator.next();
+
+    await expect(executor.cancelAll()).resolves.toBe(1);
+    expect(spawner.calls[0]!.handle?.killSignals).toContain("SIGKILL");
+    expect(audit.appends.map((entry) => entry.outcome)).toEqual(["cancelled"]);
+  });
+
+  it("records a cancelled run even when its pipes stay open after the child exits (review N1)", async () => {
+    const spawner = createFakeSpawner({ stdout: [enc("go")], hang: true, holdStreams: true });
+    const audit = createFakeAudit();
+    const executor = createActionExecutor(baseOpts({ hang: true }, { spawner, audit: audit.store, pumpDrainMs: 20 }));
+    const iterator = executor.start(invocation())[Symbol.asyncIterator]();
+    await iterator.next();
+
+    const started = Date.now();
+    await expect(executor.cancelAll()).resolves.toBe(1);
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(audit.appends.map((entry) => entry.outcome)).toEqual(["cancelled"]);
+  });
+
   it("cancel of an unknown/finished id returns false", async () => {
     const executor = createActionExecutor(baseOpts({ exitCode: 0 }));
     expect(executor.cancel("no-such-run")).toBe(false);

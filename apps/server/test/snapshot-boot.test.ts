@@ -7,8 +7,10 @@ import type { Logger } from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DeckConfig } from "../src/contract/index.js";
+import { BootFatalError } from "@deck/module-sdk";
 import { load } from "../src/config/load.js";
-import { registerAllProviders } from "../src/providers/index.js";
+import { builtinKindHandlers } from "../src/modules/builtin.js";
+import { registerAllProviders as registerWithKinds } from "../src/providers/index.js";
 import {
   listEnvelopes,
   listHealth,
@@ -25,7 +27,7 @@ import { createApp } from "../src/server/app.js";
 
 /** A minimal config with no integrations, so only the snapshot provider polls. */
 const minimalConfig = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   estate: { name: "example-estate", freshness: { snapshotStaleAfter: "PT6H" } },
   hosts: [{ name: "host-a", kind: "vm", purpose: "Example workload" }],
 } satisfies DeckConfigDocument;
@@ -40,6 +42,12 @@ function loadPortalConfig(): DeckConfig {
 function makeApp(config: DeckConfig) {
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger;
   return createApp({ config, providers: { read, count: providerCount, listHealth, listProviders }, logger });
+}
+
+/** Register `config`'s providers with the built-in modules, the snapshot source set (or not). */
+function registerAllProviders(config: DeckConfig, options: { snapshotSource?: string } = {}): void {
+  const env = options.snapshotSource === undefined ? {} : { DECK_SNAPSHOT_SOURCE: options.snapshotSource };
+  registerWithKinds(config, builtinKindHandlers(config, env));
 }
 
 const tmpDirs: string[] = [];
@@ -101,7 +109,7 @@ describe("snapshot boot registration", () => {
     });
   });
 
-  it("throws a sanitized failure for an unsupported protocol without leaking the value", () => {
+  it("fails boot with a sanitized failure for an unsupported protocol without leaking the value", () => {
     const config = minimalConfig satisfies DeckConfig;
     const secret = "ftp://secret.example.internal/private-snapshot.json";
 
@@ -112,24 +120,27 @@ describe("snapshot boot registration", () => {
       thrown = error;
     }
 
-    expect(thrown).toBeInstanceOf(SnapshotReadFailure);
-    const failure = thrown as SnapshotReadFailure;
+    // The snapshot module refuses it as boot-fatal (boot prints the message, exits 2).
+    expect(thrown).toBeInstanceOf(BootFatalError);
+    const failure = (thrown as BootFatalError).cause as SnapshotReadFailure;
+    expect(failure).toBeInstanceOf(SnapshotReadFailure);
     expect(failure.code).toBe("SOURCE_PROTOCOL_UNSUPPORTED");
+    expect((thrown as Error).message).toBe(failure.message);
     expect(failure.message).toContain("ftp");
     expect(failure.message).not.toContain("secret.example.internal");
     // A safe startup failure registers no snapshot slot.
     expect(read("snapshot")).toBeUndefined();
   });
 
-  it("throws SOURCE_UNREADABLE for an empty present source", () => {
+  it("fails boot with SOURCE_UNREADABLE for an empty present source", () => {
     let thrown: unknown;
     try {
       registerAllProviders(minimalConfig, { snapshotSource: "   " });
     } catch (error) {
       thrown = error;
     }
-    expect(thrown).toBeInstanceOf(SnapshotReadFailure);
-    expect((thrown as SnapshotReadFailure).code).toBe("SOURCE_UNREADABLE");
+    expect(thrown).toBeInstanceOf(BootFatalError);
+    expect(((thrown as BootFatalError).cause as SnapshotReadFailure).code).toBe("SOURCE_UNREADABLE");
   });
 
   it("registers a valid but unreadable source and polls it to failed-empty", async () => {

@@ -1,6 +1,6 @@
 import type { DeckConfig } from "@deck/server";
 import { useState, type ReactNode } from "react";
-import { useConfig } from "@/shell/use-config";
+import { useConfig } from "@/data";
 import { usePageHeadingId } from "@/ui/hooks/use-page-heading-id";
 import { cn } from "@/ui/lib/utils";
 import { ErrorState } from "@/ui/patterns/error-state";
@@ -73,8 +73,8 @@ export interface ConfigGateProps extends ConfigGateFrameProps {
 }
 
 /**
- * `ConfigGateView` bound to the shell's `useConfig()`. Retry refetches by
- * remounting the loader (useConfig fetches once per mount).
+ * `ConfigGateView` bound to the shared `useConfig()`. Retry remounts the loader,
+ * and a remount after a failed read asks again (a failed read is never cached).
  */
 export function ConfigGate(props: ConfigGateProps) {
   const [attempt, setAttempt] = useState(0);

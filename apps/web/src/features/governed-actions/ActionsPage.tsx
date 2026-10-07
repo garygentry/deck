@@ -6,18 +6,21 @@
  * component takes NO props. Composes the five presentational components
  * (ActionList, ParamForm, ConfirmStep, RunOutput, AuditHistory) with the
  * singleton run store (via `useRun`) and the shared `validateActionParams`.
- * Every type resolves from `@deck/server` and the feature's own modules — never
+ * Every type resolves from `@deck/server`, `@deck/contract/actions` and the feature's own modules — never
  * `@deck/schema`.
  */
 
 import type { ReactNode, JSX } from "react";
 import { useEffect, useState } from "react";
-import type { Action, DeckConfig, ResolvedParams } from "@deck/server";
-import { validateActionParams } from "@deck/server";
+import type { ResolvedParams } from "@deck/contract/actions";
+import type { DeckConfig } from "@deck/server";
+import type { Action } from "@deck/server/actions";
+import { validateActionParams } from "@deck/contract/actions";
 import { Callout, ConfigGate, PageErrorBoundary } from "@/ui";
 import { ActionList } from "./components/ActionList.js";
 import { ParamForm, initialParamValues } from "./components/ParamForm.js";
 import { ConfirmStep } from "./components/ConfirmStep.js";
+import { declaredActions } from "./declared-actions.js";
 import { RunOutput } from "./components/RunOutput.js";
 import { AuditHistory } from "./components/AuditHistory.js";
 import { cancelRun, fetchActionsEnabled, invokeAction } from "./client.js";
@@ -77,7 +80,7 @@ export function ActionsPage(): JSX.Element {
  * read-only status banner and mounts no run affordance.
  */
 function ActionsReady({ config }: { readonly config: DeckConfig }): JSX.Element {
-  const actions: readonly Action[] = config.actions ?? [];
+  const actions = declaredActions(config);
   const run = useRun();
 
   const [selected, setSelected] = useState<Action | null>(null);

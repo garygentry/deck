@@ -2,7 +2,8 @@
  * Read-only HTTP route surface for the sources capability (05-http-routes.md).
  *
  * The single exported function `registerSourceRoutes(app, deps)` adds exactly four `GET`
- * routes — tree, file, raw, search — and no others. Every route is `GET` (REQ-RO-01): there
+ * routes — tree, file, raw, search — and no others, on the `sources` module's routes (mounted
+ * at `/api/m/sources` and the legacy `/api/sources`). Every route is `GET` (REQ-RO-01): there
  * is no `app.post/put/patch/delete` anywhere in this file. Handlers gate on `deps.sources`
  * (capability off ⇒ 404) and the known-id gate, then delegate to the per-source
  * `SourceStore`, whose methods route every path through `confine.ts` (REQ-SEC-02). The
@@ -14,17 +15,29 @@
  * error code. All code is TypeScript, ESM with `.js` import specifiers.
  */
 
+import { apiErrorBody } from "@deck/module-sdk";
 import type { Context, Hono } from "hono";
 
-import { apiError, type AppDeps } from "../server/app.js";
 import { SourceFailure, SOURCE_MESSAGES, normalizeSourceFailure } from "./errors.js";
-import { logSourceFailure } from "./events.js";
-import type { RawReadResult, SourceStore } from "./store.js";
+import type { SourceLogEvent } from "./events.js";
+import type { RawReadResult, SourceReader, SourceStore } from "./store.js";
 import type {
   FileReadResult,
   SourceManifest,
   SourceSearchResult,
 } from "./tree.js";
+
+/** What the routes read and log through. */
+export interface SourceRoutesDeps {
+  /** The source stores; absent => capability off (every route 404s). */
+  sources?: SourceReader;
+  /** Log one source failure (id + failure kind + code only — REQ-OBS-02). */
+  logFailure(event: SourceLogEvent): void;
+}
+
+function apiError(context: Context, status: number, error: string, code: string): Response {
+  return context.json(apiErrorBody(error, code), status as 400 | 404 | 500);
+}
 
 /**
  * Resolve the store for a request, applying the capability gate (`deps.sources` absent ⇒
@@ -32,7 +45,7 @@ import type {
  * on either miss. Both misses surface as `SOURCE_NOT_FOUND` so a disabled deployment is
  * indistinguishable from an unknown id (§2.1), leaking no route topology.
  */
-function resolveStore(context: Context, deps: AppDeps): SourceStore | Response {
+function resolveStore(context: Context, deps: SourceRoutesDeps): SourceStore | Response {
   const id = context.req.param("id");
   const store = id === undefined ? undefined : deps.sources?.get(id);
   if (!store) {
@@ -51,7 +64,7 @@ function resolveStore(context: Context, deps: AppDeps): SourceStore | Response {
  */
 async function withFailureBoundary(
   context: Context,
-  deps: AppDeps,
+  deps: SourceRoutesDeps,
   store: SourceStore,
   run: (signal: AbortSignal) => Promise<Response>,
 ): Promise<Response> {
@@ -66,7 +79,7 @@ async function withFailureBoundary(
         : normalizeSourceFailure(error, { sourceId: store.id });
     // Server-side diagnostic: id + failure kind only. `details.attemptedPath` stays internal
     // and is NEVER echoed to the client (00 §8).
-    logSourceFailure(deps.logger, {
+    deps.logFailure({
       sourceId: store.id,
       failureKind: failure.details.failureKind ?? "read",
       code: failure.code,
@@ -77,7 +90,7 @@ async function withFailureBoundary(
 }
 
 /** GET /api/sources/:id/tree → 200 SourceManifest (00 §2). No query params. */
-async function getTree(context: Context, deps: AppDeps): Promise<Response> {
+async function getTree(context: Context, deps: SourceRoutesDeps): Promise<Response> {
   const store = resolveStore(context, deps);
   if (store instanceof Response) return store; // 404 already produced (§2)
   return withFailureBoundary(context, deps, store, async (signal) => {
@@ -87,7 +100,7 @@ async function getTree(context: Context, deps: AppDeps): Promise<Response> {
 }
 
 /** GET /api/sources/:id/file?path=<rel> → 200 FileReadResult (00 §3). */
-async function getFile(context: Context, deps: AppDeps): Promise<Response> {
+async function getFile(context: Context, deps: SourceRoutesDeps): Promise<Response> {
   const store = resolveStore(context, deps);
   if (store instanceof Response) return store;
 
@@ -109,7 +122,7 @@ async function getFile(context: Context, deps: AppDeps): Promise<Response> {
  * GET /api/sources/:id/raw?path=<rel> → 200 image bytes for markdown-relative images.
  * Confined + image-only + nosniff. Non-image paths are refused 400 (REQ-RO-01, §3.11).
  */
-async function getRaw(context: Context, deps: AppDeps): Promise<Response> {
+async function getRaw(context: Context, deps: SourceRoutesDeps): Promise<Response> {
   const store = resolveStore(context, deps);
   if (store instanceof Response) return store;
 
@@ -142,7 +155,7 @@ async function getRaw(context: Context, deps: AppDeps): Promise<Response> {
 }
 
 /** GET /api/sources/:id/search?q=<q> → 200 SourceSearchResult (00 §4), capped at 200. */
-async function getSearch(context: Context, deps: AppDeps): Promise<Response> {
+async function getSearch(context: Context, deps: SourceRoutesDeps): Promise<Response> {
   const store = resolveStore(context, deps);
   if (store instanceof Response) return store;
 
@@ -159,14 +172,14 @@ async function getSearch(context: Context, deps: AppDeps): Promise<Response> {
 }
 
 /**
- * Register the four read-only source browsing routes on the shared Hono app. Called from
- * createApp AFTER the GET provider routes and BEFORE the static/SPA fallback (01 §2.2), so
- * /api/sources/* resolves as API. Handlers gate on deps.sources (§2) and delegate to the
- * per-source SourceStore; every route is GET (REQ-RO-01, §6).
+ * Register the four read-only source browsing routes on `app`, the `sources` module's routes,
+ * so they answer at `/api/m/sources/:id/*` and the legacy `/api/sources/:id/*`. Handlers gate
+ * on deps.sources (§2) and delegate to the per-source SourceStore; every route is GET
+ * (REQ-RO-01, §6).
  */
-export function registerSourceRoutes(app: Hono, deps: AppDeps): void {
-  app.get("/api/sources/:id/tree", (context) => getTree(context, deps));
-  app.get("/api/sources/:id/file", (context) => getFile(context, deps));
-  app.get("/api/sources/:id/raw", (context) => getRaw(context, deps));
-  app.get("/api/sources/:id/search", (context) => getSearch(context, deps));
+export function registerSourceRoutes(app: Hono, deps: SourceRoutesDeps): void {
+  app.get("/:id/tree", (context) => getTree(context, deps));
+  app.get("/:id/file", (context) => getFile(context, deps));
+  app.get("/:id/raw", (context) => getRaw(context, deps));
+  app.get("/:id/search", (context) => getSearch(context, deps));
 }

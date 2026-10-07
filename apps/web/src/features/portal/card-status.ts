@@ -1,5 +1,7 @@
-import type { GroupItem, LinkItem, Service, ServiceItem } from "@deck/schema";
-import type { DeckConfig, FreshnessStamp, ProviderEnvelope } from "@deck/server";
+import type { Service } from "@deck/schema";
+import type { GroupItem, LinkItem, ServiceItem } from "@deck/server/portal";
+import type { FreshnessStamp, ProviderEnvelope } from "@deck/contract";
+import type { DeckConfig } from "@deck/server";
 
 export type DockerRunState = "running" | "exited" | "paused" | "restarting";
 export type DockerHealth = "healthy" | "unhealthy" | "starting" | "none";

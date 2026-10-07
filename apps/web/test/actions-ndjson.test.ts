@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ActionRunEvent } from "@deck/server";
+import type { ActionRunEvent } from "@deck/server/actions";
 
 type RunStoreModule = typeof import("../src/features/governed-actions/run-store.js");
 type ClientModule = typeof import("../src/features/governed-actions/client.js");

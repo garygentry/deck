@@ -48,6 +48,23 @@ server; its one convenience is materializing a now-relative snapshot from a temp
 no `DECK_SNAPSHOT_SOURCE` is set, which is for the bundled example, not real deployments.
 Because web and API share one process and one port, the deployment topology is just "publish
 `DECK_PORT`," and a proxy in front forwards both `/` and `/api` to the same upstream.
+Because the server is PID 1, `docker stop`'s SIGTERM reaches it directly, and deck stops in order:
+1. It closes the listener. A request that still arrives on a kept-alive connection gets 503
+   `SHUTTING_DOWN`.
+2. It stops its modules, within 4 s:
+   - at once, the `actions` module cancels in-flight action runs (up to 4 s, and never past
+     the stage). Each runner's process group gets SIGTERM, then SIGKILL after 1 s, and every
+     cancelled run is written to the audit log as `cancelled`. If cancelling outlives its
+     bound, deck logs `actions.stop-hook-timeout`; this replaces the earlier
+     `server.stop-stage-timeout` event with `stage: "actions"`, which no longer exists;
+   - beside that, module by module, scheduled work drains (up to 2 s per module), then each
+     stop hook runs (up to 1 s).
+3. It stops provider polling.
+4. It gives in-flight requests 2.5 s to finish, then closes their connections.
+
+These stages add up to 7 s. A clean stop exits 0. The whole shutdown, including a boot still in
+progress when the signal arrives, has a 9 s deadline (inside Docker's default 10 s grace
+period); past it deck exits 1. A second SIGTERM or SIGINT exits 1 at once.
 
 State lives outside the image: the estate config is a mounted volume at `/config`, and the
 observed snapshot is a mounted file or a fetched URL.
@@ -71,10 +88,19 @@ the dual Node/Bun nature of the build.
 so parallelism comes from cross-runner shards).
 `bun-parity` re-runs the unit tests under Bun, proving the code that ships in the runtime image
 behaves the same on the runtime engine.
-`gates` runs the correctness guards: provider-barrel drift, a golden `deck render` comparison, and
+`gates` runs the correctness guards: a golden `deck render` comparison and
 a bare-Bun boot smoke that boots the server and asserts a well-formed `/api/health` payload.
 Together they protect the invariant this deployment depends on — that the same source runs
 correctly under Bun and boots to a healthy process.
+The server unit tests (run by both `node-pnpm` and `bun-parity`) also include parity goldens
+(`apps/server/test/parity-golden.test.ts`). For the frozen v1 example estate and every estate
+fixture they pin the `deck validate` and `deck snapshot validate` output. They also pin the API
+responses (config, provider list and envelopes, health, actions, LLM usage) against canned
+upstreams, and the route table. Refreshing them is an explicit opt-in
+(`DECK_UPDATE_GOLDENS=1`), so any behaviour change shows up as a reviewed golden diff.
+`kernel-touch` is informational and never fails the build. It lists the kernel files a branch
+changes (`scripts/kernel-touch.ts` holds the kernel path list), as a trend to keep near zero for
+new modules. On a separate line it lists the parity-gate files touched.
 
 ![Deployment view: a Node builder produces the web bundle, the Bun runtime image serves web and API from one process on :8080, Compose mounts the estate read-only, and CI gates guard releases.](./diagrams/deployment.svg)
 

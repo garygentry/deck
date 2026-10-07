@@ -1,12 +1,10 @@
 /**
- * The `configs`-slot entity fragment (REQ-FRAG-01/02/03/04, SC-04/SC-09).
+ * The owned-configs entity fragment: the `configs` section on the host and service detail pages.
  *
- * Registered into the pre-existing frozen `configs` slot on both the host and service detail
- * routes (index.ts). The slot passes only `{ entity: EntityRef }`, so the fragment fetches its
- * OWN data and freshness. It lists the config files from every file-tree source OWNED by the
- * entity, each linking to its read-only Configs view; when the entity owns nothing it renders
- * its OWN compact accessible empty state (role="status"), distinct from the slot's
- * "nothing attached" fallback.
+ * Attached by id on both detail pages (index.ts). The page passes only `{ entity: EntityRef }`,
+ * so the fragment fetches its OWN data and freshness. It lists the config files from every
+ * file-tree source OWNED by the entity, each linking to its read-only Configs view; when the
+ * entity owns nothing it renders its OWN compact accessible empty state (role="status").
  *
  * Because it lists files across MULTIPLE file-tree sources it cannot use the single-active-source
  * browse store (`sources-store.ts` holds one active source). It reads `DeckConfig.sources` via
@@ -17,8 +15,10 @@
 
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import type { DeckConfig, ProviderEnvelope, SourceManifest, SourceTreeNode } from "@deck/server";
-import { useConfig } from "@/shell/use-config";
+import type { ProviderEnvelope } from "@deck/contract";
+import type { DeckConfig } from "@deck/server";
+import type { SourceManifest, SourceTreeNode } from "@deck/server/sources";
+import { useConfig } from "@/data";
 import { EmptyState, ErrorState, FreshnessBadge, List, ListItem, LoadingState } from "@/ui";
 import type { EntityRef } from "../../registry/registry.js";
 import { fetchManifest, type Source } from "./client.js";
@@ -30,7 +30,7 @@ export interface OwnedConfigsFragmentProps {
 }
 
 /**
- * File-tree sources owned by `entity` (REQ-FRAG-02):
+ * File-tree sources owned by `entity`:
  *  - host page (entity.entity === "host"):     owner.host === entity.host
  *  - service page (entity.entity === "service"): owner.host === entity.host
  *                                                AND owner.service === entity.name
@@ -58,9 +58,9 @@ export function collectFilePaths(root: SourceTreeNode): readonly string[] {
 }
 
 /**
- * The `configs`-slot fragment: lists config files from file-tree sources OWNED by this entity,
+ * The `configs`-section fragment: lists config files from file-tree sources OWNED by this entity,
  * each linking to its read-only Configs view. Renders its OWN compact empty state when the
- * entity owns nothing (REQ-FRAG-04) — distinct from the slot's "nothing attached" fallback.
+ * entity owns nothing.
  */
 export function OwnedConfigsFragment({ entity }: OwnedConfigsFragmentProps): JSX.Element {
   return (
@@ -77,7 +77,7 @@ function OwnedConfigsContent({ entity }: OwnedConfigsFragmentProps): JSX.Element
     return <ErrorState compact title="Configs unavailable" message={config.message} />;
   }
   const owned = ownedFileTreeSources(config.config, entity);
-  if (owned.length === 0) return <OwnedConfigsEmpty />; // REQ-FRAG-04
+  if (owned.length === 0) return <OwnedConfigsEmpty />;
   return (
     <List variant="divided" aria-label="Config files owned by this entity">
       {owned.map((source) => (
@@ -132,7 +132,7 @@ function OwnedSourceGroup({ source }: { readonly source: Source }): JSX.Element 
   const env = state.envelope;
   const freshness = <FreshnessBadge freshness={env.freshness} />;
   if (env.data === null) {
-    // First-ever acquisition failure for this source (REQ-FRESH-03).
+    // First-ever acquisition failure for this source.
     return (
       <ListItem
         title={source.title}
@@ -156,7 +156,7 @@ function OwnedSourceGroup({ source }: { readonly source: Source }): JSX.Element 
     <ListItem title={source.title} meta={freshness}>
       <List className="mt-1">
         {paths.map((path) => (
-          // Deep link to the read-only Configs view (REQ-FRAG-03).
+          // Deep link to the read-only Configs view.
           <ListItem
             key={path}
             href={configsHref(source.id, path)}
@@ -168,7 +168,7 @@ function OwnedSourceGroup({ source }: { readonly source: Source }): JSX.Element 
   );
 }
 
-/** Compact, accessible empty state when the entity owns no config files (REQ-FRAG-04, SC-04). */
+/** Compact, accessible empty state when the entity owns no config files. */
 function OwnedConfigsEmpty(): JSX.Element {
   return <EmptyState compact title="No config files are owned by this entity." />;
 }

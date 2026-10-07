@@ -1,5 +1,6 @@
 import type { Host, ObservedHost, ObservedService, Service } from "@deck/schema";
-import type { DeckConfig, HostState, SnapshotProviderResult } from "@deck/server";
+import type { HostState, SnapshotProviderResult } from "@deck/contract";
+import type { DeckConfig } from "@deck/server";
 import type { SnapshotClientState } from "./use-inventory-data.js";
 
 /** One row in the intent/reality hosts union. */

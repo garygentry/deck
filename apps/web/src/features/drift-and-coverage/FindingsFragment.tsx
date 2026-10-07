@@ -1,9 +1,6 @@
-import { DRIFT_UI_DEFAULTS } from "@deck/server";
-import type {
-  CoverageRow,
-  DriftFindingProjection,
-  HostCollectionState,
-} from "@deck/server";
+import { DRIFT_UI_DEFAULTS } from "@deck/drift";
+import type { HostCollectionState } from "@deck/contract";
+import type { CoverageRow, DriftFindingProjection } from "@deck/drift";
 import type { ReactNode, JSX } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -50,7 +47,7 @@ export interface FindingsFragmentProps {
 // Presentation boundary. A selection/render throw inside one fragment is caught
 // here and rendered as the fixed sanitized failure, emitting exactly one
 // allowlisted render-error diagnostic with no exception text. The outer boundary
-// in `EntitySlots.tsx` remains the final isolation.
+// in `EntitySections.tsx` remains the final isolation.
 // ---------------------------------------------------------------------------
 
 /** Local fixed-fallback boundary; never renders the caught exception. */

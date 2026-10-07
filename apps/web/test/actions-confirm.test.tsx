@@ -2,7 +2,8 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Action, ResolvedParams } from "@deck/server";
+import type { ResolvedParams } from "@deck/contract/actions";
+import type { Action } from "@deck/server/actions";
 
 import {
   ConfirmStep,

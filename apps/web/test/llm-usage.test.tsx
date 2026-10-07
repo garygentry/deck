@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { LlmUsageResponse, UsageBar } from "@deck/server";
+import type { LlmUsageResponse, UsageBar } from "@deck/server/llm-usage";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TONES, type StatusMap } from "@/ui";

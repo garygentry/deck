@@ -34,7 +34,7 @@ describe("layer ownership", () => {
     expect(resolveOwner("hosts[].addresses[].network")).toBe("base");
     expect(resolveOwner("hosts[].bindings.docker")).toBe("overlay");
     expect(resolveOwner("hosts[]")).toBe("container");
-    expect(resolveOwner("groups[].items[].title")).toBe("overlay");
+    expect(resolveOwner("modules")).toBe("container");
     expect(resolveOwner("estate.freshness.snapshotStaleAfter")).toBe("overlay");
     expect(resolveOwner("schemaVersion")).toBe("both");
   });

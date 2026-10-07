@@ -1,4 +1,4 @@
-import { POLL_DEFAULTS } from "@deck/server";
+import { POLL_DEFAULTS } from "@deck/contract";
 import type { ReactNode, JSX } from "react";
 import { createContext } from "react";
 import { useContext, useEffect, useState } from "react";

@@ -1,0 +1,19 @@
+# Example docker-compose stack for the portal service on the apps host.
+services:
+  portal:
+    image: example/portal:1
+    restart: unless-stopped
+    environment:
+      - TZ=Etc/UTC
+    labels:
+      - "deck.service=portal"
+
+  reverse-proxy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    labels:
+      - "deck.service=reverse-proxy"

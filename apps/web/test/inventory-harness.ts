@@ -5,18 +5,14 @@ import type {
   ObservedService,
   Service,
 } from "@deck/schema";
-import type {
-  DeckConfig,
-  HostState,
-  ProviderEnvelope,
-  SnapshotProviderResult,
-} from "@deck/server";
+import type { HostState, ProviderEnvelope, SnapshotProviderResult } from "@deck/contract";
+import type { DeckConfig } from "@deck/server";
 import type {
   InventoryData,
   SnapshotClientState,
 } from "../src/features/hosts-and-services/use-inventory-data.js";
 import { buildInventoryModel } from "../src/features/hosts-and-services/model.js";
-import { resetProvidersIndexCache } from "../src/shell/providers-index.js";
+import { resetQueryClient } from "../src/data/query-client.js";
 import { mount } from "./support/render.js";
 
 // ---------------------------------------------------------------------------
@@ -270,7 +266,7 @@ export function hostState(
 }
 
 export function config(hosts: Host[], services: Service[] = []): DeckConfig {
-  return { schemaVersion: 1, estate: { name: "Inventory test estate" }, hosts, services } as DeckConfig;
+  return { schemaVersion: 2, estate: { name: "Inventory test estate" }, hosts, services } as DeckConfig;
 }
 
 export interface ResultOptions {
@@ -379,12 +375,18 @@ export const INVENTORY_TEST_ENDPOINTS = Object.freeze({
 } as const);
 
 /**
- * Default `GET /api/providers` discovery response for stubbed fetch. Lists the
- * snapshot provider so `isProviderPollable("snapshot")` passes and the inventory
- * poll behaves exactly as before gating was introduced.
+ * Default `GET /api/ui` manifest for stubbed fetch. Lists the snapshot provider so
+ * `isProviderPollable("snapshot")` passes and the inventory poll goes ahead.
  */
-const DEFAULT_PROVIDERS_INDEX = Object.freeze({
+export const DEFAULT_UI_MANIFEST = Object.freeze({
+  uiApi: 1,
+  modules: [],
+  slots: [],
+  pages: [],
+  nav: [],
+  extensions: [],
   providers: [{ id: "snapshot", kind: "snapshot" }],
+  findings: [],
 });
 
 /** A promise whose settlement the test drives explicitly (deferred/out-of-order). */
@@ -504,12 +506,12 @@ export function stubFetch(
           : input instanceof URL
             ? input.href
             : input.url;
-      // Provider discovery (`GET /api/providers`) is infrastructure, not an
-      // aggregate poll: answer it with the registered set (snapshot present, so
-      // gating passes through to the snapshot poll) and keep it out of the
-      // recorded aggregate calls and per-endpoint counters.
-      if (/\/api\/providers$/.test(url)) {
-        return Promise.resolve(jsonResponse(DEFAULT_PROVIDERS_INDEX));
+      // The UI manifest (`GET /api/ui`) is infrastructure, not an aggregate poll:
+      // answer it with the registered providers (snapshot present, so gating passes
+      // through to the snapshot poll) and keep it out of the recorded aggregate calls
+      // and per-endpoint counters.
+      if (/\/api\/ui$/.test(url)) {
+        return Promise.resolve(jsonResponse(DEFAULT_UI_MANIFEST));
       }
       const endpoint: InventoryEndpoint = url.includes(
         INVENTORY_TEST_ENDPOINTS.snapshot,
@@ -558,7 +560,7 @@ export function resetInventoryTestEnv(): void {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
-  resetProvidersIndexCache();
+  resetQueryClient();
 }
 
 /**

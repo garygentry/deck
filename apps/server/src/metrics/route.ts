@@ -1,36 +1,40 @@
 /**
- * Opt-in Prometheus exposition endpoint for deck's own internals.
- *
- * `registerMetricsRoutes(app, deps)` adds `GET /metrics` — outside `/api/*` so it never
- * reaches the API notFound JSON branch — only when `deps.metricsEnabled` is true. The body
- * is hand-rendered Prometheus text format 0.0.4 from cached, no-I/O registry reads.
+ * The Prometheus exposition deck serves at `/metrics` for its own internals: hand-rendered
+ * text format 0.0.4 from cached, no-I/O registry reads.
  */
-import type { Hono } from "hono";
-
-import type { ProviderPollMetrics } from "../providers/registry.js";
-import type { AppDeps } from "../server/app.js";
+import type { ProviderStats } from "@deck/module-sdk";
 
 /** Content type for the Prometheus text exposition format. */
 export const METRICS_CONTENT_TYPE = "text/plain; version=0.0.4";
 
+/** The exposition path, outside `/api` so it never reaches the API's JSON 404. */
+export const METRICS_PATH = "/metrics";
+
 /** The runtime snapshot provider's fixed registry id. */
 const SNAPSHOT_PROVIDER_ID = "snapshot";
 
-export function registerMetricsRoutes(app: Hono, deps: AppDeps): void {
-  if (deps.metricsEnabled !== true) return;
-  app.get("/metrics", (context) => {
-    const body = renderMetrics({
-      providerCount: deps.providers.count(),
-      polls: deps.providers.listMetrics?.() ?? [],
-      snapshotAgeMs: deps.providers.read(SNAPSHOT_PROVIDER_ID)?.freshness.ageMs ?? null,
-    });
-    return context.text(body, 200, { "Content-Type": METRICS_CONTENT_TYPE });
+/**
+ * Answer one request to {@link METRICS_PATH}. Only `GET` (and so `HEAD`) is served; any other
+ * method gets the same plain 404 a path deck does not serve gets.
+ */
+export function metricsResponse(request: Request, stats: readonly ProviderStats[]): Response {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("404 Not Found", { status: 404, headers: { "content-type": "text/plain; charset=UTF-8" } });
+  }
+  const body = renderMetrics({
+    providerCount: stats.length,
+    polls: stats,
+    snapshotAgeMs: stats.find((entry) => entry.id === SNAPSHOT_PROVIDER_ID)?.ageMs ?? null,
   });
+  return new Response(body, { status: 200, headers: { "content-type": METRICS_CONTENT_TYPE } });
 }
+
+/** A provider's poll counters, as the exposition labels and samples them. */
+export type PollMetrics = Pick<ProviderStats, "id" | "kind" | "successTotal" | "failureTotal" | "lastLatencyMs">;
 
 export interface MetricsInput {
   providerCount: number;
-  polls: readonly ProviderPollMetrics[];
+  polls: readonly PollMetrics[];
   /** Age of the cached snapshot read in ms; null when no snapshot provider or no read yet. */
   snapshotAgeMs: number | null;
 }
@@ -41,7 +45,7 @@ export function renderMetrics(input: MetricsInput): string {
   const family = (name: string, type: "counter" | "gauge", help: string, samples: string[]) => {
     lines.push(`# HELP ${name} ${help}`, `# TYPE ${name} ${type}`, ...samples);
   };
-  const labels = (poll: ProviderPollMetrics) =>
+  const labels = (poll: PollMetrics) =>
     `{id="${escapeLabel(poll.id)}",kind="${escapeLabel(poll.kind)}"}`;
 
   family("deck_provider_count", "gauge", "Number of providers registered in deck.", [

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ActionOutcome, ParamError } from "@deck/server";
+import type { ParamError } from "@deck/contract/actions";
+import type { ActionOutcome } from "@deck/server/actions";
 
 import { RunOutput } from "../src/features/governed-actions/components/RunOutput.js";
 import { OUTCOME_UI } from "../src/features/governed-actions/status.js";

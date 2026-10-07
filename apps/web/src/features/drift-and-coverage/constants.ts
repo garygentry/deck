@@ -1,9 +1,6 @@
-import { DRIFT_UI_DEFAULTS } from "@deck/server";
-import type {
-  DriftSeverity,
-  HostCollectionState,
-  WaiverState,
-} from "@deck/server";
+import { DRIFT_UI_DEFAULTS } from "@deck/drift";
+import type { HostCollectionState } from "@deck/contract";
+import type { DriftSeverity, WaiverState } from "@deck/drift";
 import { defineStatusMap, type StatusPresentation } from "@/ui";
 
 // Feature-owned status maps. The label is the sole authoritative text; the tone

@@ -2,7 +2,8 @@ import type { DeckConfigDocument, Source } from "@deck/schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProviderFetchContext } from "../src/contract/index.js";
-import { FileTreeProvider, registerFileTree } from "../src/providers/file-tree/index.js";
+import { kindRuntimes, planModules } from "../src/modules/host.js";
+import { FileTreeProvider } from "../src/providers/file-tree/index.js";
 import { registerAllProviders } from "../src/providers/index.js";
 import { MarkdownTreeProvider } from "../src/providers/markdown-tree/index.js";
 import {
@@ -18,6 +19,7 @@ import type { SourceKind, SourceManifest } from "../src/sources/tree.js";
 
 import { createFakeGitSpawner } from "./util/fake-git-spawner.js";
 import { makeCacheDir } from "./util/make-cache-dir.js";
+import { sourceModules } from "./util/sources-module.js";
 
 /** A git-repo source of the given kind; the fake spawner stages the tree, so no real git runs. */
 function gitSource(id: string, kind: string, repo = "https://example.test/repo.git"): Source {
@@ -203,65 +205,60 @@ describe("retain-last-good and first-ever failure (REQ-FRESH-02/03)", () => {
   });
 });
 
-describe("registerAllProviders — sources loop (REQ-SRC-05, SC-12)", () => {
-  /** Build a store for a source, threaded as runtime.sourceStores by boot (04 §4.5). */
-  function storeFor(src: Source): SourceStore {
-    const git = createFakeGitSpawner({ writeFiles: { "a.md": "A" } });
-    return createSourceStore(src, { cacheDir: cache.dir, git });
+describe("registerAllProviders — the source data-source modules (REQ-SRC-05, SC-12)", () => {
+  /** The kind handlers of the markdown-tree, file-tree and sources modules (fake git). */
+  function sourceKinds() {
+    const git = () => createFakeGitSpawner({ writeFiles: { "a.md": "A" } });
+    const modules = sourceModules(git);
+    const env = { DECK_SOURCES_CACHE_DIR: cache.dir };
+    const { plan, usable } = planModules({ modules, sectionOf: () => undefined, env });
+    return kindRuntimes(plan.filter((entry) => entry.enabled).map((entry) => usable.get(entry.id)!), env);
   }
 
-  it("registers the two supported siblings and silently skips an unknown kind", () => {
+  it("registers the two supported siblings; an unknown kind registers nothing", () => {
     const md = gitSource("md", "markdown-tree");
     const cfg = gitSource("cfg", "file-tree");
     const future = gitSource("future", "totally-unknown");
     const config: DeckConfigDocument = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       estate: { name: "e", freshness: { snapshotStaleAfter: "PT6H" } },
       sources: [md, cfg, future],
     };
-    // A store is present even for the unknown kind, so the skip is driven by the loop's
-    // kind dispatch (layer 2), not merely a missing store.
-    const sourceStores = new Map<string, SourceStore>([
-      [md.id, storeFor(md)],
-      [cfg.id, storeFor(cfg)],
-      [future.id, storeFor(future)],
-    ]);
 
     expect(providerCount()).toBe(0);
-    expect(() => registerAllProviders(config, { sourceStores })).not.toThrow();
+    expect(() => registerAllProviders(config, sourceKinds())).not.toThrow();
 
     expect(providerCount()).toBe(2); // exactly the two supported kinds
     expect(read("md")).toBeDefined();
     expect(read("cfg")).toBeDefined();
-    expect(read("future")).toBeUndefined(); // unknown kind never registered
+    expect(read("future")).toBeUndefined(); // no module handles the kind
     expect(read("md")?.kind).toBe("markdown-tree");
     expect(read("cfg")?.kind).toBe("file-tree");
   });
 
-  it("throws PROVIDER_DUPLICATE_ID when two sources share an id", () => {
+  it("fails with PROVIDER_DUPLICATE_ID when two sources share an id (source ids are estate ids)", () => {
     const a = gitSource("dup", "markdown-tree");
     const b = gitSource("dup", "file-tree");
     const config: DeckConfigDocument = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       estate: { name: "e", freshness: { snapshotStaleAfter: "PT6H" } },
       sources: [a, b],
     };
-    const sourceStores = new Map<string, SourceStore>([[a.id, storeFor(a)]]);
 
-    expect(() => registerAllProviders(config, { sourceStores })).toThrow(
+    expect(() => registerAllProviders(config, sourceKinds())).toThrow(
       expect.objectContaining({ code: "PROVIDER_DUPLICATE_ID" }),
     );
   });
 
-  it("registers no source provider when sourceStores is absent (capability off)", () => {
+  it("registers no source provider when no source module is running", () => {
     const md = gitSource("md", "markdown-tree");
     const config: DeckConfigDocument = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       estate: { name: "e", freshness: { snapshotStaleAfter: "PT6H" } },
       sources: [md],
     };
 
-    registerAllProviders(config);
+    registerAllProviders(config, new Map());
     expect(providerCount()).toBe(0);
     expect(read("md")).toBeUndefined();
   });
@@ -270,7 +267,7 @@ describe("registerAllProviders — sources loop (REQ-SRC-05, SC-12)", () => {
 // A file-tree provider is byte-identical to the markdown-tree one bar its kind; a focused
 // smoke keeps the sibling honest without re-testing every freshness path.
 describe("FileTreeProvider (REQ-SRC-02)", () => {
-  it("reports kind 'file-tree' and registers via registerFileTree", async () => {
+  it("reports kind 'file-tree' and registers as that kind", async () => {
     const git = createFakeGitSpawner({ writeFiles: { "app.yaml": "a: 1" } });
     const src = gitSource("cfg", "file-tree");
     const store = createSourceStore(src, { cacheDir: cache.dir, git });
@@ -281,7 +278,7 @@ describe("FileTreeProvider (REQ-SRC-02)", () => {
     expect(manifest.kind).toBe("file-tree");
     expect(manifest.fileCount).toBe(1);
 
-    registerFileTree("cfg2", gitSource("cfg2", "file-tree"), store);
+    register(new FileTreeProvider("cfg2", gitSource("cfg2", "file-tree"), store));
     expect(read("cfg2")?.kind).toBe("file-tree");
   });
 });

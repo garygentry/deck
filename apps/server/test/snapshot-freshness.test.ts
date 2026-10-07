@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { DeckConfigDocument, ObservedHost, SnapshotDocument } from "@deck/schema";
 
-import type { HostState } from "../src/contract/snapshot.js";
+import type { HostState } from "@deck/contract";
 import { SnapshotReadFailure } from "../src/providers/snapshot/errors.js";
 import {
   DEFAULT_SNAPSHOT_STALE_AFTER,
@@ -16,7 +16,7 @@ const DAY_MS = 24 * HOUR_MS;
 /** Build a minimal declared-config document from host names. */
 function configWith(...hostNames: string[]): DeckConfigDocument {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     estate: { name: "fixture-estate" },
     hosts: hostNames.map((name) => ({ name, kind: "vm", purpose: "Fixture host" })),
   };

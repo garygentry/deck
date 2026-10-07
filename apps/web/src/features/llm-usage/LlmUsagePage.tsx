@@ -5,7 +5,7 @@ import type {
   LlmUsageResponse,
   UsageBar,
   UsageSourceStatus,
-} from "@deck/server";
+} from "@deck/server/llm-usage";
 import { useState, type FunctionComponent, type JSX } from "react";
 import {
   Badge,
@@ -105,7 +105,7 @@ function PageBody({ view, now, onRetry }: { view: ReturnType<typeof useLlmUsage>
       <EmptyState
         icon="gauge"
         title="LLM usage is not configured"
-        description="Add an llmUsage section to the estate config to track Claude Code and Codex plan limits."
+        description="Add a modules.llm-usage section to the estate config to track Claude Code and Codex plan limits."
       />
     );
   }

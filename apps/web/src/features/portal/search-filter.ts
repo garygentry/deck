@@ -1,4 +1,4 @@
-import type { LinkItem, ServiceItem } from "@deck/schema";
+import type { LinkItem, ServiceItem } from "@deck/server/portal";
 import type { FilterAccessors } from "@/ui";
 import {
   statusBucket,

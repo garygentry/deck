@@ -15,8 +15,6 @@ export const ERROR_BACKOFF_MAX_MS = 300_000;
 export const FORCE_FLOOR_MS = 5_000;
 /** A server-directed `Retry-After` longer than this is capped: it would stall the panel for good. */
 export const RETRY_AFTER_MAX_MS = 3_600_000;
-/** The largest `setTimeout` delay; anything longer overflows and fires immediately. */
-export const MAX_TIMER_MS = 2 ** 31 - 1;
 
 export interface CadenceState {
   now: number;

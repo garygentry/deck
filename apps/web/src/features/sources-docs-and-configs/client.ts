@@ -16,13 +16,9 @@
  * Every request is a GET (REQ-RO-01): no wrapper here issues POST/PUT/PATCH/DELETE.
  */
 
-import type {
-  DeckConfig,
-  FileReadResult,
-  ProviderEnvelope,
-  SourceManifest,
-  SourceSearchResult,
-} from "@deck/server";
+import type { ProviderEnvelope } from "@deck/contract";
+import type { DeckConfig } from "@deck/server";
+import type { FileReadResult, SourceManifest, SourceSearchResult } from "@deck/server/sources";
 
 import { setFile, setManifest, setSearch } from "./sources-store.js";
 

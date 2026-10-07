@@ -4,7 +4,7 @@
  * audit history.
  */
 
-import type { ActionOutcome } from "@deck/server";
+import type { ActionOutcome } from "@deck/server/actions";
 import { defineStatusMap, type StatusMap } from "@/ui";
 
 /**

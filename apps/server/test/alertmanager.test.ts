@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AlertmanagerProvider, registerAlertmanager } from "../src/providers/alertmanager/index.js";
+import { AlertmanagerProvider } from "../src/providers/alertmanager/index.js";
 import { providerCount, read, stopScheduler } from "../src/providers/registry.js";
+import { processEnv, registerAlertmanager } from "./util/register-kinds.js";
 
 interface RawFixture {
   alerts: unknown[];
@@ -27,7 +28,7 @@ function stubFixture(name: string) {
 }
 
 function provider(credentialEnv?: string): AlertmanagerProvider {
-  return new AlertmanagerProvider("alertmanager", { baseUrl: "http://am/", credentialEnv });
+  return new AlertmanagerProvider("alertmanager", { baseUrl: "http://am/", credentialEnv, env: processEnv });
 }
 
 describe("AlertmanagerProvider", () => {

@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
-import type { DeckConfig, FreshnessStamp, ProviderEnvelope } from "@deck/server";
+import type { FreshnessStamp, ProviderEnvelope } from "@deck/contract";
+import type { DeckConfig } from "@deck/server";
+import type { PortalModuleConfig } from "@deck/server/portal";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,14 +15,13 @@ vi.mock("../src/features/portal/usePortalData.js", async (importOriginal) => {
 });
 
 // These side-effect imports intentionally exercise the same registration path as discovery.
-import "../src/features/_home/index.js";
 import "../src/features/portal/index.js";
 import { App } from "../src/shell/App.js";
-import { HomePage } from "../src/features/_home/HomePage.js";
 import {
   orderedGroups,
   orderedItems,
   PortalPage,
+  portalGroups,
 } from "../src/features/portal/PortalPage.js";
 import {
   deriveEndpointSummary,
@@ -28,7 +29,7 @@ import {
 } from "../src/features/portal/EndpointStatusSummary.js";
 import { CARD_STATUS, PortalCard } from "../src/features/portal/PortalCard.js";
 import { getPages } from "../src/registry/registry.js";
-import { resetProvidersIndexCache } from "../src/shell/providers-index.js";
+import { resetQueryClient } from "../src/data/query-client.js";
 
 const fresh: FreshnessStamp = {
   state: "fresh",
@@ -64,7 +65,7 @@ const gatus: ProviderEnvelope<GatusResult> = {
 };
 
 const config: DeckConfig = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   estate: { name: "Portal component estate" },
   hosts: [
     { name: "atlas", kind: "bare-metal", purpose: "Visible host" },
@@ -84,7 +85,7 @@ const config: DeckConfig = {
       purpose: "Hidden through host",
     },
   ],
-  groups: [
+  modules: { portal: { groups: [
     {
       id: "z-last",
       title: "Last group",
@@ -129,7 +130,7 @@ const config: DeckConfig = {
       order: 3,
       items: [{ type: "service", host: "atlas", name: "hidden" }],
     },
-  ],
+  ] } },
 };
 
 function service(name: string, bindings?: Record<string, unknown>, href?: string) {
@@ -166,15 +167,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();
-  resetProvidersIndexCache();
+  resetQueryClient();
 });
 
 describe("portal registration and assembled page", () => {
-  it("takes over / ahead of the dogfooded home page", () => {
+  it("owns /", () => {
     portalData = loaded();
     const pages = getPages();
-    expect(pages.map(({ id }) => id)).toEqual(["portal", "home"]);
-    expect(pages[0]).toMatchObject({ id: "portal", path: "/", order: -1, component: PortalPage });
+    expect(pages.map(({ id }) => id)).toEqual(["page:portal/overview"]);
+    expect(pages[0]).toMatchObject({ id: "page:portal/overview", path: "/", order: -1, component: PortalPage });
 
     vi.stubGlobal("location", new URL("http://localhost/"));
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
@@ -186,12 +187,6 @@ describe("portal registration and assembled page", () => {
     render(<App />);
     expect(screen.getByRole("heading", { level: 1, name: "Portal" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Portal links" })).not.toBeInTheDocument();
-  });
-
-  it("keeps the hidden home page renderable: one labelled region with its registered cards", () => {
-    render(<HomePage />);
-    const region = screen.getByRole("region", { name: "Portal" });
-    expect(within(region).getByRole("heading", { level: 2, name: "Portal links" })).toBeInTheDocument();
   });
 
   it("renders one page landmark with no nested <main>", () => {
@@ -221,14 +216,14 @@ describe("portal registration and assembled page", () => {
     const hiddenOnly = screen.getByRole("region", { name: "Hidden only" });
     expect(within(hiddenOnly).getByRole("status")).toHaveTextContent("No visible items.");
 
-    expect(orderedGroups(config.groups ?? []).map(({ id }) => id))
+    expect(orderedGroups(portalGroups(config)).map(({ id }) => id))
       .toEqual(["a-first", "b-second", "hidden-only", "z-last"]);
-    expect(orderedItems(config.groups?.[2]?.items ?? []).map((item) => item.type === "group" ? item.id : item.type))
+    expect(orderedItems(portalGroups(config)[2]?.items ?? []).map((item) => item.type === "group" ? item.id : item.type))
       .toEqual(["early-subgroup", "link"]);
   });
 
-  it.each([undefined, []] as Array<DeckConfig["groups"]>)("renders an accessible empty state for groups=%s", (groups) => {
-    portalData = loaded({ config: { ...config, groups } });
+  it.each([undefined, []] as Array<PortalModuleConfig["groups"]>)("renders an accessible empty state for groups=%s", (groups) => {
+    portalData = loaded({ config: { ...config, modules: { portal: { groups } } } });
     render(<PortalPage />);
     expect(screen.getByText("No groups configured.").closest('[role="status"]')).not.toBeNull();
   });
@@ -351,69 +346,8 @@ describe("filters", () => {
 });
 
 describe("shared data and keyboard integration contracts", () => {
-  it("keeps polling aggregate-only and cleans up its guarded interval", async () => {
-    vi.useFakeTimers();
-    let runEffect: (() => void | (() => void)) | undefined;
-    const setData = vi.fn();
-    vi.doMock("react", async (importOriginal) => ({
-      ...await importOriginal<typeof import("react")>(),
-      useState: () => [loaded(), setData],
-      useEffect: (effect: () => void | (() => void)) => { runEffect = effect; },
-    }));
-    vi.doUnmock("../src/features/portal/usePortalData.js");
-    const hookModule = "../src/features/portal/usePortalData.js?hook-test";
-    const { usePortalData } = await import(/* @vite-ignore */ hookModule) as typeof import("../src/features/portal/usePortalData.js");
-    resetProvidersIndexCache();
-    const providersIndex = {
-      providers: [
-        { id: "docker", kind: "docker" },
-        { id: "gatus", kind: "gatus" },
-      ],
-    };
-    const fetchMock = vi.fn(async (input: string | URL | Request) => {
-      const url = String(input);
-      if (url === "/api/providers") return Response.json(providersIndex);
-      return Response.json(url === "/api/config" ? config : url.includes("docker") ? docker : gatus);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    // Count only the aggregate endpoints; the once-memoized provider-index fetch
-    // is infrastructure, so behavior is asserted on the config/docker/gatus polls.
-    const aggregateCalls = (): string[] =>
-      fetchMock.mock.calls.map(([url]) => String(url)).filter((url) => url !== "/api/providers");
-
-    usePortalData(1_000);
-    expect(runEffect).toBeTypeOf("function");
-    const cleanupEffect = runEffect!();
-    await vi.advanceTimersByTimeAsync(0);
-    // The index was consulted once before any provider poll.
-    expect(fetchMock.mock.calls.filter(([url]) => String(url) === "/api/providers")).toHaveLength(1);
-    expect(aggregateCalls()).toEqual([
-      "/api/config", "/api/providers/docker", "/api/providers/gatus",
-    ]);
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(aggregateCalls()).toHaveLength(6);
-    expect(setData).toHaveBeenCalledTimes(2);
-
-    expect(cleanupEffect).toBeTypeOf("function");
-    cleanupEffect!();
-    await vi.advanceTimersByTimeAsync(5_000);
-    expect(aggregateCalls()).toHaveLength(6);
-
-    let settle!: (value: Response) => void;
-    fetchMock.mockImplementation(() => new Promise<Response>((resolve) => { settle = resolve; }));
-    runEffect = undefined;
-    usePortalData(1_000);
-    const pendingCleanup = runEffect!();
-    // The memoized index gate defers the provider polls by a microtask; flush it
-    // so the third generation's three aggregate requests are issued.
-    await vi.advanceTimersByTimeAsync(0);
-    expect(aggregateCalls()).toHaveLength(9);
-    pendingCleanup!();
-    settle(Response.json(config));
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(setData).toHaveBeenCalledTimes(2);
-
+  it("renders cards from shared data without fetching on its own", async () => {
+    // Polling and sharing live in the data layer (see data-layer.test.tsx); a card only renders.
     expect(await import("../src/features/portal/PortalCard.js?raw").then((module) => module.default)).not.toContain("fetch(");
   });
 
@@ -480,4 +414,26 @@ describe("shared data and keyboard integration contracts", () => {
 
     document.removeEventListener("click", onClick);
   }, 30_000);
+});
+
+// Last in the file: these register into the shared registry singleton.
+describe("slot host isolation (review L8)", () => {
+  const Throws = (): never => {
+    throw new Error("internal card failure must never reach the UI");
+  };
+
+  it("a throwing portal/summary widget leaves the portal heading, filters and cards intact", async () => {
+    const { registerCard } = await import("../src/registry/registry.js");
+    const { PORTAL_SUMMARY_SLOT } = await import("../src/shell/portal-summary-slot.js");
+    registerCard({ id: "card:probe/throws", slot: PORTAL_SUMMARY_SLOT, component: Throws });
+    portalData = loaded();
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    render(<PortalPage />);
+    quiet.mockRestore();
+    expect(screen.getByRole("heading", { level: 1, name: "Portal" })).toBeInTheDocument();
+    expect(screen.getByRole("search", { name: "Portal filters" })).toBeInTheDocument();
+    expect(cardTitles().length).toBeGreaterThan(0);
+    expect(screen.getByRole("alert")).toHaveTextContent("Summary card unavailable");
+    expect(document.body.textContent).not.toContain("internal card failure");
+  });
 });

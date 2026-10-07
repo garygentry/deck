@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { FreshnessStamp } from "@deck/server";
+import type { FreshnessStamp } from "@deck/contract";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { JSX } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";

@@ -99,7 +99,7 @@ export function materializeFixture(): MaterializedFixture {
   ];
 
   const config = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     estate: { name: "Sources test estate" },
     sources,
   } as DeckConfig;

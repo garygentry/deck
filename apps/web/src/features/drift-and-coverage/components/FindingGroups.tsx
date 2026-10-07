@@ -1,5 +1,5 @@
-import { DRIFT_UI_DEFAULTS } from "@deck/server";
-import type { FindingHostGroup } from "@deck/server";
+import { DRIFT_UI_DEFAULTS } from "@deck/drift";
+import type { FindingHostGroup } from "@deck/drift";
 import type { JSX } from "react";
 import { Button, List, ListGroup } from "@/ui";
 import type { InventoryModel } from "../../hosts-and-services/model.js";

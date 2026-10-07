@@ -1,0 +1,10 @@
+# Parity fixture: the actions catalog from actions-estate/config.json as a valid
+# layered v1 estate (actions are overlay-owned), plus the host and service the
+# targeted action references.
+schemaVersion: 1
+estate:
+  name: Actions test estate
+hosts:
+  - { name: web01, kind: vm, purpose: Web host }
+services:
+  - { name: nginx, host: web01, kind: systemd, purpose: Reverse proxy, status: active }

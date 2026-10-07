@@ -1,7 +1,7 @@
 /**
  * Wire types for the LLM usage feature (`GET /api/llm-usage`), consumed by apps/web via
- * `@deck/server`. Every source normalizes into one flat {@link UsageBar}, so the UI never
- * needs to know which CLI or method produced a number.
+ * `@deck/server/llm-usage` (types only). Every source normalizes into one flat
+ * {@link UsageBar}, so the UI never needs to know which CLI or method produced a number.
  */
 
 /** Which limit window a bar measures. */
@@ -129,7 +129,7 @@ export interface LlmUsageHealth {
 
 /** `GET /api/llm-usage` response. */
 export interface LlmUsageResponse {
-  /** False when the config has no `llmUsage` section; every other field is then empty. */
+  /** False when the config has no `modules.llm-usage` section; every other field is then empty. */
   enabled: boolean;
   now: number;
   poll: {
@@ -143,4 +143,11 @@ export interface LlmUsageResponse {
   claude: ClaudeUsage | null;
   /** Null when the `codex` subsection is absent. */
   codex: CodexUsage | null;
+}
+
+declare module "../contract/api.js" {
+  interface LegacyHealthFields {
+    /** LLM usage collector state (the module's health `data`); present only when `modules.llm-usage` is configured. */
+    llmUsage?: LlmUsageHealth;
+  }
 }

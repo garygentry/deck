@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AuditDetail, AuditListItem } from "@deck/server";
+import type { AuditDetail, AuditListItem } from "@deck/server/actions";
 
 import { AuditHistory } from "../src/features/governed-actions/components/AuditHistory.js";
 

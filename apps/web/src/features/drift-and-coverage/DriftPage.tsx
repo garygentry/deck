@@ -1,9 +1,5 @@
-import { DRIFT_UI_DEFAULTS, filterDriftProjection } from "@deck/server";
-import type {
-  DriftFilters,
-  DriftProjection,
-  FilteredDriftProjection,
-} from "@deck/server";
+import { DRIFT_UI_DEFAULTS, filterDriftProjection } from "@deck/drift";
+import type { DriftFilters, DriftProjection, FilteredDriftProjection } from "@deck/drift";
 import type { JSX, ReactNode, Ref } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {

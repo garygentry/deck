@@ -4,17 +4,19 @@ import type { Provider, ProviderFetchContext, ProviderHealth } from "../../contr
 import { normalizeSourceFailure } from "../../sources/errors.js";
 import type { SourceStore } from "../../sources/store.js";
 import type { SourceManifest } from "../../sources/tree.js";
-import { register } from "../registry.js";
+
+/** The provider kind of the `file-tree` data-source module. */
+export const FILE_TREE_KIND = "file-tree";
 
 /**
  * The `file-tree` provider (REQ-SRC-02). Byte-for-byte identical to `MarkdownTreeProvider`
- * except the class name, the `kind` literal, and the factory name — the shared core (the
+ * except the class name, and the `kind` literal — the shared core (the
  * store) does all the work; the kinds differ only in which web surface consumes
  * `SourceManifest.kind` (Docs vs Configs, tech-spec §3.1). See `MarkdownTreeProvider` for
  * method-level docs.
  */
 export class FileTreeProvider implements Provider<SourceManifest> {
-  readonly kind = "file-tree"; // ← the only divergence from MarkdownTreeProvider
+  readonly kind = FILE_TREE_KIND; // ← the only divergence from MarkdownTreeProvider
   private latestHealth: ProviderHealth = { ok: false, detail: "Awaiting first poll" };
 
   constructor(
@@ -51,9 +53,4 @@ export class FileTreeProvider implements Provider<SourceManifest> {
   ): SourceManifest | null {
     return retained === null ? null : { ...retained };
   }
-}
-
-/** Factory — see registerMarkdownTree for the no-timing / duplicate-id / codegen-name notes. */
-export function registerFileTree(id: string, cfg: Source, store: SourceStore): void {
-  register(new FileTreeProvider(id, cfg, store));
 }

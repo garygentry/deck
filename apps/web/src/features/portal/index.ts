@@ -4,7 +4,7 @@ import { EndpointStatusSummary } from "./EndpointStatusSummary.js";
 import { PortalPage } from "./PortalPage.js";
 
 registerPage({
-  id: "portal",
+  id: "page:portal/overview",
   path: "/",
   label: "Portal",
   icon: "layout-grid",
@@ -13,6 +13,6 @@ registerPage({
   order: -1,
 });
 registerSummaryFragment(HealthHeaderSlot, {
-  id: "endpoint-status",
+  id: "pill:portal/endpoints",
   component: EndpointStatusSummary,
 });

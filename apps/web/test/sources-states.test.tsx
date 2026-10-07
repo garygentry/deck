@@ -16,7 +16,7 @@
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SourceKind } from "@deck/server";
+import type { SourceKind } from "@deck/server/sources";
 
 vi.mock("../src/features/sources-docs-and-configs/use-source.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),

@@ -11,7 +11,8 @@
  * the exported mutators, which are the only writers.
  */
 
-import type { ActionOutcome, ActionRunEvent, ParamError } from "@deck/server";
+import type { ParamError } from "@deck/contract/actions";
+import type { ActionOutcome, ActionRunEvent } from "@deck/server/actions";
 
 /** Metadata for a pre-run refusal surfaced after an invoke. */
 export interface RunRefusal {

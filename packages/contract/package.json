@@ -1,0 +1,26 @@
+{
+  "name": "@deck/contract",
+  "version": "0.3.2",
+  "private": true,
+  "description": "The wire contract shared by the deck server and web: provider envelopes, poll defaults, the snapshot payload and the governed-actions parameter validator.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./actions": "./src/actions.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@deck/schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}

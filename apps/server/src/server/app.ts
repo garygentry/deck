@@ -1,3 +1,4 @@
+import { apiErrorBody, type UiManifest } from "@deck/module-sdk";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import type { Logger } from "pino";
 
@@ -10,14 +11,9 @@ import type {
   ProviderHealthEntry,
   ProvidersResponse,
 } from "../contract/index.js";
-import type { ActionsDeps } from "../actions/runtime.js";
-import { registerActionRoutes } from "../actions/route.js";
-import { registerLlmUsageRoutes, type LlmUsageDeps } from "../llm-usage/routes.js";
-import { registerMetricsRoutes } from "../metrics/route.js";
-import type { ProviderPollMetrics } from "../providers/registry.js";
-import { registerSourceRoutes } from "../sources/route.js";
-import type { SourceReader } from "../sources/store.js";
+import type { ModuleHost } from "../modules/host.js";
 import { requestLogger } from "../log/logger.js";
+import { RESERVED_ROOT_PATHS } from "./reserved-paths.js";
 
 export interface ProviderReader {
   /** Read one cached provider envelope. */
@@ -28,22 +24,16 @@ export interface ProviderReader {
   listHealth(): Readonly<Record<string, ProviderHealthEntry>>;
   /** Return the registered providers' identities (id + kind) without upstream I/O. */
   listProviders(): readonly ProviderDescriptor[];
-  /** Return per-provider poll counters and last-poll latency without upstream I/O. */
-  listMetrics?(): readonly ProviderPollMetrics[];
 }
 
 export interface AppDeps {
   config: DeckConfig;
   providers: ProviderReader;
   logger: Logger;
-  /** Actions capability bundle; absent OR runtime.enabled=false => capability off. */
-  actions?: ActionsDeps;
-  /** Sources capability registry; absent => capability off (every /api/sources/* → 404). */
-  sources?: SourceReader;
-  /** LLM usage collector; absent => `llmUsage` not configured (GET routes report enabled:false). */
-  llmUsage?: LlmUsageDeps;
-  /** DECK_METRICS_ENABLED; absent or false => GET /metrics is not registered (404). */
-  metricsEnabled?: boolean;
+  /** Started module host: mounts module routes and contributes `/api/health.modules`. */
+  modules?: Pick<ModuleHost, "mount" | "health" | "rootPaths">;
+  /** The resolved UI manifest served at `/api/ui`, built once at boot. */
+  ui?: UiManifest;
   webDistDir?: string;
   startedAtMs?: number;
 }
@@ -62,18 +52,40 @@ function lazyServeStatic(options: StaticOptions): MiddlewareHandler {
   };
 }
 
-// Must stay a hoisted `function` declaration: `actions/route.ts` imports this
-// through a module cycle (app.ts -> actions/route.ts -> app.ts). A `const`/arrow
-// binding would sit in the temporal dead zone during that cyclic evaluation.
 export function apiError(
   context: Context,
   status: number,
   error: string,
   code?: string,
 ): Response {
-  const body: ApiError = { error, ...(code === undefined ? {} : { code }) };
+  const body: ApiError = apiErrorBody(error, code);
   return context.json(body, status as 400 | 403 | 404 | 422 | 500);
 }
+
+/**
+ * The kernel's route table (method + pattern) for these deps, without any module: what a
+ * module's prefixes and root paths are checked against before the module runs.
+ */
+export function kernelRouteTable(deps: Omit<AppDeps, "modules">): { method: string; path: string }[] {
+  return createApp(deps).routes.map(({ method, path }) => ({ method, path }));
+}
+
+/**
+ * independent of config and env. Module planning uses it both when config is validated and
+ * at boot, so the two always agree on which modules run. The handlers are never called.
+ */
+export function planningRouteTable(): { method: string; path: string }[] {
+  const inert = () => {
+    throw new Error("planning route table: handler called");
+  };
+  return kernelRouteTable({
+    config: { schemaVersion: 2, estate: { name: "planning" } },
+    providers: { read: inert, count: () => 0, listHealth: () => ({}), listProviders: () => [] },
+    logger: { info: inert, warn: inert, error: inert } as unknown as Logger,
+  });
+}
+
+export { RESERVED_ROOT_PATHS } from "./reserved-paths.js";
 
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
@@ -82,6 +94,12 @@ export function createApp(deps: AppDeps): Hono {
   app.use("*", requestLogger(deps.logger));
 
   app.get("/api/config", (context) => context.json(deps.config));
+
+  app.get("/api/ui", (context) =>
+    deps.ui === undefined
+      ? apiError(context, 404, "No UI manifest was resolved for this server", "UI_MANIFEST_UNAVAILABLE")
+      : context.json(deps.ui),
+  );
 
   app.get("/api/providers", (context) => {
     const response: ProvidersResponse = { providers: [...deps.providers.listProviders()] };
@@ -104,12 +122,14 @@ export function createApp(deps: AppDeps): Hono {
 
   app.get("/api/health", (context) => {
     const providers = deps.providers.listHealth();
+    const modules = deps.modules?.health() ?? { modules: {}, legacy: {} };
     const response: HealthResponse = {
       status: Object.values(providers).some((entry) => !entry.ok) ? "degraded" : "ok",
       uptimeMs: Date.now() - startedAtMs,
       providerCount: deps.providers.count(),
       providers,
-      ...(deps.llmUsage ? { llmUsage: deps.llmUsage.collector.health() } : {}),
+      ...modules.legacy,
+      modules: modules.modules,
     };
     return context.json(response);
   });
@@ -128,30 +148,22 @@ export function createApp(deps: AppDeps): Hono {
     return context.text("404 Not Found", 404);
   });
 
-  // Action routes: after the GET routes and error/notFound boundaries, before the
-  // static/SPA fallback so /api/actions/* matches the API rather than the index rewrite.
-  registerActionRoutes(app, deps);
-
-  // Source browsing routes: same placement contract (after GET provider routes, before the
-  // static/SPA fallback) so /api/sources/* resolves as API (05 §1.2).
-  registerSourceRoutes(app, deps);
-
-  // LLM usage routes: same placement contract, so /api/llm-usage* resolves as API.
-  registerLlmUsageRoutes(app, deps);
-
-  // Metrics route: outside /api/* (so it never hits the API notFound JSON branch) and
-  // before the static/SPA fallback so /metrics is not rewritten to index.html.
-  registerMetricsRoutes(app, deps);
+  // Module routes (/api/m/<id>, declared legacy aliases and root paths): same placement
+  // contract, after the built-in feature routes and before the static/SPA fallback.
+  deps.modules?.mount(app, { reservedRootPaths: RESERVED_ROOT_PATHS });
 
   if (deps.webDistDir !== undefined) {
+    // Root paths outside /api that are never rewritten to the SPA shell, so a disabled
+    // module's root path 404s instead of serving index.html.
+    const reserved = new Set([...RESERVED_ROOT_PATHS, ...(deps.modules?.rootPaths() ?? [])]);
     app.use("/*", lazyServeStatic({ root: deps.webDistDir }));
     const serveIndex = lazyServeStatic({
       root: deps.webDistDir,
       rewriteRequestPath: () => "/index.html",
     });
     app.get("/*", async (context, next) => {
-      // /metrics is reserved: with the metrics flag off it must 404, not serve the SPA shell.
-      if (context.req.path.startsWith("/api/") || context.req.path === "/metrics") return next();
+      // Reserved root paths (a disabled module's, say) must 404, not serve the SPA shell.
+      if (context.req.path.startsWith("/api/") || reserved.has(context.req.path)) return next();
       return serveIndex(context, next);
     });
   }

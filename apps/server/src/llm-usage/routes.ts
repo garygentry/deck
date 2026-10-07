@@ -1,27 +1,28 @@
 /**
- * HTTP surface for LLM usage:
+ * HTTP surface for LLM usage, on the module's sub-app (mounted at `/api/m/llm-usage` and
+ * the legacy `/api/llm-usage`):
  *
- * - `GET /api/llm-usage`: the current response; marks a viewer present, which wakes a
- *   paused collector. `enabled: false` when the config has no `llmUsage` section.
- * - `GET /api/llm-usage/refresh`: the same after an immediate poll (5s debounce).
- * - `POST /api/llm-usage/ingest`: the Claude statusLine push. Registered only when the
- *   bearer token env var is set, so an unconfigured deployment has no write surface.
- *   The bearer is compared in constant time; the body is capped at 2 MB.
+ * - `GET /`: the current response; marks a viewer present, which wakes a paused
+ *   collector. `enabled: false` when the config has no `modules.llm-usage` section.
+ * - `GET /refresh`: the same after an immediate poll (5s debounce).
+ * - `POST /ingest`: the Claude statusLine push. Registered only when the bearer token env
+ *   var is set, so an unconfigured deployment has no write surface. The bearer is compared
+ *   in constant time; the body is capped at 2 MB.
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
 
+import { apiErrorBody } from "@deck/module-sdk";
 import type { Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 
-import { apiError, type AppDeps } from "../server/app.js";
 import { disabledResponse, type LlmUsageCollector } from "./collector.js";
 
 export const INGEST_MAX_BYTES = 2 * 1024 * 1024;
 
 export interface LlmUsageDeps {
   collector: LlmUsageCollector;
-  /** The ingest bearer token's value, resolved from env at boot; null leaves ingest unregistered. */
+  /** The ingest bearer token's value, resolved from env at init; null leaves ingest unregistered. */
   ingestToken: string | null;
 }
 
@@ -33,19 +34,21 @@ export function bearerMatches(header: string | undefined, token: string): boolea
   return timingSafeEqual(digest(presented), digest(token)) && presented.length > 0;
 }
 
-export function registerLlmUsageRoutes(app: Hono, deps: AppDeps): void {
-  const usage = deps.llmUsage;
+const apiError = (context: Context, status: 400 | 401 | 413, error: string, code: string) =>
+  context.json(apiErrorBody(error, code), status);
 
-  app.get("/api/llm-usage", async (context) =>
-    context.json(usage ? await usage.collector.read() : disabledResponse(Date.now())));
+/** Register the routes; `usage` is null when the section is absent (reads report `enabled: false`). */
+export function registerLlmUsageRoutes(http: Hono, usage: LlmUsageDeps | null, now: () => number): void {
+  http.get("/", async (context) =>
+    context.json(usage ? await usage.collector.read() : disabledResponse(now())));
 
-  app.get("/api/llm-usage/refresh", async (context) =>
-    context.json(usage ? await usage.collector.refresh() : disabledResponse(Date.now())));
+  http.get("/refresh", async (context) =>
+    context.json(usage ? await usage.collector.refresh() : disabledResponse(now())));
 
   if (!usage?.ingestToken) return;
   const token = usage.ingestToken;
-  app.post(
-    "/api/llm-usage/ingest",
+  http.post(
+    "/ingest",
     async (context, next) => {
       if (!bearerMatches(context.req.header("authorization"), token)) {
         return apiError(context, 401, "Unauthorized", "UNAUTHORIZED");

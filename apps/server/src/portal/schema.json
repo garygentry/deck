@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PortalModuleConfig",
+  "description": "Settings of the portal module, at modules.portal.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "groups": { "type": "array", "items": { "$ref": "#/$defs/Group" }, "description": "Portal layout groups; absent is equivalent to an empty array." }
+  },
+  "$defs": {
+    "Group": {
+      "title": "Group", "type": "object", "additionalProperties": false, "required": ["id", "title", "items"],
+      "properties": {
+        "id": { "type": "string", "description": "Group id, unique across the groups tree." },
+        "title": { "type": "string", "description": "Group heading shown in the portal." },
+        "order": { "type": "integer", "description": "Optional sort key among sibling groups." },
+        "icon": { "type": "string", "description": "Optional icon token for the group heading." },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/GroupItem" }, "description": "Ordered service, link, or subgroup items." }
+      }
+    },
+    "ServiceItem": {
+      "title": "ServiceItem", "type": "object", "additionalProperties": false, "required": ["type", "host", "name"],
+      "properties": {
+        "type": { "const": "service", "description": "Discriminator for a declared service reference." },
+        "host": { "type": "string", "description": "Host name of the referenced service." },
+        "name": { "type": "string", "description": "Service name on the referenced host." },
+        "title": { "type": "string", "description": "Optional label override." },
+        "icon": { "type": "string", "description": "Optional icon token." },
+        "description": { "type": "string", "description": "Optional one-line description." }
+      }
+    },
+    "LinkItem": {
+      "title": "LinkItem", "type": "object", "additionalProperties": false, "required": ["type", "title", "href"],
+      "properties": {
+        "type": { "const": "link", "description": "Discriminator for a plain external link." },
+        "title": { "type": "string", "description": "Link label." },
+        "href": { "type": "string", "description": "Link target URL." },
+        "icon": { "type": "string", "description": "Optional icon token." },
+        "description": { "type": "string", "description": "Optional one-line description." }
+      }
+    },
+    "Subgroup": {
+      "title": "Subgroup", "type": "object", "additionalProperties": false, "required": ["type", "id", "title", "items"],
+      "properties": {
+        "type": { "const": "group", "description": "Discriminator for a one-level subgroup." },
+        "id": { "type": "string", "description": "Subgroup id, unique across the groups tree." },
+        "title": { "type": "string", "description": "Subgroup heading." },
+        "order": { "type": "integer", "description": "Optional sort key among sibling items." },
+        "icon": { "type": "string", "description": "Optional icon token." },
+        "items": { "type": "array", "description": "Service or link items only; nested subgroups are forbidden.", "items": { "oneOf": [{ "$ref": "#/$defs/ServiceItem" }, { "$ref": "#/$defs/LinkItem" }] } }
+      }
+    },
+    "GroupItem": { "title": "GroupItem", "description": "A service reference, plain link, or one-level subgroup.", "oneOf": [{ "$ref": "#/$defs/ServiceItem" }, { "$ref": "#/$defs/LinkItem" }, { "$ref": "#/$defs/Subgroup" }] }
+  }
+}

@@ -1,4 +1,5 @@
-import type { LinkItem, Service, ServiceItem } from "@deck/schema";
+import type { Service } from "@deck/schema";
+import type { LinkItem, ServiceItem } from "@deck/server/portal";
 import { describe, expect, test } from "vitest";
 import { applyFilters, emptyCriteria, matchesCriteria, type FilterCriteria } from "@/ui";
 import type { CardStatus, CardViewModel } from "../src/features/portal/card-status.js";

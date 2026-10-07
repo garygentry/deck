@@ -4,7 +4,9 @@ import type { Provider, ProviderFetchContext, ProviderHealth } from "../../contr
 import { normalizeSourceFailure } from "../../sources/errors.js";
 import type { SourceStore } from "../../sources/store.js";
 import type { SourceManifest } from "../../sources/tree.js";
-import { register } from "../registry.js";
+
+/** The provider kind of the `markdown-tree` data-source module. */
+export const MARKDOWN_TREE_KIND = "markdown-tree";
 
 /**
  * The `markdown-tree` provider (REQ-SRC-02): a thin adapter that turns a shared
@@ -15,7 +17,7 @@ import { register } from "../registry.js";
  */
 export class MarkdownTreeProvider implements Provider<SourceManifest> {
   /** Literal kind — the ONLY thing that differs from FileTreeProvider (tech-spec §3.1). */
-  readonly kind = "markdown-tree";
+  readonly kind = MARKDOWN_TREE_KIND;
   /** Cached health from the last fetch(); health() returns a copy with no live I/O. */
   private latestHealth: ProviderHealth = { ok: false, detail: "Awaiting first poll" };
 
@@ -70,19 +72,4 @@ export class MarkdownTreeProvider implements Provider<SourceManifest> {
   ): SourceManifest | null {
     return retained === null ? null : { ...retained };
   }
-}
-
-/**
- * Factory mirroring the prometheus shape (`register(new X(id, cfg), …)`). Called ONLY from
- * registerAllProviders's sources loop — the single register() site.
- *
- * NOTE — no timing argument (deliberate divergence, CON-03 / OQ-04): the frozen `Source`
- * contract carries no timing field and this feature adds none, so the registry applies
- * POLL_DEFAULTS (00 §7). The helper name is derived by `gen-providers.ts` from the folder
- * name (`markdown-tree` → `registerMarkdownTree`) — it must not change.
- *
- * @throws {Error & { code: "PROVIDER_DUPLICATE_ID" }} when `id` is already registered.
- */
-export function registerMarkdownTree(id: string, cfg: Source, store: SourceStore): void {
-  register(new MarkdownTreeProvider(id, cfg, store));
 }

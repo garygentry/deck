@@ -3,7 +3,7 @@
  * the owned-configs entity fragment (which must not import the page module).
  */
 
-import type { SourceTreeNode } from "@deck/server";
+import type { SourceTreeNode } from "@deck/server/sources";
 
 /** Stable deep link to one source (+ optional file) on a browser route. Reserved chars round-trip. */
 export function sourceHref(route: string, sourceId: string, path?: string): string {

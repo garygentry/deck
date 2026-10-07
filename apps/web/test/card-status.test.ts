@@ -1,5 +1,6 @@
-import type { LinkItem, Service, ServiceItem } from "@deck/schema";
-import type { FreshnessState, ProviderEnvelope } from "@deck/server";
+import type { Service } from "@deck/schema";
+import type { LinkItem, ServiceItem } from "@deck/server/portal";
+import type { FreshnessState, ProviderEnvelope } from "@deck/contract";
 import { describe, expect, test } from "vitest";
 import {
   deriveCardStatus,

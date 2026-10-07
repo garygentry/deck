@@ -1,8 +1,4 @@
-import type {
-  CoverageRow,
-  DriftProjection,
-  FilteredDriftProjection,
-} from "@deck/server";
+import type { CoverageRow, DriftProjection, FilteredDriftProjection } from "@deck/drift";
 import { memo, type JSX, type ReactNode } from "react";
 import {
   FRESHNESS_STATUS,

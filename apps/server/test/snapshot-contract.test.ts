@@ -6,7 +6,7 @@ import type {
   HostState,
   SnapshotProviderResult,
   SnapshotReadError,
-} from "../src/contract/index.js";
+} from "@deck/contract";
 import type { SnapshotReadEvent } from "../src/log/logger.js";
 import {
   SNAPSHOT_READ_ERROR_CODES,

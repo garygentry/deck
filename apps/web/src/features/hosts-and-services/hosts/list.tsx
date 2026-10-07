@@ -1,4 +1,4 @@
-import type { HostCollectionState } from "@deck/server";
+import type { HostCollectionState } from "@deck/contract";
 import type { JSX } from "react";
 import { useId, useMemo, useRef, useState } from "react";
 import { DataTable, type ColumnDef, type FacetOption } from "@/ui";

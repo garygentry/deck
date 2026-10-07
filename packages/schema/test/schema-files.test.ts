@@ -3,7 +3,8 @@ import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
 import { SECRET_REF_MAX_LENGTH, SECRET_REF_PATTERN } from "../src/secrets.js";
-import { SCHEMA_VERSION } from "../src/version.js";
+import { composeDefault } from "../src/compose/builtin.js";
+import { CONFIG_SCHEMA_VERSION, SNAPSHOT_SCHEMA_VERSION } from "../src/version.js";
 
 type Schema = Record<string, unknown>;
 
@@ -42,7 +43,6 @@ const openObjects = new Set([
   "deck:#/$defs/Estate/properties/domains",
   "deck:#/$defs/Bindings",
   "deck:#/$defs/Integration/properties/card",
-  "deck:#/$defs/Agent/properties/config",
   "deck:#/$defs/JsonValue/anyOf/5",
   "snapshot:#/$defs/ObservedHost/properties/facts",
   "snapshot:#/$defs/ObservedService/properties/facts",
@@ -73,13 +73,13 @@ function strictAjv(): Ajv2020 {
 }
 
 describe("published schema files", () => {
-  it("uses draft 2020-12, stable titles, and the shared version", () => {
+  it("uses draft 2020-12, stable titles, and each document's own version", () => {
     expect(deck.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
     expect(snapshot.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
     expect(deck.title).toBe("DeckConfigDocument");
     expect(snapshot.title).toBe("SnapshotDocument");
-    expect((deck.properties as Schema).schemaVersion).toMatchObject({ type: "integer", const: SCHEMA_VERSION });
-    expect((snapshot.properties as Schema).schemaVersion).toMatchObject({ type: "integer", const: SCHEMA_VERSION });
+    expect((deck.properties as Schema).schemaVersion).toMatchObject({ type: "integer", const: CONFIG_SCHEMA_VERSION });
+    expect((snapshot.properties as Schema).schemaVersion).toMatchObject({ type: "integer", const: SNAPSHOT_SCHEMA_VERSION });
   });
 
   it("describes every property and closes every non-extension object", () => {
@@ -110,7 +110,9 @@ describe("published schema files", () => {
     const ajv = strictAjv();
     const validateDeck = ajv.compile(deck);
     const validateSnapshot = ajv.compile(snapshot);
-    expect(validateDeck({ schemaVersion: 1, estate: { name: "example-estate" } }), validateDeck.errors?.map(String).join("\n")).toBe(true);
+    expect(validateDeck({ schemaVersion: 2, estate: { name: "example-estate" } }), validateDeck.errors?.map(String).join("\n")).toBe(true);
+    const validateComposed = strictAjv().compile(composeDefault().schema);
+    expect(validateComposed({ schemaVersion: 2, estate: { name: "example-estate" }, modules: {} }), validateComposed.errors?.map(String).join("\n")).toBe(true);
     expect(validateSnapshot({ schemaVersion: 1, generatedAt: "2025-01-01T00:00:00Z" }), validateSnapshot.errors?.map(String).join("\n")).toBe(true);
   });
 });

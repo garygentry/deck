@@ -1,4 +1,4 @@
-/* GENERATED from schema/deck.schema.json — do not edit; run pnpm types:build */
+/* GENERATED from schema/deck.schema.json composed with the built-in contributions — do not edit; run pnpm types:build */
 
 /**
  * What kind of host this is.
@@ -20,31 +20,15 @@ export type ServiceKind = ("docker-compose" | "systemd" | "appliance" | "contain
  * Declared lifecycle status rather than observed state.
  */
 export type ServiceStatus = ("active" | "planned" | "retired")
-/**
- * A service reference, plain link, or one-level subgroup.
- */
-export type GroupItem = (ServiceItem | LinkItem | Subgroup)
-/**
- * Optional default value matching the declared type.
- */
-export type JsonValue = (string | number | boolean | null | JsonValue1[] | {
-[k: string]: JsonValue1 | undefined
-})
-/**
- * Any value representable in JSON.
- */
-export type JsonValue1 = (string | number | boolean | null | JsonValue1[] | {
-[k: string]: JsonValue1 | undefined
-})
 
 /**
  * A merged deck config document containing projected estate inventory and presentation data.
  */
 export interface DeckConfigDocument {
 /**
- * The shared schema contract version.
+ * The config schema version.
  */
-schemaVersion: 1
+schemaVersion: 2
 estate: Estate
 /**
  * Declared hosts; absent is equivalent to an empty array.
@@ -55,10 +39,6 @@ hosts?: Host[]
  */
 services?: Service[]
 /**
- * Portal layout groups; absent is equivalent to an empty array.
- */
-groups?: Group[]
-/**
  * Document and configuration source declarations; absent is equivalent to an empty array.
  */
 sources?: Source[]
@@ -66,15 +46,18 @@ sources?: Source[]
  * External tool integrations; absent is equivalent to an empty array.
  */
 integrations?: Integration[]
-llmUsage?: LlmUsage
 /**
- * Governed actions; absent is equivalent to an empty array.
+ * Reserved for presentation settings; no keys are defined yet.
  */
-actions?: Action[]
+ui?: {
+
+}
 /**
- * Reserved agent slots; absent is equivalent to an empty array.
+ * Module settings keyed by module id; each module contributes its own section schema.
  */
-agents?: Agent[]
+modules?: {
+[k: string]: unknown | undefined
+}
 }
 /**
  * Estate-wide identity and conventions.
@@ -313,102 +296,6 @@ notes?: string
 export interface Bindings1 {
 [k: string]: unknown | undefined
 }
-export interface Group {
-/**
- * Group id, unique across the groups tree.
- */
-id: string
-/**
- * Group heading shown in the portal.
- */
-title: string
-/**
- * Optional sort key among sibling groups.
- */
-order?: number
-/**
- * Optional icon token for the group heading.
- */
-icon?: string
-/**
- * Ordered service, link, or subgroup items.
- */
-items: GroupItem[]
-}
-export interface ServiceItem {
-/**
- * Discriminator for a declared service reference.
- */
-type: "service"
-/**
- * Host name of the referenced service.
- */
-host: string
-/**
- * Service name on the referenced host.
- */
-name: string
-/**
- * Optional label override.
- */
-title?: string
-/**
- * Optional icon token.
- */
-icon?: string
-/**
- * Optional one-line description.
- */
-description?: string
-}
-export interface LinkItem {
-/**
- * Discriminator for a plain external link.
- */
-type: "link"
-/**
- * Link label.
- */
-title: string
-/**
- * Link target URL.
- */
-href: string
-/**
- * Optional icon token.
- */
-icon?: string
-/**
- * Optional one-line description.
- */
-description?: string
-}
-export interface Subgroup {
-/**
- * Discriminator for a one-level subgroup.
- */
-type: "group"
-/**
- * Subgroup id, unique across the groups tree.
- */
-id: string
-/**
- * Subgroup heading.
- */
-title: string
-/**
- * Optional sort key among sibling items.
- */
-order?: number
-/**
- * Optional icon token.
- */
-icon?: string
-/**
- * Service or link items only; nested subgroups are forbidden.
- */
-items: (ServiceItem | LinkItem)[]
-}
 export interface Source {
 /**
  * Source id, unique across sources.
@@ -496,151 +383,4 @@ card?: {
  * Environment variable name holding a credential, never its value.
  */
 credentialEnv?: string
-}
-/**
- * Optional subscription plan-usage limits; absent disables the feature.
- */
-export interface LlmUsage {
-/**
- * Claude Code (Claude.ai Pro/Max) usage; presence enables the Claude panel.
- */
-claude?: {
-/**
- * Read-only path to a Claude Code .credentials.json; enables the OAuth usage backfill. Never written or refreshed by deck.
- */
-credentialsFile?: string
-/**
- * Optional read-only path to a Claude Code projects directory for the token-count transcript scan.
- */
-transcriptsDir?: string
-/**
- * statusLine hook ingest; the route exists only when the credential is set.
- */
-statusLine?: {
-/**
- * Environment variable name holding the ingest bearer token, never its value.
- */
-credentialEnv: string
-}
-/**
- * ISO-8601 OAuth poll interval while a session is active; clamped to at least PT2M.
- */
-activeInterval?: string
-/**
- * ISO-8601 OAuth poll interval while idle; clamped to at least PT2M.
- */
-idleInterval?: string
-}
-/**
- * Codex (ChatGPT subscription) usage; presence enables the Codex panel.
- */
-codex?: {
-/**
- * Read-write CODEX_HOME holding auth.json (the app-server refreshes it); mount the host's ~/.codex at the same path so its absolute symlinks resolve.
- */
-codexHome: string
-/**
- * Codex executable path as deck sees it; defaults to codex on PATH. The deck image ships no codex: mount the host's Linux binary and point this at it.
- */
-command?: string
-/**
- * Optional rollout sessions directory; defaults to <codexHome>/sessions.
- */
-rolloutDir?: string
-}
-/**
- * Percent-used bands for warn and danger tones.
- */
-thresholds?: {
-/**
- * Percent used at which a bar turns warn; default 75.
- */
-warn?: number
-/**
- * Percent used at which a bar turns danger; default 90.
- */
-danger?: number
-}
-/**
- * ISO-8601 duration without a viewer after which upstream polling pauses; default PT5M.
- */
-idlePause?: string
-}
-export interface Action {
-/**
- * Action id, unique across actions.
- */
-id: string
-/**
- * Human-readable action label.
- */
-title: string
-/**
- * Estate-side runner or playbook name, never a command.
- */
-runner: string
-/**
- * Confirmation policy before running.
- */
-confirm: ("none" | "confirm" | "typed-confirm")
-/**
- * Typed parameters accepted by the runner.
- */
-params?: ActionParam[]
-/**
- * Optional host or service target.
- */
-target?: {
-/**
- * Target host name.
- */
-host: string
-/**
- * Optional target service name on that host.
- */
-service?: string
-}
-/**
- * Optional longer action description.
- */
-description?: string
-}
-export interface ActionParam {
-/**
- * Parameter name, unique within the action.
- */
-name: string
-/**
- * Parameter value type.
- */
-type: ("string" | "number" | "boolean" | "enum")
-/**
- * Whether the parameter must be supplied.
- */
-required?: boolean
-default?: JsonValue
-/**
- * Allowed values when the type is enum.
- */
-values?: string[]
-/**
- * Optional parameter description.
- */
-description?: string
-}
-export interface Agent {
-/**
- * Reserved agent id, unique across agents.
- */
-id: string
-/**
- * Reserved and unstable agent kind.
- */
-kind: string
-/**
- * Opaque reserved agent configuration.
- */
-config?: {
-[k: string]: unknown | undefined
-}
 }

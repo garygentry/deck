@@ -2,7 +2,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { FreshnessStamp } from "@deck/server";
+import type { FreshnessStamp } from "@deck/contract";
 
 import { EmptyState, ErrorState, FRESHNESS_STATUS, FreshnessBadge, TONES } from "@/ui";
 import { FILE_NOTICE } from "../src/features/sources-docs-and-configs/status.js";

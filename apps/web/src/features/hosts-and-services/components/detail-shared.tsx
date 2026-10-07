@@ -1,5 +1,5 @@
 import type { Backup } from "@deck/schema";
-import type { HostState } from "@deck/server";
+import type { HostState } from "@deck/contract";
 import type { JSX, ReactNode } from "react";
 import {
   ComparisonGrid,

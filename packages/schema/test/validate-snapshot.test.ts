@@ -60,7 +60,7 @@ describe("validateSnapshot", () => {
 
   it("cross-checks observations, drift locations, and hidden uncollected hosts", () => {
     const config = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       estate: { name: "invented" },
       hosts: [
         { name: "alpha", kind: "vm", purpose: "test" },
@@ -94,6 +94,6 @@ describe("validateSnapshot", () => {
     expect(validateSnapshot(snapshot, null)).toMatchObject({ classification: 2, toolError: { code: "INPUT_NOT_OBJECT" } });
     expect(validateSnapshot(snapshot, {})).toMatchObject({ classification: 2, toolError: { code: "CONFIG_UNSUPPORTED" } });
     expect(validateSnapshot(snapshot, { schemaVersion: 99 })).toMatchObject({ classification: 2, toolError: { code: "CONFIG_UNSUPPORTED" } });
-    expect(validateSnapshot(snapshot, { schemaVersion: 1, estate: { name: "invented" }, hosts: [{ name: "alpha", kind: "vm", purpose: "test" }] })).toEqual({ classification: 0, findings: [], summary: { error: 0, warning: 0, info: 0 } });
+    expect(validateSnapshot(snapshot, { schemaVersion: 2, estate: { name: "invented" }, hosts: [{ name: "alpha", kind: "vm", purpose: "test" }] })).toEqual({ classification: 0, findings: [], summary: { error: 0, warning: 0, info: 0 } });
   });
 });

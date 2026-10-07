@@ -10,7 +10,6 @@
  */
 import { randomUUID } from "node:crypto";
 
-import type { Logger } from "pino";
 
 import type {
   AuditEntry,
@@ -18,10 +17,12 @@ import type {
   AuditStore,
   AuditTarget,
 } from "./audit.js";
-import type { ActionOutcome, ActionRunEvent, StructuredRunnerInput } from "./events.js";
+import type { ActionOutcome, ActionRunEvent, ActionRunLogEvent, StructuredRunnerInput } from "./events.js";
 import { normalizeActionFailure } from "./errors.js";
 import type { ResolvedParams } from "./validate.js";
+import type { ActionsLogger } from "./runtime.js";
 import type { RunnerSpawner, SpawnedRun } from "./spawn.js";
+import { settlesWithin } from "../server/settle.js";
 
 /**
  * Starts and cancels runs, owns the run registry, and enforces the timeout. It is
@@ -42,7 +43,18 @@ export interface ActionExecutor {
    * (outcome -> "cancelled"); false for unknown/finished ids (route maps to 404).
    */
   cancel(runId: string): boolean;
+  /**
+   * Cancel every in-flight run (shutdown). Resolves once each cancelled run has settled:
+   * its child is gone, its terminal `end` is emitted and its audit index line (outcome
+   * `cancelled`) is appended. Resolves with how many runs were cancelled.
+   */
+  cancelAll(): Promise<number>;
 }
+
+/** Default time a cancelled or timed-out child gets between SIGTERM and SIGKILL. */
+export const DEFAULT_KILL_GRACE_MS = 1_000;
+/** Default bound on draining a killed child's output pipes once it has exited. */
+export const DEFAULT_PUMP_DRAIN_MS = 500;
 
 /** In-memory handle for one in-flight run, held in the executor's registry. */
 export interface RunHandle {
@@ -60,6 +72,8 @@ export interface RunHandle {
    * `cancelled` outcome rather than `timed-out`. Absent for a timeout.
    */
   cancelReason?: "cancelled";
+  /** The run's drive loop; settles after its audit index line is appended. */
+  done?: Promise<void>;
 }
 
 /** A fully-gated, resolved invocation handed to the executor (all refusals passed). */
@@ -86,9 +100,16 @@ export interface ActionExecutorOptions {
   /** Default max run duration in ms — ActionsRuntime.timeoutMs. */
   timeoutMs: number;
   /** Structured logger for the `action.run` event. */
-  logger: Logger;
+  logger: Pick<ActionsLogger, "info" | "error">;
   /** Wall clock, injectable so tests assert timeout with a fake clock. Default: Date.now. */
   now?: () => number;
+  /** After SIGTERM, how long a cancelled or timed-out child gets before SIGKILL (default 1s). */
+  killGraceMs?: number;
+  /**
+   * Once a killed child has exited, how long its output pipes may still drain (default
+   * 500ms). Something it started can hold them open; the run is recorded regardless.
+   */
+  pumpDrainMs?: number;
   /** Timer factory, injectable for fake-timer tests. Defaults to global setTimeout. */
   setTimer?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
   /** Timer clearer paired with setTimer. Defaults to global clearTimeout. */
@@ -165,6 +186,16 @@ export function createActionExecutor(opts: ActionExecutorOptions): ActionExecuto
   const setTimer = opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
   const clearTimer = opts.clearTimer ?? ((h) => clearTimeout(h));
   const registry = new Map<string, RunHandle>();
+  const killGraceMs = opts.killGraceMs ?? DEFAULT_KILL_GRACE_MS;
+  const pumpDrainMs = opts.pumpDrainMs ?? DEFAULT_PUMP_DRAIN_MS;
+
+  /** SIGTERM, then SIGKILL if the child has not exited within `killGraceMs`. */
+  async function terminate(spawned: SpawnedRun): Promise<void> {
+    spawned.kill("SIGTERM");
+    if (await settlesWithin(spawned.exited, killGraceMs)) return;
+    spawned.kill("SIGKILL");
+    await settlesWithin(spawned.exited, killGraceMs);
+  }
 
   function start(invocation: ResolvedInvocation): AsyncIterable<ActionRunEvent> {
     const runId = randomUUID();
@@ -187,7 +218,7 @@ export function createActionExecutor(opts: ActionExecutorOptions): ActionExecuto
 
     // Drive the run independently of the consumer. NOT awaited: the returned iterable is
     // consumed by the route, but the child runs to completion regardless.
-    void drive(runId, handle, invocation, channel);
+    handle.done = drive(runId, handle, invocation, channel).catch(() => {});
 
     return channel.iterable;
   }
@@ -250,22 +281,27 @@ export function createActionExecutor(opts: ActionExecutorOptions): ActionExecuto
         handle.controller.abort();
       }, opts.timeoutMs);
 
+      let killed = false;
       try {
         const code = await awaitExit(spawned.exited, handle.controller.signal);
         outcome = code === 0 ? "succeeded" : "failed";
         exitStatus = code; // present ONLY for succeeded/failed
       } catch {
-        // Aborted: timeout OR operator cancel. Signal the LOCAL child only.
-        spawned.kill("SIGTERM");
-        // If cancel() aborted, it recorded the reason on the handle; else timeout.
+        // Aborted: timeout OR operator cancel. If cancel() aborted, it recorded the reason
+        // on the handle; else timeout.
         outcome = terminationReason ?? handle.cancelReason ?? "cancelled";
         exitStatus = null;
+        killed = true;
       } finally {
         clearTimer(timer);
       }
+      if (killed) await terminate(spawned);
 
-      // Drain any buffered chunks so the .log is complete even after kill.
-      await Promise.allSettled(pumps);
+      // Drain any buffered chunks so the .log is complete even after kill. A killed run's
+      // pipes get a bounded drain: something the child started can hold them open.
+      const drained = Promise.allSettled(pumps);
+      if (killed) await settlesWithin(drained, pumpDrainMs);
+      else await drained;
       outputBytes = await sink.close();
     } catch (cause) {
       // Defensive: any unexpected throw normalizes to a safe outcome; never silent.
@@ -327,11 +363,17 @@ export function createActionExecutor(opts: ActionExecutorOptions): ActionExecuto
     handle.cancelReason = "cancelled"; // recorded so the drive loop maps outcome
     handle.controller.abort(); // awaitExit rejects; drive loop kills the child
     // Belt-and-braces: if the child already exists, kill immediately as well.
-    handle.spawned?.kill?.("SIGTERM"); // local process only
+    handle.spawned?.kill?.("SIGTERM"); // the runner's local process group only
     return true;
   }
 
-  return { start, cancel };
+  async function cancelAll(): Promise<number> {
+    const cancelled = [...registry.values()].filter((handle) => cancel(handle.runId));
+    await Promise.all(cancelled.map((handle) => handle.done));
+    return cancelled.length;
+  }
+
+  return { start, cancel, cancelAll };
 }
 
 /** Read one stream to EOF, teeing each chunk to the sink and the wire channel. */
@@ -380,7 +422,7 @@ async function safeClose(sink: AuditOutputSink | undefined): Promise<number> {
 }
 
 /** Emit one `action.run` structured log per terminal transition. */
-function logRun(logger: Logger, entry: AuditEntry): void {
+function logRun(logger: Pick<ActionsLogger, "info">, entry: AuditEntry): void {
   try {
     logger.info(
       {
@@ -389,7 +431,7 @@ function logRun(logger: Logger, entry: AuditEntry): void {
         runner: entry.runner,
         outcome: entry.outcome,
         durationMs: entry.durationMs,
-      },
+      } satisfies ActionRunLogEvent,
       "action run",
     );
   } catch {

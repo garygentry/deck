@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockUiManifest } from "./ui-manifest.js";
 
 /**
  * Visual baselines for `/monitoring` in its main states, independent of the `/_ui`
@@ -107,17 +108,13 @@ const SCENARIOS: Record<string, Scenario> = {
 
 async function routeScenario(page: Page, scenario: Scenario): Promise<void> {
   const providers = "json" in scenario.alertmanager || "json" in scenario.prometheus;
-  await page.route("**/api/providers", async (route) => {
-    const response = await route.fetch();
-    const body = (await response.json()) as { providers: JsonObject[] };
-    const extra = providers
-      ? [
-          { id: "alertmanager", kind: "alertmanager" },
-          { id: "prometheus", kind: "prometheus" },
-        ]
-      : [];
-    await route.fulfill({ json: { providers: [...body.providers, ...extra] } });
-  });
+  const extra = providers
+    ? [
+        { id: "alertmanager", kind: "alertmanager" },
+        { id: "prometheus", kind: "prometheus" },
+      ]
+    : [];
+  await mockUiManifest(page, (real) => [...real, ...extra]);
   for (const id of ["alertmanager", "prometheus"] as const) {
     const stage = scenario[id];
     await page.route(`**/api/providers/${id}`, (route) =>

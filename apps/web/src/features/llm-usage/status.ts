@@ -6,7 +6,7 @@ import type {
   UsageSeverity,
   UsageSourceId,
   UsageSourceState,
-} from "@deck/server";
+} from "@deck/server/llm-usage";
 import { defineStatusMap, type StatusMap } from "@/ui";
 
 /** A bar's threshold band. `danger` covers both "over the danger threshold" and "provider says reached". */

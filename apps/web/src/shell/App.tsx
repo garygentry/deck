@@ -2,10 +2,12 @@ import { Suspense, useEffect } from "react";
 import { Callout, LoadingState, PageErrorBoundary, useDocumentTitle } from "@/ui";
 import { Route, Router, Switch, useLocation } from "./router.js";
 import { getPages } from "../registry/registry.js";
+import { useRegistryVersion } from "../registry/use-registry.js";
 import { AppShell } from "./AppShell.js";
+import { useBrandTitle } from "./manifest-slot.js";
 import { matchPage } from "./nav.js";
 import { NotFoundPage } from "./NotFoundPage.js";
-import { useConfig } from "./use-config.js";
+import { useConfig } from "../data/index.js";
 
 export function App({ url }: { url?: string } = {}) {
   return (
@@ -18,11 +20,13 @@ export function App({ url }: { url?: string } = {}) {
 
 /** The frame around the routed page; reads the location, so it sits inside the Router. */
 function Shell() {
+  // Re-render when an extension registers late (a lazily loaded module).
+  useRegistryVersion();
   const pages = getPages();
   const { path } = useLocation();
   const config = useConfig();
   const title = matchPage(pages, path)?.label;
-  useDocumentTitle(title ?? "Not found");
+  useDocumentTitle(title ?? "Not found", useBrandTitle());
 
   return (
     <AppShell pages={pages} path={path} title={title}>

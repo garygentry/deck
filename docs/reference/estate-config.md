@@ -4,8 +4,12 @@ This reference describes every key in a deck estate configuration.
 The estate config projects your inventory and presentation into deck; it is authored as one or
 more YAML layers that merge into a single document.
 The authoritative shape is the JSON Schema at
-[`packages/schema/schema/deck.schema.json`](../../packages/schema/schema/deck.schema.json),
-from which the TypeScript types are generated; this page mirrors that schema.
+[`packages/schema/schema/deck.schema.json`](../../packages/schema/schema/deck.schema.json)
+for the top-level keys, composed with one schema per module section, kept beside the server module
+that owns the section (such as
+[`apps/server/src/portal/schema.json`](../../apps/server/src/portal/schema.json) and
+[`apps/server/src/actions/schema.json`](../../apps/server/src/actions/schema.json)); the TypeScript
+types are generated from each schema, and this page mirrors them.
 For observed-reality data, see the [Snapshot contract reference](snapshot-contract.md).
 
 ## Document envelope
@@ -14,16 +18,31 @@ The top-level document is an object with no additional properties.
 
 | Key | Type | Required | Description |
 | --- | --- | --- | --- |
-| `schemaVersion` | integer, const `1` | yes | The shared schema contract version. |
+| `schemaVersion` | integer, const `2` | yes | The config schema version. Version 1 config must be migrated (see [Migrating from schemaVersion 1](#migrating-from-schemaversion-1)). |
 | `estate` | object | yes | Estate-wide identity and conventions. |
 | `hosts` | array of Host | no | Declared hosts; absent is equivalent to an empty array. |
 | `services` | array of Service | no | Declared services; absent is equivalent to an empty array. |
-| `groups` | array of Group | no | Portal layout groups; absent is equivalent to an empty array. |
 | `sources` | array of Source | no | Document and configuration source declarations; absent is empty. |
 | `integrations` | array of Integration | no | External tool integrations; absent is empty. |
-| `actions` | array of Action | no | Governed actions; absent is equivalent to an empty array. |
-| `agents` | array of Agent | no | Reserved agent slots; absent is equivalent to an empty array. |
-| `llmUsage` | object | no | Claude Code and Codex plan-usage tracking; absent turns the feature off. |
+| `ui` | object | no | Reserved for presentation settings; it accepts no keys yet. |
+| `modules` | object | no | Module settings, one section per module id (see [Modules](#modules)). |
+
+### Modules
+
+`modules` holds each module's settings under its id. Each module defines the schema of its own
+section, and a section for a module id deck does not have is rejected (`MODULE_UNKNOWN`), as
+is any unknown key inside a section. A section for an installed module that is not running
+(switched off, or with an unusable manifest) does not fail validation and may sit in either
+layer: it is reported as the advisory `MODULE_SECTION_DISABLED`, together with anything the
+module's schema and rules would report once it is enabled. The built-in sections are:
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `modules.portal` | object | The portal: `groups`, an array of [Group](#group); absent is equivalent to an empty array. |
+| `modules.actions` | object | Governed actions: `actions`, an array of [Action](#action); absent is equivalent to an empty array. |
+| `modules.llm-usage` | object | Claude Code and Codex plan-usage tracking (see [llm-usage](#modulesllm-usage)); absent turns the feature off. |
+
+All three sections are owned by the overlay layer.
 
 ### Layer merge
 
@@ -39,10 +58,10 @@ key, deep-merges matches, keeps base order, then appends new overlay elements.
 | --- | --- |
 | `hosts` | `name` |
 | `services` | `host` + `name` |
-| `groups`, `sources`, `integrations`, `actions` | `id` |
-| `actions[].params` | `name` |
+| `sources`, `integrations`, `modules.portal.groups`, `modules.actions.actions` | `id` |
+| `modules.actions.actions[].params` | `name` |
 | `hosts[].links`, `services[].links` | `href` |
-| `groups[].items` | `service` → `host` + `name`; `link` → `href`; `group` → `id` |
+| `modules.portal.groups[].items` | `service` → `host` + `name`; `link` → `href`; `group` → `id` |
 
 ## Estate
 
@@ -162,12 +181,21 @@ An Access object has no additional properties; every field is optional.
 ### Bindings and SecretRef
 
 `Bindings` is an object of live-provider bindings keyed by provider kind; keys match
-`^[a-z][a-z0-9-]*$` and values are provider-defined.
+`^[a-z][a-z0-9-]*$` and values are provider-defined. Only a kind whose module accepts bindings
+may appear: an unknown kind is reported as `PROVIDER_KIND_UNKNOWN`, and a known kind that does
+not accept bindings as `PROVIDER_BINDING_UNSUPPORTED` (info: the binding is ignored). The built-in bindable
+kinds are `link` and `http-health` (each binding becomes a provider), `docker` and `gatus`
+(a binding selects entries from that integration's provider), and `snapshot`. `prometheus` and
+`alertmanager` are integration-only: a binding of either is reported as
+`PROVIDER_BINDING_UNSUPPORTED`. The source kinds `markdown-tree` and `file-tree` are not bindable
+either: a source names its host or service in its own `owner`.
 
 `SecretRef` is a string holding an opaque secret reference id, never a secret value.
 It matches `^[a-z0-9]+(?:[.-][a-z0-9]+)*$` and is at most 64 characters.
 
 ## Portal: groups and items
+
+These live under `modules.portal.groups`.
 
 ### Group
 
@@ -217,7 +245,16 @@ nested subgroups are forbidden.
 | `icon` | string | no | Icon token. |
 | `items` | array of ServiceItem or LinkItem | yes | Service or link items only. |
 
-## Sources, integrations, actions, agents
+## Sources, integrations, actions
+
+Source ids, integration ids and host and service binding ids share one provider-id space. A
+binding's id is its own `id` if it has one, otherwise `<kind>:host:<host>` or
+`<kind>:service:<host>:<service>`; boot registers bindings under exactly these ids. Keep them
+distinct: `deck validate` reports an id used in two collections, or by two bindings, as
+`PROVIDER_ID_SHARED` (a warning, `info` at boot). Not every declaration registers a provider
+(some kinds register under a fixed id, others not at all), so a shared id is not always a
+clash; when both declarations do register, boot fails with `PROVIDER_DUPLICATE_ID`. A repeat
+within `sources` or within `integrations` is an `ID_DUPLICATE` error.
 
 ### Source
 
@@ -265,9 +302,16 @@ An Integration object has no additional properties.
 `credentialEnv` follows the same rule as on a Source: it is an env-var name matching
 `^[A-Z][A-Z0-9_]*$`, never a secret value.
 
+A `credentialEnv` (on an integration or a source) may not name a deck setting (`DECK_CONFIG_DIR`,
+`DECK_DATA_DIR`, `DECK_LOG_LEVEL`, `DECK_PORT`, `DECK_SNAPSHOT_OUT`, `DECK_WEB_DIST`) or a
+variable another module owns (`DECK_SNAPSHOT_SOURCE`, say): the module of the instance's kind
+may not read it. Boot logs a `provider.credential-env-refused` warning (the name, never the
+value) and carries on without that variable, and `deck validate` reports
+`MODULE_CREDENTIAL_ENV_REFUSED` (a warning).
+
 ### Action
 
-An Action object has no additional properties.
+Actions live under `modules.actions.actions`. An Action object has no additional properties.
 
 | Key | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -294,20 +338,9 @@ An `ActionParam` has no additional properties:
 | `values` | array of string | no | Allowed values when the type is `enum`. |
 | `description` | string | no | Parameter description. |
 
-### Agent
+## modules.llm-usage
 
-An Agent object has no additional properties.
-Agent slots are reserved and unstable.
-
-| Key | Type | Required | Description |
-| --- | --- | --- | --- |
-| `id` | string | yes | Reserved agent id, unique across agents. |
-| `kind` | string | yes | Reserved and unstable agent kind. |
-| `config` | object | no | Opaque reserved agent configuration. |
-
-## llmUsage
-
-`llmUsage` is an object with no additional properties. Every key is optional, and an absent
+`modules.llm-usage` is an object with no additional properties. Every key is optional, and an absent
 section turns the feature off (no polling, no ingest route).
 See [Track Claude Code and Codex plan usage](../guides/llm-usage.md) for the walkthrough.
 
@@ -338,6 +371,34 @@ See [Track Claude Code and Codex plan usage](../guides/llm-usage.md) for the wal
 
 `deck validate` reports a malformed or zero duration, or an explicit `warn` above `danger`, as
 `LLM_USAGE_INVALID` (malformed durations as `SCHEMA_INVALID`); deck refuses to start with them.
+
+## Migrating from schemaVersion 1
+
+Deck accepts only `schemaVersion: 2`. A version 1 config fails `deck validate` and boot with
+`CONFIG_MIGRATION_REQUIRED` (exit 2), naming the command that fixes it:
+
+```sh
+deck config migrate <config dir> --dry-run   # print the change as a unified diff; write nothing
+deck config migrate <config dir>             # rewrite every layer in place
+deck validate <config dir>
+```
+
+The migration rewrites each YAML layer on its own, so every key stays in the layer it was in:
+
+| schemaVersion 1 | schemaVersion 2 |
+| --- | --- |
+| `schemaVersion: 1` | `schemaVersion: 2` |
+| `groups` | `modules.portal.groups` |
+| `actions` | `modules.actions.actions` |
+| `llmUsage` | `modules.llm-usage` |
+| `agents` | removed (reserved and never used; a warning is printed if it had entries) |
+
+It moves the original lines, re-indented, so comments, quoting, flow styles and line endings
+are kept, and a symlinked layer is migrated at its target. A layer already at version 2 is left
+untouched, so running it twice changes nothing. If any layer cannot be migrated (an
+unsupported version, a flow-style root, a version 1 layer that already has `modules`), no file
+is written. See the [CLI reference](cli.md#deck-config-migrate) for the details. Snapshots are unaffected: they stay at their own
+`schemaVersion: 1`.
 
 ## See also
 

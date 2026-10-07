@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Action, ActionParam } from "@deck/schema";
+import type { Action, ActionParam } from "../src/actions/config.generated.js";
 
 import {
   validateActionParams,

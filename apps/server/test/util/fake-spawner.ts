@@ -15,6 +15,10 @@ export interface FakeSpawnerScript {
   throwOnSpawn?: unknown;
   /** When true, the child never exits on its own; only `kill()`/`releaseHang()` end it. */
   hang?: boolean;
+  /** A hanging child that ignores SIGTERM: only SIGKILL ends it. */
+  ignoreTerm?: boolean;
+  /** Its streams stay open after it exits (something it started holds the pipes). */
+  holdStreams?: boolean;
   /** Delay in ms between chunks. Default 0 (a microtask), so chunks arrive "over time". */
   chunkDelayMs?: number;
 }
@@ -102,7 +106,7 @@ export function createFakeSpawner(
 
       const killSignals: (NodeJS.Signals | undefined)[] = [];
       const end = () => {
-        releaseGate();
+        if (!script.holdStreams) releaseGate();
         resolveExited(exitCode);
       };
 
@@ -114,6 +118,7 @@ export function createFakeSpawner(
         exited,
         kill(signal?: NodeJS.Signals) {
           killSignals.push(signal);
+          if (script.ignoreTerm && signal !== "SIGKILL") return;
           end();
         },
       };

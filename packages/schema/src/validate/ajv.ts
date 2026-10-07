@@ -1,5 +1,4 @@
 import Ajv2020, { type ValidateFunction } from "ajv/dist/2020.js";
-import configSchema from "../../schema/deck.schema.json" with { type: "json" };
 import snapshotSchema from "../../schema/snapshot.schema.json" with { type: "json" };
 
 const RFC3339 =
@@ -31,25 +30,34 @@ function isRfc3339DateTime(value: string): boolean {
   return true;
 }
 
-const ajv = new Ajv2020({
-  strict: true,
-  allErrors: true,
-  discriminator: true,
-  allowUnionTypes: true,
-});
+/** A fresh Ajv instance with deck's options and formats; one per compiled schema set. */
+export function createAjv(): Ajv2020 {
+  const ajv = new Ajv2020({
+    strict: true,
+    allErrors: true,
+    discriminator: true,
+    allowUnionTypes: true,
+  });
+  ajv.addFormat("date-time", { type: "string", validate: isRfc3339DateTime });
+  return ajv;
+}
 
-ajv.addFormat("date-time", { type: "string", validate: isRfc3339DateTime });
-
-function relaxRequired(schema: typeof configSchema): typeof configSchema {
-  const relaxed = structuredClone(schema);
-  delete (relaxed as { $id?: string }).$id;
+/**
+ * The overlay variant of a composed config schema: an overlay may omit what the base
+ * declares, so only `schemaVersion` and the identity fields stay required.
+ */
+export function relaxRequired<T extends object>(schema: T): T {
+  const relaxed = structuredClone(schema) as T & {
+    $id?: string;
+    required?: string[];
+    $defs: Record<string, { required?: string[] }>;
+  };
+  delete relaxed.$id;
   relaxed.required = ["schemaVersion"];
-  relaxed.$defs.Estate.required = [];
-  relaxed.$defs.Host.required = ["name"];
-  relaxed.$defs.Service.required = ["host", "name"];
+  relaxed.$defs.Estate!.required = [];
+  relaxed.$defs.Host!.required = ["name"];
+  relaxed.$defs.Service!.required = ["host", "name"];
   return relaxed;
 }
 
-export const checkConfig: ValidateFunction = ajv.compile(configSchema);
-export const checkSnapshot: ValidateFunction = ajv.compile(snapshotSchema);
-export const checkOverlay: ValidateFunction = ajv.compile(relaxRequired(configSchema));
+export const checkSnapshot: ValidateFunction = createAjv().compile(snapshotSchema);

@@ -1,4 +1,4 @@
-import { KNOWN_PROVIDER_KINDS } from "../src/index.js";
+import { composeDefault } from "../src/index.js";
 import { primary } from "../src/fixtures/index.js";
 import { expect, test } from "vitest";
 
@@ -12,7 +12,7 @@ test("primary config covers the enumerated schema concepts", () => {
   const providerKinds = new Set<string>();
   for (const entity of [...config.hosts, ...config.services]) for (const kind of Object.keys(entity.bindings ?? {})) providerKinds.add(kind);
   for (const integration of config.integrations ?? []) providerKinds.add(integration.kind);
-  for (const kind of KNOWN_PROVIDER_KINDS) expect(providerKinds.has(kind), `provider kind ${kind}`).toBe(true);
+  for (const kind of composeDefault().knownKinds) expect(providerKinds.has(kind), `provider kind ${kind}`).toBe(true);
 
   const guests = config.hosts.filter((host: any) => host.hypervisor && host.vmid === 100);
   expect(new Set(guests.map((host: any) => host.hypervisor)).size).toBeGreaterThanOrEqual(2);
@@ -20,13 +20,13 @@ test("primary config covers the enumerated schema concepts", () => {
   for (const service of config.services) (servicePairs.get(service.name) ?? servicePairs.set(service.name, new Set()).get(service.name))!.add(service.host);
   expect([...servicePairs.values()].some((hosts) => hosts.size >= 2)).toBe(true);
 
-  const topItems = (config.groups ?? []).flatMap((group: any) => group.items);
+  const topItems = (config.modules.portal.groups ?? []).flatMap((group: any) => group.items);
   expect(new Set(topItems.map((item: any) => item.type))).toEqual(new Set(["service", "link", "group"]));
   expect(topItems.some((item: any) => item.type === "group" && item.items.some((child: any) => child.type === "service") && item.items.some((child: any) => child.type === "link"))).toBe(true);
   expect(config.sources.length).toBeGreaterThan(0);
   expect(config.integrations.length).toBeGreaterThan(0);
-  expect(config.actions.length).toBeGreaterThan(0);
-  expect(config.agents).toEqual([]);
+  expect(config.modules.actions.actions.length).toBeGreaterThan(0);
+  expect(config.agents).toBeUndefined();
   expect(config.hosts.some((host: any) => host.secrets?.length)).toBe(true);
   expect(config.services.some((service: any) => service.secrets?.length)).toBe(true);
   expect(config.hosts.some((host: any) => host.managedConfigs?.length)).toBe(true);

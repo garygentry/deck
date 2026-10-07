@@ -75,4 +75,21 @@ describe("server boot", () => {
     // Neither config nor start logging echoes the source value.
     expect(writes.join("")).not.toContain(source);
   });
+
+  it("fails boot with exit 2 and a sanitized message for a malformed DECK_SNAPSHOT_SOURCE", async () => {
+    process.env.DECK_SNAPSHOT_SOURCE = "ftp://secret.example.internal/snapshot.json";
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    vi.spyOn(process, "exit").mockImplementation(((code: number) => {
+      throw new Error(`exit:${code}`);
+    }) as typeof process.exit);
+    const serve = vi.fn();
+    vi.stubGlobal("Bun", { serve });
+
+    await expect(boot({ configDir: dirname(primary.paths.base), port: 0 })).rejects.toThrow("exit:2");
+    const written = stderr.mock.calls.map(([text]) => String(text)).join("");
+    expect(written).toContain("ftp");
+    expect(written).not.toContain("secret.example.internal");
+    expect(serve).not.toHaveBeenCalled();
+    expect(read("snapshot")).toBeUndefined();
+  });
 });

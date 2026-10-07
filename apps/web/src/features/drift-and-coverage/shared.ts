@@ -1,4 +1,4 @@
-import type { DriftFindingProjection, DriftProjection } from "@deck/server";
+import type { DriftFindingProjection, DriftProjection } from "@deck/drift";
 import {
   findHost,
   findService,

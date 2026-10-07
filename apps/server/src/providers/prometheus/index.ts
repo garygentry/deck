@@ -1,5 +1,5 @@
-import type { Provider, ProviderConfig, ProviderFetchContext, ProviderHealth } from "../../contract/index.js";
-import { register } from "../registry.js";
+import type { EnvReader, ProviderFetchContext, ProviderHealth, ProviderSpec, ProviderTiming } from "@deck/module-sdk";
+
 import type { SummaryQuery } from "./parse-card.js";
 
 export type SummaryStatus = "ok" | "warning" | "critical" | "neutral" | "error";
@@ -16,19 +16,27 @@ export interface PrometheusResult {
   summaries: SummaryValue[];
 }
 
-export interface PrometheusConfig {
+/**
+ * The credential wiring: `credentialEnv` names the variable holding the `Authorization` value,
+ * read through `env` at fetch time (so a rotated credential is picked up). Naming a credential
+ * requires a reader; without `credentialEnv` no credential is sent.
+ */
+export type PrometheusCredential =
+  | { credentialEnv?: undefined; env?: EnvReader }
+  | { credentialEnv: string; env: EnvReader };
+
+export type PrometheusConfig = {
   baseUrl: string;
-  credentialEnv?: string;
   summaries: SummaryQuery[];
-  timing?: ProviderConfig;
-}
+  timing?: ProviderTiming;
+} & PrometheusCredential;
 
 interface QueryOutcome {
   reachable: boolean;
   value: SummaryValue;
 }
 
-export class PrometheusProvider implements Provider<PrometheusResult> {
+export class PrometheusProvider implements ProviderSpec<PrometheusResult> {
   readonly kind = "prometheus";
   private latestHealth: ProviderHealth = { ok: false, detail: "Awaiting first poll" };
 
@@ -79,7 +87,7 @@ export class PrometheusProvider implements Provider<PrometheusResult> {
     try {
       response = await globalThis.fetch(queryUrl(this.cfg.baseUrl, query.query), {
         method: "GET",
-        headers: authHeaders(this.cfg.credentialEnv),
+        headers: authHeaders(this.cfg),
         signal,
       });
     } catch {
@@ -98,18 +106,14 @@ export class PrometheusProvider implements Provider<PrometheusResult> {
   }
 }
 
-export function registerPrometheus(id: string, cfg: PrometheusConfig): void {
-  register(new PrometheusProvider(id, cfg), cfg.timing);
-}
-
 function queryUrl(baseUrl: string, query: string): string {
   const base = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
   return `${base}/api/v1/query?query=${encodeURIComponent(query)}`;
 }
 
-function authHeaders(credentialEnv?: string): Record<string, string> {
+function authHeaders({ credentialEnv, env }: PrometheusConfig): Record<string, string> {
   if (!credentialEnv) return {};
-  const value = process.env[credentialEnv];
+  const value = env?.get(credentialEnv);
   return value ? { Authorization: value } : {};
 }
 

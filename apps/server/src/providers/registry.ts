@@ -8,7 +8,10 @@ import {
   type ProviderEnvelope,
   type ProviderHealthEntry,
 } from "../contract/index.js";
+import type { Cadence, ProviderStats, TaskHandle } from "@deck/module-sdk";
+
 import { logger, type ProviderPollEvent } from "../log/logger.js";
+import { createAdaptiveTask, isWithinRun, withinRun, type AdaptiveTask } from "../modules/scheduler.js";
 
 export interface ResolvedTiming {
   pollIntervalMs: number;
@@ -40,7 +43,12 @@ interface Slot<T = unknown> {
   /** Cached non-I/O health published by the latest completed poll. */
   health: ProviderHealthEntry;
   timer?: ReturnType<typeof setInterval>;
-  inFlight: boolean;
+  /** Present when the provider polls on an adaptive cadence instead of a fixed interval. */
+  adaptive?: AdaptiveTask;
+  /** The poll in flight, shared by every caller until it settles. */
+  polling: Promise<boolean> | null;
+  /** Set by the handle's stop(): the provider never polls again. */
+  stopped: boolean;
   /** Wall-clock duration of the latest completed poll; null before the first poll. */
   lastLatencyMs: number | null;
   /** Completed polls that fetched successfully. */
@@ -84,8 +92,25 @@ export function resolveTiming(opts?: ProviderConfig): ResolvedTiming {
   };
 }
 
-/** Register one provider and initialize its cached envelope; duplicate ids throw. */
-export function register<T>(provider: Provider<T>, opts?: ProviderConfig): void {
+/**
+ * Register one provider and initialize its cached envelope; duplicate ids throw.
+ * With a `cadence`, the scheduler polls it adaptively (the hook picks each next delay, or
+ * pauses until `wake()`) instead of every `pollIntervalMs`; either way the first poll runs as
+ * soon as the scheduler starts. A static provider (`flags.static`, from a kind its module
+ * declares static) is fetched once at registration, never polled, and cannot take a cadence.
+ * The returned handle lets the owner wake, force (joining a poll in flight) or permanently
+ * stop its polling.
+ */
+export function register<T>(
+  provider: Provider<T>,
+  opts?: ProviderConfig,
+  cadence?: Cadence,
+  flags?: { static?: boolean },
+): TaskHandle {
+  const isStatic = flags?.static === true;
+  if (cadence !== undefined && isStatic) {
+    throw new Error(`Provider ${provider.id} is static (kind "${provider.kind}") and cannot take a cadence`);
+  }
   if (slots.has(provider.id)) {
     const error = new Error(`Provider id already registered: ${provider.id}`) as Error & {
       code: string;
@@ -97,11 +122,12 @@ export function register<T>(provider: Provider<T>, opts?: ProviderConfig): void 
   const slot = {
     provider,
     timing: resolveTiming(opts),
-    isStatic: provider.kind === "link",
+    isStatic,
     lastSuccessAt: null,
     retainedData: null,
     health: { kind: provider.kind, ok: false, detail: "Awaiting first poll" },
-    inFlight: false,
+    polling: null,
+    stopped: false,
     lastLatencyMs: null,
     successCount: 0,
     failureCount: 0,
@@ -109,7 +135,37 @@ export function register<T>(provider: Provider<T>, opts?: ProviderConfig): void 
   publish(slot, null);
   slots.set(provider.id, slot as Slot<unknown>);
 
-  if (slot.isStatic) void tick(slot);
+  if (slot.isStatic) tick(slot).catch(() => {});
+  if (cadence !== undefined) {
+    slot.adaptive = createAdaptiveTask({
+      cadence,
+      // A failed poll is already published by tick(); throwing only feeds the cadence state.
+      run: async () => {
+        if (!(await tick(slot))) throw new Error("provider poll failed");
+      },
+    });
+  }
+  return {
+    wake: () => slot.adaptive?.wake(),
+    runNow: async () => {
+      if (slot.adaptive !== undefined) await slot.adaptive.runNow();
+      else await tick(slot);
+    },
+    stop: async () => {
+      slot.stopped = true;
+      if (slot.timer !== undefined) clearInterval(slot.timer);
+      slot.timer = undefined;
+      await slot.adaptive?.stop();
+      // Stopped from inside its own poll (the provider stopping itself): never await itself.
+      if (isWithinRun(slot)) return;
+      await slot.polling;
+    },
+  };
+}
+
+/** Whether a provider with this id is registered. */
+export function hasProvider(id: string): boolean {
+  return slots.has(id);
 }
 
 /** Read one cached envelope without invoking provider, filesystem, or network I/O. */
@@ -123,9 +179,16 @@ export function read(id: string): ProviderEnvelope<unknown> | undefined {
 /** Start polling every registered dynamic provider and trigger its initial poll. */
 export function startScheduler(): void {
   for (const slot of slots.values()) {
+    if (slot.stopped) continue;
+    if (slot.adaptive !== undefined) {
+      // Like a fixed-interval provider, poll at once; the cadence takes over from there.
+      slot.adaptive.start();
+      slot.adaptive.runNow().catch(() => {});
+      continue;
+    }
     if (slot.isStatic || slot.timer !== undefined) continue;
-    slot.timer = setInterval(() => void tick(slot), slot.timing.pollIntervalMs);
-    void tick(slot);
+    slot.timer = setInterval(() => void tick(slot).catch(() => {}), slot.timing.pollIntervalMs);
+    tick(slot).catch(() => {});
   }
 }
 
@@ -133,6 +196,8 @@ export function startScheduler(): void {
 export function stopScheduler(): void {
   for (const slot of slots.values()) {
     if (slot.timer !== undefined) clearInterval(slot.timer);
+    slot.stopped = true;
+    slot.adaptive?.stop().catch(() => {});
   }
   slots.clear();
 }
@@ -185,9 +250,30 @@ export function listMetrics(): readonly ProviderPollMetrics[] {
   });
 }
 
-async function tick<T>(slot: Slot<T>): Promise<void> {
-  if (slot.inFlight) return;
-  slot.inFlight = true;
+/**
+ * Every provider's poll counters, last-poll latency and cached-data age, in id order, as
+ * modules read them through `ctx.providers.stats()`. Performs no provider I/O; the age is
+ * the one `read()` publishes.
+ */
+export function listStats(): readonly ProviderStats[] {
+  return listMetrics().map((poll) => Object.freeze({ ...poll, ageMs: read(poll.id)!.freshness.ageMs }));
+}
+
+/**
+ * Poll once, joining a poll already in flight; resolves true when the fetch succeeded.
+ * A stopped provider never polls (resolves false).
+ */
+function tick<T>(slot: Slot<T>): Promise<boolean> {
+  if (slot.polling !== null) return slot.polling;
+  if (slot.stopped) return Promise.resolve(false);
+  // Publish the shared poll before provider code runs, so a re-entrant call joins it.
+  slot.polling = Promise.resolve().then(() => withinRun(slot, () => poll(slot))).finally(() => {
+    slot.polling = null;
+  });
+  return slot.polling;
+}
+
+async function poll<T>(slot: Slot<T>): Promise<boolean> {
   const startedAt = Date.now();
   const from = slot.envelope.freshness.state;
   const controller = new AbortController();
@@ -212,7 +298,6 @@ async function tick<T>(slot: Slot<T>): Promise<void> {
     slot.health = { kind: slot.provider.kind, ok: false, detail: message };
   } finally {
     clearTimeout(timeout);
-    slot.inFlight = false;
     const latencyMs = Date.now() - startedAt;
     slot.lastLatencyMs = latencyMs;
     if (ok) slot.successCount += 1;
@@ -238,6 +323,7 @@ async function tick<T>(slot: Slot<T>): Promise<void> {
       // Observability must never turn an isolated provider failure into a scheduler failure.
     }
   }
+  return ok;
 }
 
 /** Read the now non-I/O provider health, isolating a rejecting or invalid snapshot. */

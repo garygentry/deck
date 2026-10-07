@@ -6,6 +6,7 @@ import { AppServerRpcError, AppServerSpawnError, AUTH_REQUIRED_CODE } from "../s
 import type { RolloutResult } from "../src/llm-usage/codex/rollout.js";
 import { LlmUsageCollector, type AppServerClient, type CollectorDeps } from "../src/llm-usage/collector.js";
 import type { ResolvedLlmUsageConfig } from "../src/llm-usage/config.js";
+import { standaloneSchedule } from "./util/standalone-scheduler.js";
 
 const NOW = Date.parse("2026-09-24T12:00:00Z");
 const MIN = 60_000;
@@ -35,6 +36,7 @@ function harness(cfg = config(), extra: Partial<CollectorDeps> = {}) {
   const fetchOauth = vi.fn(async (): Promise<OauthResult> => ({ ok: true, body: oauthBody(40), plan: "max" }));
   const watcher = { start: vi.fn(), stop: vi.fn() };
   const collector = new LlmUsageCollector(cfg, {
+    schedule: standaloneSchedule,
     fetchOauth,
     createWatcher: () => watcher,
     readRollout: async () => ({ status: "no-data-yet", detail: "no rollout files yet" }),
@@ -51,6 +53,28 @@ afterEach(() => {
 });
 
 describe("LlmUsageCollector cadence", () => {
+  it("keeps the due time a forced refresh fixed when an earlier-armed run arrives after the activity window", async () => {
+    // Pre-module sequence (review C1): OAuth at 0s, 130s (refresh) and 430s (130s + active interval).
+    const cfg = config({ idlePauseMs: 2000_000, claude: { ...config().claude!, activeMs: 300_000, idleMs: 600_000 } });
+    const calls: number[] = [];
+    let percent = 40;
+    const { collector, fetchOauth } = harness(cfg);
+    fetchOauth.mockImplementation(async () => {
+      calls.push(Date.now() - NOW);
+      return { ok: true, body: oauthBody(percent), plan: "max" };
+    });
+    await collector.read();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(100_000);
+    collector.ingestStatusline({}); // active: the next poll moves to 300s
+    await vi.advanceTimersByTimeAsync(30_000);
+    percent = 55; // the refresh sees usage move, so the session stays active from 130s
+    await collector.refresh();
+    await vi.advanceTimersByTimeAsync(500_000 - 130_000);
+    expect(calls).toEqual([0, 130_000, 430_000]);
+    collector.stop();
+  });
+
   it("does not poll until a viewer reads, then polls immediately", async () => {
     const { collector, fetchOauth } = harness();
     await vi.advanceTimersByTimeAsync(10 * MIN);
@@ -301,6 +325,26 @@ describe("LlmUsageCollector codex", () => {
     return { client, createAppServer, push: (method: string) => notify(method) };
   }
 
+  it("does not restart the rollout watcher when a poll settles after stop() (review N2)", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const app = fakeAppServer(async () => {
+      await pending; // the Codex call outlives the module's drain
+      return limits(20);
+    });
+    const { collector, watcher } = harness(codexConfig, { createAppServer: app.createAppServer });
+    await collector.read(); // a viewer: the first scheduled poll starts and hangs
+    await vi.advanceTimersByTimeAsync(0);
+    expect(app.client.call).toHaveBeenCalled();
+
+    collector.stop();
+    const startsAtStop = watcher.start.mock.calls.length;
+    release();
+    await vi.advanceTimersByTimeAsync(10 * MIN);
+    expect(watcher.start.mock.calls.length).toBe(startsAtStop);
+    expect(watcher.stop).toHaveBeenCalled();
+  });
+
   it("serves app-server bars, plan, credits and history", async () => {
     const app = fakeAppServer((method) => method === "account/rateLimits/read"
       ? limits(20)
@@ -349,7 +393,7 @@ describe("LlmUsageCollector codex", () => {
     expect(codex.sources[0]).toMatchObject({
       id: "codex.appServer",
       state: "not-configured",
-      detail: expect.stringContaining("set llmUsage.codex.command"),
+      detail: expect.stringContaining("set modules.llm-usage.codex.command"),
     });
     expect(codex.sources[2]).toMatchObject({ id: "codex.history", state: "not-configured" });
     collector.stop();

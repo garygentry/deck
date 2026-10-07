@@ -61,21 +61,142 @@ tokens.
 The theme follows the stored preference (light, dark or system). An inline script in
 `index.html` applies it before first paint, so the page never flashes the wrong theme.
 
+## Data
+
+Server data reaches components through one shared cache, TanStack Query, in `src/data`. Import
+the hooks from `@/data`:
+
+- `useConfig()` gives the estate config as a `loading`/`ready`/`error` state. Every reader
+  shares one `/api/config` request per page load. A failed or malformed read is not cached.
+  It is asked again every poll interval until it succeeds, and readers keep showing the error
+  while it is asked again.
+- `useUiManifest()` gives the resolved UI manifest (`/api/ui`), also read once. If it cannot
+  be read, the answer is "unavailable" (an error state, with one console warning per failed
+  read). Its readers ask again every poll interval until it succeeds, and they never drop back
+  to loading meanwhile.
+- `useProvider(id)` or `useProvider({ kind })` polls a provider's envelope on the shell
+  interval. Every reader of the same provider shares one request per tick. A reader that joins
+  within an interval of the last read reuses it. An envelope nobody has read for longer than an
+  interval is dropped, so the next reader starts from loading. A provider the manifest does not
+  list is never requested and reads as not configured. If the manifest is unavailable,
+  providers are polled anyway.
+
+Code outside React (the inventory store) reads through the same client: the cached config,
+and `isProviderPollable(id)`. While other readers hold a failing config, the store reports the
+failure without forcing a refetch; the shared query owns the retry. Feature code never fetches
+config or provider envelopes itself.
+
+The cache keeps deck's timing:
+- no automatic retries;
+- no refetch when the tab regains focus;
+- updates are delivered on a microtask, so a paused clock in a test or a visual capture never
+  holds back a render.
+
 ## Pages, the registry and the shell
 
 Features register surfaces at import time. `registry/discover.ts` imports every
 `features/*/index.ts`, and each one calls:
 
 - `registerPage({ id, path, label, icon, group, component, nav? })` for a routed page;
-- `registerEntityFragment({ id, entity, slot, component })` for a panel that appears on host or
-  service detail pages (drift findings, owned configs);
+- `registerEntityFragment({ id, entity, title, section?, order?, component })` for a section on
+  host or service detail pages (drift findings, owned configs; see "Entity sections" below);
 - `registerSummaryFragment(HealthHeaderSlot, { id, component })` for a health pill in the top
-  bar.
+  bar;
+- `registerCard({ id, slot, component })` for a card in a host's card slot (the portal summary).
 
-The shell builds itself from these registrations. The sidebar groups pages by `group` (Overview,
-Inventory, Health, Operate, Knowledge) and marks the current section with
-`aria-current="page"`. A detail route such as `/hosts/nas-01` keeps its list page active. The top
-bar shows the page title, the health pills and the theme menu. There is exactly one
+Each call is a blueprint over one model, the **extension**: a component with a stable id, attached
+to a slot at an order. Ids have the form `<kind>:<module>/<name>`, and the kind matches the
+blueprint: `page:inventory/hosts`, `pill:drift/summary`, `card:llm-usage/portal`,
+`section:sources/host-configs`. A listed page also contributes its nav entry,
+`nav:inventory/hosts`. The ids are the ones the server's UI manifest (`GET /api/ui`) lists, so
+config can address an extension by id.
+
+| Slot (accepts) | Blueprint | Host |
+|---|---|---|
+| `app/routes` (page), `app/nav` (nav) | `registerPage` | the router; the sidebar (see below) |
+| `app/topbar.status` (pill) | `registerSummaryFragment(HealthHeaderSlot, …)` | the health-header region |
+| `app/topbar.actions` (action) | `registerExtension` | the top bar's controls (the theme menu) |
+| `portal/summary` (widget) | `registerCard` | the portal page |
+| `entity:host/sections`, `entity:service/sections` (entity-section) | `registerEntityFragment` | host and service detail pages |
+
+A slot is declared with `defineSlot({ id, accepts, module })`. Its id is namespaced to the
+module hosting it (`portal/summary`), and the `app/…` and `entity:…` namespaces belong to
+`core`. An extension attaches only to a slot that accepts its kind: a card is a `widget`, a
+pill a `pill`, an entity fragment an `entity-section`. A mismatch throws at registration,
+whichever of the slot and the extension is declared first.
+
+Registration follows the same rules as the server's manifest validation, shared through
+`@deck/module-sdk`:
+- slot names and ids are checked the same way;
+- orders must be finite;
+- a page path may not sit under `/api` or on a root path the kernel or a built-in module serves,
+  such as the metrics module's `/metrics` (`BUILTIN_ROOT_PATHS`);
+- every extension but a nav entry needs a component;
+- an entity section needs a title, and a section it names is lowercase (`a-z`, `0-9`, `-`) with no
+  `.`,
+  whichever way it is registered (`registerEntityFragment` or `registerExtension`).
+
+### Entity sections
+
+The host and service detail pages are open: they render whatever is attached to
+`entity:host/sections` or `entity:service/sections`, and own no list of sections. A module
+attaches a section by its extension id. Its config (the manifest extension's `config`, or the
+registration's fields) carries:
+- `title`: the section's heading, required;
+- `section`: the section it shares, optional: lowercase `a-z`, `0-9` and `-`, with no `.`.
+  Extensions that name the same section, from any module, render together under the heading of
+  the first one by order. Without it, the extension has its own section, named `<module>.<name>`
+  from its id (`section:backups/host` → `backups.host`). Its own section cannot be joined,
+  because dotted names are reserved for it: `section: "backups.host"` is refused. Two modules'
+  extensions with the same name never merge, and an extension's own section never joins a shared
+  one such as `findings` by accident.
+
+Sections render in the order of their first extension, then by id. The built-ins name their
+sections explicitly and place drift's `findings` at order 10 and sources' `configs` at order 20, so a module's section at order 15
+renders between them. Each section is a `Section` with the heading id `entity-slot-<section>`
+and the marker `data-entity-slot="<section>"`. With nothing attached, the pages show no
+sections. The naming rule is `entitySectionName` and the config rule `entitySectionProblem`, both
+in `@deck/module-sdk`. The server validates the same config:
+a manifest entity section without a title disables its module. For a `ui.extensions` override
+whose replacement `config` is not a usable section, only the config is dropped, with
+`UI_INVALID_OVERRIDE`; the rest of the override, such as `enabled: false`, still applies.
+
+In development, discovery warns about any extension attached to a slot that nobody declared,
+since it would never render.
+
+The shell renders from the UI manifest (`useUiManifest()`); the registry supplies the
+components:
+- The sidebar lists the manifest's `navGroups` in order, and in each its `nav` entries, with
+  their labels and icons. An entry to a page the web does not route is left out, and so is the
+  page of a module that is off.
+- The top bar's slots (`app/topbar.status`, `app/topbar.actions`) render the manifest's entries
+  for the slot, in its order, each with the web extension of the same id and kind
+  (`useManifestSlot(slot)`).
+- The brand in the sidebar header and the document title (`"{page} · {brand}"`) is the
+  manifest's `brand.title`.
+
+Until the manifest loads, the sidebar and the top bar's slots are empty. If it cannot be read,
+they fall back to the registry: the sidebar lists the registered pages by their `group` (and
+`nav: false`), the slots render what is registered there, and the brand is "Deck". So
+`registerPage`'s `group` only matters in that fallback.
+
+The registry is reactive. The shell's slot hosts call `useRegistryVersion()` and read their
+blueprint view (`getPages()`, `getCards(slot)`, …). Module code that wants the raw extensions of a
+slot uses `useSlot(slot)`, which returns the same array until the next registration. Either way,
+an extension registered after first render appears without a reload, for example one from a
+lazily loaded module.
+
+Every slot host renders each extension inside a `FragmentBoundary`, so one that throws shows a
+compact fallback instead of blanking its host. The boundary resets on a key:
+- a page's slot host (`useSlotResetKey`) uses the path plus the provider poll tick;
+- the persistent top bar (`usePollResetKey`) uses the poll tick alone.
+
+An extension that threw tries again at the next poll, once its data may have recovered, or after
+navigation on a page.
+
+The sidebar marks the current section with `aria-current="page"`. A detail route such as
+`/hosts/nas-01` keeps its list page active. The top bar shows the page title, the health pills
+and the theme menu. There is exactly one
 `<main id="main">`, reached from a skip link.
 
 Heavy pages load on first visit. A feature's `pages.ts` wraps its page components in

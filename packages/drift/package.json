@@ -1,0 +1,26 @@
+{
+  "name": "@deck/drift",
+  "version": "0.3.2",
+  "private": true,
+  "description": "The drift and coverage projection over the snapshot provider payload, shared by the deck server and web.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@deck/contract": "workspace:*",
+    "@deck/schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}

@@ -37,7 +37,7 @@ describe("drift feature registration", () => {
 
   it("registers exactly the /drift page with the drift page component", async () => {
     const { registry, DriftPage } = await loadFreshFeature();
-    const driftPages = registry.getPages().filter((page) => page.id === "drift");
+    const driftPages = registry.getPages().filter((page) => page.id === "page:drift/overview");
     expect(driftPages).toHaveLength(1);
     const [page] = driftPages;
     expect(page.path).toBe("/drift");
@@ -47,36 +47,36 @@ describe("drift feature registration", () => {
     expect(registry.getPages().filter((p) => p.path === "/drift")).toHaveLength(1);
   });
 
-  it("registers exactly two findings-slot entity fragments with distinct scopes", async () => {
+  it("registers exactly two findings-section entity fragments with distinct scopes", async () => {
     const { registry, FindingsFragment } = await loadFreshFeature();
 
     const hostFindings = registry.getEntityFragments("host", "findings");
-    expect(hostFindings.map((fragment) => fragment.id)).toEqual(["drift-host-findings"]);
+    expect(hostFindings.map((fragment) => fragment.id)).toEqual(["section:drift/host-findings"]);
     expect(hostFindings[0].entity).toBe("host");
-    expect(hostFindings[0].slot).toBe("findings");
+    expect(hostFindings[0]).toMatchObject({ section: "findings", title: "Findings", order: 10 });
     expect(await resolveComponent(hostFindings[0].component)).toBe(FindingsFragment);
 
     const serviceFindings = registry.getEntityFragments("service", "findings");
-    expect(serviceFindings.map((fragment) => fragment.id)).toEqual(["drift-service-findings"]);
+    expect(serviceFindings.map((fragment) => fragment.id)).toEqual(["section:drift/service-findings"]);
     expect(serviceFindings[0].entity).toBe("service");
-    expect(serviceFindings[0].slot).toBe("findings");
+    expect(serviceFindings[0]).toMatchObject({ section: "findings", title: "Findings", order: 10 });
     expect(await resolveComponent(serviceFindings[0].component)).toBe(FindingsFragment);
 
     // Exactly two entity fragments overall; both reuse the one FindingsFragment
-    // component and share the "findings" slot with separate host/service ids.
+    // component and share the "findings" section with separate host/service ids.
     expect(registry.getEntityFragments("host").map((f) => f.id)).toEqual([
-      "drift-host-findings",
+      "section:drift/host-findings",
     ]);
     expect(registry.getEntityFragments("service").map((f) => f.id)).toEqual([
-      "drift-service-findings",
+      "section:drift/service-findings",
     ]);
     expect(hostFindings[0].component).toBe(serviceFindings[0].component);
   });
 
   it("registers exactly one drift summary in the health-header slot", async () => {
     const { registry, HealthHeaderSlot, DriftHealthSummary } = await loadFreshFeature();
-    const summaries = registry.getSummaryFragments(HealthHeaderSlot);
-    expect(summaries.map((fragment) => fragment.id)).toEqual(["drift-summary"]);
+    const summaries = registry.getExtensions(HealthHeaderSlot.slotId);
+    expect(summaries.map((fragment) => fragment.id)).toEqual(["pill:drift/summary"]);
     expect(summaries[0].component).toBe(DriftHealthSummary);
   });
 
@@ -86,32 +86,34 @@ describe("drift feature registration", () => {
     // registered components typecheck against PageRegistration, EntityFragment-
     // Registration's EntityRef component, and the HealthSummary summary contract.
     const page: PageRegistration = {
-      id: "drift",
+      id: "page:drift/overview",
       path: "/drift",
       label: "Drift",
       component: DriftPage,
     };
     const hostFragment: EntityFragmentRegistration = {
-      id: "drift-host-findings",
+      id: "section:drift/host-findings",
       entity: "host",
-      slot: "findings",
+      section: "findings",
+      title: "Findings",
       component: FindingsFragment,
     };
     const serviceFragment: EntityFragmentRegistration = {
-      id: "drift-service-findings",
+      id: "section:drift/service-findings",
       entity: "service",
-      slot: "findings",
+      section: "findings",
+      title: "Findings",
       component: FindingsFragment,
     };
     const summary: SummaryFragmentRegistration<HealthSummary> = {
-      id: "drift-summary",
+      id: "pill:drift/summary",
       component: DriftHealthSummary,
     };
     expect([page.id, hostFragment.id, serviceFragment.id, summary.id]).toEqual([
-      "drift",
-      "drift-host-findings",
-      "drift-service-findings",
-      "drift-summary",
+      "page:drift/overview",
+      "section:drift/host-findings",
+      "section:drift/service-findings",
+      "pill:drift/summary",
     ]);
   });
 
@@ -120,7 +122,7 @@ describe("drift feature registration", () => {
     const { registry } = await loadFreshFeature();
     expect(() =>
       registry.registerPage({
-        id: "drift",
+        id: "page:drift/overview",
         path: "/drift-again",
         label: "Drift Again",
         component: () => null,

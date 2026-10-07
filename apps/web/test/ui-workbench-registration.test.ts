@@ -7,7 +7,7 @@ async function workbenchPages(dev: boolean) {
   vi.stubEnv("DEV", dev);
   await import("../src/features/_ui/index.js");
   const registry = await import("../src/registry/registry.js");
-  return registry.getPages().filter((page) => page.id === "ui-workbench");
+  return registry.getPages().filter((page) => page.id === "page:core/ui-workbench");
 }
 
 describe("ui workbench registration", () => {

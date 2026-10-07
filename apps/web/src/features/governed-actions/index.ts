@@ -6,7 +6,7 @@ import { ActionsPage } from "./pages.js";
 // contribution, no shell edit. Registration errors are intentionally uncaught so
 // eager discovery fails loudly (mirrors `drift-and-coverage/index.ts`).
 registerPage({
-  id: "actions",
+  id: "page:actions/overview",
   path: "/actions",
   label: "Actions",
   icon: "zap",

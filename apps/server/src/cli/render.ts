@@ -4,9 +4,14 @@ import { load, type ExitClass } from "../config/load.js";
 import { parseArgs } from "./args.js";
 import { formatFindings, formatToolError } from "./findings-format.js";
 
+/**
+ * Render the document boot would serve, so it loads exactly as boot does (`boot: true`):
+ * findings that only advise boot (a shared provider id, a refused credentialEnv) do not stop
+ * it. `deck validate` still reports them as warnings.
+ */
 export function runRender(argv: readonly string[]): ExitClass {
   const { dir, out = "deck.config.json" } = parseArgs(argv);
-  const result = load({ arg: dir });
+  const result = load({ arg: dir, boot: true });
 
   if (result.exitClass !== 0) {
     const diagnostic = result.exitClass === 1
@@ -20,8 +25,9 @@ export function runRender(argv: readonly string[]): ExitClass {
   return 0;
 }
 
+/** {@link runRender} as a string: the canonical document boot would serve. */
 export function renderConfig(dir: string): string {
-  const result = load({ arg: dir });
+  const result = load({ arg: dir, boot: true });
   if (result.exitClass === 0) return canonicalize(result.config);
   const diagnostic = result.exitClass === 1
     ? formatFindings(result.findings)

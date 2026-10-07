@@ -1,0 +1,132 @@
+import type { JsonObject } from "./json.js";
+import type { ExtensionId, SlotDecl } from "./manifest.js";
+
+/**
+ * The resolved UI manifest served at `GET /api/ui`: which modules are installed, and which of
+ * their pages, nav entries, slots and extensions render, where and with what config, after
+ * config overrides. The web shell renders from it; it is plain JSON.
+ */
+export interface UiManifest {
+  /** Version of this document's shape. */
+  uiApi: 1;
+  /** The shell's brand: the estate's name unless config sets one. */
+  brand: UiBrand;
+  /** Every known module (enabled or not), by id. */
+  modules: UiModule[];
+  /** Slots that enabled modules host, by id. */
+  slots: UiSlot[];
+  /** Routed pages of enabled modules, by id. */
+  pages: UiPage[];
+  /**
+   * The groups of the `app/nav` entries, in sidebar order: the groups the ui config lists, in
+   * its order, then any other group an entry names, by id. Only groups with an entry appear.
+   */
+  navGroups: UiNavGroup[];
+  /** Nav entries of enabled modules, by group (in `navGroups` order), order, then id. */
+  nav: UiNavItem[];
+  /** Enabled extensions, by slot, order, then id. */
+  extensions: UiExtension[];
+  /** Registered provider instances, by id. */
+  providers: UiProvider[];
+  /** Problems found while resolving; none of them stops the UI from rendering. */
+  findings: UiFinding[];
+}
+
+export interface UiBrand {
+  /** The product name the shell shows (sidebar header, document title). */
+  title: string;
+}
+
+export interface UiNavGroup {
+  id: string;
+  /** The group heading. */
+  label: string;
+  icon?: string;
+}
+
+export interface UiModule {
+  id: string;
+  version: string;
+  enabled: boolean;
+  /** Why the module is not enabled; absent when enabled. */
+  reason?: string;
+  /** `module`: a module on the module contract; `kernel`: a feature still wired into the kernel. */
+  origin: "module" | "kernel";
+}
+
+export interface UiSlot {
+  id: string;
+  accepts: SlotDecl["accepts"];
+  /** The module hosting the slot (`core` for the shell's own slots). */
+  module: string;
+}
+
+export interface UiPage {
+  id: ExtensionId;
+  module: string;
+  path: string;
+  title: string;
+  icon?: string;
+  /** Export name in the module's web component table. */
+  component: string;
+}
+
+export interface UiNavItem {
+  id: ExtensionId;
+  module: string;
+  /** The nav slot the entry attaches to (`app/nav` unless an override re-attaches it). */
+  slot: string;
+  page?: ExtensionId;
+  href?: string;
+  group: string;
+  /** The entry's label, defaulting to its page's title. */
+  label: string;
+  /** The entry's icon, defaulting to its page's icon. */
+  icon?: string;
+  order: number;
+}
+
+export interface UiExtension {
+  id: ExtensionId;
+  kind: string;
+  module: string;
+  slot: string;
+  order: number;
+  component?: string;
+  widget?: JsonObject;
+  config?: JsonObject;
+}
+
+export interface UiProvider {
+  id: string;
+  kind: string;
+}
+
+export type UiFindingCode =
+  | "UI_UNKNOWN_EXTENSION"
+  | "UI_UNKNOWN_SLOT"
+  | "UI_PAGE_PATH_COLLISION"
+  | "UI_DUPLICATE_ID"
+  | "UI_SLOT_KIND_MISMATCH"
+  | "UI_INVALID_OVERRIDE";
+
+export interface UiFinding {
+  code: UiFindingCode;
+  severity: "warning";
+  message: string;
+  /** The extension, page, nav or nav group id the finding is about. */
+  id?: string;
+  slot?: string;
+}
+
+/**
+ * A config override for one extension, page or nav entry, by id (the `ui.extensions` map of
+ * the `ui` config section, which config cannot set yet). Overrides replace: `false` disables
+ * it, `true` enables it, and an object replaces its `attachTo` and/or `config` wholesale (no
+ * deep merge). In a replacement `attachTo`, an omitted `slot` keeps the current slot and an
+ * omitted `order` is the default (100). A page takes only `enabled`, a nav entry `enabled` and
+ * `attachTo`. A malformed entry is ignored with a finding.
+ */
+export type UiOverride =
+  | boolean
+  | { enabled?: boolean; attachTo?: { slot?: string; order?: number }; config?: JsonObject };

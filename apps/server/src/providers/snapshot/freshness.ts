@@ -2,7 +2,7 @@ import { parse, pattern, toSeconds } from "iso8601-duration";
 
 import type { DeckConfigDocument, ObservedHost, SnapshotDocument } from "@deck/schema";
 
-import type { HostCollectionState, HostState } from "../../contract/snapshot.js";
+import type { HostCollectionState, HostState } from "@deck/contract";
 import { SNAPSHOT_READ_MESSAGES, SnapshotReadFailure } from "./errors.js";
 
 /** Default collection stale threshold used when config omits the field. */

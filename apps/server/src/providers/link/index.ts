@@ -1,5 +1,4 @@
-import type { Provider, ProviderHealth } from "../../contract/index.js";
-import { register } from "../registry.js";
+import type { ProviderHealth, ProviderSpec } from "@deck/module-sdk";
 
 export interface LinkDescriptor {
   label: string;
@@ -7,7 +6,7 @@ export interface LinkDescriptor {
   icon?: string;
 }
 
-export class LinkProvider implements Provider<LinkDescriptor> {
+export class LinkProvider implements ProviderSpec<LinkDescriptor> {
   readonly kind = "link";
 
   constructor(
@@ -22,8 +21,4 @@ export class LinkProvider implements Provider<LinkDescriptor> {
   async fetch(): Promise<LinkDescriptor> {
     return this.descriptor;
   }
-}
-
-export function registerLink(id: string, descriptor: LinkDescriptor): void {
-  register(new LinkProvider(id, descriptor));
 }

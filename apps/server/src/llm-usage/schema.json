@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LlmUsage", "type": "object", "additionalProperties": false, "description": "Settings of the llm-usage module, at modules.llm-usage: subscription plan-usage limits for Claude Code and Codex accounts.",
+  "properties": {
+    "claude": { "type": "object", "additionalProperties": false, "description": "Claude Code (Claude.ai Pro/Max) usage; presence enables the Claude panel.", "properties": {
+      "credentialsFile": { "type": "string", "description": "Read-only path to a Claude Code .credentials.json; enables the OAuth usage backfill. Never written or refreshed by deck." },
+      "transcriptsDir": { "type": "string", "description": "Optional read-only path to a Claude Code projects directory for the token-count transcript scan." },
+      "statusLine": { "type": "object", "additionalProperties": false, "description": "statusLine hook ingest; the route exists only when the credential is set.", "required": ["credentialEnv"], "properties": {
+        "credentialEnv": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "description": "Environment variable name holding the ingest bearer token, never its value." }
+      } },
+      "activeInterval": { "type": "string", "pattern": "^P(?!$)(\\d+(?:[.,]\\d+)?Y)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?W)?(\\d+(?:[.,]\\d+)?D)?(T(?=\\d)(\\d+(?:[.,]\\d+)?H)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?S)?)?$", "description": "ISO-8601 OAuth poll interval while a session is active; clamped to at least PT2M." },
+      "idleInterval": { "type": "string", "pattern": "^P(?!$)(\\d+(?:[.,]\\d+)?Y)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?W)?(\\d+(?:[.,]\\d+)?D)?(T(?=\\d)(\\d+(?:[.,]\\d+)?H)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?S)?)?$", "description": "ISO-8601 OAuth poll interval while idle; clamped to at least PT2M." }
+    } },
+    "codex": { "type": "object", "additionalProperties": false, "description": "Codex (ChatGPT subscription) usage; presence enables the Codex panel.", "required": ["codexHome"], "properties": {
+      "codexHome": { "type": "string", "description": "Read-write CODEX_HOME holding auth.json (the app-server refreshes it); mount the host's ~/.codex at the same path so its absolute symlinks resolve." },
+      "command": { "type": "string", "description": "Codex executable path as deck sees it; defaults to codex on PATH. The deck image ships no codex: mount the host's Linux binary and point this at it." },
+      "rolloutDir": { "type": "string", "description": "Optional rollout sessions directory; defaults to <codexHome>/sessions." }
+    } },
+    "thresholds": { "type": "object", "additionalProperties": false, "description": "Percent-used bands for warn and danger tones.", "properties": {
+      "warn": { "type": "number", "minimum": 0, "maximum": 100, "description": "Percent used at which a bar turns warn; default 75." },
+      "danger": { "type": "number", "minimum": 0, "maximum": 100, "description": "Percent used at which a bar turns danger; default 90." }
+    } },
+    "idlePause": { "type": "string", "pattern": "^P(?!$)(\\d+(?:[.,]\\d+)?Y)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?W)?(\\d+(?:[.,]\\d+)?D)?(T(?=\\d)(\\d+(?:[.,]\\d+)?H)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?S)?)?$", "description": "ISO-8601 duration without a viewer after which upstream polling pauses; default PT5M." }
+  }
+}

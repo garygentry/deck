@@ -10,19 +10,18 @@
  */
 import { randomUUID } from "node:crypto";
 
+import { apiErrorBody } from "@deck/module-sdk";
 import { type Context, type Hono } from "hono";
 import { stream } from "hono/streaming";
-import type { Logger } from "pino";
 
-import type { Action } from "@deck/schema";
-
-import type { ActionsCapabilityResponse } from "../contract/index.js";
-import { apiError, type AppDeps } from "../server/app.js";
 import type { AuditEntry, AuditStore } from "./audit.js";
+import type { Action } from "./config.generated.js";
 import { normalizeActionFailure } from "./errors.js";
 import { encodeRunEvent } from "./events.js";
 import type { ResolvedInvocation } from "./executor.js";
 import { lookupRunner } from "./runners.js";
+import type { ActionsDeps, ActionsLogger } from "./runtime.js";
+import type { ActionsCapabilityResponse } from "./types.js";
 import { validateActionParams } from "./validate.js";
 
 /**
@@ -32,9 +31,9 @@ import { validateActionParams } from "./validate.js";
  * a pre-run refusal.
  */
 export const ACTION_REFUSAL_CODES = {
-  /** Capability disabled at deployment -> HTTP 403. */
+  /** Capability disabled at deployment -> HTTP 403 (answered by the module's `whenDisabled`). */
   ACTIONS_DISABLED: "ACTIONS_DISABLED",
-  /** Action id not present in merged config.actions -> HTTP 404. */
+  /** Action id not present in merged config modules.actions.actions -> HTTP 404. */
   ACTION_UNKNOWN: "ACTION_UNKNOWN",
   /** Runner name did not resolve in the manifest -> HTTP 422. */
   RUNNER_UNRESOLVED: "RUNNER_UNRESOLVED",
@@ -62,46 +61,45 @@ export const ACTION_LOOKUP_CODES = {
   AUDIT_NOT_FOUND: "AUDIT_NOT_FOUND",
 } as const;
 
+/** What the action routes need. */
+export interface ActionRouteDeps {
+  /** The declared actions: `modules.actions.actions` of the merged config. */
+  declared(): readonly Action[];
+  logger: ActionsLogger;
+  actions: ActionsDeps;
+}
+
 /**
- * Register the four action routes (one write run route, one write cancel route, two
- * read audit routes) on the shared Hono app. Called from createApp BEFORE the static
- * fallback. When deps.actions is absent the routes still register but
- * refuse with 403 (capability off).
+ * Register the action routes (the capability probe, the run and cancel writes, and the two
+ * audit reads) on the module's sub-app, which the host mounts at `/api/m/actions` and at
+ * the legacy `/api/actions`; paths here are relative to that prefix. They exist only while
+ * the module runs (the capability is on): switched off, the module's declared `whenDisabled`
+ * answers stand in for them.
  */
-export function registerActionRoutes(app: Hono, deps: AppDeps): void {
-  // Capability probe: always 200, so the web can learn the capability is off and
-  // skip the audit poll instead of provoking a 403 on every /actions visit.
-  app.get("/api/actions", (context) => {
-    const enabled = deps.actions !== undefined && deps.actions.runtime.enabled;
-    return context.json({ enabled } satisfies ActionsCapabilityResponse);
-  });
-  app.post("/api/actions/:id", (context) => runAction(context, deps));
-  app.post("/api/actions/runs/:runId/cancel", (context) => cancelRun(context, deps));
-  app.get("/api/actions/audit", (context) => listAudit(context, deps));
-  app.get("/api/actions/audit/:runId", (context) => readAudit(context, deps));
+export function registerActionRoutes(app: Hono, deps: ActionRouteDeps): void {
+  // Capability probe (switched off, `whenDisabled` answers `{"enabled": false}`).
+  app.get("/", (context) => context.json({ enabled: true } satisfies ActionsCapabilityResponse));
+  app.post("/:id", (context) => runAction(context, deps));
+  app.post("/runs/:runId/cancel", (context) => cancelRun(context, deps));
+  app.get("/audit", (context) => listAudit(context, deps));
+  app.get("/audit/:runId", (context) => readAudit(context, deps));
+}
+
+/** Answer with deck's API error envelope. */
+function apiError(context: Context, status: 400 | 403 | 404 | 422, error: string, code: string): Response {
+  return context.json(apiErrorBody(error, code), status);
 }
 
 /** POST /api/actions/:id — pre-run gating pipeline then NDJSON stream. */
-async function runAction(context: Context, deps: AppDeps): Promise<Response> {
+async function runAction(context: Context, deps: ActionRouteDeps): Promise<Response> {
   const id = context.req.param("id")!; // always present: the :id route matched
   const source = deriveSource(context);
   const actions = deps.actions;
 
-  // Gate 1 — capability.
-  if (actions === undefined || !actions.runtime.enabled) {
-    if (actions !== undefined) {
-      await recordRejection(actions.audit, { actionId: id, runner: "", params: {}, source }, deps.logger);
-    }
-    return apiError(
-      context,
-      ACTION_REFUSAL_STATUS.ACTIONS_DISABLED,
-      "The actions capability is disabled on this deck instance.",
-      ACTION_REFUSAL_CODES.ACTIONS_DISABLED,
-    );
-  }
+  // Gate 1 — capability: the routes exist only while it is on (see registerActionRoutes).
 
   // Gate 2 — declared id.
-  const action: Action | undefined = (deps.config.actions ?? []).find((a) => a.id === id);
+  const action: Action | undefined = deps.declared().find((a) => a.id === id);
   if (action === undefined) {
     await recordRejection(actions.audit, { actionId: id, runner: "", params: {}, source }, deps.logger);
     return apiError(
@@ -209,16 +207,8 @@ async function runAction(context: Context, deps: AppDeps): Promise<Response> {
 }
 
 /** POST /api/actions/runs/:runId/cancel — explicit cancel. */
-function cancelRun(context: Context, deps: AppDeps): Response {
+function cancelRun(context: Context, deps: ActionRouteDeps): Response {
   const actions = deps.actions;
-  if (actions === undefined || !actions.runtime.enabled) {
-    return apiError(
-      context,
-      ACTION_REFUSAL_STATUS.ACTIONS_DISABLED,
-      "The actions capability is disabled on this deck instance.",
-      ACTION_REFUSAL_CODES.ACTIONS_DISABLED,
-    );
-  }
   const runId = context.req.param("runId")!; // always present: the :runId route matched
   if (!actions.executor.cancel(runId)) {
     return apiError(context, 404, `No in-flight run with id '${runId}'.`, ACTION_LOOKUP_CODES.RUN_NOT_FOUND);
@@ -227,30 +217,14 @@ function cancelRun(context: Context, deps: AppDeps): Response {
 }
 
 /** GET /api/actions/audit — newest-first list. */
-async function listAudit(context: Context, deps: AppDeps): Promise<Response> {
+async function listAudit(context: Context, deps: ActionRouteDeps): Promise<Response> {
   const actions = deps.actions;
-  if (actions === undefined) {
-    return apiError(
-      context,
-      ACTION_REFUSAL_STATUS.ACTIONS_DISABLED,
-      "The actions capability is disabled on this deck instance.",
-      ACTION_REFUSAL_CODES.ACTIONS_DISABLED,
-    );
-  }
   return context.json(await actions.audit.list());
 }
 
 /** GET /api/actions/audit/:runId — one entry + full output. */
-async function readAudit(context: Context, deps: AppDeps): Promise<Response> {
+async function readAudit(context: Context, deps: ActionRouteDeps): Promise<Response> {
   const actions = deps.actions;
-  if (actions === undefined) {
-    return apiError(
-      context,
-      ACTION_REFUSAL_STATUS.ACTIONS_DISABLED,
-      "The actions capability is disabled on this deck instance.",
-      ACTION_REFUSAL_CODES.ACTIONS_DISABLED,
-    );
-  }
   const runId = context.req.param("runId")!; // always present: the :runId route matched
   const detail = await actions.audit.read(runId);
   if (detail === undefined) {
@@ -270,13 +244,13 @@ interface RejectionInput {
 
 /**
  * Append one `rejected` audit entry before returning a refusal. An audit-write failure
- * here must never replace the caller's typed refusal (ACTIONS_DISABLED, ACTION_UNKNOWN,
+ * here must never replace the caller's typed refusal (ACTION_UNKNOWN,
  * etc.) with a generic 500 — it degrades to a logged warning instead.
  */
 async function recordRejection(
   audit: AuditStore,
   input: RejectionInput,
-  logger: Logger,
+  logger: ActionsLogger,
 ): Promise<void> {
   const entry: AuditEntry = {
     runId: randomUUID(),

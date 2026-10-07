@@ -32,7 +32,7 @@ describe("sources-docs-and-configs feature registration", () => {
 
   it("registers exactly the /docs page with the DocsPage component", async () => {
     const { registry, DocsPage } = await loadFreshFeature();
-    const pages = registry.getPages().filter((page) => page.id === "docs");
+    const pages = registry.getPages().filter((page) => page.id === "page:sources/docs");
     expect(pages).toHaveLength(1);
     const [page] = pages;
     expect(page.path).toBe("/docs");
@@ -43,36 +43,33 @@ describe("sources-docs-and-configs feature registration", () => {
 
   it("registers exactly the /configs page with id configs-view (NOT the slot id)", async () => {
     const { registry, ConfigsPage } = await loadFreshFeature();
-    const pages = registry.getPages().filter((page) => page.id === "configs-view");
+    const pages = registry.getPages().filter((page) => page.id === "page:sources/configs");
     expect(pages).toHaveLength(1);
     const [page] = pages;
     expect(page.path).toBe("/configs");
     expect(page.label).toBe("Configs");
     expect(await resolveComponent(page.component)).toBe(ConfigsPage);
-    // The page id is "configs-view", NOT "configs" (which is the entity SLOT id — a distinct
-    // namespace). No page carries the slot id.
-    expect(registry.getPages().some((p) => p.id === "configs")).toBe(false);
     expect(registry.getPages().filter((p) => p.path === "/configs")).toHaveLength(1);
   });
 
-  it("registers the fragment on the host 'configs' slot", async () => {
+  it("registers the fragment in the host 'Configs' section, after findings", async () => {
     const { registry, OwnedConfigsFragment } = await loadFreshFeature();
     const fragments = registry.getEntityFragments("host", "configs");
     expect(await Promise.all(fragments.map((f) => resolveComponent(f.component)))).toContain(OwnedConfigsFragment);
-    const owned = fragments.filter((f) => f.id === "owned-configs-host");
+    const owned = fragments.filter((f) => f.id === "section:sources/host-configs");
     expect(owned).toHaveLength(1);
     expect(owned[0].entity).toBe("host");
-    expect(owned[0].slot).toBe("configs");
+    expect(owned[0]).toMatchObject({ section: "configs", title: "Configs", order: 20 });
   });
 
-  it("registers the fragment on the service 'configs' slot", async () => {
+  it("registers the fragment in the service 'Configs' section, after findings", async () => {
     const { registry, OwnedConfigsFragment } = await loadFreshFeature();
     const fragments = registry.getEntityFragments("service", "configs");
     expect(await Promise.all(fragments.map((f) => resolveComponent(f.component)))).toContain(OwnedConfigsFragment);
-    const owned = fragments.filter((f) => f.id === "owned-configs-service");
+    const owned = fragments.filter((f) => f.id === "section:sources/service-configs");
     expect(owned).toHaveLength(1);
     expect(owned[0].entity).toBe("service");
-    expect(owned[0].slot).toBe("configs");
+    expect(owned[0]).toMatchObject({ section: "configs", title: "Configs", order: 20 });
   });
 
   it("is an import-side-effect only module that exports nothing", async () => {
@@ -84,12 +81,12 @@ describe("sources-docs-and-configs feature registration", () => {
     const { registry } = await loadFreshFeature();
     const featurePages = registry
       .getPages()
-      .filter((p) => p.id === "docs" || p.id === "configs-view");
+      .filter((p) => p.id === "page:sources/docs" || p.id === "page:sources/configs");
     expect(featurePages).toHaveLength(2);
     const featureFragments = [
       ...registry.getEntityFragments("host", "configs"),
       ...registry.getEntityFragments("service", "configs"),
-    ].filter((f) => f.id === "owned-configs-host" || f.id === "owned-configs-service");
+    ].filter((f) => f.id === "section:sources/host-configs" || f.id === "section:sources/service-configs");
     expect(featureFragments).toHaveLength(2);
   });
 
@@ -98,7 +95,7 @@ describe("sources-docs-and-configs feature registration", () => {
     const { registry } = await loadFreshFeature();
     expect(() =>
       registry.registerPage({
-        id: "docs",
+        id: "page:sources/docs",
         path: "/docs-again",
         label: "Docs Again",
         component: () => null,
@@ -111,25 +108,26 @@ describe("sources-docs-and-configs feature registration", () => {
     // Compile-time proof (checked by tsc over the test tree) that the registered components
     // typecheck against their registration shapes.
     const docs: PageRegistration = {
-      id: "docs",
+      id: "page:sources/docs",
       path: "/docs",
       label: "Docs",
       component: DocsPage,
     };
     const configs: PageRegistration = {
-      id: "configs-view",
+      id: "page:sources/configs",
       path: "/configs",
       label: "Configs",
       component: ConfigsPage,
     };
     const fragment: EntityFragmentRegistration = {
-      id: "owned-configs-host",
+      id: "section:sources/host-configs",
       entity: "host",
-      slot: "configs",
+      section: "configs",
+      title: "Configs",
       component: OwnedConfigsFragment,
     };
-    expect(docs.id).toBe("docs");
-    expect(configs.id).toBe("configs-view");
-    expect(fragment.slot).toBe("configs");
+    expect(docs.id).toBe("page:sources/docs");
+    expect(configs.id).toBe("page:sources/configs");
+    expect(fragment.section).toBe("configs");
   });
 });

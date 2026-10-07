@@ -1,0 +1,267 @@
+{
+  "primary.combined": {
+    "snapshotValidate": {
+      "exitClass": 0,
+      "stdout": "clean\n",
+      "stderr": ""
+    }
+  },
+  "primary.fresh": {
+    "snapshotValidate": {
+      "exitClass": 0,
+      "stdout": "clean\n",
+      "stderr": ""
+    }
+  },
+  "primary.stale": {
+    "snapshotValidate": {
+      "exitClass": 0,
+      "stdout": "clean\n",
+      "stderr": ""
+    }
+  },
+  "primary.partial": {
+    "snapshotValidate": {
+      "exitClass": 0,
+      "stdout": "clean\n",
+      "stderr": ""
+    }
+  },
+  "primary.unreachable": {
+    "snapshotValidate": {
+      "exitClass": 0,
+      "stdout": "clean\n",
+      "stderr": ""
+    }
+  },
+  "snapshot-host-duplicate": {
+    "snapshotValidate": {
+      "exitClass": 1,
+      "stdout": "",
+      "stderr": "error  /hosts/1  SNAPSHOT_HOST_DUPLICATE  Observed host echo is duplicated.\n"
+    }
+  },
+  "snapshot-service-duplicate": {
+    "snapshotValidate": {
+      "exitClass": 1,
+      "stdout": "",
+      "stderr": "error  /services/1  SNAPSHOT_SERVICE_DUPLICATE  Observed service echo/pulse is duplicated.\n"
+    }
+  },
+  "drift-id-duplicate": {
+    "snapshotValidate": {
+      "exitClass": 1,
+      "stdout": "",
+      "stderr": "error  /drift/1  DRIFT_ID_DUPLICATE  Drift finding same is duplicated.\n"
+    }
+  },
+  "snapshot-host-undeclared": {
+    "snapshotValidate": {
+      "exitClass": 0,
+      "stdout": "clean\n",
+      "stderr": ""
+    },
+    "envelope": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": "snapshot",
+        "kind": "snapshot",
+        "freshness": {
+          "state": "fresh",
+          "observedAt": "2026-01-01T00:00:00.000Z",
+          "ageMs": 0,
+          "ttlMs": 60000
+        },
+        "data": {
+          "snapshot": {
+            "schemaVersion": 1,
+            "generatedAt": "2026-01-01T00:00:00Z",
+            "hosts": [
+              {
+                "name": "absent",
+                "coverage": "collected",
+                "collectedAt": "2026-01-01T00:00:00Z"
+              }
+            ]
+          },
+          "findings": [
+            {
+              "code": "SNAPSHOT_HOST_UNDECLARED",
+              "severity": "error",
+              "path": "/hosts/0",
+              "message": "Observed host absent is not declared in the config."
+            }
+          ],
+          "hostStates": {
+            "absent": {
+              "state": "fresh",
+              "collectedAt": "2026-01-01T00:00:00Z",
+              "ageMs": 0,
+              "pastStaleThreshold": false
+            }
+          },
+          "lastReadAt": "2026-01-01T00:00:00.000Z",
+          "readError": null
+        },
+        "error": null
+      }
+    }
+  },
+  "snapshot-service-undeclared": {
+    "snapshotValidate": {
+      "exitClass": 0,
+      "stdout": "clean\n",
+      "stderr": ""
+    },
+    "envelope": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": "snapshot",
+        "kind": "snapshot",
+        "freshness": {
+          "state": "fresh",
+          "observedAt": "2026-01-01T00:00:00.000Z",
+          "ageMs": 0,
+          "ttlMs": 60000
+        },
+        "data": {
+          "snapshot": {
+            "schemaVersion": 1,
+            "generatedAt": "2026-01-01T00:00:00Z",
+            "hosts": [
+              {
+                "name": "echo",
+                "coverage": "collected",
+                "collectedAt": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "services": [
+              {
+                "host": "echo",
+                "name": "absent",
+                "state": "running"
+              }
+            ]
+          },
+          "findings": [
+            {
+              "code": "SNAPSHOT_SERVICE_UNDECLARED",
+              "severity": "error",
+              "path": "/services/0",
+              "message": "Observed service echo/absent is not declared in the config."
+            }
+          ],
+          "hostStates": {
+            "echo": {
+              "state": "fresh",
+              "collectedAt": "2026-01-01T00:00:00Z",
+              "ageMs": 0,
+              "pastStaleThreshold": false
+            }
+          },
+          "lastReadAt": "2026-01-01T00:00:00.000Z",
+          "readError": null
+        },
+        "error": null
+      }
+    }
+  },
+  "drift-location-unresolved": {
+    "snapshotValidate": {
+      "exitClass": 0,
+      "stdout": "clean\n",
+      "stderr": ""
+    },
+    "envelope": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": "snapshot",
+        "kind": "snapshot",
+        "freshness": {
+          "state": "fresh",
+          "observedAt": "2026-01-01T00:00:00.000Z",
+          "ageMs": 0,
+          "ttlMs": 60000
+        },
+        "data": {
+          "snapshot": {
+            "schemaVersion": 1,
+            "generatedAt": "2026-01-01T00:00:00Z",
+            "drift": [
+              {
+                "id": "drift-one",
+                "severity": "warning",
+                "location": {
+                  "host": "absent"
+                },
+                "category": "fixture",
+                "message": "Invented drift"
+              }
+            ]
+          },
+          "findings": [
+            {
+              "code": "DRIFT_LOCATION_UNRESOLVED",
+              "severity": "error",
+              "path": "/drift/0/location",
+              "message": "Drift location absent is not declared in the config."
+            }
+          ],
+          "hostStates": {},
+          "lastReadAt": "2026-01-01T00:00:00.000Z",
+          "readError": null
+        },
+        "error": null
+      }
+    }
+  },
+  "host-not-collected": {
+    "snapshotValidate": {
+      "exitClass": 0,
+      "stdout": "clean\n",
+      "stderr": ""
+    },
+    "envelope": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": "snapshot",
+        "kind": "snapshot",
+        "freshness": {
+          "state": "fresh",
+          "observedAt": "2026-01-01T00:00:00.000Z",
+          "ageMs": 0,
+          "ttlMs": 60000
+        },
+        "data": {
+          "snapshot": {
+            "schemaVersion": 1,
+            "generatedAt": "2026-01-01T00:00:00Z"
+          },
+          "findings": [
+            {
+              "code": "HOST_NOT_COLLECTED",
+              "severity": "info",
+              "path": "/hosts",
+              "message": "Configured host echo was not collected."
+            }
+          ],
+          "hostStates": {
+            "echo": {
+              "state": "never-collected",
+              "collectedAt": null,
+              "ageMs": null,
+              "pastStaleThreshold": false
+            }
+          },
+          "lastReadAt": "2026-01-01T00:00:00.000Z",
+          "readError": null
+        },
+        "error": null
+      }
+    }
+  }
+}

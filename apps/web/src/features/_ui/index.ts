@@ -6,7 +6,7 @@ import { registerPage } from "../../registry/registry.js";
 // none of its code ships.
 if (import.meta.env.DEV) {
   registerPage({
-    id: "ui-workbench",
+    id: "page:core/ui-workbench",
     path: "/_ui",
     label: "UI workbench",
     component: lazy(() => import("./UiWorkbench.js").then((m) => ({ default: m.UiWorkbench }))),

@@ -30,7 +30,7 @@ export function benchmarkEstate(options: BenchmarkOptions = {}): { config: DeckC
     }
   }
   return {
-    config: { schemaVersion: 1, estate: { name: "benchmark-estate" }, hosts, services },
+    config: { schemaVersion: 2, estate: { name: "benchmark-estate" }, hosts, services },
     snapshot: { schemaVersion: 1, generatedAt: "2026-01-01T00:00:00Z", hosts: observedHosts, services: observedServices },
   };
 }

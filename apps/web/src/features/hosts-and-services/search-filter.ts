@@ -1,4 +1,4 @@
-import type { HostCollectionState } from "@deck/server";
+import type { HostCollectionState } from "@deck/contract";
 import type { HostRow, ServiceRow } from "./model.js";
 
 /** Observed-state selection token; adds the explicit absent state to `ServiceState`. */

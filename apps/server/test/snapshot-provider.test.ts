@@ -8,28 +8,23 @@ vi.mock("@deck/schema", async (importOriginal) => {
   return { ...actual, validateSnapshot: vi.fn(actual.validateSnapshot) };
 });
 
-// Replace the registry with a spy so the registration helper can be inspected
-// without constructing real slots, timers, or sources.
-vi.mock("../src/providers/registry.js", () => ({
-  register: vi.fn(),
-}));
-
+import type { ProviderKindContext } from "@deck/module-sdk";
 import { validateSnapshot, type DeckConfigDocument } from "@deck/schema";
 
 import { POLL_DEFAULTS, type ProviderFetchContext } from "../src/contract/index.js";
 import { logger, type SnapshotReadEvent } from "../src/log/logger.js";
 import { SNAPSHOT_READ_MESSAGES, SnapshotReadFailure } from "../src/providers/snapshot/errors.js";
-import { SnapshotProvider, registerSnapshot } from "../src/providers/snapshot/index.js";
+import { SnapshotProvider } from "../src/providers/snapshot/index.js";
+import { snapshotModule } from "../src/providers/snapshot/module.js";
 import type {
   SnapshotRevision,
   SnapshotSource,
   SnapshotSourceResult,
 } from "../src/providers/snapshot/source.js";
-import { register } from "../src/providers/registry.js";
 
 /** A configured host declared in the estate. */
 const config = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   estate: { name: "example-estate", freshness: { snapshotStaleAfter: "PT6H" } },
   hosts: [{ name: "host-a", kind: "vm", purpose: "Example workload" }],
 } satisfies DeckConfigDocument;
@@ -258,7 +253,7 @@ describe("SnapshotProvider.fetch — changed reads", () => {
 
   it("refuses an invalid stale threshold before accepting the revision", async () => {
     const badConfig = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       estate: { name: "e", freshness: { snapshotStaleAfter: "not-a-duration" } },
       hosts: [{ name: "host-a", kind: "vm", purpose: "p" }],
     } satisfies DeckConfigDocument;
@@ -327,17 +322,29 @@ describe("SnapshotProvider.fetch — revision acceptance", () => {
   });
 });
 
-describe("registerSnapshot", () => {
-  it("registers a stable snapshot singleton with the exact engine policy", () => {
-    const source = new FakeSource([]);
-    registerSnapshot("snapshot", { source, config });
+describe("the snapshot module's kind handler", () => {
+  const handler = snapshotModule.kinds!.snapshot!.instances!;
+  const contextWith = (env: Record<string, string>) =>
+    ({
+      env: { get: (name: string) => env[name] },
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      envFor: () => ({ get: () => undefined }),
+      estate: config,
+    }) as unknown as ProviderKindContext;
 
-    const registerMock = vi.mocked(register);
-    expect(registerMock).toHaveBeenCalledTimes(1);
-    const [provider, options] = registerMock.mock.calls[0]!;
-    expect(provider.id).toBe("snapshot");
-    expect(provider.kind).toBe("snapshot");
-    expect(options).toEqual({
+  it("offers nothing when DECK_SNAPSHOT_SOURCE is unset", () => {
+    expect(handler([], contextWith({}))).toEqual([]);
+  });
+
+  it("offers the fixed-id snapshot singleton with the exact engine policy", () => {
+    const offers = handler([], contextWith({ DECK_SNAPSHOT_SOURCE: "/srv/snapshot.json" }));
+    expect(offers).toHaveLength(1);
+    const [offer] = offers;
+    expect(offer!.provider).toBeInstanceOf(SnapshotProvider);
+    expect(offer!.provider.id).toBe("snapshot");
+    expect(offer!.provider.kind).toBe("snapshot");
+    expect(offer!.fixedId).toBe(true);
+    expect(offer!.timing).toEqual({
       pollIntervalMs: 60_000,
       ttlMs: 60_000,
       unreachableAfterMs: 180_000,

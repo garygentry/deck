@@ -121,12 +121,19 @@ export interface AuditLogger {
  * Ensures `actions/` and `actions/runs/` exist (idempotent). Append-only:
  * nothing here rotates, truncates, or deletes.
  *
- * @param dataDir Resolved ActionsRuntime.dataDir (DECK_DATA_DIR).
+ * @param dataDir The data root (DECK_DATA_DIR).
  * @param logger  Optional structured logger for corrupt-line warnings.
  * @throws If the directories cannot be created (surfaced at boot, fail-fast).
  */
 export function createAuditStore(dataDir: string, logger?: AuditLogger): AuditStore {
-  const baseDir = join(dataDir, "actions");
+  return openAuditStore(join(dataDir, "actions"), logger);
+}
+
+/**
+ * Open the audit store at `baseDir` itself (the actions module's data dir,
+ * `$DECK_DATA_DIR/actions`): `audit.jsonl` plus `runs/`, created if missing.
+ */
+export function openAuditStore(baseDir: string, logger?: AuditLogger): AuditStore {
   const runsDir = join(baseDir, "runs");
   const indexPath = join(baseDir, "audit.jsonl");
   mkdirSync(runsDir, { recursive: true }); // also creates baseDir

@@ -23,6 +23,7 @@ import {
   buildScaleGeneration,
   FIXTURE,
 } from "./inventory-fixture.js";
+import { perfBudget } from "./perf-budget.js";
 
 /**
  * Stable browser presentation of the drift-and-coverage feature against the real
@@ -1465,7 +1466,7 @@ test.describe("browser performance gates (exact 150/300/1,000 scale)", () => {
     // eslint-disable-next-line no-console
     console.info("drift.e2e.render", { samples, fastestMs: Math.min(...samples) });
     expect(Math.min(...samples), `render samples ${samples.join(", ")} ms`).toBeLessThan(
-      1000,
+      perfBudget(1000),
     );
   });
 
@@ -1731,7 +1732,7 @@ test.describe("browser performance gates (exact 150/300/1,000 scale)", () => {
     expect(
       Math.min(...searchSamples),
       `search samples ${searchSamples.join(", ")} ms`,
-    ).toBeLessThan(100);
+    ).toBeLessThan(perfBudget(100));
 
     const facetSamples = await measureFilter(
       "severity",
@@ -1751,7 +1752,7 @@ test.describe("browser performance gates (exact 150/300/1,000 scale)", () => {
     expect(
       Math.min(...facetSamples),
       `facet samples ${facetSamples.join(", ")} ms`,
-    ).toBeLessThan(100);
+    ).toBeLessThan(perfBudget(100));
 
     const coverageSamples = await measureFilter(
       "coverage",
@@ -1770,7 +1771,7 @@ test.describe("browser performance gates (exact 150/300/1,000 scale)", () => {
     expect(
       Math.min(...coverageSamples),
       `coverage samples ${coverageSamples.join(", ")} ms`,
-    ).toBeLessThan(100);
+    ).toBeLessThan(perfBudget(100));
 
     // Correctness: each operation commits its exact expected filtered result.
     await page.getByRole("searchbox", { name: "Search drift findings" }).fill(SEARCH_ID);

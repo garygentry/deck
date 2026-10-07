@@ -7,11 +7,14 @@
 import type { Logger } from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { DeckConfig, HealthResponse, LlmUsageResponse } from "../src/contract/index.js";
+import type { DeckConfig, HealthResponse } from "../src/contract/index.js";
 import { LlmUsageCollector } from "../src/llm-usage/collector.js";
+import type { LlmUsageResponse } from "../src/llm-usage/types.js";
 import type { ResolvedLlmUsageConfig } from "../src/llm-usage/config.js";
+import { createLlmUsageModule } from "../src/llm-usage/module.js";
 import { bearerMatches, INGEST_MAX_BYTES } from "../src/llm-usage/routes.js";
 import { createApp, type AppDeps } from "../src/server/app.js";
+import { testHost } from "./util/modules.js";
 
 const TOKEN = "ingest-secret-token";
 
@@ -21,23 +24,41 @@ const usageConfig: ResolvedLlmUsageConfig = {
   claude: { credentialsFile: "/c.json", transcriptsDir: null, statusLineCredentialEnv: "INGEST", activeMs: 120_000, idleMs: 300_000 },
   codex: null,
 };
+/** The `modules.llm-usage` section `usageConfig` resolves from. */
+const usageSection = { claude: { credentialsFile: "/c.json", statusLine: { credentialEnv: "INGEST" } }, thresholds: { warn: 75, danger: 90 } };
 
 const collectors: LlmUsageCollector[] = [];
 afterEach(() => {
   while (collectors.length) collectors.pop()?.stop();
 });
 
+/**
+ * The app with the llm-usage module started through the module host, as boot runs it. The
+ * host starts asynchronously, so each request waits for the started app.
+ */
 function buildApp(llmUsage: "off" | "no-token" | "on") {
   const fetchOauth = vi.fn(async () => ({ ok: true as const, body: { limits: [{ kind: "session", percent: 12 }] }, plan: "pro" }));
+  const module = createLlmUsageModule({
+    createCollector: (_config, deps) => {
+      const collector = new LlmUsageCollector(usageConfig, { ...deps, fetchOauth });
+      collectors.push(collector);
+      return collector;
+    },
+  });
+  const { host } = testHost([module], {
+    sectionOf: () => (llmUsage === "off" ? undefined : usageSection),
+    env: llmUsage === "on" ? { INGEST: TOKEN } : {},
+  });
   const base: AppDeps = {
     config: {} as DeckConfig,
     providers: { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [] },
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger,
+    modules: host,
   };
-  if (llmUsage === "off") return { app: createApp(base), fetchOauth };
-  const collector = new LlmUsageCollector(usageConfig, { fetchOauth });
-  collectors.push(collector);
-  const app = createApp({ ...base, llmUsage: { collector, ingestToken: llmUsage === "on" ? TOKEN : null } });
+  const started = host.start().then(() => createApp(base));
+  const app = {
+    request: async (...args: Parameters<ReturnType<typeof createApp>["request"]>) => (await started).request(...args),
+  } as ReturnType<typeof createApp>;
   return { app, fetchOauth };
 }
 

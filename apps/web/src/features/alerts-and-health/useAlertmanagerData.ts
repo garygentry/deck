@@ -1,7 +1,6 @@
-import { POLL_DEFAULTS } from "@deck/server";
-import type { FreshnessStamp, ProviderEnvelope } from "@deck/server";
-import { useEffect, useState } from "react";
-import { isProviderPollable } from "../../shell/providers-index.js";
+import { POLL_DEFAULTS } from "@deck/contract";
+import type { FreshnessStamp } from "@deck/contract";
+import { useProvider } from "../../data/index.js";
 
 /**
  * One active alert, normalized from Alertmanager v2. Web-side mirror of the canonical server-side
@@ -52,8 +51,6 @@ export interface AlertmanagerData {
   loading: boolean;
 }
 
-const INITIAL: AlertmanagerData = { data: null, freshness: null, error: null, loading: true };
-
 /**
  * Poll `/api/providers/alertmanager` on `intervalMs`. Identical shape and body to
  * `usePrometheusData`. Callers pass no argument in production; the parameter exists only so tests
@@ -62,50 +59,11 @@ const INITIAL: AlertmanagerData = { data: null, freshness: null, error: null, lo
 export function useAlertmanagerData(
   intervalMs: number = POLL_DEFAULTS.pollIntervalMs,
 ): AlertmanagerData {
-  const [state, setState] = useState<AlertmanagerData>(INITIAL);
-
-  useEffect(() => {
-    let live = true;
-
-    async function poll(): Promise<void> {
-      // Poll only when alertmanager is registered; otherwise the null envelope
-      // yields the same not-configured render without a console 404.
-      const envelope = (await isProviderPollable("alertmanager"))
-        ? await getJson<ProviderEnvelope<AlertmanagerResult>>("/api/providers/alertmanager")
-        : null;
-      if (!live) return;
-      setState(
-        envelope === null
-          ? { data: null, freshness: null, error: null, loading: false }
-          : {
-              data: envelope.data,
-              freshness: envelope.freshness,
-              error: envelope.error,
-              loading: false,
-            },
-      );
-    }
-
-    void poll();
-    const timer = setInterval(() => void poll(), intervalMs);
-
-    return () => {
-      live = false;
-      clearInterval(timer);
-    };
-  }, [intervalMs]);
-
-  return state;
-}
-
-async function getJson<T>(url: string): Promise<T | null> {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) return null;
-    return (await response.json()) as T;
-  } catch (error) {
-    // Degrade to a not-configured state, but leave a breadcrumb for field debugging.
-    console.warn(`[deck] request failed: ${url}`, error);
-    return null;
-  }
+  // Shared with every other reader of this provider (the page and the header pill poll once).
+  // An unlisted provider resolves to the same not-configured render without a console 404.
+  const { envelope, loading } = useProvider<AlertmanagerResult>("alertmanager", { intervalMs });
+  if (loading) return { data: null, freshness: null, error: null, loading: true };
+  return envelope === null
+    ? { data: null, freshness: null, error: null, loading: false }
+    : { data: envelope.data, freshness: envelope.freshness, error: envelope.error, loading: false };
 }

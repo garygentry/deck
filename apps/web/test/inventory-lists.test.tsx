@@ -143,7 +143,7 @@ const HOSTS_CAPTION = /Hosts inventory: declared intent beside observed reality/
 
 describe("hosts feature registration", () => {
   it("registers /hosts exactly once as a primary-navigation page", async () => {
-    const hosts = getPages().filter((page) => page.id === "hosts");
+    const hosts = getPages().filter((page) => page.id === "page:inventory/hosts");
     expect(hosts).toHaveLength(1);
     expect(hosts[0]).toMatchObject({ path: "/hosts", label: "Hosts" });
     expect(await resolveComponent(hosts[0].component)).toBe(HostsPage);
@@ -478,7 +478,7 @@ function serviceRow(host: string, name: string): HTMLElement {
 
 describe("services feature registration", () => {
   it("registers /services exactly once as a primary-navigation page", async () => {
-    const services = getPages().filter((page) => page.id === "services");
+    const services = getPages().filter((page) => page.id === "page:inventory/services");
     expect(services).toHaveLength(1);
     expect(services[0]).toMatchObject({ path: "/services", label: "Services" });
     expect(await resolveComponent(services[0].component)).toBe(ServicesPage);

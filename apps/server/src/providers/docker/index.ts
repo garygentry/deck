@@ -1,5 +1,4 @@
-import type { Provider, ProviderConfig, ProviderHealth } from "../../contract/index.js";
-import { register } from "../registry.js";
+import type { EnvReader, ProviderHealth, ProviderSpec, ProviderTiming } from "@deck/module-sdk";
 
 export type DockerRunState = "running" | "exited" | "paused" | "restarting";
 
@@ -19,7 +18,12 @@ export interface DockerResult {
 export interface DockerConfig {
   baseUrl: string;
   credentialEnv?: string;
-  timing?: ProviderConfig;
+  timing?: ProviderTiming;
+  /**
+   * Reads the variable `credentialEnv` names, at fetch time so a rotated credential is
+   * picked up. Without it no credential is sent.
+   */
+  env?: EnvReader;
 }
 
 interface RawDockerContainer {
@@ -28,7 +32,7 @@ interface RawDockerContainer {
   Status?: string;
 }
 
-export class DockerProvider implements Provider<DockerResult> {
+export class DockerProvider implements ProviderSpec<DockerResult> {
   readonly kind = "docker";
 
   /** Cached latest health; updated only by fetch(), never by a health() probe. */
@@ -48,7 +52,7 @@ export class DockerProvider implements Provider<DockerResult> {
     try {
       const response = await globalThis.fetch(joinUrl(this.cfg.baseUrl, "/containers/json?all=true"), {
         method: "GET",
-        headers: authHeaders(this.cfg.credentialEnv),
+        headers: authHeaders(this.cfg),
       });
       // A non-2xx upstream (auth failure, endpoint down) is a real failure — report
       // it as unhealthy rather than an empty-but-healthy result that masks the fault.
@@ -68,18 +72,14 @@ export class DockerProvider implements Provider<DockerResult> {
   }
 }
 
-export function registerDocker(id: string, cfg: DockerConfig): void {
-  register(new DockerProvider(id, cfg), cfg.timing);
-}
-
 function joinUrl(baseUrl: string, path: string): string {
   const base = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
   return `${base}${path}`;
 }
 
-function authHeaders(credentialEnv?: string): Record<string, string> {
+function authHeaders({ credentialEnv, env }: DockerConfig): Record<string, string> {
   if (!credentialEnv) return {};
-  const value = process.env[credentialEnv];
+  const value = env?.get(credentialEnv);
   if (!value) return {};
   return { Authorization: value };
 }

@@ -3,7 +3,6 @@ import pino, { type Logger } from "pino";
 
 export type { Logger } from "pino";
 
-import type { ActionOutcome } from "../actions/events.js";
 import type { FreshnessState } from "../contract/index.js";
 
 export interface LoggerOptions {
@@ -16,6 +15,31 @@ export interface ServerStartEvent {
   port: number;
   providerCount: number;
   webDist: "present" | "missing";
+}
+
+export interface ServerStopEvent {
+  event: "server.stop";
+  signal: "SIGTERM" | "SIGINT";
+  /**
+   * `stopping` when the signal arrives; `stopped`/`failed` once shutdown settles; `forced` on
+   * a repeat signal; `deadline` when shutdown outlived its overall deadline.
+   */
+  phase: "stopping" | "stopped" | "failed" | "forced" | "deadline";
+  error?: string;
+  deadlineMs?: number;
+}
+
+export interface ServerStopForcedEvent {
+  /** In-flight requests outlived the grace period after the listener closed; their connections were closed. */
+  event: "server.stop-forced";
+  graceMs: number;
+}
+
+export interface ServerStopStageTimeoutEvent {
+  /** A shutdown stage outlived its bound; shutdown moved on to the next stage. */
+  event: "server.stop-stage-timeout";
+  stage: "modules";
+  boundMs: number;
 }
 
 export interface ConfigLoadEvent {
@@ -62,17 +86,27 @@ export interface RequestLogEvent {
   durationMs: number;
 }
 
-export interface ActionRunLogEvent {
-  /** Stable structured-event discriminator (governed actions, 02 §5.10). */
-  event: "action.run";
-  /** Declared action id. */
-  actionId: string;
-  /** Declared runner NAME — never the resolved absolute path. */
-  runner: string;
-  /** Terminal outcome of the run. */
-  outcome: ActionOutcome;
-  /** Wall-clock run duration in milliseconds. */
+
+export interface ModuleInitEvent {
+  /** A module's init completed. */
+  event: "module.init";
+  module: string;
   durationMs: number;
+}
+
+export interface ModuleStopEvent {
+  /** A module's scheduled work drained (or timed out) and its stop hooks ran. */
+  event: "module.stop";
+  module: string;
+}
+
+export interface ModuleDisabledEvent {
+  /** A module is not running: not enabled by config/env, or refused by the host. */
+  event: "module.disabled";
+  module: string;
+  reason: string;
+  /** Module-host finding code when the host refused it; absent when simply not enabled. */
+  code?: string;
 }
 
 export function createLogger(options: LoggerOptions = {}): Logger {

@@ -3,17 +3,18 @@
  * `SourceReader` (registry over all stores), and `RawReadResult` (image bytes).
  *
  * The concrete `createSourceStore` composes acquisition (02) with the confined tree walk /
- * bounded read / search (03) behind the interfaces below; `createSourceReader` wraps a map
- * of stores as the registry injected as `AppDeps.sources` (05). `resolveSourcesRuntime`
- * (runtime.ts) builds one store per declared source at boot.
+ * bounded read / search (03) behind the interfaces below. Each source's data-source module
+ * (`markdown-tree`, `file-tree`) builds its stores and offers a `SourceReader` over them as
+ * the `sources/reader` service, which the `sources` module's routes read.
  */
 
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 
+import type { ServiceRef } from "@deck/module-sdk";
 import type { Source } from "@deck/schema";
 
-import { acquireSource, type GitSpawner } from "./acquire.js";
+import { acquireSource, type AcquireDeps, type GitSpawner } from "./acquire.js";
 import { confinePath } from "./confine.js";
 import { SourceFailure, normalizeSourceFailure } from "./errors.js";
 import {
@@ -32,8 +33,8 @@ import {
 /**
  * A per-source read handle over its confined on-disk last-good tree. Every method routes
  * through `confine.ts` — a store can never read outside its resolved root. One store is
- * built per declared source by `resolveSourcesRuntime` and shared by the provider (which
- * builds the manifest) and the browsing routes (which read files/search).
+ * built per declared source by its kind's module and shared by the provider (which builds
+ * the manifest) and the browsing routes (which read files/search).
  */
 export interface SourceStore {
   /** The declaring source id. */
@@ -59,24 +60,26 @@ export interface RawReadResult {
 }
 
 /**
- * The registry over all source stores, injected as `AppDeps.sources`. Absent ⇒ the feature
- * is off and the browsing routes 404 (mirrors the `actions?` capability gate).
+ * A reader over source stores: the `sources/reader` service ({@link SOURCE_READER}) that a
+ * source data-source module offers and the `sources` module's routes read. An id it does not
+ * know answers undefined, and the routes 404.
  */
 export interface SourceReader {
-  /** The store for a source id, or undefined for an unknown/typed-off id. */
+  /** The store for a source id, or undefined for an id this reader does not serve. */
   get(id: string): SourceStore | undefined;
-  /** All source stores (used by pages to enumerate sources of a kind for the switcher). */
-  list(): readonly SourceStore[];
 }
+
+/** The `sources/reader` service: every running source data source offers one. */
+export const SOURCE_READER: ServiceRef<SourceReader> = { name: "sources/reader" };
 
 // ---------------------------------------------------------------------------
 // Concrete store — composes acquire (02) + confine/tree/read/search (03) (item 006).
 // ---------------------------------------------------------------------------
 
-/** Injected settings for one store, built by `resolveSourcesRuntime` (runtime.ts). */
+/** Injected settings for one store, supplied by its data-source module's kind handler. */
 export interface SourceStoreDeps {
   /**
-   * The on-disk cache ROOT (`SourcesRuntime.cacheDir`); `acquireSource` appends the
+   * The on-disk cache ROOT (`DECK_SOURCES_CACHE_DIR`); `acquireSource` appends the
    * per-source `<id>` subdir itself (REQ-FRESH-05). NOT the per-source dir.
    */
   readonly cacheDir: string;
@@ -84,6 +87,8 @@ export interface SourceStoreDeps {
   readonly git: GitSpawner;
   /** Wall clock for generation-dir naming; injectable for deterministic tests. */
   readonly now?: () => number;
+  /** Reads this source's `credentialEnv` (see `AcquireDeps.env`). */
+  readonly env?: AcquireDeps["env"];
 }
 
 /**
@@ -109,7 +114,7 @@ export function createSourceStore(src: Source, deps: SourceStoreDeps): SourceSto
   /** Identity + include/exclude shared by buildManifest and search (§3.1/§5, 03). */
   const baseOpts: BuildManifestOptions = {
     sourceId: src.id,
-    kind: src.kind as SourceKind, // supported-kind guaranteed by resolveSourcesRuntime
+    kind: src.kind as SourceKind, // built only by the module of this kind
     title: src.title,
     ...(src.include !== undefined ? { include: src.include } : {}),
     ...(src.exclude !== undefined ? { exclude: src.exclude } : {}),
@@ -126,6 +131,7 @@ export function createSourceStore(src: Source, deps: SourceStoreDeps): SourceSto
           cacheDir: deps.cacheDir,
           git: deps.git,
           ...(deps.now !== undefined ? { now: deps.now } : {}),
+          ...(deps.env !== undefined ? { env: deps.env } : {}),
         },
         signal: signal ?? new AbortController().signal,
       });
@@ -152,14 +158,6 @@ export function createSourceStore(src: Source, deps: SourceStoreDeps): SourceSto
     async search(query: string, signal?: AbortSignal): Promise<SourceSearchResult> {
       return searchTree(requireRoot(), baseOpts, query, signal);
     },
-  };
-}
-
-/** The registry over all stores, injected as AppDeps.sources (05). list() feeds the switcher. */
-export function createSourceReader(stores: ReadonlyMap<string, SourceStore>): SourceReader {
-  return {
-    get: (id) => stores.get(id),
-    list: () => [...stores.values()],
   };
 }
 

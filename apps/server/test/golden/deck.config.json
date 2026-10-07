@@ -1,41 +1,4 @@
 {
-  "actions": [
-    {
-      "confirm": "typed-confirm",
-      "description": "Exercises the governed action shape",
-      "id": "restart-beacon",
-      "params": [
-        {
-          "default": "routine",
-          "description": "Fixture change note",
-          "name": "reason",
-          "required": true,
-          "type": "string"
-        },
-        {
-          "default": true,
-          "name": "graceful",
-          "type": "boolean"
-        },
-        {
-          "default": null,
-          "name": "mode",
-          "type": "enum",
-          "values": [
-            "safe",
-            "quick"
-          ]
-        }
-      ],
-      "runner": "fixture-restart-service",
-      "target": {
-        "host": "cirrus",
-        "service": "beacon"
-      },
-      "title": "Restart Fixture Beacon"
-    }
-  ],
-  "agents": [],
   "estate": {
     "domains": {
       "lan": "lantern.invalid",
@@ -45,44 +8,6 @@
     "name": "lantern-estate",
     "timezone": "Etc/UTC"
   },
-  "groups": [
-    {
-      "icon": "lantern",
-      "id": "overview",
-      "items": [
-        {
-          "host": "cirrus",
-          "name": "beacon",
-          "title": "Portal",
-          "type": "service"
-        },
-        {
-          "href": "https://guide.lantern.invalid/",
-          "title": "Fixture Guide",
-          "type": "link"
-        },
-        {
-          "id": "operations",
-          "items": [
-            {
-              "host": "dapple",
-              "name": "beacon",
-              "type": "service"
-            },
-            {
-              "href": "https://ops.lantern.invalid/",
-              "title": "Operations Guide",
-              "type": "link"
-            }
-          ],
-          "title": "Operations",
-          "type": "group"
-        }
-      ],
-      "order": 1,
-      "title": "Fixture Overview"
-    }
-  ],
   "hosts": [
     {
       "access": {
@@ -253,7 +178,87 @@
       "title": "Fixture Metrics"
     }
   ],
-  "schemaVersion": 1,
+  "modules": {
+    "actions": {
+      "actions": [
+        {
+          "confirm": "typed-confirm",
+          "description": "Exercises the governed action shape",
+          "id": "restart-beacon",
+          "params": [
+            {
+              "default": "routine",
+              "description": "Fixture change note",
+              "name": "reason",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "default": true,
+              "name": "graceful",
+              "type": "boolean"
+            },
+            {
+              "default": null,
+              "name": "mode",
+              "type": "enum",
+              "values": [
+                "safe",
+                "quick"
+              ]
+            }
+          ],
+          "runner": "fixture-restart-service",
+          "target": {
+            "host": "cirrus",
+            "service": "beacon"
+          },
+          "title": "Restart Fixture Beacon"
+        }
+      ]
+    },
+    "portal": {
+      "groups": [
+        {
+          "icon": "lantern",
+          "id": "overview",
+          "items": [
+            {
+              "host": "cirrus",
+              "name": "beacon",
+              "title": "Portal",
+              "type": "service"
+            },
+            {
+              "href": "https://guide.lantern.invalid/",
+              "title": "Fixture Guide",
+              "type": "link"
+            },
+            {
+              "id": "operations",
+              "items": [
+                {
+                  "host": "dapple",
+                  "name": "beacon",
+                  "type": "service"
+                },
+                {
+                  "href": "https://ops.lantern.invalid/",
+                  "title": "Operations Guide",
+                  "type": "link"
+                }
+              ],
+              "title": "Operations",
+              "type": "group"
+            }
+          ],
+          "order": 1,
+          "title": "Fixture Overview"
+        }
+      ]
+    }
+  },
+  "schemaVersion": 2,
   "services": [
     {
       "backup": {

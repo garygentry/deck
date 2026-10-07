@@ -3,7 +3,7 @@
 import type { JsonObject } from "../../types.js";
 
 export const overlay = {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "hosts": [
     {
       "name": "azurite",
@@ -103,44 +103,86 @@ export const overlay = {
       "hidden": true
     }
   ],
-  "groups": [
-    {
-      "id": "overview",
-      "title": "Fixture Overview",
-      "order": 1,
-      "icon": "lantern",
-      "items": [
+  "modules": {
+    "portal": {
+      "groups": [
         {
-          "type": "service",
-          "host": "cirrus",
-          "name": "beacon",
-          "title": "Portal"
-        },
-        {
-          "type": "link",
-          "title": "Fixture Guide",
-          "href": "https://guide.lantern.invalid/"
-        },
-        {
-          "type": "group",
-          "id": "operations",
-          "title": "Operations",
+          "id": "overview",
+          "title": "Fixture Overview",
+          "order": 1,
+          "icon": "lantern",
           "items": [
             {
               "type": "service",
-              "host": "dapple",
-              "name": "beacon"
+              "host": "cirrus",
+              "name": "beacon",
+              "title": "Portal"
             },
             {
               "type": "link",
-              "title": "Operations Guide",
-              "href": "https://ops.lantern.invalid/"
+              "title": "Fixture Guide",
+              "href": "https://guide.lantern.invalid/"
+            },
+            {
+              "type": "group",
+              "id": "operations",
+              "title": "Operations",
+              "items": [
+                {
+                  "type": "service",
+                  "host": "dapple",
+                  "name": "beacon"
+                },
+                {
+                  "type": "link",
+                  "title": "Operations Guide",
+                  "href": "https://ops.lantern.invalid/"
+                }
+              ]
             }
           ]
         }
       ]
+    },
+    "actions": {
+      "actions": [
+        {
+          "id": "restart-beacon",
+          "title": "Restart Fixture Beacon",
+          "runner": "fixture-restart-service",
+          "confirm": "typed-confirm",
+          "params": [
+            {
+              "name": "reason",
+              "type": "string",
+              "required": true,
+              "default": "routine",
+              "description": "Fixture change note"
+            },
+            {
+              "name": "graceful",
+              "type": "boolean",
+              "default": true
+            },
+            {
+              "name": "mode",
+              "type": "enum",
+              "values": [
+                "safe",
+                "quick"
+              ],
+              "default": null
+            }
+          ],
+          "target": {
+            "host": "cirrus",
+            "service": "beacon"
+          },
+          "description": "Exercises the governed action shape"
+        }
+      ]
     }
-  ],
+  },
   "sources": [
     {
       "id": "fixture-handbook",
@@ -174,42 +216,5 @@ export const overlay = {
       },
       "credentialEnv": "FIXTURE_METRICS_REF"
     }
-  ],
-  "actions": [
-    {
-      "id": "restart-beacon",
-      "title": "Restart Fixture Beacon",
-      "runner": "fixture-restart-service",
-      "confirm": "typed-confirm",
-      "params": [
-        {
-          "name": "reason",
-          "type": "string",
-          "required": true,
-          "default": "routine",
-          "description": "Fixture change note"
-        },
-        {
-          "name": "graceful",
-          "type": "boolean",
-          "default": true
-        },
-        {
-          "name": "mode",
-          "type": "enum",
-          "values": [
-            "safe",
-            "quick"
-          ],
-          "default": null
-        }
-      ],
-      "target": {
-        "host": "cirrus",
-        "service": "beacon"
-      },
-      "description": "Exercises the governed action shape"
-    }
-  ],
-  "agents": []
+  ]
 } satisfies JsonObject;

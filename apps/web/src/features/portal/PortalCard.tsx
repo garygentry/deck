@@ -1,4 +1,4 @@
-import type { LinkItem, ServiceItem } from "@deck/schema";
+import type { LinkItem, ServiceItem } from "@deck/server/portal";
 import type { JSX } from "react";
 import { defineStatusMap, FreshnessBadge, LinkTile, StatusBadge } from "@/ui";
 import type { CardStatus, CardViewModel } from "./card-status.js";

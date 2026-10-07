@@ -5,7 +5,7 @@ import { HostDetailPage, HostsPage, ServiceDetailPage, ServicesPage } from "./pa
 // primary navigation, plus the two navigation-hidden dynamic detail routes that
 // remain directly and link-routable.
 registerPage({
-  id: "hosts",
+  id: "page:inventory/hosts",
   path: "/hosts",
   label: "Hosts",
   icon: "server",
@@ -13,7 +13,7 @@ registerPage({
   component: HostsPage,
 });
 registerPage({
-  id: "services",
+  id: "page:inventory/services",
   path: "/services",
   label: "Services",
   icon: "boxes",
@@ -21,14 +21,14 @@ registerPage({
   component: ServicesPage,
 });
 registerPage({
-  id: "host-detail",
+  id: "page:inventory/host-detail",
   path: "/hosts/:name",
   label: "Host",
   component: HostDetailPage,
   nav: false,
 });
 registerPage({
-  id: "service-detail",
+  id: "page:inventory/service-detail",
   path: "/services/:host/:name",
   label: "Service",
   component: ServiceDetailPage,

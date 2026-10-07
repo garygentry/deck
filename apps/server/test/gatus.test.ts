@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GatusProvider, registerGatus } from "../src/providers/gatus/index.js";
+import { GatusProvider } from "../src/providers/gatus/index.js";
 import { read, startScheduler, stopScheduler } from "../src/providers/registry.js";
+import { processEnv, registerGatus } from "./util/register-kinds.js";
 
 describe("GatusProvider", () => {
   beforeEach(() => {
@@ -58,6 +59,7 @@ describe("GatusProvider", () => {
     const provider = new GatusProvider("gatus", {
       baseUrl: "http://gatus",
       credentialEnv: "DECK_GATUS_TOKEN",
+      env: processEnv,
     });
     const fetchStub = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => Response.json([]));
     vi.stubGlobal("fetch", fetchStub);

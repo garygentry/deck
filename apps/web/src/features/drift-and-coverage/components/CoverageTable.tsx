@@ -1,5 +1,5 @@
-import { DRIFT_UI_DEFAULTS } from "@deck/server";
-import type { CoverageRow } from "@deck/server";
+import { DRIFT_UI_DEFAULTS } from "@deck/drift";
+import type { CoverageRow } from "@deck/drift";
 import { useMemo, type JSX } from "react";
 import {
   Button,

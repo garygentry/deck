@@ -2,9 +2,9 @@ import { join } from "node:path";
 
 import { parse, pattern, toSeconds } from "iso8601-duration";
 
-import type { DeckConfigDocument } from "@deck/schema";
 
 import { OAUTH_FLOOR_MS } from "./cadence.js";
+import type { LlmUsage } from "./config.generated.js";
 import type { UsageThresholds } from "./types.js";
 
 export const DEFAULT_THRESHOLDS: UsageThresholds = { warn: 75, danger: 90 };
@@ -34,7 +34,7 @@ export interface ResolvedLlmUsageConfig {
 
 export class LlmUsageConfigError extends Error {
   constructor(readonly path: string, message: string) {
-    super(`llmUsage${path}: ${message}`);
+    super(`/modules/llm-usage${path}: ${message}`);
     this.name = "LlmUsageConfigError";
   }
 }
@@ -60,11 +60,10 @@ function durationMs(value: string | undefined, fallback: number, path: string): 
 const clampInterval = (ms: number) => Math.min(MAX_INTERVAL_MS, Math.max(OAUTH_FLOOR_MS, ms));
 
 /**
- * Resolve the optional `llmUsage` section with defaults. Returns null when absent
+ * Resolve the optional `modules.llm-usage` section with defaults. Returns null when absent
  * (feature off). OAuth intervals are clamped into [120s, 1 day], never honoured outside it.
  */
-export function resolveLlmUsageConfig(config: DeckConfigDocument): ResolvedLlmUsageConfig | null {
-  const section = config.llmUsage;
+export function resolveLlmUsageSection(section: LlmUsage | undefined): ResolvedLlmUsageConfig | null {
   if (!section) return null;
 
   // Only an explicit pair can conflict: a lone `danger` below the default `warn` pulls `warn` down with it.

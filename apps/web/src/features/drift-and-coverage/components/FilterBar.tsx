@@ -1,10 +1,6 @@
-import { driftServiceFacetKey } from "@deck/server";
-import type {
-  DriftFilters,
-  DriftSeverity,
-  HostCollectionState,
-  WaiverState,
-} from "@deck/server";
+import { driftServiceFacetKey } from "@deck/drift";
+import type { HostCollectionState } from "@deck/contract";
+import type { DriftFilters, DriftSeverity, WaiverState } from "@deck/drift";
 import type { JSX } from "react";
 import {
   ActiveFilters,

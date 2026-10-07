@@ -2,7 +2,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { createElement as h } from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ActionOutcome } from "@deck/server";
+import type { ActionOutcome } from "@deck/server/actions";
 import { TONES, isIconName } from "@/ui";
 
 import { RunOutput } from "../src/features/governed-actions/components/RunOutput.js";

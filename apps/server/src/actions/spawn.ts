@@ -20,7 +20,10 @@ export interface SpawnedRun {
   stderr: AsyncIterable<Uint8Array>;
   /** Resolves with the process exit code when the child exits. */
   exited: Promise<number>;
-  /** Signal/terminate the child (used by timeout and cancel). */
+  /**
+   * Signal the child and anything it started locally (its process group): timeout and
+   * cancel send SIGTERM, then SIGKILL if it has not exited.
+   */
   kill(signal?: NodeJS.Signals): void;
 }
 
@@ -48,7 +51,9 @@ declare const Bun: {
     stdin?: Uint8Array;
     stdout?: "pipe";
     stderr?: "pipe";
+    detached?: boolean;
   }): {
+    pid: number;
     stdout: ReadableStream<Uint8Array>;
     stderr: ReadableStream<Uint8Array>;
     exited: Promise<number>;
@@ -75,14 +80,23 @@ export function createBunRunnerSpawner(): RunnerSpawner {
         stdin: new TextEncoder().encode(stdinJson),
         stdout: "pipe",
         stderr: "pipe",
+        // Its own process group, so a kill reaches what it starts (a backgrounded child that
+        // inherits the output pipe would otherwise hold it open after the runner dies).
+        detached: true,
       });
       return {
         stdout: readableToIterable(proc.stdout),
         stderr: readableToIterable(proc.stderr),
         exited: proc.exited,
-        // Signals ONLY this local child process. Estate-side cleanup beyond the
-        // process boundary is the runner's responsibility, not deck's.
-        kill: (signal?: NodeJS.Signals) => proc.kill(signal),
+        // Signals the runner's local process group. Estate-side cleanup beyond this host
+        // is the runner's responsibility, not deck's.
+        kill: (signal?: NodeJS.Signals) => {
+          try {
+            process.kill(-proc.pid, signal ?? "SIGTERM");
+          } catch {
+            proc.kill(signal); // the group is already gone: signal the child itself
+          }
+        },
       };
     },
   };

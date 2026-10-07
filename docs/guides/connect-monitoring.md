@@ -24,7 +24,7 @@ The `kind` selects the provider; `baseUrl` is the root URL deck appends each
 backend's API path to.
 
 ```yaml
-schemaVersion: 1
+schemaVersion: 2
 integrations:
   - id: gatus-api
     kind: gatus
@@ -52,7 +52,7 @@ Each summary needs an `id`, `label`, and PromQL `query`; add `warning`,
 for display.
 
 ```yaml
-schemaVersion: 1
+schemaVersion: 2
 integrations:
   - id: prometheus-primary
     kind: prometheus
@@ -81,7 +81,7 @@ Add it to the host or service you want to watch; `method` (`GET` or `HEAD`) is
 optional and defaults to `GET`.
 
 ```yaml
-schemaVersion: 1
+schemaVersion: 2
 services:
   - name: beacon
     host: cirrus
@@ -101,7 +101,7 @@ credential with `credentialEnv`.
 and the name must match `^[A-Z][A-Z0-9_]*$`.
 
 ```yaml
-schemaVersion: 1
+schemaVersion: 2
 integrations:
   - id: prometheus-primary
     kind: prometheus

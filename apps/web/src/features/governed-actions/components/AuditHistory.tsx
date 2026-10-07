@@ -3,14 +3,14 @@
  * per-entry detail (the full entry including the unredacted params, and the
  * captured output). It performs no writes.
  *
- * Loads the list on mount with a live-flag-guarded effect (mirrors `shell/use-config.ts`).
+ * Loads the list on mount with a live-flag-guarded effect.
  * Outcomes render through the shared `OUTCOME_UI` icon+text mapping. Rows are
  * whole-row buttons (Enter/click opens the detail under the row); Esc inside the
  * detail closes it, routed through the pure `keyboard.ts` module, and returns
  * focus to the row.
  */
 
-import type { AuditDetail, AuditListItem } from "@deck/server";
+import type { AuditDetail, AuditListItem } from "@deck/server/actions";
 import type { JSX, KeyboardEvent, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import {

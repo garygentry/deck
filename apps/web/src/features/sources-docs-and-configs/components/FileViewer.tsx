@@ -14,7 +14,7 @@
  */
 
 import type { JSX } from "react";
-import type { SourceTreeNode } from "@deck/server";
+import type { SourceTreeNode } from "@deck/server/sources";
 import { CodeBlock, EmptyState, ErrorState, LoadingState } from "@/ui";
 import type { FileState } from "../client.js";
 import { highlightCode, languageForName } from "../highlight.js";

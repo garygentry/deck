@@ -2,7 +2,9 @@ import { barsFromOauth, readStatusline, statuslinePlan, type StatuslineVerdict }
 import { mergeClaudeBars, STATUSLINE_FRESH_MS } from "./claude/merge.js";
 import { fetchOauthUsage, type OauthResult } from "./claude/oauth.js";
 import { createTranscriptScanner, type TranscriptScanner } from "./claude/transcripts.js";
-import { FORCE_FLOOR_MS, MAX_TIMER_MS, OAUTH_FLOOR_MS, nextDelay, pollMode, type CadenceState } from "./cadence.js";
+import type { ScheduledTask, TaskHandle } from "@deck/module-sdk";
+
+import { FORCE_FLOOR_MS, OAUTH_FLOOR_MS, nextDelay, pollMode, type CadenceState } from "./cadence.js";
 import { AppServer, AppServerSpawnError, createBunAppServerSpawner, isAuthRequired } from "./codex/app-server.js";
 import { barsFromSnapshotMap, codexPlan, historyFromUsage } from "./codex/bars.js";
 import { readNewestRollout, RolloutWatcher, type RolloutResult } from "./codex/rollout.js";
@@ -18,15 +20,16 @@ import type {
 } from "./types.js";
 
 /**
- * The LLM usage collector. Deliberately not a registry provider: the registry polls on a
- * fixed interval with no consumer pause, while this needs the adaptive cadence in
- * `cadence.ts` (active/idle/backoff), presence gating and the OAuth floor.
+ * The LLM usage collector. Not a registry provider: the registry polls on a fixed interval
+ * with no consumer pause, while this needs the adaptive cadence in `cadence.ts`
+ * (active/idle/backoff), presence gating and the OAuth floor.
  *
- * One self-scheduling loop polls the upstream sources (Claude OAuth, Codex app-server).
- * The next poll is always `lastPollAt + nextDelay(...)`, so re-arming on a push, a Codex
- * turn or a returning viewer can bring a poll forward but never below the floor. With no
- * viewer inside `idlePauseMs` the loop and the rollout watcher stop; the next read wakes
- * them. Local sources (rollout tail, transcripts) are read on demand when a viewer asks.
+ * One scheduled task polls the upstream sources (Claude OAuth, Codex app-server); its
+ * cadence hook is `cadence.ts`. The next poll is always `lastPollAt + nextDelay(...)`, so
+ * waking on a push, a Codex turn or a returning viewer can bring a poll forward but never
+ * below the floor. With no viewer inside `idlePauseMs` the task pauses and the rollout
+ * watcher stops; the next read wakes them. Local sources (rollout tail, transcripts) are
+ * read on demand when a viewer asks.
  */
 
 /** Codex history moves slowly; refetch at most this often. */
@@ -47,6 +50,8 @@ export interface CollectorDeps {
   transcripts?: TranscriptScanner;
   /** Build the rollout activity watcher. */
   createWatcher?: (onActivity: () => void) => { start(): void; stop(): void };
+  /** Schedule the poll task: the module passes `ctx.scheduler.schedule`. */
+  schedule: (task: ScheduledTask) => TaskHandle;
 }
 
 interface Fetched<T> {
@@ -71,7 +76,7 @@ const errorText = (error: unknown) => (error instanceof Error ? error.message : 
 function codexFailure(error: unknown): { detail: string; notConfigured: boolean } {
   if (error instanceof AppServerSpawnError) {
     return {
-      detail: `codex not found at "${error.command}": mount the host's codex binary and set llmUsage.codex.command`,
+      detail: `codex not found at "${error.command}": mount the host's codex binary and set modules.llm-usage.codex.command`,
       notConfigured: true,
     };
   }
@@ -114,12 +119,12 @@ export class LlmUsageCollector {
   private lastChangeAt: number | null = null;
   private consecutiveErrors = 0;
   private retryAfterMs = 0;
-  private timer: ReturnType<typeof setTimeout> | null = null;
+  private readonly task: TaskHandle;
   private nextPollAt: number | null = null;
   private inFlight: Promise<void> | null = null;
   private stopped = false;
 
-  constructor(private readonly config: ResolvedLlmUsageConfig, deps: CollectorDeps = {}) {
+  constructor(private readonly config: ResolvedLlmUsageConfig, deps: CollectorDeps) {
     this.now = deps.now ?? (() => Date.now());
     this.fetchOauth = deps.fetchOauth ?? ((file) => fetchOauthUsage(file));
     this.readRollout = deps.readRollout ?? readNewestRollout;
@@ -147,6 +152,13 @@ export class LlmUsageCollector {
     this.watcher = codex === null
       ? null
       : deps.createWatcher?.(onActivity) ?? new RolloutWatcher(codex.rolloutDir, onActivity, this.now);
+
+    const task: ScheduledTask = {
+      name: "poll",
+      run: () => this.scheduledPoll(),
+      cadence: () => this.cadenceDelay(),
+    };
+    this.task = deps.schedule(task);
   }
 
   /** `GET /api/llm-usage`: marks a viewer present (waking a paused loop) and builds the response. */
@@ -180,7 +192,8 @@ export class LlmUsageCollector {
 
   stop(): void {
     this.stopped = true;
-    this.clearTimer();
+    this.nextPollAt = null;
+    void this.task.stop();
     this.watcher?.stop();
     this.appServer?.close();
   }
@@ -204,35 +217,60 @@ export class LlmUsageCollector {
     };
   }
 
-  /** (Re)arm the poll timer from current state; stops everything while paused. */
+  /** After a state change (a viewer, a push, a forced poll, activity): re-fix the due time and wake the task. */
   private schedule(): void {
+    if (this.stopped) return;
+    this.rearm();
+    this.task.wake();
+  }
+
+  /**
+   * Fix the next due time, `lastPollAt + nextDelay(...)` (at once before the first poll), or
+   * pause. Only the collector moves the due time: here, after a state change or a real poll.
+   */
+  private rearm(): void {
+    // A poll that outlived the module's drain settles after stop(): never restart the watcher.
     if (this.stopped) return;
     const delay = nextDelay(this.cadence());
     if (delay === null) {
-      this.clearTimer();
+      this.nextPollAt = null;
       this.watcher?.stop();
       return;
     }
     this.watcher?.start();
     const now = this.now();
-    const at = this.lastPollAt === null ? now : Math.max(now, this.lastPollAt + delay);
-    if (this.timer !== null && this.nextPollAt === at) return;
-    this.clearTimer();
-    this.nextPollAt = at;
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      this.nextPollAt = null;
-      // The viewer may have left since this was armed; schedule() then stands down.
-      if (pollMode(this.cadence()) === "paused") return this.schedule();
-      void this.poll(false).finally(() => this.schedule());
-    }, Math.min(at - now, MAX_TIMER_MS)); // a longer timeout would overflow and fire at once
-    this.timer.unref?.();
+    this.nextPollAt = this.lastPollAt === null ? now : Math.max(now, this.lastPollAt + delay);
   }
 
-  private clearTimer(): void {
-    if (this.timer !== null) clearTimeout(this.timer);
-    this.timer = null;
+  /**
+   * The task's cadence hook: the delay until the fixed due time, or null while paused (the
+   * rollout watcher then stops). It never moves the due time, so however often the
+   * scheduler asks, a poll fixed while a session was active still runs at that time.
+   */
+  private cadenceDelay(): number | null {
+    if (this.stopped) return null;
+    if (pollMode(this.cadence()) === "paused") {
+      this.nextPollAt = null;
+      this.watcher?.stop();
+      return null;
+    }
+    if (this.nextPollAt === null) this.rearm();
+    return this.nextPollAt === null ? null : Math.max(0, this.nextPollAt - this.now());
+  }
+
+  /**
+   * A scheduled run. The scheduler can only bring a due time forward, so after a forced
+   * refresh fixed the next poll later, a run armed earlier arrives early: it polls nothing
+   * and leaves the due time alone, and the scheduler re-arms from the cadence.
+   */
+  private async scheduledPoll(): Promise<void> {
+    if (this.nextPollAt !== null && this.now() < this.nextPollAt) return;
     this.nextPollAt = null;
+    try {
+      await this.poll(false);
+    } finally {
+      this.rearm();
+    }
   }
 
   /**
@@ -447,7 +485,7 @@ export class LlmUsageCollector {
   }
 }
 
-/** The response when the config has no `llmUsage` section. */
+/** The response when the config has no `modules.llm-usage` section. */
 export function disabledResponse(now: number): LlmUsageResponse {
   return {
     enabled: false,

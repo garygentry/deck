@@ -1,5 +1,5 @@
-import { deriveDriftProjection } from "@deck/server";
-import type { DriftProjection } from "@deck/server";
+import { deriveDriftProjection } from "@deck/drift";
+import type { DriftProjection } from "@deck/drift";
 import type { InventoryGeneration } from "../hosts-and-services/inventory-store.js";
 import {
   getInventoryGeneration,

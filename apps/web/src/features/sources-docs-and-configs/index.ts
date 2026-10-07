@@ -1,14 +1,14 @@
-// Eager registration entry point for the sources browsing feature (07 §3, 06 §4).
+// Eager registration entry point for the sources browsing feature.
 // Import-side-effect only — exports nothing. Discovered by
-// `import.meta.glob("../features/*/index.ts")`; no shell edit (SC-09). Registration errors are
+// `import.meta.glob("../features/*/index.ts")`; no shell edit. Registration errors are
 // intentionally uncaught so eager discovery fails loudly (mirrors `governed-actions/index.ts`).
 
 import { registerEntityFragment, registerPage } from "../../registry/registry.js";
 import { ConfigsPage, DocsPage, OwnedConfigsFragment } from "./pages.js";
 
-// --- Docs page (06 §4). ---
+// --- Docs page. ---
 registerPage({
-  id: "docs",
+  id: "page:sources/docs",
   path: "/docs",
   label: "Docs",
   icon: "book-open",
@@ -16,10 +16,9 @@ registerPage({
   component: DocsPage,
 });
 
-// --- Configs page (REQ-CFG-01). Page id is "configs-view" ON PURPOSE: it must NOT collide with
-//     the entity SLOT id "configs" (a distinct namespace, INVENTORY_SLOTS). ---
+// --- Configs page. ---
 registerPage({
-  id: "configs-view",
+  id: "page:sources/configs",
   path: "/configs",
   label: "Configs",
   icon: "file-cog",
@@ -27,20 +26,22 @@ registerPage({
   component: ConfigsPage,
 });
 
-// --- Owned-configs fragment, attached to the pre-existing frozen "configs" slot on BOTH the host
-//     and service detail routes (REQ-FRAG-01). No edit to EntitySlots.tsx or the detail routes —
-//     the slot already exists in INVENTORY_SLOTS (CON-02/SC-09). Two distinct fragment ids are
-//     required because registerEntityFragment keys uniqueness by id; the same component serves
-//     both entity kinds and branches on entity.entity internally. ---
+// --- Owned-configs section on BOTH the host and service detail pages, attached
+//     by id after drift's findings. Two distinct ids are required because extension ids are
+//     unique; the same component serves both entity kinds and branches on entity.entity. ---
 registerEntityFragment({
-  id: "owned-configs-host",
+  id: "section:sources/host-configs",
   entity: "host",
-  slot: "configs",
+  section: "configs",
+  title: "Configs",
+  order: 20,
   component: OwnedConfigsFragment,
 });
 registerEntityFragment({
-  id: "owned-configs-service",
+  id: "section:sources/service-configs",
   entity: "service",
-  slot: "configs",
+  section: "configs",
+  title: "Configs",
+  order: 20,
   component: OwnedConfigsFragment,
 });

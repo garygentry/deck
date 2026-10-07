@@ -91,3 +91,17 @@ export interface StructuredRunnerInput {
   /** Optional host/service target. */
   target?: { host: string; service?: string };
 }
+
+/** The structured log line of one terminal run transition. */
+export interface ActionRunLogEvent {
+  /** Stable structured-event discriminator. */
+  event: "action.run";
+  /** Declared action id. */
+  actionId: string;
+  /** Declared runner NAME — never the resolved absolute path. */
+  runner: string;
+  /** Terminal outcome of the run. */
+  outcome: ActionOutcome;
+  /** Wall-clock run duration in milliseconds. */
+  durationMs: number;
+}

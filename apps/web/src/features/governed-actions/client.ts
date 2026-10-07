@@ -9,14 +9,14 @@
  * `getReader()` + newline-split approach is the specified mechanism.
  */
 
+import type { ParamError } from "@deck/contract/actions";
 import type {
   Action,
   ActionRunEvent,
   ActionsCapabilityResponse,
   AuditDetail,
   AuditListItem,
-  ParamError,
-} from "@deck/server";
+} from "@deck/server/actions";
 import { applyRunEvent, beginRun, failRun } from "./run-store.js";
 import type { RunRefusal } from "./run-store.js";
 

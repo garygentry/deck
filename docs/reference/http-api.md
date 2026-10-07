@@ -20,23 +20,68 @@ follows the estate config schema.
 | `GET` | `/api/providers` | Registered providers' identities (id and kind), in deterministic id order. | `ProvidersResponse` |
 | `GET` | `/api/providers/:id` | One provider's cached envelope (data, freshness, error). Unknown id → 404 `PROVIDER_NOT_FOUND`. | `ProviderEnvelope` |
 | `GET` | `/api/health` | Cached readiness: overall status, uptime, provider count, and per-provider health. Performs no upstream I/O. | `HealthResponse` |
+| `GET` | `/api/ui` | The resolved UI manifest: brand, modules, slots, pages, nav groups and entries, extensions and providers. Resolved once at startup. | `UiManifest` (`@deck/module-sdk`) |
 
 `HealthResponse.status` is `degraded` when any provider's latest health is not ok, otherwise `ok`.
+`HealthResponse.modules` lists every known module's state by id. A module with no health report
+of its own (`portal`, `inventory`, `drift`, `monitoring`) shows `{state: "ok"}` while it runs.
+
+### UI manifest
+
+`/api/ui` tells the web shell what to render, where, and with what config. It is built at startup
+from every module's declared contributions. The portal, inventory, drift, monitoring, actions and
+llm-usage features are built-in modules (`origin: "module"`), as is `metrics`, which contributes
+no UI. Features not yet on the module contract declare theirs from the kernel and are listed with
+`origin: "kernel"`.
+
+- `modules` lists every known module with `enabled` and, when not enabled, a `reason`. A
+  module that is disabled (its enabling section or env var is absent, its manifest is unusable,
+  or a kernel capability such as actions is off) contributes nothing.
+- `pages`, `nav` and `extensions` hold only what renders. Extension ids have the form
+  `<kind>:<module>/<name>` (for example `pill:llm-usage/summary`). Each extension and nav entry
+  names the slot it attaches to and its order there, and attaches only to a slot that accepts
+  its kind.
+- `brand.title` is the name the shell shows in the sidebar and the document title: the estate's
+  `estate.name`, or `Deck` when that is empty.
+- `navGroups` lists the sidebar's groups in order, each with its `label`. The built-in order is
+  Overview, Inventory, Health, Operate, Knowledge; a group a module uses that is not among them
+  follows, by id, headed by its id. Only groups with a nav entry are listed.
+- `nav` is sorted by group (in `navGroups` order), then order, then id: `order` applies within a
+  group. Each entry has a `label` and, usually, an `icon`; an entry to a page that declares none
+  of its own takes the page's title and icon.
+- `providers` lists the registered provider instances (id and kind), so the web polls only
+  providers that exist.
+- `findings` holds problems that never stop the UI from rendering:
+  - `UI_UNKNOWN_EXTENSION`: an override for an unknown id, or a nav entry to an undeclared page;
+  - `UI_UNKNOWN_SLOT`: an extension on an unknown slot;
+  - `UI_SLOT_KIND_MISMATCH`: an extension on a slot that does not accept its kind;
+  - `UI_PAGE_PATH_COLLISION`: two pages on one path, or a page on a module's declared root
+    path, which the server always answers instead (or 404s while that module is off);
+  - `UI_DUPLICATE_ID`: an id or slot contributed twice (the incumbent keeps it: the kernel's
+    shell first, then the kernel-wired features and built-in modules, then other modules), or
+    a nav group configured twice (its first entry is used);
+  - `UI_INVALID_OVERRIDE`: a malformed override.
+
+  Overrides will come from the `ui.extensions` config section, which config cannot set yet.
 
 ## Metrics
 
-When `DECK_METRICS_ENABLED` is true, deck also serves `GET /metrics` — outside `/api` — as
-Prometheus text exposition (`Content-Type: text/plain; version=0.0.4`), built from cached
-registry state with no upstream I/O.
-When the flag is off the route is not registered.
+When `DECK_METRICS_ENABLED` is true, the built-in `metrics` module serves `GET /metrics` —
+outside `/api` — as Prometheus text exposition (`Content-Type: text/plain; version=0.0.4`),
+built from cached registry state with no upstream I/O. Any other method gets deck's plain 404.
+When the flag is off the module does not run and `/metrics` answers the plain 404; it is
+never rewritten to the web app, either way.
 See [Connect monitoring](../guides/connect-monitoring.md#scrape-decks-own-metrics) for the
 metric names.
 
 ## Sources
 
-The four source-browsing routes are read-only (`GET`) and gate on the sources capability.
-When the capability is off, or the id is not a declared source, the route answers 404
-`SOURCE_NOT_FOUND`, so a disabled deployment is indistinguishable from an unknown id.
+The four source-browsing routes are read-only (`GET`). When the id is not a declared source of a
+kind a running data-source module serves, the route answers 404 `SOURCE_NOT_FOUND`.
+
+These routes belong to the `sources` module. It serves them under `/api/m/sources` as well, and
+keeps the `/api/sources` paths as aliases with identical responses. `/api/health` lists it under
+`modules.sources`, and the `markdown-tree` and `file-tree` data sources under their own ids.
 
 | Method | Path | Purpose | Response |
 | --- | --- | --- | --- |
@@ -57,6 +102,11 @@ When the capability is off, the run, cancel, and audit routes refuse with 403 `A
 the probe route always answers 200 so the web can learn the capability state without provoking a
 403.
 
+These routes belong to the `actions` module. It serves them under `/api/m/actions` as well, and
+keeps the `/api/actions` paths as aliases with identical responses, whether the capability is on or
+off. `/api/health` lists the module under `modules.actions`: `{state: "ok"}` while it runs, else
+`{state: "disabled", detail}`.
+
 | Method | Path | Purpose | Response |
 | --- | --- | --- | --- |
 | `GET` | `/api/actions` | Capability probe; reports whether governed actions are enabled. Always 200. | `ActionsCapabilityResponse` |
@@ -73,7 +123,7 @@ envelope.
 
 ## LLM usage
 
-Present when the estate config has an `llmUsage` section; the read routes answer
+Present when the estate config has a `modules.llm-usage` section; the read routes answer
 `enabled: false` otherwise.
 Every read counts as a viewer, which keeps upstream polling awake (see `idlePause`).
 
@@ -81,10 +131,16 @@ Every read counts as a viewer, which keeps upstream polling awake (see `idlePaus
 | --- | --- | --- | --- |
 | `GET` | `/api/llm-usage` | Current usage bars, per-source states and poll state. Performs no upstream I/O. | `LlmUsageResponse` |
 | `GET` | `/api/llm-usage/refresh` | The same after an immediate poll, debounced to once per 5 seconds. Codex is always re-read; the Claude OAuth endpoint only if its last call was 2+ minutes ago and deck is not backing off. | `LlmUsageResponse` |
-| `POST` | `/api/llm-usage/ingest` | A Claude Code statusLine payload (JSON, at most 2 MB), with `Authorization: Bearer <token>`. Registered only when the env var named by `llmUsage.claude.statusLine.credentialEnv` is set. | 204, empty body |
+| `POST` | `/api/llm-usage/ingest` | A Claude Code statusLine payload (JSON, at most 2 MB), with `Authorization: Bearer <token>`. Registered only when the env var named by `modules.llm-usage.claude.statusLine.credentialEnv` is set. | 204, empty body |
+
+These routes belong to the `llm-usage` module. It serves them at `/api/m/llm-usage`,
+`/api/m/llm-usage/refresh` and `/api/m/llm-usage/ingest` as well, and keeps the `/api/llm-usage`
+paths as aliases with identical responses.
 
 `/api/health` gains an `llmUsage` entry (`mode`, `lastPollAt`, `consecutiveErrors`) when the
-feature is on. It never changes the overall health `status`.
+feature is on, and always lists the module under `modules["llm-usage"]`: `{state, data}`, where
+`data` is the same entry, or `{state: "ok", detail: "not configured"}` without the section.
+Neither changes the overall health `status`.
 
 ## Errors
 
@@ -99,6 +155,7 @@ API errors share one envelope.
 | Code | Status | Meaning |
 | --- | --- | --- |
 | `NOT_FOUND` | 404 | An `/api/*` path with no matching route. |
+| `SHUTTING_DOWN` | 503 | The request arrived after deck began shutting down (on a kept-alive connection); the connection is closed. |
 | `PROVIDER_NOT_FOUND` | 404 | No provider registered with the requested id. |
 | `SOURCE_NOT_FOUND` | 404 | Sources capability off, or no source declared with the requested id. |
 | `UNAUTHORIZED` | 401 | LLM usage ingest with a missing or wrong bearer token. |

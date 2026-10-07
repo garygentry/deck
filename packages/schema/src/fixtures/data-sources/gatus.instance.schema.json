@@ -1,0 +1,43 @@
+{
+  "title": "Gatus integration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "title",
+    "baseUrl"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Integration id, unique across integrations."
+    },
+    "kind": {
+      "const": "gatus",
+      "description": "Provider kind."
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable integration title."
+    },
+    "baseUrl": {
+      "type": "string",
+      "description": "Base URL of Gatus."
+    },
+    "deepLink": {
+      "type": "string",
+      "description": "Optional deep-link template into Gatus."
+    },
+    "card": {
+      "type": "object",
+      "description": "Opaque provider-defined card specification.",
+      "additionalProperties": true
+    },
+    "credentialEnv": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "description": "Environment variable name holding a credential, never its value."
+    }
+  }
+}

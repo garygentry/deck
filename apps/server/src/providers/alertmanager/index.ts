@@ -1,10 +1,4 @@
-import type {
-  Provider,
-  ProviderConfig,
-  ProviderFetchContext,
-  ProviderHealth,
-} from "../../contract/index.js";
-import { register } from "../registry.js";
+import type { EnvReader, ProviderFetchContext, ProviderHealth, ProviderSpec, ProviderTiming } from "@deck/module-sdk";
 
 /** One active alert, normalized from the Alertmanager v2 GET /api/v2/alerts shape. */
 export interface ActiveAlert {
@@ -30,12 +24,20 @@ export interface AlertmanagerResult {
   firingCount: number;
 }
 
+/**
+ * The credential wiring: `credentialEnv` names the variable holding the `Authorization` value,
+ * read through `env` at fetch time (so a rotated credential is picked up). Naming a credential
+ * requires a reader; without `credentialEnv` no credential is sent.
+ */
+export type AlertmanagerCredential =
+  | { credentialEnv?: undefined; env?: EnvReader }
+  | { credentialEnv: string; env: EnvReader };
+
 /** Wiring for the single alertmanager provider (needs no query config). */
-export interface AlertmanagerConfig {
+export type AlertmanagerConfig = {
   baseUrl: string;
-  credentialEnv?: string;
-  timing?: ProviderConfig;
-}
+  timing?: ProviderTiming;
+} & AlertmanagerCredential;
 
 /** v2 alert status block; `state: "suppressed"` covers silenced OR inhibited alerts. */
 interface RawAlertStatus {
@@ -70,7 +72,7 @@ interface RawGettableSilence {
   endsAt?: string;
 }
 
-export class AlertmanagerProvider implements Provider<AlertmanagerResult> {
+export class AlertmanagerProvider implements ProviderSpec<AlertmanagerResult> {
   readonly kind = "alertmanager";
 
   /** Cached non-I/O health snapshot; updated only by fetch(), never by a health() probe. */
@@ -92,12 +94,12 @@ export class AlertmanagerProvider implements Provider<AlertmanagerResult> {
       const [alertsRes, silencesRes] = await Promise.all([
         globalThis.fetch(joinUrl(this.cfg.baseUrl, "/api/v2/alerts?active=true&silenced=true"), {
           method: "GET",
-          headers: authHeaders(this.cfg.credentialEnv),
+          headers: authHeaders(this.cfg),
           ...(signal ? { signal } : {}),
         }),
         globalThis.fetch(joinUrl(this.cfg.baseUrl, "/api/v2/silences"), {
           method: "GET",
-          headers: authHeaders(this.cfg.credentialEnv),
+          headers: authHeaders(this.cfg),
           ...(signal ? { signal } : {}),
         }),
       ]);
@@ -124,10 +126,6 @@ export class AlertmanagerProvider implements Provider<AlertmanagerResult> {
   }
 }
 
-export function registerAlertmanager(id: string, cfg: AlertmanagerConfig): void {
-  register(new AlertmanagerProvider(id, cfg), cfg.timing);
-}
-
 /** Join a base URL and an absolute path, tolerating a trailing slash on the base. */
 function joinUrl(baseUrl: string, path: string): string {
   const base = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
@@ -135,12 +133,12 @@ function joinUrl(baseUrl: string, path: string): string {
 }
 
 /**
- * Build request headers from a credential ENV-VAR NAME, resolved inline at call time.
- * The value is never stored on the instance or logged; header omitted when unset/empty.
+ * Build request headers from a credential ENV-VAR NAME, resolved through the env reader at
+ * call time. The value is never stored on the instance or logged; header omitted when unset/empty.
  */
-function authHeaders(credentialEnv?: string): Record<string, string> {
+function authHeaders({ credentialEnv, env }: AlertmanagerConfig): Record<string, string> {
   if (!credentialEnv) return {};
-  const value = process.env[credentialEnv];
+  const value = env?.get(credentialEnv);
   if (!value) return {};
   return { Authorization: value };
 }

@@ -1,0 +1,407 @@
+// @vitest-environment jsdom
+import { POLL_DEFAULTS } from "@deck/contract";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import {
+  isProviderPollable,
+  resetQueryClient,
+  useConfig,
+  useProvider,
+  useUiManifest,
+} from "../src/data/index.js";
+import { usePortalData } from "../src/features/portal/usePortalData.js";
+
+const CONFIG = {
+  schemaVersion: 2,
+  estate: { name: "Lab" },
+  hosts: [],
+  services: [],
+};
+
+function manifest(providers: { id: string; kind: string }[]) {
+  return { uiApi: 1, modules: [], slots: [], pages: [], nav: [], extensions: [], providers, findings: [] };
+}
+
+function envelope(id: string) {
+  return { id, kind: id, data: { id }, error: null, freshness: { state: "fresh", observedAt: null, ageMs: 0, ttlMs: 30_000 } };
+}
+
+/** Stub fetch with a URL → response table; unlisted URLs 404. Returns a per-URL counter. */
+function stubFetch(table: Record<string, () => Response | Promise<Response>>) {
+  const fetchMock = vi.fn(async (input: string | URL | Request) => {
+    const url = String(input);
+    const respond = table[url];
+    return respond ? respond() : new Response(null, { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return (url: string) => fetchMock.mock.calls.filter(([called]) => String(called) === url).length;
+}
+
+const json = (body: unknown) => () => Response.json(body);
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  resetQueryClient();
+});
+
+describe("useConfig", () => {
+  it("serves every reader from one /api/config request", async () => {
+    const calls = stubFetch({ "/api/config": json(CONFIG) });
+    function Reader({ label }: { label: string }) {
+      const state = useConfig();
+      return <p>{state.status === "ready" ? `${label} ${state.config.estate.name}` : state.status}</p>;
+    }
+    render(
+      <>
+        <Reader label="a" />
+        <Reader label="b" />
+      </>,
+    );
+    await screen.findByText("a Lab");
+    expect(screen.getByText("b Lab")).toBeTruthy();
+    // A reader mounted later reads the cache.
+    render(<Reader label="c" />);
+    await screen.findByText("c Lab");
+    expect(calls("/api/config")).toBe(1);
+  });
+
+  it("reports a failed read, and asks again when a reader remounts (Retry)", async () => {
+    let status = 500;
+    const calls = stubFetch({ "/api/config": () => (status === 200 ? Response.json(CONFIG) : new Response(null, { status })) });
+    function Reader() {
+      const state = useConfig();
+      return <p>{state.status === "error" ? state.message : state.status === "ready" ? state.config.estate.name : "loading"}</p>;
+    }
+    const first = render(<Reader />);
+    await screen.findByText("GET /api/config → 500");
+    first.unmount();
+
+    status = 200;
+    render(<Reader />);
+    await screen.findByText("Lab");
+    expect(calls("/api/config")).toBe(2);
+  });
+});
+
+describe("useUiManifest", () => {
+  it("reads /api/ui once for every reader", async () => {
+    const calls = stubFetch({ "/api/ui": json(manifest([{ id: "docker", kind: "docker" }])) });
+    function Reader() {
+      const state = useUiManifest();
+      return <p>{state.status === "ready" ? state.manifest.providers.map((p) => p.id).join(",") : state.status}</p>;
+    }
+    render(
+      <>
+        <Reader />
+        <Reader />
+      </>,
+    );
+    await waitFor(() => expect(screen.getAllByText("docker")).toHaveLength(2));
+    expect(calls("/api/ui")).toBe(1);
+  });
+});
+
+describe("useProvider", () => {
+  function Reader({ provider }: { provider: string | { kind: string } }) {
+    const { envelope, loading } = useProvider<{ id: string }>(provider);
+    return <p>{loading ? "loading" : envelope === null ? "not configured" : `data ${envelope.data?.id}`}</p>;
+  }
+
+  it("shares one request per poll tick between readers, and stops when none remain", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+    const calls = stubFetch({
+      "/api/ui": json(manifest([{ id: "docker", kind: "docker" }])),
+      "/api/providers/docker": json(envelope("docker")),
+    });
+    const view = render(
+      <>
+        <Reader provider="docker" />
+        <Reader provider="docker" />
+      </>,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getAllByText("data docker")).toHaveLength(2);
+    expect(calls("/api/providers/docker")).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_DEFAULTS.pollIntervalMs);
+    });
+    expect(calls("/api/providers/docker")).toBe(2);
+
+    view.unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_DEFAULTS.pollIntervalMs * 3);
+    });
+    expect(calls("/api/providers/docker")).toBe(2);
+    expect(calls("/api/ui")).toBe(1);
+  });
+
+  it("never requests a provider the manifest does not list", async () => {
+    const calls = stubFetch({ "/api/ui": json(manifest([{ id: "gatus", kind: "gatus" }])) });
+    render(<Reader provider="docker" />);
+    await screen.findByText("not configured");
+    expect(calls("/api/providers/docker")).toBe(0);
+  });
+
+  it("polls anyway, with a breadcrumb, when the manifest cannot be read", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const calls = stubFetch({
+      "/api/ui": () => new Response(null, { status: 503 }),
+      "/api/providers/docker": json(envelope("docker")),
+    });
+    render(<Reader provider="docker" />);
+    await screen.findByText("data docker");
+    expect(calls("/api/providers/docker")).toBe(1);
+    // The React path leaves the breadcrumb itself (review L4), once for the failed read.
+    expect(warn.mock.calls.filter(([m]) => String(m).includes("UI manifest unavailable"))).toHaveLength(1);
+  });
+
+  it("resolves a kind to the first provider of that kind by id", async () => {
+    const calls = stubFetch({
+      "/api/ui": json(manifest([{ id: "nas-docker", kind: "docker" }, { id: "edge-docker", kind: "docker" }])),
+      "/api/providers/edge-docker": json(envelope("edge-docker")),
+    });
+    render(<Reader provider={{ kind: "docker" }} />);
+    await screen.findByText("data edge-docker");
+    expect(calls("/api/providers/nas-docker")).toBe(0);
+  });
+
+  it("isProviderPollable answers from the manifest", async () => {
+    stubFetch({ "/api/ui": json(manifest([{ id: "snapshot", kind: "snapshot" }])) });
+    expect(await isProviderPollable("snapshot")).toBe(true);
+    expect(await isProviderPollable("docker")).toBe(false);
+  });
+});
+
+describe("portal data (W9)", () => {
+  it("the portal page and the endpoint pill share the docker and gatus polls", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+    const calls = stubFetch({
+      "/api/ui": json(manifest([{ id: "docker", kind: "docker" }, { id: "gatus", kind: "gatus" }])),
+      "/api/config": json(CONFIG),
+      "/api/providers/docker": json(envelope("docker")),
+      "/api/providers/gatus": json(envelope("gatus")),
+    });
+    function Reader({ label }: { label: string }) {
+      const data = usePortalData();
+      return <p>{data.loading ? "loading" : `${label} ${data.config?.estate.name} ${data.docker?.id} ${data.gatus?.id}`}</p>;
+    }
+    render(
+      <>
+        <Reader label="page" />
+        <Reader label="pill" />
+      </>,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText("page Lab docker gatus")).toBeTruthy();
+    expect(screen.getByText("pill Lab docker gatus")).toBeTruthy();
+    expect([calls("/api/config"), calls("/api/providers/docker"), calls("/api/providers/gatus")]).toEqual([1, 1, 1]);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_DEFAULTS.pollIntervalMs);
+    });
+    expect([calls("/api/config"), calls("/api/providers/docker"), calls("/api/providers/gatus")]).toEqual([1, 2, 2]);
+  });
+});
+
+describe("one /api/config per page load", () => {
+  it("the whole shell on / requests the config once", async () => {
+    vi.resetModules();
+    const calls = stubFetch({
+      "/api/ui": json(manifest([{ id: "docker", kind: "docker" }, { id: "gatus", kind: "gatus" }, { id: "snapshot", kind: "snapshot" }])),
+      "/api/config": json(CONFIG),
+    });
+    vi.stubGlobal("location", new URL("http://localhost/"));
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: false, media: query, onchange: null,
+      addEventListener: () => {}, removeEventListener: () => {},
+      addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+    }));
+    await import("../src/shell/health-header/slot.js");
+    await import("../src/registry/discover.js");
+    const { App } = await import("../src/shell/App.js");
+    render(<App />);
+    await screen.findByRole("heading", { level: 1, name: "Portal" });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(calls("/api/config")).toBe(1);
+    expect(calls("/api/ui")).toBe(1);
+  });
+});
+
+describe("review round 1 regressions", () => {
+  const TICK = POLL_DEFAULTS.pollIntervalMs;
+  const fake = () => vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"] });
+  const flush = async (ms = 0) => {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  };
+
+  it("L1: a failed /api/config is asked again each poll while it fails, without flashing to loading", async () => {
+    fake();
+    let status = 503;
+    const calls = stubFetch({ "/api/config": () => (status === 200 ? Response.json(CONFIG) : new Response(null, { status })) });
+    const seen: string[] = [];
+    function Reader() {
+      const state = useConfig();
+      seen.push(state.status);
+      return <p>{state.status === "ready" ? state.config.estate.name : state.status}</p>;
+    }
+    render(<Reader />);
+    await flush();
+    expect(screen.getByText("error")).toBeTruthy();
+    await flush(TICK);
+    expect(calls("/api/config")).toBe(2);
+    // Still failing: the re-ask never shows loading once an error was seen.
+    expect(seen.slice(seen.indexOf("error"))).not.toContain("loading");
+    status = 200;
+    await flush(TICK);
+    expect(screen.getByText("Lab")).toBeTruthy();
+    expect(calls("/api/config")).toBe(3);
+    // Healthy: no more config requests.
+    await flush(TICK * 3);
+    expect(calls("/api/config")).toBe(3);
+  });
+
+  it("L2: with /api/ui down, a re-ask never blanks provider readers or double-requests them", async () => {
+    fake();
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const calls = stubFetch({
+      "/api/ui": () => new Response(null, { status: 503 }),
+      "/api/providers/docker": json(envelope("docker")),
+    });
+    const seen: string[] = [];
+    function Reader() {
+      const { envelope: e, loading } = useProvider<{ id: string }>("docker");
+      const label = loading ? "loading" : e === null ? "none" : "data";
+      seen.push(label);
+      return <p>{label}</p>;
+    }
+    render(<Reader />);
+    await flush();
+    expect(screen.getByText("data")).toBeTruthy();
+    // The reviewer's probe: a store asks for the manifest again (as every inventory poll does).
+    await act(async () => {
+      expect(await isProviderPollable("docker")).toBe(true);
+      expect(await isProviderPollable("docker")).toBe(true);
+    });
+    expect(seen.slice(seen.indexOf("data"))).not.toContain("loading");
+    expect(calls("/api/providers/docker")).toBe(1);
+    expect(calls("/api/ui")).toBe(1);
+    // After one interval the failed manifest is asked again, still without a blank.
+    await flush(TICK);
+    await act(async () => {
+      await isProviderPollable("docker");
+    });
+    expect(calls("/api/ui")).toBe(2);
+    expect(seen.slice(seen.indexOf("data"))).not.toContain("loading");
+  });
+
+  it("C2/L5: a reader joining within an interval reuses the shared envelope; after an interval unread it reloads", async () => {
+    fake();
+    const calls = stubFetch({
+      "/api/ui": json(manifest([{ id: "docker", kind: "docker" }])),
+      "/api/providers/docker": json(envelope("docker")),
+    });
+    function Reader({ label }: { label: string }) {
+      const { envelope: e, loading } = useProvider<{ id: string }>("docker");
+      return <p>{`${label} ${loading ? "loading" : e === null ? "none" : "data"}`}</p>;
+    }
+    const first = render(<Reader label="header" />);
+    await flush();
+    expect(calls("/api/providers/docker")).toBe(1);
+
+    // The reviewer's probe: a page mounts a second reader a second later.
+    await flush(1_000);
+    const late = render(<Reader label="page" />);
+    await flush();
+    expect(screen.getByText("page data")).toBeTruthy();
+    expect(calls("/api/providers/docker")).toBe(1);
+
+    // Everyone leaves; after more than one interval unread, the envelope is dropped.
+    late.unmount();
+    first.unmount();
+    await flush(TICK + 1_000);
+    render(<Reader label="back" />);
+    expect(screen.getByText("back loading")).toBeTruthy();
+    await flush();
+    expect(screen.getByText("back data")).toBeTruthy();
+    expect(calls("/api/providers/docker")).toBe(2);
+  });
+
+  it("L7: the last reader leaving mid-request logs no failure", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/ui") return Promise.resolve(Response.json(manifest([{ id: "docker", kind: "docker" }])));
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    function Reader() {
+      const { loading } = useProvider("docker");
+      return <p>{loading ? "loading" : "done"}</p>;
+    }
+    const view = render(<Reader />);
+    await waitFor(() => expect(fetchMock.mock.calls.some(([u]) => String(u) === "/api/providers/docker")).toBe(true));
+    view.unmount();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(warn.mock.calls.filter(([m]) => String(m).includes("request failed"))).toEqual([]);
+  });
+});
+
+describe("review round 2 regressions", () => {
+  it("N1: with readers only, a recovered /api/ui is picked up within one tick and unlisted providers stop", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"] });
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let manifestUp = false;
+    const calls = stubFetch({
+      "/api/ui": () => (manifestUp ? Response.json(manifest([{ id: "docker", kind: "docker" }])) : new Response(null, { status: 503 })),
+      "/api/providers/docker": json(envelope("docker")),
+      "/api/providers/gatus": json(envelope("gatus")),
+    });
+    function Reader({ provider }: { provider: string }) {
+      const { envelope: e, loading } = useProvider<{ id: string }>(provider);
+      return <p>{`${provider} ${loading ? "loading" : e === null ? "none" : "data"}`}</p>;
+    }
+    const tick = async (ms: number) => {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    };
+    // The reviewer's probe: portal-style readers only (no store calls isProviderPollable).
+    render(
+      <>
+        <Reader provider="docker" />
+        <Reader provider="gatus" />
+      </>,
+    );
+    await tick(0);
+    // Unavailable: every provider is polled, the unlisted gatus included.
+    expect(screen.getByText("gatus data")).toBeTruthy();
+    expect(calls("/api/providers/gatus")).toBe(1);
+
+    manifestUp = true;
+    await tick(POLL_DEFAULTS.pollIntervalMs);
+    expect(calls("/api/ui")).toBe(2);
+    expect(screen.getByText("gatus none")).toBeTruthy();
+    const gatusAfterHeal = calls("/api/providers/gatus");
+    await tick(POLL_DEFAULTS.pollIntervalMs * 3);
+    expect(calls("/api/providers/gatus")).toBe(gatusAfterHeal);
+    expect(calls("/api/ui")).toBe(2);
+    expect(screen.getByText("docker data")).toBeTruthy();
+  });
+});

@@ -1,4 +1,4 @@
-import { logger } from "../../log/logger.js";
+import type { ModuleLogger } from "@deck/module-sdk";
 
 export type ThresholdDirection = "above" | "below";
 
@@ -16,17 +16,20 @@ interface Candidate extends Record<string, unknown> {
   present: ReadonlySet<string>;
 }
 
-/** Parse untrusted integration card data without allowing one bad declaration to fail boot. */
-export function parseSummaryCard(card: unknown): SummaryQuery[] {
+/**
+ * Parse untrusted integration card data without allowing one bad declaration to fail boot. Each
+ * dropped entry is logged to `logger` (the module's) as `prometheus.summary.dropped`.
+ */
+export function parseSummaryCard(card: unknown, logger: ModuleLogger): SummaryQuery[] {
   try {
-    return parseSummaryCardUnchecked(card);
+    return parseSummaryCardUnchecked(card, logger);
   } catch {
     // Includes hostile/revoked proxies and exotic arrays; this trust boundary never throws.
     return [];
   }
 }
 
-function parseSummaryCardUnchecked(card: unknown): SummaryQuery[] {
+function parseSummaryCardUnchecked(card: unknown, logger: ModuleLogger): SummaryQuery[] {
   let summaries: unknown;
   try {
     if (card === null || typeof card !== "object" || Array.isArray(card)) return [];
@@ -40,7 +43,7 @@ function parseSummaryCardUnchecked(card: unknown): SummaryQuery[] {
   const ids = new Set<string>();
   summaries.forEach((entry, index) => {
     if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
-      logDrop(index, undefined, "entry_invalid");
+      logDrop(logger, index, undefined, "entry_invalid");
       return;
     }
 
@@ -61,14 +64,14 @@ function parseSummaryCardUnchecked(card: unknown): SummaryQuery[] {
         direction: raw.direction,
       };
     } catch {
-      logDrop(index, undefined, "entry_unreadable");
+      logDrop(logger, index, undefined, "entry_unreadable");
       return;
     }
 
     const id = usableString(candidate.id) ? candidate.id : undefined;
     const reason = invalidReason(candidate, id, ids);
     if (reason !== null) {
-      logDrop(index, id, reason);
+      logDrop(logger, index, id, reason);
       return;
     }
 
@@ -111,7 +114,7 @@ function finiteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-function logDrop(index: number, id: string | undefined, reason: string): void {
+function logDrop(logger: ModuleLogger, index: number, id: string | undefined, reason: string): void {
   try {
     logger.warn(
       { event: "prometheus.summary.dropped", index, ...(id === undefined ? {} : { id }), reason },

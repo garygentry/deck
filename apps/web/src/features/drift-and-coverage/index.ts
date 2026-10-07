@@ -12,7 +12,7 @@ import { DriftPage, FindingsFragment } from "./pages.js";
 // on its own. Registration errors are intentionally uncaught so eager discovery
 // fails loudly rather than silently omitting a required surface.
 registerPage({
-  id: "drift",
+  id: "page:drift/overview",
   path: "/drift",
   label: "Drift",
   icon: "git-compare",
@@ -20,18 +20,22 @@ registerPage({
   component: DriftPage,
 });
 registerEntityFragment({
-  id: "drift-host-findings",
+  id: "section:drift/host-findings",
   entity: "host",
-  slot: "findings",
+  section: "findings",
+  title: "Findings",
+  order: 10,
   component: FindingsFragment,
 });
 registerEntityFragment({
-  id: "drift-service-findings",
+  id: "section:drift/service-findings",
   entity: "service",
-  slot: "findings",
+  section: "findings",
+  title: "Findings",
+  order: 10,
   component: FindingsFragment,
 });
 registerSummaryFragment(HealthHeaderSlot, {
-  id: "drift-summary",
+  id: "pill:drift/summary",
   component: DriftHealthSummary,
 });

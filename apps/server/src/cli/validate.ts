@@ -3,8 +3,10 @@ import { parseArgs } from "./args.js";
 import { formatFindings, formatToolError } from "./findings-format.js";
 
 export function runValidate(argv: readonly string[]): ExitClass {
-  const { dir } = parseArgs(argv);
-  const result = load({ arg: dir });
+  const { dir, advisoryDisabled } = parseArgs(argv);
+  // A section for a module that is off where validation runs (an env flag unset in CI, say)
+  // is checked as if the module were on, so CI fails what deck would fail once it is on.
+  const result = load({ arg: dir, disabledSections: advisoryDisabled ? "advisory" : "strict" });
 
   if (result.exitClass === 0) {
     process.stdout.write(

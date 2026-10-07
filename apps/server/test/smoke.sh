@@ -24,10 +24,13 @@ SMOKE_CONFIG="${SCRIPT_DIR}/fixtures/actions-smoke"
 PORTAL_CONFIG="${SCRIPT_DIR}/fixtures/portal-estate"
 SOURCES_FIXTURE="${SCRIPT_DIR}/fixtures/markdown-tree"
 
-PORTAL_PORT=8788
-ACTIONS_PORT=8789
-SOURCES_PORT=8790
-METRICS_PORT=8791
+# Four consecutive ports from DECK_SMOKE_BASE_PORT (default 8788), so parallel checkouts can
+# run the smoke without colliding.
+SMOKE_BASE_PORT="${DECK_SMOKE_BASE_PORT:-8788}"
+PORTAL_PORT=$((SMOKE_BASE_PORT))
+ACTIONS_PORT=$((SMOKE_BASE_PORT + 1))
+SOURCES_PORT=$((SMOKE_BASE_PORT + 2))
+METRICS_PORT=$((SMOKE_BASE_PORT + 3))
 
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/deck-smoke.XXXXXX")"
 DATA_DIR="${TMP_ROOT}/data"
@@ -162,11 +165,11 @@ stop_server
 # is an overlay-owned key, so it lives in a second layer ("zzz-sources.yaml" sorts
 # after the base "estate.yaml") — not the base — mirroring the actions overlay.
 cat >"${SOURCES_CONFIG_DIR}/estate.yaml" <<EOF
-{ "schemaVersion": 1, "estate": { "name": "Sources smoke" } }
+{ "schemaVersion": 2, "estate": { "name": "Sources smoke" } }
 EOF
 cat >"${SOURCES_CONFIG_DIR}/zzz-sources.yaml" <<EOF
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sources": [
     { "id": "docs", "kind": "markdown-tree", "title": "Docs", "location": { "path": "${SOURCES_FIXTURE}" } }
   ]

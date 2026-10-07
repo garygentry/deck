@@ -1,4 +1,5 @@
-import { POLL_DEFAULTS, type LlmUsageResponse } from "@deck/server";
+import { POLL_DEFAULTS } from "@deck/contract";
+import type { LlmUsageResponse } from "@deck/server/llm-usage";
 import { useSyncExternalStore } from "react";
 
 /**
@@ -6,7 +7,7 @@ import { useSyncExternalStore } from "react";
  * they never double-poll. Every read counts as viewer presence on the server, which
  * keeps its upstream polling awake, so this store only polls while something is
  * subscribed and the tab is visible. Once the server says the feature is off it stops
- * for good: the `llmUsage` section is read once at boot.
+ * for good: the `modules.llm-usage` section is read once at boot.
  */
 
 export type UsageView =

@@ -1,4 +1,4 @@
-schemaVersion: 1
+schemaVersion: 2
 estate:
   # A snapshot host older than this reads as "stale" in the inventory and
   # coverage views. The bundled example snapshot is stamped so most hosts land
@@ -23,21 +23,23 @@ services:
   - name: jellyfin
     host: media
     links: [{ title: Jellyfin, href: "https://media.home.example/" }]
-groups:
-  - id: overview
-    title: Overview
-    order: 1
-    items:
-      - { type: service, host: apps, name: portal, title: Portal }
-      - { type: service, host: nas, name: files, title: Files }
-      - { type: service, host: media, name: jellyfin, title: Jellyfin }
-      - { type: link, title: Gateway, href: "https://gateway.home.example/" }
-  - id: infrastructure
-    title: Infrastructure
-    order: 2
-    items:
-      - { type: link, title: NAS Console, href: "https://nas.home.example/" }
-      - { type: link, title: Gateway UI, href: "https://gateway.home.example/" }
+modules:
+  portal:
+    groups:
+      - id: overview
+        title: Overview
+        order: 1
+        items:
+          - { type: service, host: apps, name: portal, title: Portal }
+          - { type: service, host: nas, name: files, title: Files }
+          - { type: service, host: media, name: jellyfin, title: Jellyfin }
+          - { type: link, title: Gateway, href: "https://gateway.home.example/" }
+      - id: infrastructure
+        title: Infrastructure
+        order: 2
+        items:
+          - { type: link, title: NAS Console, href: "https://nas.home.example/" }
+          - { type: link, title: Gateway UI, href: "https://gateway.home.example/" }
 sources:
   - id: runbooks
     kind: markdown-tree

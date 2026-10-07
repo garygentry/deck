@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Provider } from "../src/contract/index.js";
 import { logger } from "../src/log/logger.js";
-import { DockerProvider, registerDocker } from "../src/providers/docker/index.js";
+import { DockerProvider } from "../src/providers/docker/index.js";
 import { read, register, startScheduler, stopScheduler } from "../src/providers/registry.js";
+import { processEnv, registerDocker } from "./util/register-kinds.js";
 
 describe("DockerProvider", () => {
   beforeEach(() => {
@@ -58,7 +59,7 @@ describe("DockerProvider", () => {
   });
 
   it("resolves credentials from the environment at fetch time and omits absent credentials", async () => {
-    const config = { baseUrl: "http://proxy", credentialEnv: "DECK_DOCKER_TOKEN" };
+    const config = { baseUrl: "http://proxy", credentialEnv: "DECK_DOCKER_TOKEN", env: processEnv };
     const provider = new DockerProvider("docker", config);
     const fetchStub = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => Response.json([]));
     vi.stubGlobal("fetch", fetchStub);
@@ -75,7 +76,7 @@ describe("DockerProvider", () => {
       { Authorization: "Bearer rotated" },
       {},
     ]);
-    expect(config).toEqual({ baseUrl: "http://proxy", credentialEnv: "DECK_DOCKER_TOKEN" });
+    expect(config).toEqual({ baseUrl: "http://proxy", credentialEnv: "DECK_DOCKER_TOKEN", env: processEnv });
     expect(JSON.stringify(provider)).not.toContain("Bearer");
   });
 

@@ -41,16 +41,16 @@ async function main(): Promise<void> {
   // base; "overlay.yaml" sorts after the base "estate.yaml" so it applies last.
   await writeFile(join(runtime.configDir, "overlay.yaml"), JSON.stringify(overlay));
 
-  // Enable the governed-actions write path for the actions e2e spec. `actions` is
-  // an overlay-owned key, so it is written as a third overlay layer whose name
+  // Enable the governed-actions write path for the actions e2e spec. `modules.actions`
+  // is overlay-owned, so it is written as a third overlay layer whose name
   // sorts after "estate.yaml"/"overlay.yaml" (kept overlays, not the base). The
   // runner manifest and audit data dir live under the ephemeral root so the
   // owner's cleanup removes them with the rest of the runtime.
   await writeFile(
     join(runtime.configDir, "zz-actions.yaml"),
     JSON.stringify({
-      schemaVersion: 1,
-      actions: [
+      schemaVersion: 2,
+      modules: { actions: { actions: [
         {
           id: "e2e-echo",
           title: "E2E echo",
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
           confirm: "none",
           description: "Long-running action used to exercise cancel.",
         },
-      ],
+      ] } },
     }),
   );
   const actionsDataDir = join(rootDir, "actions-data");
@@ -85,7 +85,7 @@ async function main(): Promise<void> {
   await writeFile(
     join(runtime.configDir, "zzz-sources.yaml"),
     JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       sources: [
         {
           id: "docs",

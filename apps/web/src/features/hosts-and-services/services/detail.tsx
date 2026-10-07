@@ -2,7 +2,7 @@ import type { ObservedService, Service } from "@deck/schema";
 import type { JSX, ReactNode } from "react";
 import { PageHeader, SafeRouteLink } from "@/ui";
 import { useRoute } from "@/shell/router";
-import { EntitySlots } from "../components/EntitySlots.js";
+import { EntitySections } from "../components/EntitySections.js";
 import { SERVICE_STATE_UI, SERVICE_STATUS_UI, renderMarker } from "../components/HostStateChip.js";
 import { InventoryNotFound } from "../components/InventoryNotFound.js";
 import { SnapshotStatus } from "../components/SnapshotStatus.js";
@@ -39,7 +39,7 @@ export function ServiceDetailPage(): JSX.Element {
 /**
  * Resolve the routed service from the one committed model generation using its two
  * independent identity segments and render its ordered core sections beside observed
- * reality, then the stable fragment slots.
+ * reality, then the sections modules attach.
  *
  * The lookup is a single O(1) nested-index read keyed by the already-decoded host
  * and name params independently — the identity is never concatenated or split.
@@ -109,7 +109,7 @@ function FoundServiceDetail({ row, snapshot }: FoundServiceDetailProps): JSX.Ele
       <SecretsSection secrets={declared?.secrets} reality={row.reality} />
       <LinksSection links={declared?.links} reality={row.reality} />
 
-      <EntitySlots entity={entityRef} />
+      <EntitySections entity={entityRef} />
     </section>
   );
 }

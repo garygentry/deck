@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { FIXTURE } from "./inventory-fixture.js";
+import { mockUiManifest } from "./ui-manifest.js";
 
 /** The Vite origin under test (see DECK_E2E_WEB_PORT in playwright.config.ts). */
 const WEB_ORIGIN = `http://127.0.0.1:${process.env.DECK_E2E_WEB_PORT ?? 4173}`;
@@ -185,22 +186,14 @@ async function fulfilStage(route: Route, stage: Stage): Promise<void> {
 
 /** Intercept both feature providers, reading each poll's response from `box`. */
 async function routeProviders(page: Page, box: { current: ProviderBox }): Promise<void> {
-  // The web polls only providers listed by GET /api/providers. These two are not
-  // in the booted fixture, so augment the real discovery index with them (mirrors
-  // mockConfigIntegrations) — otherwise the gated web would never poll them.
-  await page.route("**/api/providers", async (route) => {
-    const response = await route.fetch();
-    const body = (await response.json()) as { providers: JsonObject[] };
-    await route.fulfill({
-      json: {
-        providers: [
-          ...body.providers,
-          { id: "alertmanager", kind: "alertmanager" },
-          { id: "prometheus", kind: "prometheus" },
-        ],
-      },
-    });
-  });
+  // The web polls only providers the UI manifest lists. These two are not in the
+  // booted fixture, so add them to the real manifest (mirrors mockConfigIntegrations)
+  // — otherwise the gated web would never poll them.
+  await mockUiManifest(page, (providers) => [
+    ...providers,
+    { id: "alertmanager", kind: "alertmanager" },
+    { id: "prometheus", kind: "prometheus" },
+  ]);
   await page.route("**/api/providers/alertmanager", (route) =>
     fulfilStage(route, box.current.alertmanager),
   );

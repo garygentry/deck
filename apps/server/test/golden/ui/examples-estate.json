@@ -1,0 +1,452 @@
+{
+  "uiApi": 1,
+  "brand": {
+    "title": "example-estate"
+  },
+  "modules": [
+    {
+      "id": "actions",
+      "version": "1.0.0",
+      "enabled": false,
+      "reason": "not enabled: DECK_ACTIONS_ENABLED is not true",
+      "origin": "module"
+    },
+    {
+      "id": "alertmanager",
+      "version": "1.0.0",
+      "enabled": true,
+      "origin": "module"
+    },
+    {
+      "id": "core",
+      "version": "0.1.0",
+      "enabled": true,
+      "origin": "kernel"
+    },
+    {
+      "id": "docker",
+      "version": "1.0.0",
+      "enabled": true,
+      "origin": "module"
+    },
+    {
+      "id": "drift",
+      "version": "0.1.0",
+      "enabled": true,
+      "origin": "module"
+    },
+    {
+      "id": "file-tree",
+      "version": "1.0.0",
+      "enabled": true,
+      "origin": "module"
+    },
+    {
+      "id": "gatus",
+      "version": "1.0.0",
+      "enabled": true,
+      "origin": "module"
+    },
+    {
+      "id": "http-health",
+      "version": "1.0.0",
+      "enabled": true,
+      "origin": "module"
+    },
+    {
+      "id": "inventory",
+      "version": "0.1.0",
+      "enabled": true,
+      "origin": "module"
+    },
+    {
+      "id": "link",
+      "version": "1.0.0",
+      "enabled": true,
+      "origin": "module"
+    },
+    {
+      "id": "llm-usage",
+      "version": "1.0.0",
+      "enabled": true,
+      "origin": "module"
+    },
+    {
+      "id": "markdown-tree",
+      "version": "1.0.0",
+      "enabled": true,
+      "origin": "module"
+    },
+    {
+      "id": "metrics",
+      "version": "1.0.0",
+      "enabled": false,
+      "reason": "not enabled: DECK_METRICS_ENABLED is not true",
+      "origin": "module"
+    },
+    {
+      "id": "monitoring",
+      "version": "0.1.0",
+      "enabled": true,
+      "origin": "module"
+    },
+    {
+      "id": "portal",
+      "version": "0.1.0",
+      "enabled": true,
+      "origin": "module"
+    },
+    {
+      "id": "prometheus",
+      "version": "1.0.0",
+      "enabled": true,
+      "origin": "module"
+    },
+    {
+      "id": "snapshot",
+      "version": "1.0.0",
+      "enabled": true,
+      "origin": "module"
+    },
+    {
+      "id": "sources",
+      "version": "0.1.0",
+      "enabled": true,
+      "origin": "module"
+    }
+  ],
+  "slots": [
+    {
+      "id": "app/nav",
+      "accepts": "nav",
+      "module": "core"
+    },
+    {
+      "id": "app/routes",
+      "accepts": "page",
+      "module": "core"
+    },
+    {
+      "id": "app/topbar.actions",
+      "accepts": "action",
+      "module": "core"
+    },
+    {
+      "id": "app/topbar.status",
+      "accepts": "pill",
+      "module": "core"
+    },
+    {
+      "id": "entity:host/sections",
+      "accepts": "entity-section",
+      "module": "core"
+    },
+    {
+      "id": "entity:service/sections",
+      "accepts": "entity-section",
+      "module": "core"
+    },
+    {
+      "id": "portal/summary",
+      "accepts": "widget",
+      "module": "portal"
+    }
+  ],
+  "pages": [
+    {
+      "id": "page:drift/overview",
+      "module": "drift",
+      "path": "/drift",
+      "title": "Drift",
+      "icon": "git-compare",
+      "component": "DriftPage"
+    },
+    {
+      "id": "page:inventory/host-detail",
+      "module": "inventory",
+      "path": "/hosts/:name",
+      "title": "Host",
+      "component": "HostDetailPage"
+    },
+    {
+      "id": "page:inventory/hosts",
+      "module": "inventory",
+      "path": "/hosts",
+      "title": "Hosts",
+      "icon": "server",
+      "component": "HostsPage"
+    },
+    {
+      "id": "page:inventory/service-detail",
+      "module": "inventory",
+      "path": "/services/:host/:name",
+      "title": "Service",
+      "component": "ServiceDetailPage"
+    },
+    {
+      "id": "page:inventory/services",
+      "module": "inventory",
+      "path": "/services",
+      "title": "Services",
+      "icon": "boxes",
+      "component": "ServicesPage"
+    },
+    {
+      "id": "page:llm-usage/overview",
+      "module": "llm-usage",
+      "path": "/usage",
+      "title": "LLM usage",
+      "icon": "gauge",
+      "component": "LlmUsagePage"
+    },
+    {
+      "id": "page:monitoring/overview",
+      "module": "monitoring",
+      "path": "/monitoring",
+      "title": "Monitoring",
+      "icon": "activity",
+      "component": "MonitoringPage"
+    },
+    {
+      "id": "page:portal/overview",
+      "module": "portal",
+      "path": "/",
+      "title": "Portal",
+      "icon": "layout-grid",
+      "component": "PortalPage"
+    },
+    {
+      "id": "page:sources/configs",
+      "module": "sources",
+      "path": "/configs",
+      "title": "Configs",
+      "icon": "file-cog",
+      "component": "ConfigsPage"
+    },
+    {
+      "id": "page:sources/docs",
+      "module": "sources",
+      "path": "/docs",
+      "title": "Docs",
+      "icon": "book-open",
+      "component": "DocsPage"
+    }
+  ],
+  "navGroups": [
+    {
+      "id": "overview",
+      "label": "Overview"
+    },
+    {
+      "id": "inventory",
+      "label": "Inventory"
+    },
+    {
+      "id": "health",
+      "label": "Health"
+    },
+    {
+      "id": "knowledge",
+      "label": "Knowledge"
+    }
+  ],
+  "nav": [
+    {
+      "id": "nav:portal/overview",
+      "module": "portal",
+      "slot": "app/nav",
+      "page": "page:portal/overview",
+      "group": "overview",
+      "label": "Portal",
+      "icon": "layout-grid",
+      "order": -1
+    },
+    {
+      "id": "nav:inventory/hosts",
+      "module": "inventory",
+      "slot": "app/nav",
+      "page": "page:inventory/hosts",
+      "group": "inventory",
+      "label": "Hosts",
+      "icon": "server",
+      "order": 100
+    },
+    {
+      "id": "nav:inventory/services",
+      "module": "inventory",
+      "slot": "app/nav",
+      "page": "page:inventory/services",
+      "group": "inventory",
+      "label": "Services",
+      "icon": "boxes",
+      "order": 100
+    },
+    {
+      "id": "nav:drift/overview",
+      "module": "drift",
+      "slot": "app/nav",
+      "page": "page:drift/overview",
+      "group": "health",
+      "label": "Drift",
+      "icon": "git-compare",
+      "order": 100
+    },
+    {
+      "id": "nav:llm-usage/overview",
+      "module": "llm-usage",
+      "slot": "app/nav",
+      "page": "page:llm-usage/overview",
+      "group": "health",
+      "label": "LLM usage",
+      "icon": "gauge",
+      "order": 100
+    },
+    {
+      "id": "nav:monitoring/overview",
+      "module": "monitoring",
+      "slot": "app/nav",
+      "page": "page:monitoring/overview",
+      "group": "health",
+      "label": "Monitoring",
+      "icon": "activity",
+      "order": 100
+    },
+    {
+      "id": "nav:sources/configs",
+      "module": "sources",
+      "slot": "app/nav",
+      "page": "page:sources/configs",
+      "group": "knowledge",
+      "label": "Configs",
+      "icon": "file-cog",
+      "order": 100
+    },
+    {
+      "id": "nav:sources/docs",
+      "module": "sources",
+      "slot": "app/nav",
+      "page": "page:sources/docs",
+      "group": "knowledge",
+      "label": "Docs",
+      "icon": "book-open",
+      "order": 100
+    }
+  ],
+  "extensions": [
+    {
+      "id": "action:core/theme-menu",
+      "kind": "action",
+      "module": "core",
+      "slot": "app/topbar.actions",
+      "order": 100,
+      "component": "ThemeMenu"
+    },
+    {
+      "id": "pill:monitoring/alerts",
+      "kind": "pill",
+      "module": "monitoring",
+      "slot": "app/topbar.status",
+      "order": 10,
+      "component": "AlertsSummary"
+    },
+    {
+      "id": "pill:monitoring/metrics",
+      "kind": "pill",
+      "module": "monitoring",
+      "slot": "app/topbar.status",
+      "order": 20,
+      "component": "MetricsSummary"
+    },
+    {
+      "id": "pill:llm-usage/summary",
+      "kind": "pill",
+      "module": "llm-usage",
+      "slot": "app/topbar.status",
+      "order": 40,
+      "component": "LlmUsageSummary"
+    },
+    {
+      "id": "pill:drift/summary",
+      "kind": "pill",
+      "module": "drift",
+      "slot": "app/topbar.status",
+      "order": 100,
+      "component": "DriftHealthSummary"
+    },
+    {
+      "id": "pill:portal/endpoints",
+      "kind": "pill",
+      "module": "portal",
+      "slot": "app/topbar.status",
+      "order": 100,
+      "component": "EndpointStatusSummary"
+    },
+    {
+      "id": "section:drift/host-findings",
+      "kind": "entity-section",
+      "module": "drift",
+      "slot": "entity:host/sections",
+      "order": 10,
+      "component": "FindingsFragment",
+      "config": {
+        "section": "findings",
+        "title": "Findings"
+      }
+    },
+    {
+      "id": "section:sources/host-configs",
+      "kind": "entity-section",
+      "module": "sources",
+      "slot": "entity:host/sections",
+      "order": 20,
+      "component": "OwnedConfigsFragment",
+      "config": {
+        "section": "configs",
+        "title": "Configs"
+      }
+    },
+    {
+      "id": "section:drift/service-findings",
+      "kind": "entity-section",
+      "module": "drift",
+      "slot": "entity:service/sections",
+      "order": 10,
+      "component": "FindingsFragment",
+      "config": {
+        "section": "findings",
+        "title": "Findings"
+      }
+    },
+    {
+      "id": "section:sources/service-configs",
+      "kind": "entity-section",
+      "module": "sources",
+      "slot": "entity:service/sections",
+      "order": 20,
+      "component": "OwnedConfigsFragment",
+      "config": {
+        "section": "configs",
+        "title": "Configs"
+      }
+    },
+    {
+      "id": "card:llm-usage/portal",
+      "kind": "widget",
+      "module": "llm-usage",
+      "slot": "portal/summary",
+      "order": 100,
+      "component": "LlmUsagePortalCard"
+    }
+  ],
+  "providers": [
+    {
+      "id": "host-configs",
+      "kind": "file-tree"
+    },
+    {
+      "id": "runbooks",
+      "kind": "markdown-tree"
+    }
+  ],
+  "findings": []
+}

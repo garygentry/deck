@@ -16,6 +16,8 @@ import * as path from "node:path";
 
 import picomatch from "picomatch";
 
+import type { FILE_TREE_KIND } from "../providers/file-tree/index.js";
+import type { MARKDOWN_TREE_KIND } from "../providers/markdown-tree/index.js";
 import { confinePath } from "./confine.js";
 import { SourceFailure, normalizeSourceFailure } from "./errors.js";
 
@@ -60,11 +62,11 @@ export interface SourceManifest {
   tree: SourceTreeNode;
 }
 
-/** The two provider kinds this feature serves (REQ-SRC-02). A source's `kind` selects one. */
-export type SourceKind = "markdown-tree" | "file-tree";
-
-/** All source kinds, for exhaustive iteration in the registration loop and tests. */
-export const SOURCE_KINDS = ["markdown-tree", "file-tree"] as const satisfies readonly SourceKind[];
+/**
+ * The source kinds, one per data-source module (`markdown-tree`, `file-tree`). A source's
+ * `kind` selects its module, and with it the web surface.
+ */
+export type SourceKind = typeof MARKDOWN_TREE_KIND | typeof FILE_TREE_KIND;
 
 /**
  * The read-only view of one file. `content` is present ONLY when the file is neither

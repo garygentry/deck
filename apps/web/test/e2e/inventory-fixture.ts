@@ -73,7 +73,7 @@ export const FIXTURE = Object.freeze({
  * they live here keyed by host/service identity and are merged by the loader.
  */
 export interface InventoryOverlayDocument {
-  schemaVersion: 1;
+  schemaVersion: 2;
   hosts?: { name: string; links?: { title: string; href: string }[]; hidden?: boolean }[];
   services?: {
     host: string;
@@ -99,7 +99,7 @@ export function buildInventoryScenario(nowMs: number): {
   const generatedAt = freshIso;
 
   const config: DeckConfigDocument = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     estate: { name: FIXTURE.estateName },
     hosts: [
       {
@@ -169,7 +169,7 @@ export function buildInventoryScenario(nowMs: number): {
 
   // Presentation overlay: links and hidden markers keyed by identity.
   const overlay: InventoryOverlayDocument = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     hosts: [
       { name: FIXTURE.hostAlpha, links: [{ title: "Alpha dashboard", href: "https://alpha.dashboard.invalid/" }] },
       { name: FIXTURE.hostFoxtrot, hidden: true },

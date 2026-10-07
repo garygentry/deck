@@ -9,7 +9,8 @@
  * surfaces the current per-field errors.
  */
 
-import type { Action, ActionParam, ParamError } from "@deck/server";
+import type { ParamError } from "@deck/contract/actions";
+import type { Action, ActionParam } from "@deck/server/actions";
 import type { JSX } from "react";
 import { Checkbox, Icon, Input, Label, cn } from "@/ui";
 

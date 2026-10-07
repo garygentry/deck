@@ -1,10 +1,14 @@
-import { POLL_DEFAULTS } from "@deck/server";
-import type {
-  DeckConfig,
-  ProviderEnvelope,
-  SnapshotProviderResult,
-} from "@deck/server";
-import { isProviderPollable } from "../../shell/providers-index.js";
+import { POLL_DEFAULTS } from "@deck/contract";
+import type { ProviderEnvelope, SnapshotProviderResult } from "@deck/contract";
+import type { DeckConfig } from "@deck/server";
+import {
+  configQuery,
+  DecodeError,
+  getQueryClient,
+  HttpStatusError,
+  isDeckConfigShape,
+  isProviderPollable,
+} from "../../data/index.js";
 import type { InventoryModel } from "./model.js";
 import { buildInventoryModel } from "./model.js";
 
@@ -157,16 +161,7 @@ function deepFreeze<T>(value: T, seen: WeakSet<object> = new WeakSet()): T {
 
 /** Decode a config document sufficiently to prevent a non-object response entering the model. */
 function decodeConfig(value: unknown): DeckConfig {
-  if (
-    isObject(value) &&
-    value.schemaVersion === 1 &&
-    isObject(value.estate) &&
-    typeof value.estate.name === "string" &&
-    (value.hosts === undefined || Array.isArray(value.hosts)) &&
-    (value.services === undefined || Array.isArray(value.services))
-  ) {
-    return value as unknown as DeckConfig;
-  }
+  if (isDeckConfigShape(value)) return value;
   throw new InventoryRequestError(
     "CONFIG_DECODE",
     INVENTORY_REQUEST_MESSAGES.CONFIG_DECODE,
@@ -218,37 +213,61 @@ function decodeSnapshotEnvelope(
   return value as unknown as ProviderEnvelope<SnapshotProviderResult | null>;
 }
 
-/** Fetch and decode the fixed config endpoint without throwing expected failures. */
+/**
+ * Read the config through the shared query cache, so every poll and every other reader share
+ * one `/api/config` request per page load. A failed read is not cached. While other readers
+ * hold the shared query, it re-asks on its own cadence and this poll reports the failure
+ * without forcing a refetch (which would flicker every reader back to loading); with no other
+ * reader, this poll asks again itself. Expected failures are classified, never thrown; an
+ * abort of this poll is rethrown.
+ */
 async function fetchConfig(signal: AbortSignal): Promise<ConfigFetchResult> {
   try {
-    const response = await fetch(INVENTORY_ENDPOINTS.config, {
-      ...REQUEST_INIT,
-      signal,
-    });
-    if (!response.ok) {
-      throw new InventoryRequestError(
-        "CONFIG_HTTP",
-        statusMessage("CONFIG_HTTP", response.status),
-        response.status,
-      );
-    }
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      throw new InventoryRequestError(
-        "CONFIG_DECODE",
-        INVENTORY_REQUEST_MESSAGES.CONFIG_DECODE,
-      );
-    }
-    return { config: deepFreeze(decodeConfig(body)), error: null };
+    const body = await abortable(readSharedConfig(), signal);
+    // A private, frozen copy: the cached document stays the shared original.
+    return { config: deepFreeze(decodeConfig(structuredClone(body))), error: null };
   } catch (error) {
     if (isAbortLike(error, signal)) throw error;
+    if (error instanceof HttpStatusError) {
+      return { config: null, error: statusMessage("CONFIG_HTTP", error.status) };
+    }
+    if (error instanceof DecodeError) {
+      return { config: null, error: INVENTORY_REQUEST_MESSAGES.CONFIG_DECODE };
+    }
     if (error instanceof InventoryRequestError) {
       return { config: null, error: error.message };
     }
     return { config: null, error: INVENTORY_REQUEST_MESSAGES.CONFIG_REQUEST };
   }
+}
+
+/** The cached config, its standing failure while readers own the retry, or a fetch. */
+function readSharedConfig(): Promise<unknown> {
+  const client = getQueryClient();
+  const state = client.getQueryState(configQuery.queryKey);
+  if (state?.status === "success") return Promise.resolve(state.data);
+  const observed = (client.getQueryCache().find({ queryKey: configQuery.queryKey })?.getObserversCount() ?? 0) > 0;
+  if (state?.status === "error" && state.fetchStatus === "idle" && observed) return Promise.reject(state.error);
+  return client.fetchQuery(configQuery);
+}
+
+/** Settle with `promise`, or reject with an AbortError as soon as `signal` aborts. */
+function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new DOMException("Aborted", "AbortError"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
 }
 
 /** Fetch and classify the fixed snapshot endpoint without throwing expected failures. */

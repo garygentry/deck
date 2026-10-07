@@ -27,9 +27,9 @@ anything but clean, so the process never serves a document it could not validate
 
 ### Boot wiring
 
-With a trusted config in hand, `boot.ts` resolves the two optional capabilities (sources and
-actions) from config and environment, registers providers, starts the poll scheduler, and builds
-the Hono app with the config, provider reader, and capability bundles injected as dependencies.
+With a trusted config in hand, `boot.ts` plans the modules, registers providers, starts the
+modules and the poll scheduler, and builds the Hono app with the config, provider reader and module
+host injected as dependencies.
 A misconfiguration in any of these steps fails fast with a classified error and a non-zero exit
 rather than a half-configured server.
 
@@ -38,19 +38,30 @@ rather than a half-configured server.
 Monitoring and inventory data is served through a provider registry
 (`apps/server/src/providers/registry.ts`).
 `registerAllProviders` translates estate declarations — integrations, host and service bindings,
-the runtime snapshot source, and declared document sources — into providers of one of nine kinds:
+and declared document sources — and the runtime snapshot source into providers of one of nine kinds:
 `alertmanager`, `docker`, `file-tree`, `gatus`, `http-health`, `link`, `markdown-tree`,
 `prometheus`, and `snapshot`.
+Every kind is owned by a data-source module (`link`, `http-health`, `docker`, `gatus`,
+`prometheus`, `alertmanager`, `markdown-tree`, `file-tree`, `snapshot`) and handled by that
+module's kind handler: the kernel loops over host and service bindings and `integrations[]` /
+`sources[]` instances and registers the providers each handler offers, so it names no kind
+itself. The `prometheus` module also parses its integration's summary card. The `snapshot` module
+owns `DECK_SNAPSHOT_SOURCE` and offers the singleton `snapshot` provider when it is set; each
+handler sees the validated estate (read-only) for checks like the snapshot's against declared
+hosts.
 The scheduler polls each dynamic provider on its own interval, caches the latest envelope with a
 freshness state, and isolates failures so one failing provider never stops the others.
-The `link` kind is static and is not polled.
+A kind its module declares `static` (`link`) is fetched once and never polled.
 API reads (`/api/providers`, `/api/providers/:id`, `/api/health`) return cached envelopes and
 health without any upstream I/O.
 
 ### Drift projection
 
-The snapshot provider's cached generation feeds drift derivation
-(`apps/server/src/drift/**`).
+The snapshot provider's cached generation feeds drift derivation, a library in its own package
+(`@deck/drift`, `packages/drift`) that the web runs in the browser. The snapshot payload and
+provider envelope types it reads, with the default poll timing, are the wire contract in
+`@deck/contract` (`packages/contract`), which the server and web both import, so the web bundle
+loads no server code.
 `deriveDriftProjection` takes the observed snapshot and an explicit clock and produces an immutable
 view: drift findings grouped by host then service, coverage rows per host, waiver state judged
 against the clock, and summary counts.
@@ -61,8 +72,9 @@ snapshot can read as fresh or stale depending on when it is derived.
 
 The sources subsystem (`apps/server/src/sources/**`) browses declared document and config
 repositories read-only, with path confinement, git acquisition, and an on-disk cache.
-It is capability-gated: when no supported sources are configured the source routes do not serve,
-and a store is built only for supported source kinds.
+It runs as three built-in modules: the `markdown-tree` and `file-tree` data sources build a store
+and a provider for each source of their kind, and the `sources` module serves the browsing routes
+over those stores. A source of a kind no running module serves is unknown to the routes.
 
 ### Actions runtime
 
@@ -77,8 +89,8 @@ runner manifest are provided, the capability bundle is absent and every action r
 
 All of the above is exposed through one Hono application (`apps/server/src/server/app.ts`).
 It layers request logging, the config/provider/health GET routes, error and not-found boundaries,
-then the source and action routes, and finally — when a built web bundle is present — the static
-assets and SPA fallback.
+then the metrics route and the modules' routes (sources, actions, llm-usage), and finally — when
+a built web bundle is present — the static assets and SPA fallback.
 
 ### Request and poll flow
 
@@ -102,7 +114,20 @@ Per-feature building-block notes exist for three shipped features and go deeper 
 - [Sources, docs and configs](./sources-docs-and-configs.md)
 
 Other features — drift and coverage, alerts and health, the portal, and the engine core — do not
-have their own notes and are summarised in the subsystems above.
+have their own notes and are summarised in the subsystems above. The portal, inventory, drift and
+monitoring are built-in modules with no server code of their own: each module's manifest declares
+its pages, nav entries and extensions, and the portal's also owns the `modules.portal` config
+section (its schema, layer ownership, group-id rules and service references). The `/metrics`
+exposition is the built-in `metrics` module: it owns `DECK_METRICS_ENABLED`, declares `/metrics`
+as a root path, and reads the provider registry's poll statistics through its module context.
+A built-in declares `dependsOn` on a module whose provider or service it consumes and cannot do
+without: drift and inventory depend on `snapshot`. A module that only enriches its view when
+another is present (the portal's card status from `docker` or `gatus`, monitoring's integration
+cards) does not, so switching that source off leaves it running. The dependant is ordered after
+its dependencies, and is dropped (MODULE_DEPENDENCY_MISSING) when one is refused at planning:
+absent, switched off, or with an unusable manifest. Disabling a module later, when its kind
+handler fails during provider registration, does not cascade: its dependants keep running,
+degraded.
 
 ![Building-block view: the config loader feeds boot wiring, which registers providers and starts the poll scheduler feeding drift projection; the sources and actions runtimes are capability-gated, all exposed through the Hono app.](./diagrams/building-blocks.svg)
 

@@ -2,7 +2,7 @@ import type { Integration } from "@deck/schema";
 import { useRef, type FunctionComponent } from "react";
 import { PageHeader, useListNavigation, usePageHeadingId, useScrollToHash } from "@/ui";
 
-import { useConfig } from "../../shell/use-config.js";
+import { useConfig } from "../../data/index.js";
 import { AlertsSection } from "./AlertsSection.js";
 import { IntegrationsSection } from "./IntegrationsSection.js";
 import { MetricsSection } from "./MetricsSection.js";

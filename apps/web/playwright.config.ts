@@ -24,6 +24,10 @@ export default defineConfig({
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
+  // On CI, stop a shard after 10 failures. A mass failure (e.g. missing visual
+  // baselines) otherwise runs every test to its 95 s expect timeout plus a
+  // retry, which once held a shard for ~1.8 h of metered minutes.
+  maxFailures: process.env.CI ? 10 : 0,
   timeout: 120_000,
   expect: { timeout: 95_000 },
   reporter: process.env.CI ? "github" : "list",

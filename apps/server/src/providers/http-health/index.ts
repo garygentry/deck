@@ -1,10 +1,9 @@
-import type { Provider, ProviderConfig, ProviderHealth } from "../../contract/index.js";
-import { register } from "../registry.js";
+import type { ProviderHealth, ProviderSpec, ProviderTiming } from "@deck/module-sdk";
 
 export interface HttpHealthConfig {
   url: string;
   method?: "GET" | "HEAD";
-  timing?: ProviderConfig;
+  timing?: ProviderTiming;
 }
 
 export interface HttpHealthResult {
@@ -13,7 +12,7 @@ export interface HttpHealthResult {
   latencyMs: number;
 }
 
-export class HttpHealthProvider implements Provider<HttpHealthResult> {
+export class HttpHealthProvider implements ProviderSpec<HttpHealthResult> {
   readonly kind = "http-health";
 
   /** Cached latest health; updated only by fetch(), never by a health() probe. */
@@ -47,8 +46,4 @@ export class HttpHealthProvider implements Provider<HttpHealthResult> {
       throw error;
     }
   }
-}
-
-export function registerHttpHealth(id: string, config: HttpHealthConfig): void {
-  register(new HttpHealthProvider(id, config), config.timing);
 }

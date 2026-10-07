@@ -1,4 +1,4 @@
-import type { DriftSummary } from "@deck/server";
+import type { DriftSummary } from "@deck/drift";
 import type { ReactNode, JSX } from "react";
 import { FragmentBoundary, HealthPill, type IconName, type Tone } from "@/ui";
 import { useEffect } from "react";

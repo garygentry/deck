@@ -8,7 +8,7 @@
  * never colour alone.
  */
 
-import type { SourceSearchMatch } from "@deck/server";
+import type { SourceSearchMatch } from "@deck/server/sources";
 import type { JSX } from "react";
 import { Callout, EmptyState, ErrorState, Icon, List, ListItem, LoadingState } from "@/ui";
 import type { SearchState } from "../client.js";

@@ -10,7 +10,7 @@ import {
   type ColumnDef,
 } from "@/ui";
 import { useRoute } from "@/shell/router";
-import { EntitySlots } from "../components/EntitySlots.js";
+import { EntitySections } from "../components/EntitySections.js";
 import { HOST_STATUS_UI, renderHostState, renderMarker } from "../components/HostStateChip.js";
 import { InventoryNotFound } from "../components/InventoryNotFound.js";
 import {
@@ -62,7 +62,7 @@ export function HostDetailPage(): JSX.Element {
 
 /**
  * Resolve the routed host from the one committed model generation and render its
- * ordered core sections beside observed reality, then the stable fragment slots.
+ * ordered core sections beside observed reality, then the sections modules attach.
  *
  * The lookup is a single O(1) index read. Loading never claims not-found: only a
  * settled non-null model whose indexed key is absent renders the feature-owned
@@ -130,7 +130,7 @@ function FoundHostDetail({ row, model, snapshot }: FoundHostDetailProps): JSX.El
       <ObservedFactsSection observed={row.observed} reality={row.reality} />
       <ServicesOnHostSection row={row} model={model} />
 
-      <EntitySlots entity={entityRef} />
+      <EntitySections entity={entityRef} />
     </section>
   );
 }

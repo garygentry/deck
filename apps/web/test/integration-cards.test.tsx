@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { Integration } from "@deck/schema";
-import type { FreshnessStamp } from "@deck/server";
+import type { FreshnessStamp } from "@deck/contract";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 

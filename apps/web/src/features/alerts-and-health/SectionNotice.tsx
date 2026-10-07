@@ -1,4 +1,4 @@
-import type { FreshnessStamp } from "@deck/server";
+import type { FreshnessStamp } from "@deck/contract";
 import type { JSX, ReactNode } from "react";
 import { Callout, EmptyState, FreshnessBadge } from "@/ui";
 

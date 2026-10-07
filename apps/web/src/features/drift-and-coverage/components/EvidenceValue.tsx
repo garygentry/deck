@@ -1,9 +1,5 @@
-import { buildEvidencePreview } from "@deck/server";
-import type {
-  EvidencePreviewLimits,
-  EvidencePreviewReason,
-  ReadonlyJsonValue,
-} from "@deck/server";
+import { buildEvidencePreview } from "@deck/drift";
+import type { EvidencePreviewLimits, EvidencePreviewReason, ReadonlyJsonValue } from "@deck/drift";
 import type { JsonValue } from "@deck/schema";
 import { Component } from "react";
 import type { ReactNode, JSX } from "react";

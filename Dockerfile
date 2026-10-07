@@ -16,6 +16,9 @@ RUN corepack enable
 # Manifests + lockfile first so `pnpm install` is cached until a dependency changes.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/schema/package.json packages/schema/package.json
+COPY packages/module-sdk/package.json packages/module-sdk/package.json
+COPY packages/contract/package.json packages/contract/package.json
+COPY packages/drift/package.json packages/drift/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY apps/server/package.json apps/server/package.json
 RUN pnpm install --frozen-lockfile

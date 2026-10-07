@@ -9,7 +9,7 @@
  * (REQ-FRESH-04). Writes ONLY under `deps.cacheDir`, never to the source (REQ-RO-01).
  *
  * Private-repo auth (REQ-ACQ-03, REQ-SEC-03): when a git source declares `Source.credentialEnv`,
- * the token named by that env var is read from `process.env` at acquisition time and sent as an
+ * the token named by that env var is read (through `AcquireDeps.env`) at acquisition time and sent as an
  * ephemeral `http.extraheader: Authorization: Basic …` injected via `GIT_CONFIG_*` env for the
  * clone spawn ONLY. The token is NEVER placed in the clone URL or argv — git persists the remote
  * URL to the clone's `.git/config` (and reflog), so URL-embedded userinfo would leave the
@@ -64,10 +64,10 @@ export interface AcquiredTree {
 }
 
 /**
- * The injected collaborators for acquisition. Built once at boot by `resolveSourcesRuntime`
- * (item 006) from `SourcesRuntime` + the process env, and shared by every `acquireSource`
- * call. Everything beyond the pure filesystem is injected so unit tests run with a fake git
- * and a scratch cache dir — no real `git`, no Bun.
+ * The injected collaborators for acquisition, held by the source's store (built by its
+ * data-source module's kind handler) and passed to every `acquireSource` call for it.
+ * Everything beyond the pure filesystem is injected so unit tests run with a fake git and a
+ * scratch cache dir — no real `git`, no Bun.
  */
 export interface AcquireDeps {
   /** Absolute on-disk cache root — `SourcesRuntime.cacheDir`, from DECK_SOURCES_CACHE_DIR. */
@@ -76,6 +76,12 @@ export interface AcquireDeps {
   readonly git: GitSpawner;
   /** Wall clock for generation-dir naming; injectable for deterministic tests. Default: Date.now. */
   readonly now?: () => number;
+  /**
+   * Reads the variable `Source.credentialEnv` names. The source's data-source module passes
+   * the reader its kind handler got for this source, so only that source's credential is
+   * readable. Default: the process env.
+   */
+  readonly env?: { get(name: string): string | undefined };
 }
 
 /**
@@ -172,7 +178,7 @@ async function acquireGitRepo(src: Source, repo: string, ctx: AcquireContext): P
       // rides an ephemeral `http.extraheader` injected via env for THIS spawn only (never
       // persisted, never in the arg list, never logged — REQ-SEC-03).
       buildCloneArgv(repo, src.location.ref, incoming),
-      { cwd: sourceDir, env: { ...gitEnv(), ...gitAuthEnv(src, repo, process.env) } },
+      { cwd: sourceDir, env: { ...gitEnv(), ...gitAuthEnv(src, repo, deps.env ?? processEnv) } },
       signal,
       src,
       "clone",
@@ -227,13 +233,13 @@ function buildCloneArgv(remoteUrl: string, ref: string | undefined, dest: string
  *
  * @param src  The source; `credentialEnv` names the env var holding the token (never its value).
  * @param repo The declared `location.repo`.
- * @param env  Process env (injectable for tests).
+ * @param env  Reads the credential variable (`AcquireDeps.env`, else the process env).
  */
-function gitAuthEnv(src: Source, repo: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+function gitAuthEnv(src: Source, repo: string, env: { get(name: string): string | undefined }): NodeJS.ProcessEnv {
   const envName = src.credentialEnv;
   if (envName === undefined || envName === "") return {}; // public/local — no credential (REQ-ACQ-04)
 
-  const token = env[envName];
+  const token = env.get(envName);
   if (token === undefined || token === "") return {}; // named but unset ⇒ attempt unauthenticated
 
   // Only HTTPS remotes accept an Authorization header; ssh:// / git@ remotes use their own key
@@ -254,6 +260,9 @@ function gitAuthEnv(src: Source, repo: string, env: NodeJS.ProcessEnv): NodeJS.P
     GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
   };
 }
+
+/** The process env, for a caller that injects no reader. */
+const processEnv = { get: (name: string): string | undefined => process.env[name] };
 
 /** Env for every git spawn: never prompt (paired with stdin:"ignore" in the Bun impl). */
 function gitEnv(): NodeJS.ProcessEnv {

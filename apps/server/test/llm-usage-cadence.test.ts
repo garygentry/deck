@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { type CadenceState, ERROR_BACKOFF_MAX_MS, nextDelay, OAUTH_FLOOR_MS, pollMode } from "../src/llm-usage/cadence.js";
-import { LlmUsageConfigError, resolveLlmUsageConfig } from "../src/llm-usage/config.js";
+import { LlmUsageConfigError, resolveLlmUsageSection } from "../src/llm-usage/config.js";
 
 const now = 1_000_000_000_000;
 const state = (overrides: Partial<CadenceState> = {}): CadenceState => ({
@@ -45,11 +45,11 @@ describe("llm-usage cadence", () => {
 });
 
 describe("llmUsage config resolution", () => {
-  const doc = (llmUsage: unknown) => ({ schemaVersion: 1, estate: { name: "t" }, llmUsage }) as Parameters<typeof resolveLlmUsageConfig>[0];
+  const doc = (llmUsage: unknown) => llmUsage as Parameters<typeof resolveLlmUsageSection>[0];
 
   it("is off when absent and applies defaults when present", () => {
-    expect(resolveLlmUsageConfig({ schemaVersion: 1, estate: { name: "t" } })).toBeNull();
-    expect(resolveLlmUsageConfig(doc({ claude: {}, codex: { codexHome: "/c" } }))).toEqual({
+    expect(resolveLlmUsageSection(undefined)).toBeNull();
+    expect(resolveLlmUsageSection(doc({ claude: {}, codex: { codexHome: "/c" } }))).toEqual({
       thresholds: { warn: 75, danger: 90 },
       idlePauseMs: 300_000,
       claude: { credentialsFile: null, transcriptsDir: null, statusLineCredentialEnv: null, activeMs: 120_000, idleMs: 300_000 },
@@ -58,16 +58,18 @@ describe("llmUsage config resolution", () => {
   });
 
   it("clamps OAuth intervals to the floor and parses durations", () => {
-    const resolved = resolveLlmUsageConfig(doc({ claude: { activeInterval: "PT30S", idleInterval: "PT10M" }, idlePause: "PT1M" }));
+    const resolved = resolveLlmUsageSection(doc({ claude: { activeInterval: "PT30S", idleInterval: "PT10M" }, idlePause: "PT1M" }));
     expect(resolved?.claude).toMatchObject({ activeMs: 120_000, idleMs: 600_000 });
     expect(resolved?.idlePauseMs).toBe(60_000);
   });
 
   it("rejects malformed durations and inverted thresholds", () => {
-    expect(() => resolveLlmUsageConfig(doc({ idlePause: "5m" }))).toThrow(LlmUsageConfigError);
-    expect(() => resolveLlmUsageConfig(doc({ idlePause: "-PT5M" }))).toThrow(LlmUsageConfigError);
-    expect(() => resolveLlmUsageConfig(doc({ thresholds: { warn: 95 } }))).toThrow(/warn \(95\) exceeds danger \(90\)/);
-    expect(resolveLlmUsageConfig(doc({ thresholds: { danger: 50 } }))?.thresholds).toEqual({ warn: 50, danger: 50 });
-    expect(resolveLlmUsageConfig(doc({ claude: { idleInterval: "P1Y" } }))?.claude?.idleMs).toBe(86_400_000);
+    expect(() => resolveLlmUsageSection(doc({ idlePause: "5m" }))).toThrow(LlmUsageConfigError);
+    expect(() => resolveLlmUsageSection(doc({ idlePause: "-PT5M" }))).toThrow(LlmUsageConfigError);
+    expect(() => resolveLlmUsageSection(doc({ thresholds: { warn: 95 } }))).toThrow(/warn \(95\) exceeds danger \(90\)/);
+    // Errors name the v2 location of the value, never the v1 `llmUsage` key.
+    expect(() => resolveLlmUsageSection(doc({ thresholds: { warn: 95 } }))).toThrow(/^\/modules\/llm-usage\/thresholds: /);
+    expect(resolveLlmUsageSection(doc({ thresholds: { danger: 50 } }))?.thresholds).toEqual({ warn: 50, danger: 50 });
+    expect(resolveLlmUsageSection(doc({ claude: { idleInterval: "P1Y" } }))?.claude?.idleMs).toBe(86_400_000);
   });
 });

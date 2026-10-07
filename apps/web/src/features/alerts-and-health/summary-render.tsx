@@ -1,4 +1,4 @@
-import type { FreshnessStamp } from "@deck/server";
+import type { FreshnessStamp } from "@deck/contract";
 import type { JSX } from "react";
 
 import type { HealthSummary } from "../../shell/health-header/health-summary.js";

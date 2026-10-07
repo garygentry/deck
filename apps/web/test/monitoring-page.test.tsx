@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import type { DeckConfig, FreshnessStamp } from "@deck/server";
+import type { FreshnessStamp } from "@deck/contract";
+import type { DeckConfig } from "@deck/server";
 import type { Integration } from "@deck/schema";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -21,7 +22,7 @@ import type {
   PrometheusData,
   SummaryValue,
 } from "../src/features/alerts-and-health/usePrometheusData.js";
-import type { ConfigState } from "../src/shell/use-config.js";
+import type { ConfigState } from "../src/data/hooks.js";
 
 // The page sources its data through three hooks. Mocking them yields deterministic flattened views with
 // no poll/timer lifecycle. The prop-driven section tests below never call the hooks, so the mocks are
@@ -35,7 +36,8 @@ vi.mock("../src/features/alerts-and-health/usePrometheusData.js", () => ({
   usePrometheusData: () => promView,
 }));
 let configState: ConfigState;
-vi.mock("../src/shell/use-config.js", () => ({
+vi.mock("../src/data/hooks.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/data/hooks.js")>()),
   useConfig: () => configState,
 }));
 

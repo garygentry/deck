@@ -1,19 +1,14 @@
-import type {
-  Group,
-  GroupItem,
-  Host,
-  Link,
-  Service,
-  ServiceItem,
-  Subgroup,
-} from "@deck/schema";
-import type { DeckConfig, FreshnessStamp } from "@deck/server";
+import type { Host, Link, Service } from "@deck/schema";
+import type { FreshnessStamp } from "@deck/contract";
+import type { DeckConfig } from "@deck/server";
+import type { Group, GroupItem, PortalModuleConfig, ServiceItem, Subgroup } from "@deck/server/portal";
 import { useMemo, useRef, type FunctionComponent, type JSX, type ReactNode } from "react";
 import {
   ActiveFilters,
   CardGrid,
   EmptyState,
   FacetFilter,
+  FragmentBoundary,
   FilterBar,
   Icon,
   LoadingState,
@@ -45,6 +40,8 @@ import {
   type PortalFacet,
 } from "./search-filter.js";
 import { getCards } from "../../registry/registry.js";
+import { useRegistryVersion } from "../../registry/use-registry.js";
+import { useSlotResetKey } from "../../shell/use-slot-reset-key.js";
 import { PORTAL_SUMMARY_SLOT } from "../../shell/portal-summary-slot.js";
 import { PortalDataContext, usePortalData } from "./usePortalData.js";
 
@@ -65,6 +62,11 @@ const PENDING_STAMP: FreshnessStamp = {
 export interface HiddenSets {
   hosts: Set<string>;
   services: Set<string>;
+}
+
+/** The configured portal groups: the portal module's section, which deck validated at boot. */
+export function portalGroups(config: DeckConfig): readonly Group[] {
+  return (config.modules?.portal as PortalModuleConfig | undefined)?.groups ?? [];
 }
 
 export function orderedGroups(groups: readonly Group[]): Group[] {
@@ -160,7 +162,7 @@ function buildCards(data: PortalData): IndexedCard[] {
     });
   };
 
-  for (const group of orderedGroups(data.config.groups ?? [])) {
+  for (const group of orderedGroups(portalGroups(data.config))) {
     for (const item of orderedItems(group.items)) {
       if (item.type === "group") {
         for (const child of item.items) addCard(child, group);
@@ -247,12 +249,15 @@ function PortalGroup({ group, cards }: { group: Group; cards: readonly IndexedCa
 
 export const PortalPage: FunctionComponent = () => {
   const data = usePortalData();
+  useRegistryVersion();
+  const summaryCards = getCards(PORTAL_SUMMARY_SLOT);
+  const summaryResetKey = useSlotResetKey();
   const headingId = usePageHeadingId("Portal");
   const rootRef = useRef<HTMLElement>(null);
   const filters = useFacetFilters<PortalFacet>({ facets: PORTAL_FACETS });
   const indexedCards = useMemo(() => buildCards(data), [data]);
   const result = filters.apply(indexedCards, PORTAL_FILTER_ACCESSORS);
-  const groups = data.config === null ? [] : orderedGroups(data.config.groups ?? []);
+  const groups = data.config === null ? [] : orderedGroups(portalGroups(data.config));
 
   useListNavigation({
     keys: "vim",
@@ -304,8 +309,10 @@ export const PortalPage: FunctionComponent = () => {
       >
         <PageHeader title="Portal" />
         {/* Summary cards other features contribute (e.g. LLM usage); each renders nothing when it has nothing to say. */}
-        {getCards(PORTAL_SUMMARY_SLOT).map(({ id, component: Card }) => (
-          <Card key={id} data={null} freshness={STATIC_STAMP} />
+        {summaryCards.map(({ id, component: Card }) => (
+          <FragmentBoundary key={id} label="Summary card" resetKey={summaryResetKey}>
+            <Card data={null} freshness={STATIC_STAMP} />
+          </FragmentBoundary>
         ))}
         <FilterBar
           label="Portal filters"

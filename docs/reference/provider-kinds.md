@@ -23,6 +23,17 @@ integration is skipped by the poller.
 A binding-backed provider is registered per host/service binding, and a
 source-backed provider is registered per declared source.
 
+`link`, `http-health`, `docker`, `gatus`, `prometheus`, `alertmanager` and
+`snapshot` are each a data-source module that owns its kind: the module declares the kind and
+turns its bindings and integration instances into providers. A `docker` or
+`gatus` binding registers no provider of its own; it selects entries from the
+integration's provider for the portal's card status. `prometheus`,
+`alertmanager` and `snapshot` do not accept bindings: a host or service binding
+of any of them is ignored and reported as `PROVIDER_BINDING_UNSUPPORTED` (info).
+The `prometheus` and `alertmanager` provider ids are fixed: another provider
+declared with either id (a binding's `id`, say) fails boot with
+`PROVIDER_DUPLICATE_ID`.
+
 Every dynamic provider is polled on a shared schedule.
 The defaults are a 30-second poll interval, a 30-second freshness TTL, a
 90-second unreachable threshold, and a 5-second per-poll timeout.
@@ -174,8 +185,10 @@ unhealthy only when every query is unreachable.
 
 Reads, validates, and serves the observed-reality snapshot that feeds Hosts,
 Services, and Drift.
-Not configured through the estate document — deck registers it only when
-`DECK_SNAPSHOT_SOURCE` is set to a file path or HTTP(S) URL.
+Not configured through the estate document — the `snapshot` module, which owns
+`DECK_SNAPSHOT_SOURCE`, registers it only when that variable is set to a file
+path or HTTP(S) URL. A malformed value fails boot (exit class 2); a well-formed
+but unreadable one registers and fails on its polls.
 
 | Setting | Notes |
 | --- | --- |

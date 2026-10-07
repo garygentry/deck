@@ -1,67 +1,49 @@
 /**
  * Integration tests for the four read-only source routes (05-http-routes.md), driven through
- * `app.request()` (mirrors provider-routes.integration.test.ts). Covers the read routes, HTTP
- * confinement rejections (400/404 with no leaked path), the capability-off / unknown-id 404s,
- * an acquired-but-empty tree (fileCount 0 is success, not an error), and the read-only
- * meta-guard (every route registerSourceRoutes adds is GET).
+ * `app.request()` on an app running the source modules (markdown-tree, file-tree, sources) as
+ * boot runs them. Covers the read routes at the legacy `/api/sources` alias and the module
+ * prefix, HTTP confinement rejections (400/404 with no leaked path), the unknown-id 404s, an
+ * acquired-but-empty tree (fileCount 0 is success, not an error), and the read-only meta-guard
+ * (every route registerSourceRoutes adds is GET).
  */
 
-import type { Logger } from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Hono } from "hono";
 
-import { createApp, type AppDeps } from "../src/server/app.js";
-import { registerSourceRoutes } from "../src/sources/route.js";
-import { resolveSourcesRuntime } from "../src/sources/runtime.js";
-import type { SourceStore } from "../src/sources/store.js";
-import { createFakeGitSpawner } from "./util/fake-git-spawner.js";
+import { stopScheduler } from "../src/providers/registry.js";
+import { sourcesModule } from "../src/sources/module.js";
+import { registerSourceRoutes, type SourceRoutesDeps } from "../src/sources/route.js";
 import { materializeFixture } from "./fixtures/sources-estate/materialize.js";
+import { sourcesApp } from "./util/sources-module.js";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()?.();
+  stopScheduler();
   vi.restoreAllMocks();
 });
 
-/** A no-op git spawner — local-path sources never spawn, but this guarantees no real git. */
-const noGit = () => ({ git: createFakeGitSpawner({}) });
-
-function stubLogger(): Logger {
-  return { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger;
-}
-
 /**
- * Build an app over the materialized estate; `withSources:false` omits the capability. When
- * sources are present, each store is primed with one `buildManifest()` — the acquisition the
- * provider scheduler performs on its first poll in a live server — so the read routes observe a
- * last-good confined root (before the first acquisition every read is SOURCE_UNAVAILABLE, by
- * design: store.ts).
+ * Build an app over the materialized estate; `withSources:false` runs only the `sources`
+ * module, with no data source serving a store. When sources are present, each declared
+ * source is primed with one tree read — the acquisition the provider scheduler performs on its
+ * first poll in a live server — so the read routes observe a last-good confined root (before
+ * the first acquisition every read is SOURCE_UNAVAILABLE, by design: store.ts).
  */
 async function buildApp(
   withSources: boolean,
-): Promise<{ app: Hono; deps: AppDeps; logger: Logger }> {
+): Promise<{ app: Hono; lines: Record<string, unknown>[] }> {
   const fixture = materializeFixture();
   cleanups.push(fixture.cleanup);
-  const logger = stubLogger();
-  const base: AppDeps = {
-    config: fixture.config,
-    providers: { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [] },
-    logger,
-  };
-  if (!withSources) return { app: createApp(base), deps: base, logger };
-
-  const runtime = resolveSourcesRuntime(
-    fixture.config,
-    { DECK_SOURCES_CACHE_DIR: fixture.cacheDir },
-    noGit(),
-  );
-  // Prime every store's last-good root (simulates the scheduler's first successful poll).
-  await Promise.all(
-    [...runtime.stores.values()].map((store: SourceStore) => store.buildManifest()),
-  );
-  const deps: AppDeps = { ...base, sources: runtime.reader };
-  return { app: createApp(deps), deps, logger };
+  const env = { DECK_SOURCES_CACHE_DIR: fixture.cacheDir };
+  const modules = withSources ? undefined : [sourcesModule];
+  const { app, lines } = await sourcesApp(fixture.config, { env, ...(modules === undefined ? {} : { modules }) });
+  if (withSources) {
+    // Prime every store's last-good root (simulates the scheduler's first successful poll).
+    await Promise.all((fixture.config.sources ?? []).map((source) => app.request(`/api/sources/${source.id}/tree`)));
+  }
+  return { app, lines };
 }
 
 describe("source routes — read surface", () => {
@@ -178,7 +160,7 @@ describe("source routes — confinement rejections over HTTP", () => {
 });
 
 describe("source routes — capability gate", () => {
-  it("an app without deps.sources returns 404 SOURCE_NOT_FOUND for every route", async () => {
+  it("with no data source serving a store, every route returns 404 SOURCE_NOT_FOUND", async () => {
     const { app } = await buildApp(false);
     const paths = [
       "/api/sources/docs/tree",
@@ -201,6 +183,27 @@ describe("source routes — capability gate", () => {
       expect(res.status).toBe(404);
       expect(((await res.json()) as { code: string }).code).toBe("SOURCE_NOT_FOUND");
     }
+  });
+});
+
+describe("source routes — module prefix", () => {
+  it("answer at /api/m/sources exactly as at the legacy /api/sources alias", async () => {
+    const { app } = await buildApp(true);
+    for (const path of ["/docs/tree", "/configs/file?path=app.yaml", "/docs/search?q=nginx", "/nope/tree"]) {
+      const legacy = await app.request(`/api/sources${path}`);
+      const current = await app.request(`/api/m/sources${path}`);
+      expect(current.status).toBe(legacy.status);
+      expect(await current.json()).toEqual(await legacy.json());
+    }
+  });
+
+  it("logs a failure through the module logger with the source id and failure kind only", async () => {
+    const { app, lines } = await buildApp(true);
+    const res = await app.request("/api/sources/docs/file?path=../../etc/passwd");
+    expect(res.status).toBe(400);
+    const logged = lines.find((line) => line.event === "sources.failure");
+    expect(logged).toMatchObject({ module: "sources", sourceId: "docs", code: "PATH_NOT_CONFINED", msg: "source.failure" });
+    expect(JSON.stringify(logged)).not.toContain("passwd");
   });
 });
 
@@ -231,7 +234,7 @@ describe("source routes — read-only meta-guard (REQ-RO-01, SC-10)", () => {
       },
     ) as unknown as Hono;
 
-    const { deps } = await buildApp(true);
+    const deps: SourceRoutesDeps = { sources: { get: () => undefined }, logFailure: () => {} };
     registerSourceRoutes(recorder, deps);
 
     expect(calls).toHaveLength(4);
@@ -240,10 +243,10 @@ describe("source routes — read-only meta-guard (REQ-RO-01, SC-10)", () => {
       expect(calls.some((c) => c.method === verb)).toBe(false);
     }
     expect(calls.map((c) => c.path)).toEqual([
-      "/api/sources/:id/tree",
-      "/api/sources/:id/file",
-      "/api/sources/:id/raw",
-      "/api/sources/:id/search",
+      "/:id/tree",
+      "/:id/file",
+      "/:id/raw",
+      "/:id/search",
     ]);
   });
 });

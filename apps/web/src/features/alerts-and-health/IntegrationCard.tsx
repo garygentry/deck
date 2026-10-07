@@ -1,5 +1,5 @@
 import type { Integration } from "@deck/schema";
-import type { FreshnessStamp } from "@deck/server";
+import type { FreshnessStamp } from "@deck/contract";
 import type { JSX } from "react";
 import { FreshnessBadge, LinkTile, StatusBadge } from "@/ui";
 

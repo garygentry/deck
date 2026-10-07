@@ -1,5 +1,4 @@
-import type { Provider, ProviderConfig, ProviderHealth } from "../../contract/index.js";
-import { register } from "../registry.js";
+import type { EnvReader, ProviderHealth, ProviderSpec, ProviderTiming } from "@deck/module-sdk";
 
 export interface GatusEndpoint {
   key: string;
@@ -16,7 +15,12 @@ export interface GatusResult {
 export interface GatusConfig {
   baseUrl: string;
   credentialEnv?: string;
-  timing?: ProviderConfig;
+  timing?: ProviderTiming;
+  /**
+   * Reads the variable `credentialEnv` names, at fetch time so a rotated credential is
+   * picked up. Without it no credential is sent.
+   */
+  env?: EnvReader;
 }
 
 interface RawGatusResult {
@@ -31,7 +35,7 @@ interface RawGatusEndpoint {
   results?: RawGatusResult[];
 }
 
-export class GatusProvider implements Provider<GatusResult> {
+export class GatusProvider implements ProviderSpec<GatusResult> {
   readonly kind = "gatus";
 
   /** Cached latest health; updated only by fetch(), never by a health() probe. */
@@ -51,7 +55,7 @@ export class GatusProvider implements Provider<GatusResult> {
     try {
       const response = await globalThis.fetch(joinUrl(this.cfg.baseUrl, "/api/v1/endpoints/statuses"), {
         method: "GET",
-        headers: authHeaders(this.cfg.credentialEnv),
+        headers: authHeaders(this.cfg),
       });
       // A non-2xx upstream (auth failure, endpoint down) is a real failure — report
       // it as unhealthy rather than an empty-but-healthy result that masks the fault.
@@ -71,18 +75,14 @@ export class GatusProvider implements Provider<GatusResult> {
   }
 }
 
-export function registerGatus(id: string, cfg: GatusConfig): void {
-  register(new GatusProvider(id, cfg), cfg.timing);
-}
-
 function joinUrl(baseUrl: string, path: string): string {
   const base = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
   return `${base}${path}`;
 }
 
-function authHeaders(credentialEnv?: string): Record<string, string> {
+function authHeaders({ credentialEnv, env }: GatusConfig): Record<string, string> {
   if (!credentialEnv) return {};
-  const value = process.env[credentialEnv];
+  const value = env?.get(credentialEnv);
   if (!value) return {};
   return { Authorization: value };
 }

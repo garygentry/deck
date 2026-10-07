@@ -8,7 +8,7 @@ import { MonitoringPage } from "./pages.js";
 // two persistent HealthHeader summary fragments. Registration errors are intentionally uncaught so
 // eager discovery fails loudly rather than silently omitting a required surface.
 registerPage({
-  id: "monitoring",
+  id: "page:monitoring/overview",
   path: "/monitoring",
   label: "Monitoring",
   icon: "activity",
@@ -16,12 +16,12 @@ registerPage({
   component: MonitoringPage,
 });
 registerSummaryFragment(HealthHeaderSlot, {
-  id: "alerts-summary",
+  id: "pill:monitoring/alerts",
   component: AlertsSummary,
   order: 10,
 });
 registerSummaryFragment(HealthHeaderSlot, {
-  id: "metrics-summary",
+  id: "pill:monitoring/metrics",
   component: MetricsSummary,
   order: 20,
 });

@@ -16,7 +16,9 @@ A module has three parts:
   a convenience: a plain object works the same, so module code can import only *types* from
   this package and nothing from deck is resolved at runtime.
 - **Web half.** `defineWebModule(manifest, { components })`. This is a table of components
-  that the manifest's pages, extensions and widget types refer to by name.
+  that the manifest's pages, extensions and widget types refer to by name. It reads only the
+  manifest's identity and `contributes` (`WebModuleManifest`), so a full manifest works, and a
+  built-in shares just that part with the web (`@deck/contract/modules/<id>`).
 
 ## Server module context
 

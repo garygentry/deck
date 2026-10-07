@@ -9,7 +9,12 @@
       "version": "1.0.0",
       "enabled": false,
       "reason": "not enabled: DECK_ACTIONS_ENABLED is not true",
-      "origin": "module"
+      "origin": "module",
+      "enabledBy": [
+        {
+          "env": "DECK_ACTIONS_ENABLED"
+        }
+      ]
     },
     {
       "id": "alertmanager",
@@ -82,7 +87,12 @@
       "version": "1.0.0",
       "enabled": false,
       "reason": "not enabled: DECK_METRICS_ENABLED is not true",
-      "origin": "module"
+      "origin": "module",
+      "enabledBy": [
+        {
+          "env": "DECK_METRICS_ENABLED"
+        }
+      ]
     },
     {
       "id": "monitoring",
@@ -230,6 +240,15 @@
       "title": "Docs",
       "icon": "book-open",
       "component": "DocsPage"
+    }
+  ],
+  "disabledPages": [
+    {
+      "id": "page:actions/overview",
+      "module": "actions",
+      "path": "/actions",
+      "title": "Actions",
+      "icon": "zap"
     }
   ],
   "navGroups": [

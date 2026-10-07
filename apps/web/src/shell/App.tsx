@@ -5,9 +5,11 @@ import { getPages } from "../registry/registry.js";
 import { useRegistryVersion } from "../registry/use-registry.js";
 import { AppShell } from "./AppShell.js";
 import { useBrandTitle } from "./manifest-slot.js";
+import { ModuleNotEnabledPage } from "./ModuleNotEnabledPage.js";
 import { matchPage } from "./nav.js";
 import { NotFoundPage } from "./NotFoundPage.js";
-import { useConfig } from "../data/index.js";
+import { resolveRoutes, type ResolvedRoutes } from "./routes.js";
+import { useConfig, useUiManifest } from "../data/index.js";
 
 export function App({ url }: { url?: string } = {}) {
   return (
@@ -22,20 +24,20 @@ export function App({ url }: { url?: string } = {}) {
 function Shell() {
   // Re-render when an extension registers late (a lazily loaded module).
   useRegistryVersion();
-  const pages = getPages();
+  const routes = resolveRoutes(useUiManifest(), getPages());
   const { path } = useLocation();
   const config = useConfig();
-  const title = matchPage(pages, path)?.label;
+  const title = (matchPage(routes.routed, path) ?? matchPage(routes.notEnabled, path))?.label;
   useDocumentTitle(title ?? "Not found", useBrandTitle());
 
   return (
-    <AppShell pages={pages} path={path} title={title}>
+    <AppShell pages={routes.routed} path={path} title={title}>
       {config.status === "error" && (
         <Callout tone="danger" title="Failed to load config" className="mb-4">
           {config.message}
         </Callout>
       )}
-      <RoutedContent pages={pages} />
+      <RoutedContent routes={routes} />
     </AppShell>
   );
 }
@@ -82,15 +84,21 @@ function LinkInterceptor() {
  * (the header and nav stay usable). The boundary resets on route change, keyed by
  * the current path. Rendered inside the Router so it can read the location.
  */
-function RoutedContent({ pages }: { pages: ReturnType<typeof getPages> }) {
+function RoutedContent({ routes }: { routes: ResolvedRoutes }) {
   const { path } = useLocation();
   return (
     <PageErrorBoundary resetKey={path}>
       {/* Heavy pages register lazy components; this covers their first load. */}
       <Suspense fallback={<LoadingState label="Loading page…" />}>
         <Switch>
-          {pages.map((page) => (
+          {routes.routed.map((page) => (
             <Route key={page.id} path={page.path} component={page.component} />
+          ))}
+          {/* A disabled module's page: say the module is off, not that nothing is there. */}
+          {routes.notEnabled.map((route) => (
+            <Route key={route.id} path={route.path}>
+              <ModuleNotEnabledPage route={route} />
+            </Route>
           ))}
           <Route component={NotFoundPage} />
         </Switch>

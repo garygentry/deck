@@ -40,7 +40,7 @@ function extension(id: string, slot: string, order: number, extra: Partial<Exten
 }
 
 function manifest(parts: Partial<UiManifest>): UiManifest {
-  return { uiApi: 1, brand: { title: "Lab" }, modules: [], slots: [], pages: [], navGroups: [], nav: [], extensions: [], providers: [], findings: [], ...parts };
+  return { uiApi: 1, brand: { title: "Lab" }, modules: [], slots: [], pages: [], disabledPages: [], navGroups: [], nav: [], extensions: [], providers: [], findings: [], ...parts };
 }
 
 afterEach(() => {
@@ -191,8 +191,16 @@ describe("uiManifestProblem", () => {
     ["an extension without an order", { extensions: [{ id: "pill:a/b", kind: "pill", slot: "s" }] }, "extensions[0] is malformed"],
     ["nav that is not a list", { nav: {} }, "nav is not a list"],
     ["a brand without a title", { brand: {} }, "brand is malformed"],
+    ["a module without enabled", { modules: [{ id: "a" }] }, "modules[0] is malformed"],
+    ["a disabled page without a path", { disabledPages: [{ id: "page:a/b", module: "a", title: "B" }] }, "disabledPages[0] is malformed"],
   ])("rejects %s", (_label, patch, problem) => {
     expect(uiManifestProblem({ ...golden, ...patch })).toBe(problem);
+  });
+
+  it("never rejects a manifest for a malformed module switch (it is only a hint)", () => {
+    for (const enabledBy of [{ env: "A", config: "modules.a" }, "A", [{}], [{ env: 1 }], null]) {
+      expect(uiManifestProblem({ ...golden, modules: [{ id: "a", version: "1", enabled: false, origin: "module", enabledBy }] })).toBeNull();
+    }
   });
 });
 

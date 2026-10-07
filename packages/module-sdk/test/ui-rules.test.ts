@@ -7,6 +7,7 @@ import {
   isSafeHref,
   orderProblem,
   pagePathProblem,
+  routablePathProblem,
   parseExtensionId,
   slotAcceptsProblem,
   slotIdProblem,
@@ -39,6 +40,15 @@ describe("shared UI rules", () => {
     expect(pagePathProblem("/metrics", "p")).toMatch(/reserved root path/);
     expect(pagePathProblem("/metrics", "p", [])).toBeNull();
     expect(pagePathProblem("/kernel.txt", "p", ["/kernel.txt"])).toMatch(/reserved root path/);
+    // Only patterns the web router can compile: a stray bracket or group throws there.
+    for (const ok of ["/", "/hosts/:name", "/tools/", "/files/:rest*", "/a//b", "/%20x", "/files/*", "/a/:b?", "/v1.2/x~y"]) {
+      expect(pagePathProblem(ok, "p")).toBeNull();
+    }
+    for (const bad of ["/tools/[", "/x(y", "/a/:b.("]) {
+      expect(pagePathProblem(bad, "p")).toMatch(/not a route pattern the web router can compile/);
+    }
+    expect(routablePathProblem("/tools/[", "p")).toMatch(/can compile/);
+    expect(routablePathProblem("/tools/", "p")).toBeNull();
     expect(isSafeHref("https://x.lab")).toBe(true);
     expect(isSafeHref("javascript:alert(1)")).toBe(false);
     expect(isSafeHref("//evil")).toBe(false);

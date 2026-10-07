@@ -39,7 +39,7 @@ async function setup() {
     id: page.replace("page:", "nav:"), module: page.split(/[:/]/)[1], slot: "app/nav", page, group, label, order: 100,
   });
   getQueryClient().setQueryData(["ui"], {
-    uiApi: 1, brand: { title: "Lab" }, modules: [], slots: [], pages: [], extensions: [], providers: [], findings: [],
+    uiApi: 1, brand: { title: "Lab" }, modules: [], slots: [], pages: [], disabledPages: [], extensions: [], providers: [], findings: [],
     navGroups: [{ id: "overview", label: "Overview" }, { id: "inventory", label: "Inventory" }],
     nav: [
       nav("page:core/home", "overview", "Home"),

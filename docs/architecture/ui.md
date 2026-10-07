@@ -129,6 +129,8 @@ Registration follows the same rules as the server's manifest validation, shared 
 `@deck/module-sdk`:
 - slot names and ids are checked the same way;
 - orders must be finite;
+- a page path must be a route pattern the router can compile (`routablePathProblem` mirrors its
+  parser, so a stray `[` or `(` is refused);
 - a page path may not sit under `/api` or on a root path the kernel or a built-in module serves,
   such as the metrics module's `/metrics` (`BUILTIN_ROOT_PATHS`);
 - every extension but a nav entry needs a component;
@@ -174,10 +176,21 @@ components:
   (`useManifestSlot(slot)`).
 - The brand in the sidebar header and the document title (`"{page} · {brand}"`) is the
   manifest's `brand.title`.
+- Routing follows the manifest too (`resolveRoutes`): no registered page of a module the
+  manifest lists as disabled is routed, so none can shadow an enabled page on its path. Each of
+  the manifest's `disabledPages` renders `ModuleNotEnabledPage` at its path, naming every env var
+  and config key that turns the module on (`modules[].enabledBy`, read leniently), or else the
+  module's `reason`. Pages of modules the manifest does not list (the `_ui` workbench) are
+  routed, and a manifest without `disabledPages` (an older server) routes every page. A
+  disabled page whose path the router could not compile is dropped before the manifest is
+  cached.
+  A page switched off by a `ui.extensions` override is left out of the nav, but the web still
+  routes it.
 
-Until the manifest loads, the sidebar and the top bar's slots are empty. If it cannot be read,
-they fall back to the registry: the sidebar lists the registered pages by their `group` (and
-`nav: false`), the slots render what is registered there, and the brand is "Deck". So
+Until the manifest loads, the sidebar and the top bar's slots are empty, and every registered
+page is routed. If it cannot be read, they fall back to the registry: the sidebar lists the
+registered pages by their `group` (and `nav: false`), every registered page is routed, the slots
+render what is registered there, and the brand is "Deck". So
 `registerPage`'s `group` only matters in that fallback.
 
 The registry is reactive. The shell's slot hosts call `useRegistryVersion()` and read their

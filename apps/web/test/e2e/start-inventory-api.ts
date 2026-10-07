@@ -107,8 +107,9 @@ async function main(): Promise<void> {
   // Absolute inputs; boot reads DECK_SNAPSHOT_SOURCE once and never logs it.
   process.env.DECK_CONFIG_DIR = runtime.configDir;
   process.env.DECK_SNAPSHOT_SOURCE = runtime.snapshotPath;
-  // resolveActionsRuntime(process.env) reads these once during boot().
-  process.env.DECK_ACTIONS_ENABLED = "true";
+  // resolveActionsRuntime(process.env) reads these once during boot(). Actions are on unless
+  // DECK_E2E_ACTIONS_ENABLED is "false" (a spec booting its own actions-off API).
+  process.env.DECK_ACTIONS_ENABLED = process.env.DECK_E2E_ACTIONS_ENABLED === "false" ? "false" : "true";
   process.env.DECK_RUNNERS_FILE = runnersFile;
   process.env.DECK_DATA_DIR = actionsDataDir;
 

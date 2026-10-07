@@ -6,7 +6,7 @@ import { createApp, planningRouteTable, type ProviderReader } from "../src/serve
 
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger;
 
-const UI: UiManifest = { uiApi: 1, brand: { title: "t" }, navGroups: [], modules: [], slots: [], pages: [], nav: [], extensions: [], providers: [], findings: [] };
+const UI: UiManifest = { uiApi: 1, brand: { title: "t" }, navGroups: [], modules: [], slots: [], pages: [], disabledPages: [], nav: [], extensions: [], providers: [], findings: [] };
 
 function deps(providers: Partial<ProviderReader> = {}) {
   return {

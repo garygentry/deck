@@ -18,6 +18,12 @@ export interface UiManifest {
   /** Routed pages of enabled modules, by id. */
   pages: UiPage[];
   /**
+   * Pages of disabled modules, by id: not routed, so the shell answers their path by saying
+   * the module is off. A page whose path an enabled page or a root path serves, or whose path
+   * is not a usable page path (a finding), is left out. An older server does not send it.
+   */
+  disabledPages?: UiDisabledPage[];
+  /**
    * The groups of the `app/nav` entries, in sidebar order: the groups the ui config lists, in
    * its order, then any other group an entry names, by id. Only groups with an entry appear.
    */
@@ -52,6 +58,25 @@ export interface UiModule {
   reason?: string;
   /** `module`: a module on the module contract; `kernel`: a feature still wired into the kernel. */
   origin: "module" | "kernel";
+  /**
+   * The settings that would switch the module on, when their being unset is why the module is
+   * off: its own unmet switches, and those of a dependency that is off only because of its
+   * own. Each is an env var's name or a config key; names only, never values. Absent when no
+   * setting would enable the module; never empty.
+   */
+  enabledBy?: UiModuleSwitch[];
+}
+
+/** An env var (`DECK_ACTIONS_ENABLED`) or a config key (`modules.<id>`) that enables a module. */
+export type UiModuleSwitch = { env: string } | { config: string };
+
+/** A page of a disabled module, as declared. */
+export interface UiDisabledPage {
+  id: ExtensionId;
+  module: string;
+  path: string;
+  title: string;
+  icon?: string;
 }
 
 export interface UiSlot {
@@ -108,7 +133,8 @@ export type UiFindingCode =
   | "UI_PAGE_PATH_COLLISION"
   | "UI_DUPLICATE_ID"
   | "UI_SLOT_KIND_MISMATCH"
-  | "UI_INVALID_OVERRIDE";
+  | "UI_INVALID_OVERRIDE"
+  | "UI_INVALID_PAGE";
 
 export interface UiFinding {
   code: UiFindingCode;

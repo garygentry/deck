@@ -36,7 +36,15 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
 
 - `modules` lists every known module with `enabled` and, when not enabled, a `reason`. A
   module that is disabled (its enabling section or env var is absent, its manifest is unusable,
-  or a kernel capability such as actions is off) contributes nothing.
+  or a kernel capability such as actions is off) contributes nothing. When the module is off
+  only because settings that enable it are unset, `enabledBy` lists them: its own (for example
+  `[{"env": "DECK_ACTIONS_ENABLED"}]`, or `{"config": "modules.<id>"}`), then those of a
+  `dependsOn` dependency that is off only because of its own. It holds names only, never a
+  value, and is absent rather than empty.
+- `disabledPages` lists the pages of disabled modules (`id`, `module`, `path`, `title`, `icon`),
+  so the shell can answer their paths with "module not enabled". A page whose path an enabled
+  page or a root path serves is left out, and so is one whose path is not a usable page path
+  (with a `UI_INVALID_PAGE` finding).
 - `pages`, `nav` and `extensions` hold only what renders. Extension ids have the form
   `<kind>:<module>/<name>` (for example `pill:llm-usage/summary`). Each extension and nav entry
   names the slot it attaches to and its order there, and attaches only to a slot that accepts
@@ -61,6 +69,8 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
     shell first, then the kernel-wired features and built-in modules, then other modules), or
     a nav group configured twice (its first entry is used);
   - `UI_INVALID_OVERRIDE`: a malformed override.
+  - `UI_INVALID_PAGE`: a disabled module's page whose path is not a usable page path, so it is
+    not listed in `disabledPages`.
 
   Overrides will come from the `ui.extensions` config section, which config cannot set yet.
 

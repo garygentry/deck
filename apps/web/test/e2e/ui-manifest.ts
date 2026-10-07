@@ -39,6 +39,8 @@ export interface ManifestExtension {
   module: string;
   slot: string;
   order: number;
+  /** The resolved config the web renders the extension with (an entity section's title, section). */
+  config?: Record<string, unknown>;
 }
 
 /**

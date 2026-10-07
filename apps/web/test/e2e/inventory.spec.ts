@@ -555,16 +555,18 @@ test.describe("fragment slots", () => {
   }) => {
     // The manifest lists the synthetic sections, as the server does for a module that is on;
     // the web registers them after load, below.
-    const synthetic = (name: string, entity: "host" | "service", order = 100): ManifestExtension => ({
-      id: `section:e2e/${name}`, kind: "entity-section", module: "e2e", slot: `entity:${entity}/sections`, order,
+    const synthetic = (name: string, entity: "host" | "service", config: Record<string, string>, order = 100): ManifestExtension => ({
+      id: `section:e2e/${name}`, kind: "entity-section", module: "e2e", slot: `entity:${entity}/sections`, order, config,
     });
+    const findings = { section: "findings", title: "Findings" };
+    const configs = { section: "configs", title: "Configs" };
     await editManifestExtensions(page, (real) => [
       ...real,
-      synthetic("host-find", "host"),
-      synthetic("host-conf", "host"),
-      synthetic("host-extra", "host", 15),
-      synthetic("svc-find", "service"),
-      synthetic("svc-conf", "service"),
+      synthetic("host-find", "host", findings),
+      synthetic("host-conf", "host", configs),
+      synthetic("host-extra", "host", { title: "E2E extra" }, 15),
+      synthetic("svc-find", "service", findings),
+      synthetic("svc-conf", "service", configs),
     ]);
     await openList(page, "/hosts");
     // Inject synthetic fragments into the live singleton registry (dev module graph).

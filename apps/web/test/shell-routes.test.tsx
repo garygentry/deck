@@ -57,10 +57,12 @@ describe("resolveRoutes", () => {
     ]);
   });
 
-  it("never drops a page without a not-enabled page in its place", () => {
-    // The module is listed off, but its page is not a disabled page (e.g. its path is taken).
+  it("does not route any page of a disabled module, even one the manifest lists no disabled page for", () => {
+    // The module is off, but its page is not a disabled page (an enabled page owns its path).
     const manifest: UiManifest = { ...golden, disabledPages: [] };
-    expect(ids(resolveRoutes(ready(manifest), pages).routed)).toContain("page:actions/overview");
+    const routes = resolveRoutes(ready(manifest), pages);
+    expect(ids(routes.routed)).not.toContain("page:actions/overview");
+    expect(routes.notEnabled).toEqual([]);
   });
 
   it("routes every registered page until the manifest loads, or when it cannot be read", () => {
@@ -122,7 +124,7 @@ describe("ModuleNotEnabledPage", () => {
 });
 
 describe("the shell at a disabled module's path", () => {
-  async function renderApp(ui: () => Response | Promise<Response>, path: string) {
+  async function renderApp(ui: () => Response | Promise<Response>, path: string, register?: (registry: typeof import("../src/registry/registry.js")) => void) {
     vi.resetModules();
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
@@ -139,9 +141,31 @@ describe("the shell at a disabled module's path", () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     await import("../src/shell/health-header/slot.js");
     await import("../src/registry/discover.js");
+    register?.(await import("../src/registry/registry.js"));
     const { App } = await import("../src/shell/App.js");
     render(<App />);
   }
+
+  it("a disabled module's page cannot shadow an enabled page on the same path", async () => {
+    const manifest: UiManifest = {
+      ...golden,
+      modules: [
+        ...golden.modules,
+        { id: "tools", version: "1.0.0", enabled: false, reason: "not enabled: TOOLS_ENABLED is not true", origin: "module", enabledBy: [{ env: "TOOLS_ENABLED" }] },
+        { id: "ops", version: "1.0.0", enabled: true, origin: "module" },
+      ],
+      // The server lists no disabled page for tools: ops owns /ops.
+      disabledPages: golden.disabledPages ?? [],
+    };
+    await renderApp(() => Response.json(manifest), "/ops", (registry) => {
+      // tools is registered first, so it would win the path if it were routed.
+      registry.registerPage({ id: "page:tools/ops", path: "/ops", label: "Tools ops", order: -1, nav: false, component: () => <p>tools page</p> });
+      registry.registerPage({ id: "page:ops/overview", path: "/ops", label: "Ops", nav: false, component: () => <p>ops page</p> });
+    });
+    await waitFor(() => expect(document.title).toBe("Ops · example-estate"));
+    expect(screen.getByText("ops page")).toBeInTheDocument();
+    expect(screen.queryByText("tools page")).not.toBeInTheDocument();
+  });
 
   it("renders the not-enabled page naming the env var, with the page's h1 and no nav link", async () => {
     await renderApp(() => Response.json(golden), "/actions");

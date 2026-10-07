@@ -1,4 +1,4 @@
-import type { UiManifest, UiModuleSwitch } from "@deck/module-sdk";
+import { parseExtensionId, type UiManifest, type UiModuleSwitch } from "@deck/module-sdk";
 import type { UiManifestState } from "../data/index.js";
 import type { PageRegistration } from "../registry/registry-types.js";
 
@@ -24,11 +24,11 @@ export interface ResolvedRoutes {
 }
 
 /**
- * Which pages the router renders. With the UI manifest, a registered page the manifest lists
- * as a disabled page is not routed, and every disabled page answers its path with the
- * not-enabled page. A page is only ever dropped for such a replacement: until the manifest
- * loads, if it cannot be read, or if it lists no disabled pages (an older server), every
- * registered page is routed, as the fallback nav lists them all.
+ * Which pages the router renders. With a current UI manifest (one listing `disabledPages`), no
+ * registered page of a module it lists as disabled is routed, so none can shadow an enabled
+ * page on the same path; each disabled page it lists answers its path with the not-enabled
+ * page. Until the manifest loads, if it cannot be read, or if it is an older server's (no
+ * `disabledPages`), every registered page is routed, as the fallback nav lists them all.
  */
 export function resolveRoutes(manifest: UiManifestState, pages: readonly PageRegistration[]): ResolvedRoutes {
   if (manifest.status !== "ready" || !Array.isArray(manifest.manifest.disabledPages)) return { routed: pages, notEnabled: [] };
@@ -42,8 +42,12 @@ function routesFromManifest(
 ): ResolvedRoutes {
   const modules = new Map((Array.isArray(manifest.modules) ? manifest.modules : []).map((module) => [module.id, module]));
   const disabledIds = new Set<string>(disabledPages.map((page) => page.id));
+  const isOff = (page: PageRegistration): boolean => {
+    const module = parseExtensionId(page.id)?.module;
+    return disabledIds.has(page.id) || (module !== undefined && modules.get(module)?.enabled === false);
+  };
   return {
-    routed: pages.filter((page) => !disabledIds.has(page.id)),
+    routed: pages.filter((page) => !isOff(page)),
     notEnabled: disabledPages.map((page) => {
       const module = modules.get(page.module);
       return {

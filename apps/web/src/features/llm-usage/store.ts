@@ -1,13 +1,17 @@
 import { POLL_DEFAULTS } from "@deck/contract";
 import type { LlmUsageResponse } from "@deck/server/llm-usage";
+import { focusManager, QueryObserver, type Query, type QueryClient, type QueryState } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 
+import { getQueryClient } from "../../data/query-client.js";
+
 /**
- * One shared poller for `GET /api/llm-usage`, used by the page and the header pill so
- * they never double-poll. Every read counts as viewer presence on the server, which
- * keeps its upstream polling awake, so this store only polls while something is
- * subscribed and the tab is visible. Once the server says the feature is off it stops
- * for good: the `modules.llm-usage` section is read once at boot.
+ * `GET /api/llm-usage` on the shared query client, read by the page, the header pill and the
+ * portal card, so they never double-poll. Every read counts as viewer presence on the server,
+ * which keeps its upstream polling awake, so it polls only while something reads it and the
+ * tab is visible (back to visible: one poll at once, and the interval restarts after it). Once
+ * the server says the feature is off it stops for good: the `modules.llm-usage` section is
+ * read once at boot.
  */
 
 export type UsageView =
@@ -30,84 +34,115 @@ export interface UsageStore {
 }
 
 export interface UsageStoreOptions {
+  /** The query client; the shared one (resolved per subscription) by default. */
+  client?: QueryClient;
   fetch?: typeof fetch;
   intervalMs?: number;
-  /** The document to watch for visibility; omitted outside a browser. */
-  doc?: Pick<Document, "visibilityState" | "addEventListener" | "removeEventListener">;
 }
 
+export const LLM_USAGE_URL = "/api/llm-usage";
+export const LLM_USAGE_REFRESH_URL = "/api/llm-usage/refresh";
+export const llmUsageKey = ["module", "llm-usage"] as const;
+
+/** One response, with the clock offset measured when it arrived. */
+interface UsageReading {
+  data: LlmUsageResponse;
+  clockOffsetMs: number;
+}
+
+type UsageQuery = Query<UsageReading, Error, UsageReading, typeof llmUsageKey>;
+
 const LOADING: UsageView = { status: "loading" };
+
+/** The view of the query's state: the last good reading, with the latest failure if newer. */
+function toView(state: QueryState<UsageReading, Error> | undefined): UsageView {
+  if (state?.data === undefined) {
+    return state?.status === "error" && state.error !== null ? { status: "error", message: state.error.message } : LOADING;
+  }
+  const error = state.status === "error" && state.error !== null ? state.error.message : null;
+  return { status: "ready", data: state.data.data, error, clockOffsetMs: state.data.clockOffsetMs };
+}
 
 export function createUsageStore(options: UsageStoreOptions = {}): UsageStore {
   const doFetch = options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
   const intervalMs = options.intervalMs ?? POLL_DEFAULTS.pollIntervalMs;
-  const doc = options.doc ?? (typeof document === "undefined" ? undefined : document);
+  const client = () => options.client ?? getQueryClient();
 
+  async function read(url: string, signal?: AbortSignal): Promise<UsageReading> {
+    const response = await doFetch(url, signal === undefined ? {} : { signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = (await response.json()) as LlmUsageResponse;
+    // A slow poll can resolve after a newer refresh; never step back in time.
+    const current = client().getQueryData<UsageReading>(llmUsageKey);
+    if (current !== undefined && data.now < current.data.now) return current;
+    return { data, clockOffsetMs: data.now - Date.now() };
+  }
+
+  const off = (query: UsageQuery) => query.state.data?.data.enabled === false;
+  const observerOptions = {
+    queryKey: llmUsageKey,
+    queryFn: ({ signal }: { signal: AbortSignal }) => read(LLM_USAGE_URL, signal),
+    // Hidden or switched off: no mount read, no interval tick, nothing to refetch on return.
+    enabled: (query: UsageQuery) => !off(query) && focusManager.isFocused(),
+    refetchInterval: intervalMs,
+    // A reader that joins within an interval of the last read reuses it.
+    staleTime: intervalMs,
+  };
+
+  // The view is recomputed only when the query's state changes, so React sees a stable snapshot.
+  let seen: QueryState<UsageReading, Error> | undefined;
   let view: UsageView = LOADING;
-  let timer: ReturnType<typeof setInterval> | null = null;
-  let disabled = false;
-  const listeners = new Set<() => void>();
-
-  const set = (next: UsageView) => {
-    view = next;
-    for (const listener of listeners) listener();
-  };
-  const hidden = () => doc?.visibilityState === "hidden";
-
-  async function load(url: string): Promise<void> {
-    try {
-      const response = await doFetch(url);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = (await response.json()) as LlmUsageResponse;
-      // A slow poll can resolve after a newer refresh; never step back in time.
-      if (view.status === "ready" && data.now < view.data.now) return;
-      if (!data.enabled) {
-        disabled = true;
-        stop();
-      }
-      set({ status: "ready", data, error: null, clockOffsetMs: data.now - Date.now() });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      set(view.status === "ready" ? { ...view, error: message } : { status: "error", message });
+  const getSnapshot = () => {
+    const state = client().getQueryState<UsageReading, Error>(llmUsageKey);
+    if (state !== seen) {
+      seen = state;
+      view = toView(state);
     }
-  }
-
-  const tick = () => {
-    if (!hidden()) void load("/api/llm-usage");
-  };
-  // Back to visible: poll now and restart the interval, so a stale tick doesn't follow at once.
-  const onVisibility = () => {
-    if (hidden() || timer === null) return;
-    clearInterval(timer);
-    timer = setInterval(tick, intervalMs);
-    tick();
+    return view;
   };
 
-  function start(): void {
-    if (timer !== null || disabled) return;
-    tick();
-    timer = setInterval(tick, intervalMs);
-    doc?.addEventListener("visibilitychange", onVisibility);
-  }
+  const listeners = new Set<() => void>();
+  let stopObserving: (() => void) | null = null;
+  const notify = () => {
+    for (const listener of [...listeners]) listener();
+  };
 
-  function stop(): void {
-    if (timer !== null) clearInterval(timer);
-    timer = null;
-    doc?.removeEventListener("visibilitychange", onVisibility);
+  /** Read `url` now, through the query so a failure lands in its state; never throws. */
+  async function fetchNow(url: string, cancelInFlight: boolean): Promise<void> {
+    // A refresh is newer than a poll in flight, so it must not join it.
+    if (cancelInFlight) await client().cancelQueries({ queryKey: llmUsageKey });
+    await client()
+      .fetchQuery({ queryKey: llmUsageKey, queryFn: ({ signal }) => read(url, signal), staleTime: 0 })
+      .catch(() => undefined);
   }
 
   return {
     subscribe(listener) {
       listeners.add(listener);
-      if (listeners.size === 1) start();
+      if (listeners.size === 1) {
+        const observer = new QueryObserver<UsageReading, Error, UsageReading, UsageReading, typeof llmUsageKey>(client(), observerOptions);
+        const stopNotifying = observer.subscribe(notify);
+        // Back to visible: poll now. The shared client is not mounted, so focus never reaches
+        // its cache; the read restarts the observer's interval, so a stale tick doesn't follow.
+        const stopWatching = focusManager.subscribe((focused) => {
+          if (focused && !off(observer.getCurrentQuery())) void observer.refetch({ cancelRefetch: false });
+        });
+        stopObserving = () => {
+          stopWatching();
+          stopNotifying();
+        };
+      }
       return () => {
         listeners.delete(listener);
-        if (listeners.size === 0) stop();
+        if (listeners.size === 0) {
+          stopObserving?.();
+          stopObserving = null;
+        }
       };
     },
-    getSnapshot: () => view,
-    refresh: () => load("/api/llm-usage/refresh"),
-    reload: () => load("/api/llm-usage"),
+    getSnapshot,
+    refresh: () => fetchNow(LLM_USAGE_REFRESH_URL, true),
+    reload: () => fetchNow(LLM_USAGE_URL, false),
   };
 }
 

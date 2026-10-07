@@ -144,13 +144,21 @@ registerWebModule(defineWebModule(LLM_USAGE_UI, {
 ```
 
 `registerWebModule` derives every registration from the manifest: a page per `pages` entry
-(with its nav entry's group, order, label and icon, or `nav: false` without one), a slot per
-`slots` entry, and an extension per `extensions` entry that names a component (widget
-descriptors render elsewhere). The web adds no paths, slots or orders of its own. It refuses,
-naming the module and the component: a name the manifest references that the table lacks, a
-table entry nothing references, and a nav entry it cannot express (an `href` entry, one not
-named `nav:<page name>`, two for one page). The registrations are the defaults; at runtime the
-UI manifest still decides what renders, where (below).
+(in its nav entry's group, or `nav: false` without one), a slot per `slots` entry, and an
+extension per `extensions` entry. Widget descriptors (a `widget` and no component) render
+through their widget type, not here; a widget type's component already belongs in the table.
+The web adds no paths, slots or orders of its own. Everything is checked before anything
+registers, so a refused module leaves nothing behind. It refuses, naming the module and the
+component or extension: a name the manifest references that the table lacks, a table entry
+nothing references, any other extension without a component, a nav entry it cannot express
+(an `href` entry, one not named `nav:<page name>`, two for one page), and whatever the registry
+itself refuses (ids, paths, orders, slot kinds, entity-section config, duplicates). The
+registrations are the defaults; at runtime the UI manifest still decides what renders, where
+and with what config (below).
+
+Labels and order: a page's `title` labels its route, in the top bar, the document title and the
+fallback nav. A nav entry's own `label` and `icon` show only in the manifest-driven sidebar, and
+its `order` orders the nav, never the routes.
 
 Moving a feature onto it:
 1. Move the module's `id`, `version`, `deckApi` and `contributes` to
@@ -199,9 +207,9 @@ Sections render in the order of their first extension, then by id. The built-ins
 sections explicitly and place drift's `findings` at order 10 and sources' `configs` at order 20, so a module's section at order 15
 renders between them. Each section is a `Section` with the heading id `entity-slot-<section>`
 and the marker `data-entity-slot="<section>"`. The UI manifest places the sections, like the
-top bar's slots (`useManifestSlot`, grouped by `groupEntitySections`): its order wins, and a
-module that is off has no entries, so its sections render nothing at all (no heading, no
-placeholder). With nothing attached, the pages show no sections. The naming rule is `entitySectionName` and the config rule `entitySectionProblem`, both
+top bar's slots (`placeExtensions`, grouped by `groupEntitySections`): its order and each
+entry's config (title, section) win, and a module that is off has no entries, so its sections
+render nothing at all (no heading, no placeholder). With nothing attached, the pages show no sections. The naming rule is `entitySectionName` and the config rule `entitySectionProblem`, both
 in `@deck/module-sdk`. The server validates the same config:
 a manifest entity section without a title disables its module. For a `ui.extensions` override
 whose replacement `config` is not a usable section, only the config is dropped, with
@@ -217,7 +225,8 @@ components:
   page of a module that is off.
 - The top bar's slots (`app/topbar.status`, `app/topbar.actions`) and the entity pages'
   sections render the manifest's entries for the slot, in its order, each with the web
-  extension of the same id and kind (`useManifestSlot(slot)`).
+  extension of the same id and kind and the entry's resolved `config` in place of the
+  registered one (`placeExtensions`, `useManifestSlot(slot)`).
 - The brand in the sidebar header and the document title (`"{page} · {brand}"`) is the
   manifest's `brand.title`.
 - Routing follows the manifest too (`resolveRoutes`): no registered page of a module the

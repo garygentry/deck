@@ -23,9 +23,11 @@ async function freshHost() {
   return { registry, EntitySections, serve };
 }
 
-/** A manifest entry placing an entity section. */
-const placed = (id: `${string}:${string}/${string}`, entity: "host" | "service", order: number) => ({
-  id, kind: "entity-section", module: id.split(/[:/]/)[1]!, slot: `entity:${entity}/sections`, order,
+/** A manifest entry placing an entity section, with its resolved config (title, section). */
+const FINDINGS = { section: "findings", title: "Findings" };
+const CONFIGS = { section: "configs", title: "Configs" };
+const placed = (id: `${string}:${string}/${string}`, entity: "host" | "service", order: number, config?: Record<string, string>) => ({
+  id, kind: "entity-section", module: id.split(/[:/]/)[1]!, slot: `entity:${entity}/sections`, order, ...(config === undefined ? {} : { config }),
 });
 
 const text = (label: string) => (): JSX.Element => <span>{label}</span>;
@@ -84,7 +86,7 @@ describe("open entity sections", () => {
     const { registry, EntitySections, serve } = await freshHost();
     registry.registerEntityFragment({ id: "section:x/host", entity: "host", title: "Host only", component: text("HOST") });
     // The manifest lists the service section; the web registers it later (a late-loading module).
-    serve({ ...manifestPlacing(registry.getAllExtensions()), extensions: [placed("section:x/host", "host", 100), placed("section:x/service", "service", 100)] });
+    serve({ ...manifestPlacing(registry.getAllExtensions()), extensions: [placed("section:x/host", "host", 100, { title: "Host only" }), placed("section:x/service", "service", 100, { title: "Service only" })] });
     const service = Object.freeze({ entity: "service" as const, host: "alpha", name: "api" });
     const view = render(<EntitySections entity={service} />);
     expect(view.container).toBeEmptyDOMElement();
@@ -101,10 +103,48 @@ describe("open entity sections", () => {
     const { registry, EntitySections, serve } = await freshHost();
     registry.registerEntityFragment({ id: "section:drift/host-findings", entity: "host", section: "findings", title: "Findings", order: 10, component: text("FINDINGS") });
     registry.registerEntityFragment({ id: "section:sources/host-configs", entity: "host", section: "configs", title: "Configs", order: 20, component: text("CONFIGS") });
-    serve({ ...manifestPlacing([]), extensions: [placed("section:sources/host-configs", "host", 5), placed("section:drift/host-findings", "host", 50)] });
+    serve({ ...manifestPlacing([]), extensions: [placed("section:sources/host-configs", "host", 5, CONFIGS), placed("section:drift/host-findings", "host", 50, FINDINGS)] });
 
     render(<EntitySections entity={Object.freeze({ entity: "host", host: "alpha" })} />);
     expect(headings()).toEqual(["Configs", "Findings"]);
+  });
+
+  it("heads and groups sections by the manifest's resolved config, which replaces the registered one", async () => {
+    const { registry, EntitySections, serve } = await freshHost();
+    registry.registerEntityFragment({ id: "section:drift/host-findings", entity: "host", section: "findings", title: "Findings", order: 10, component: text("FINDINGS") });
+    registry.registerEntityFragment({ id: "section:audit/host-findings", entity: "host", section: "findings", title: "Audit", order: 20, component: text("AUDIT") });
+    registry.registerEntityFragment({ id: "section:sources/host-configs", entity: "host", section: "configs", title: "Configs", order: 30, component: text("CONFIGS") });
+    const host = Object.freeze({ entity: "host" as const, host: "alpha" });
+
+    // A changed title heads the section.
+    serve({ ...manifestPlacing([]), extensions: [
+      placed("section:drift/host-findings", "host", 10, { section: "findings", title: "Drift" }),
+      placed("section:sources/host-configs", "host", 30, { section: "configs", title: "Owned configs" }),
+    ] });
+    let view = render(<EntitySections entity={host} />);
+    expect(headings()).toEqual(["Drift", "Owned configs"]);
+    view.unmount();
+
+    // A changed section moves the extension: audit leaves findings for a section of its own name.
+    serve({ ...manifestPlacing([]), extensions: [
+      placed("section:drift/host-findings", "host", 10, { section: "findings", title: "Findings" }),
+      placed("section:audit/host-findings", "host", 20, { section: "audit", title: "Audit" }),
+    ] });
+    view = render(<EntitySections entity={host} />);
+    expect(headings()).toEqual(["Findings", "Audit"]);
+    expect(within(screen.getByRole("region", { name: "Audit" })).getByText("AUDIT")).toBeInTheDocument();
+    expect(document.querySelector('[data-entity-slot="audit"]')).not.toBeNull();
+    view.unmount();
+
+    // No explicit section (replaced wholesale, not merged): the extension's own `<module>.<name>`.
+    serve({ ...manifestPlacing([]), extensions: [
+      placed("section:drift/host-findings", "host", 10, { section: "findings", title: "Findings" }),
+      placed("section:audit/host-findings", "host", 20, { title: "Audit" }),
+    ] });
+    render(<EntitySections entity={host} />);
+    expect(headings()).toEqual(["Findings", "Audit"]);
+    expect(document.querySelector('[data-entity-slot="audit.host-findings"]')).not.toBeNull();
+    expect(within(screen.getByRole("region", { name: "Findings" })).queryByText("AUDIT")).toBeNull();
   });
 
   it("renders nothing for a module that is off: no heading, no region, no placeholder", async () => {
@@ -112,7 +152,7 @@ describe("open entity sections", () => {
     registry.registerEntityFragment({ id: "section:drift/host-findings", entity: "host", section: "findings", title: "Findings", order: 10, component: text("FINDINGS") });
     registry.registerEntityFragment({ id: "section:sources/host-configs", entity: "host", section: "configs", title: "Configs", order: 20, component: text("CONFIGS") });
     // `/api/ui` drops every extension of a module that is not enabled: here, drift's.
-    serve({ ...manifestPlacing([]), extensions: [placed("section:sources/host-configs", "host", 20)] });
+    serve({ ...manifestPlacing([]), extensions: [placed("section:sources/host-configs", "host", 20, CONFIGS)] });
 
     render(<EntitySections entity={Object.freeze({ entity: "host", host: "alpha" })} />);
     expect(headings()).toEqual(["Configs"]);

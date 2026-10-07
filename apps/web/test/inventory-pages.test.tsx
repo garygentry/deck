@@ -306,7 +306,8 @@ describe("EntitySections ordering and states", () => {
   });
 
   it("shows one alert for a registry-read failure without exposing exception text", () => {
-    const spy = vi.spyOn(registry, "groupEntitySections").mockImplementation(() => {
+    // The registry accessor itself throws, as a broken registry would.
+    const spy = vi.spyOn(registry, "getAllExtensions").mockImplementation(() => {
       throw new Error("registry read boom secret detail");
     });
     try {

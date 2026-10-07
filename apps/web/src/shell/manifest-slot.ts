@@ -4,9 +4,10 @@ import { getAllExtensions, type Extension } from "../registry/registry.js";
 import { useRegistryVersion } from "../registry/use-registry.js";
 
 /**
- * The extensions a shell slot renders, by order then id. The UI manifest decides which render
- * and at what order: each of its entries for the slot renders the web extension of the same id
- * and kind (one the web does not bundle is skipped). Until the manifest loads the slot is empty;
+ * The extensions a shell slot renders, by order then id. The UI manifest decides which render,
+ * at what order and with what config: each of its entries for the slot renders the web
+ * extension of the same id and kind (one the web does not bundle is skipped), with the entry's
+ * config in place of the registered one. Until the manifest loads the slot is empty;
  * if it cannot be read, the slot renders what the web registered there, so the shell keeps
  * working.
  */
@@ -26,7 +27,9 @@ export function placeExtensions(
       const extension = byId.get(entry.id);
       // The web's own switch still applies: an extension it registered as off never renders.
       if (extension?.component === undefined || !extension.enabled || extension.kind !== entry.kind) return [];
-      return [{ ...extension, attachTo: { slot, order: entry.order } }];
+      // The manifest's config is the resolved one (defaults, then overrides): it replaces the
+      // registered config wholesale, never merged.
+      return [{ ...extension, attachTo: { slot, order: entry.order }, config: Object.freeze({ ...(entry.config ?? {}) }) }];
     })
     .sort(byOrderThenId);
 }

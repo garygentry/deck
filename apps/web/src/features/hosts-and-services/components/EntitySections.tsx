@@ -1,7 +1,9 @@
 import { Suspense, type JSX } from "react";
 import { Callout, ErrorState, FragmentBoundary, LoadingState, Section } from "@/ui";
-import { entitySectionsSlot, groupEntitySections, type EntityRef, type EntitySection } from "../../../registry/registry.js";
-import { useManifestSlot } from "../../../shell/manifest-slot.js";
+import { useUiManifest } from "../../../data/index.js";
+import { entitySectionsSlot, getAllExtensions, groupEntitySections, type EntityRef, type EntitySection } from "../../../registry/registry.js";
+import { useRegistryVersion } from "../../../registry/use-registry.js";
+import { placeExtensions } from "../../../shell/manifest-slot.js";
 
 /** Props owned and exported by `components/EntitySections.tsx`. */
 export interface EntitySectionsProps {
@@ -29,9 +31,11 @@ const FRAGMENT_FAILED = (
  * boundary so one sibling cannot blank the page or another section.
  */
 export function EntitySections({ entity }: EntitySectionsProps): JSX.Element | null {
-  const placed = useManifestSlot(entitySectionsSlot(entity.entity));
+  useRegistryVersion();
+  const manifest = useUiManifest();
   let sections: readonly EntitySection[];
   try {
+    const placed = placeExtensions(entitySectionsSlot(entity.entity), manifest, getAllExtensions());
     sections = groupEntitySections(entity.entity, placed);
   } catch {
     // Never expose the accessor exception text.

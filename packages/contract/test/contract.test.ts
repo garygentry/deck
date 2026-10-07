@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { validateActionParams } from "../src/actions.js";
 import { POLL_DEFAULTS } from "../src/index.js";
 import { LLM_USAGE_UI } from "../src/modules/llm-usage.js";
+import { MONITORING_UI } from "../src/modules/monitoring.js";
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "../src");
 const MODULE_SDK = resolve(dirname(fileURLToPath(import.meta.url)), "../../module-sdk");
@@ -50,6 +51,8 @@ describe("@deck/contract", () => {
   it("serves built-in modules' UI contributions from its modules subpath, as plain JSON", () => {
     expect(LLM_USAGE_UI.id).toBe("llm-usage");
     expect(JSON.parse(JSON.stringify(LLM_USAGE_UI))).toEqual(LLM_USAGE_UI);
+    expect(MONITORING_UI.id).toBe("monitoring");
+    expect(JSON.parse(JSON.stringify(MONITORING_UI))).toEqual(MONITORING_UI);
   });
 
   it("depends on the module SDK for types only, and the SDK depends on no deck package, so there is no cycle", () => {

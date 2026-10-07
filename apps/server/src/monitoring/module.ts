@@ -1,3 +1,4 @@
+import { MONITORING_UI } from "@deck/contract/modules/monitoring";
 import { defineServerModule, type ModuleManifest } from "@deck/module-sdk";
 
 /**
@@ -6,17 +7,8 @@ import { defineServerModule, type ModuleManifest } from "@deck/module-sdk";
  * and no server code.
  */
 export const MONITORING_MANIFEST: ModuleManifest = {
-  id: "monitoring",
-  version: "0.1.0",
-  deckApi: "^0.1",
-  contributes: {
-    pages: [{ id: "page:monitoring/overview", path: "/monitoring", title: "Monitoring", icon: "activity", component: "MonitoringPage" }],
-    nav: [{ id: "nav:monitoring/overview", page: "page:monitoring/overview", group: "health" }],
-    extensions: [
-      { id: "pill:monitoring/alerts", kind: "pill", attachTo: { slot: "app/topbar.status", order: 10 }, component: "AlertsSummary" },
-      { id: "pill:monitoring/metrics", kind: "pill", attachTo: { slot: "app/topbar.status", order: 20 }, component: "MetricsSummary" },
-    ],
-  },
+  // Identity and UI contributions are shared with the web half.
+  ...MONITORING_UI,
 };
 
 export const monitoringModule = defineServerModule(MONITORING_MANIFEST, () => {});

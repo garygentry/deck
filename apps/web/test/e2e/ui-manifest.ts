@@ -32,6 +32,39 @@ export async function mockUiManifest(
   });
 }
 
+/** One entry of the manifest's `extensions` list. */
+export interface ManifestExtension {
+  id: string;
+  kind: string;
+  module: string;
+  slot: string;
+  order: number;
+}
+
+/**
+ * Rewrite the extension list of the real `GET /api/ui` for a page: add entries for
+ * extensions a spec registers in the browser (as the server lists those of a module that is
+ * on), or drop a module's entries (as it does for a module that is off).
+ */
+export async function editManifestExtensions(
+  page: Page,
+  edit: (real: readonly ManifestExtension[]) => ManifestExtension[],
+): Promise<void> {
+  await page.route("**/api/ui", async (route) => {
+    let body: { extensions: ManifestExtension[] };
+    try {
+      const response = await route.fetch();
+      body = (await response.json()) as { extensions: ManifestExtension[] };
+    } catch (error) {
+      if (isSuperseded(error)) return;
+      throw error;
+    }
+    await route.fulfill({ json: { ...body, extensions: edit(body.extensions) } }).catch((error: unknown) => {
+      if (!isSuperseded(error)) throw error;
+    });
+  });
+}
+
 /** Errors Playwright raises for a request whose page navigated away or closed. */
 function isSuperseded(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);

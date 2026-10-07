@@ -91,10 +91,11 @@ export interface ModulePlanEntry {
   /** Why the module is not running; absent when enabled. */
   readonly reason?: string;
   /**
-   * The unmet `enabledBy` switch, when that is why the module is off: the env var's name or
-   * the config key (`modules.<id>`). Never a value.
+   * The unmet `enabledBy` switches, when they are why the module is off: its own, and those of
+   * a dependency that is off only because of its own. Each is an env var's name or a config key
+   * (`modules.<id>`), never a value. Absent when no setting would enable the module; never empty.
    */
-  readonly gate?: ModuleGate;
+  readonly gates?: readonly ModuleGate[];
 }
 
 /** The setting that switches a module on: an env var name, or a config key. */
@@ -682,22 +683,22 @@ export function planModules(options: PlanOptions): ModulePlanning {
   const manifests = [...usable.values()].map((entry) => entry.manifest);
   assertCompatible(manifests);
 
-  // The unmet switch of each module its `enabledBy` keeps off, with the reason it gave.
-  const gates = new Map<string, { reason: string; gate: ModuleGate }>();
-  const notEnabledReason = (manifest: ModuleManifest): string | null => {
+  /** A module's own `enabledBy` switches that are unmet: its config section, then its env flag. */
+  const unmetSwitches = (manifest: ModuleManifest): ModuleGate[] => {
     const { id, enabledBy } = manifest;
-    const off = (reason: string, gate: ModuleGate): string => {
-      gates.set(id, { reason, gate });
-      return reason;
-    };
-    if (enabledBy?.config === true && options.sectionOf(id) === undefined) {
-      return off(`not enabled: no modules.${id} section`, { config: `modules.${id}` });
-    }
-    if (enabledBy?.env !== undefined && !parseBool(options.env[enabledBy.env], false)) {
-      return off(`not enabled: ${enabledBy.env} is not true`, { env: enabledBy.env });
-    }
-    return null;
+    const unmet: ModuleGate[] = [];
+    if (enabledBy?.config === true && options.sectionOf(id) === undefined) unmet.push({ config: `modules.${id}` });
+    if (enabledBy?.env !== undefined && !parseBool(options.env[enabledBy.env], false)) unmet.push({ env: enabledBy.env });
+    return unmet;
   };
+  const notEnabledReason = (manifest: ModuleManifest): string | null => {
+    const first = unmetSwitches(manifest)[0];
+    if (first === undefined) return null;
+    return "config" in first ? `not enabled: no ${first.config} section` : `not enabled: ${first.env} is not true`;
+  };
+  // The switches that would enable each module some switch keeps off, with the reason it was
+  // given then (a later refusal of the module replaces the reason, and drops the switches).
+  const gates = new Map<string, { reason: string; gates: ModuleGate[] }>();
 
   // Which modules could run: refuse those whose API range, dependencies or dependency graph
   // is unusable. `excluded` modules (env-name losers, below) count as missing dependencies.
@@ -708,6 +709,23 @@ export function planModules(options: PlanOptions): ModulePlanning {
       findings.push({ code, severity: MODULE_HOST_FINDING_CATALOG[code].severity, path: findingPath(id), message });
       disabled.set(id, message);
     };
+    gates.clear();
+    // The switches of the module's dependencies that are off, when a switch keeps each of them
+    // off; null when one is off for another reason (then no setting would enable the module).
+    const dependencySwitches = (manifest: ModuleManifest): ModuleGate[] | null => {
+      const off = (manifest.dependsOn ?? []).filter((dep) => !usable.has(dep) || excluded.has(dep) || disabled.has(dep));
+      const switches: ModuleGate[] = [];
+      for (const dep of off) {
+        const gated = gates.get(dep);
+        if (gated === undefined || gated.reason !== disabled.get(dep)) return null;
+        switches.push(...gated.gates);
+      }
+      return switches;
+    };
+    const gate = (id: string, reason: string, switches: readonly ModuleGate[]) => {
+      const unique = [...new Map(switches.map((entry) => [JSON.stringify(entry), entry])).values()];
+      if (unique.length > 0) gates.set(id, { reason, gates: unique });
+    };
     const candidates = manifests.filter((manifest) => !excluded.has(manifest.id));
     const { order, stuck } = topoOrder(candidates);
     for (const id of order) {
@@ -715,6 +733,7 @@ export function planModules(options: PlanOptions): ModulePlanning {
       const reason = notEnabledReason(manifest);
       if (reason !== null) {
         disabled.set(id, reason);
+        gate(id, reason, [...unmetSwitches(manifest), ...(dependencySwitches(manifest) ?? [])]);
         // A section for a module that is not running is ignored; say so rather than silently.
         if (manifest.enabledBy?.env !== undefined && options.sectionOf(id) !== undefined) {
           findings.push({
@@ -732,14 +751,19 @@ export function planModules(options: PlanOptions): ModulePlanning {
       }
       const missing = (manifest.dependsOn ?? []).filter((dep) => !usable.has(dep) || excluded.has(dep) || disabled.has(dep));
       if (missing.length > 0) {
-        refuse(id, "MODULE_DEPENDENCY_MISSING", `Module "${id}" depends on ${missing.map((dep) => `"${dep}"`).join(", ")}, which ${missing.length === 1 ? "is" : "are"} not available.`);
+        const message = `Module "${id}" depends on ${missing.map((dep) => `"${dep}"`).join(", ")}, which ${missing.length === 1 ? "is" : "are"} not available.`;
+        refuse(id, "MODULE_DEPENDENCY_MISSING", message);
+        gate(id, message, dependencySwitches(manifest) ?? []);
       }
     }
     for (const id of stuck) {
       // A module that is not enabled anyway is not reported for its place in a cycle.
-      const reason = notEnabledReason(usable.get(id)!.manifest);
-      if (reason !== null) disabled.set(id, reason);
-      else refuse(id, "MODULE_DEPENDENCY_CYCLE", `Module "${id}" is in, or depends on, a dependency cycle.`);
+      const { manifest } = usable.get(id)!;
+      const reason = notEnabledReason(manifest);
+      if (reason !== null) {
+        disabled.set(id, reason);
+        gate(id, reason, unmetSwitches(manifest));
+      } else refuse(id, "MODULE_DEPENDENCY_CYCLE", `Module "${id}" is in, or depends on, a dependency cycle.`);
     }
     return { findings, disabled, order, refused: new Set(findings.filter((f) => f.code !== "MODULE_SECTION_DISABLED").map((f) => f.path)) };
   };
@@ -802,9 +826,9 @@ export function planModules(options: PlanOptions): ModulePlanning {
   const plan: ModulePlanEntry[] = [
     ...order.filter((id) => !disabled.has(id)).map((id) => ({ id, enabled: true })),
     ...[...disabled].sort(([a], [b]) => compareText(a, b)).map(([id, reason]) => {
-      // Only when the switch is still the reason (a later refusal replaces it).
+      // Only while a switch is still the reason (a later refusal replaces it).
       const gated = gates.get(id);
-      return { id, enabled: false, reason, ...(gated?.reason === reason ? { gate: gated.gate } : {}) };
+      return { id, enabled: false, reason, ...(gated?.reason === reason ? { gates: gated.gates } : {}) };
     }),
   ];
   return { plan, findings, usable, disabled, seenIds, envOwners, builtinIds };

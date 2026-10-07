@@ -19,7 +19,7 @@ import type {
   UiSlot,
 } from "@deck/module-sdk";
 
-import { entitySectionProblem } from "@deck/module-sdk";
+import { entitySectionProblem, pagePathProblem } from "@deck/module-sdk";
 
 import { DEFAULT_BRAND_TITLE, DEFAULT_UI, type UiDefaults } from "./defaults.js";
 import type { KernelFeature } from "./kernel-features.js";
@@ -41,8 +41,8 @@ export interface UiModuleInput {
   reason?: string;
   /** A module that ships with deck: it keeps contested ids, slots and paths over other modules. */
   builtin?: boolean;
-  /** The unset setting that keeps the module off, when that is why (a name, never a value). */
-  enabledBy?: UiModuleSwitch;
+  /** The unset settings that keep the module off, when they are why (names, never values). */
+  enabledBy?: readonly UiModuleSwitch[];
 }
 
 export interface ResolveUiInput {
@@ -68,7 +68,7 @@ interface Unit {
   enabled: boolean;
   reason?: string;
   builtin?: boolean;
-  enabledBy?: UiModuleSwitch;
+  enabledBy?: readonly UiModuleSwitch[];
 }
 
 type Owned<T> = T & { module: string };
@@ -93,7 +93,7 @@ type Override = Exclude<UiOverride, boolean>;
  *    one path or a page on a module's root path, an id or slot contributed twice, a nav entry
  *    to an undeclared page.
  *    Their pages are listed as disabled pages, unless an enabled page or a root path serves
- *    the path, so the shell can say the module is off rather than that nothing is there.
+ *    the path or the path is not a usable page path (a finding), so the shell can say the module is off rather than that nothing is there.
  * 5. Sort pages by id, nav by group/order/id, extensions by slot/order/id. Nav groups follow
  *    the ui config's group order, then any other group by id.
  */
@@ -254,6 +254,12 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
     if (unit.enabled) continue;
     for (const page of unit.manifest.contributes?.pages ?? []) {
       if (pathOwner.has(page.path) || rootPathOwner.has(page.path) || seen.has(page.id) || disabledIds.has(page.id)) continue;
+      // The web routes this path to its not-enabled page: it must be one the router compiles.
+      const problem = pagePathProblem(page.path, `page "${page.id}"`, []);
+      if (problem !== null) {
+        findings.push({ code: "UI_INVALID_PAGE", severity: "warning", message: `${problem}; it is not listed as a disabled page`, id: page.id });
+        continue;
+      }
       pathOwner.set(page.path, page.id);
       disabledIds.add(page.id);
       disabledPages.push({
@@ -329,7 +335,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
       enabled,
       ...(reason === undefined ? {} : { reason }),
       origin,
-      ...(enabled || enabledBy === undefined ? {} : { enabledBy: copySwitch(enabledBy) }),
+      ...(enabled || enabledBy === undefined || enabledBy.length === 0 ? {} : { enabledBy: enabledBy.map(copySwitch) }),
     })),
     slots: [...slots.values()].sort((a, b) => compareIds(a.id, b.id)),
     pages: pages.sort((a, b) => compareIds(a.id, b.id)),

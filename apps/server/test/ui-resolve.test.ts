@@ -787,13 +787,13 @@ describe("open entity sections", () => {
   });
 });
 
-describe("capability-aware nav: disabled modules' pages and their switch", () => {
+describe("capability-aware nav: disabled modules' pages and their switches", () => {
   const gadgetsPage = { id: "page:gadgets/overview", module: "gadgets", path: "/gadgets", title: "Gadgets", icon: "boxes" };
 
-  it("lists a disabled module's pages as disabled pages, with the switch that enables it", () => {
+  it("lists a disabled module's pages as disabled pages, with the switches that enable it", () => {
     const ui = resolve({
       modules: [
-        { manifest: gadgets, enabled: false, reason: "not enabled: GADGETS_ENABLED is not true", enabledBy: { env: "GADGETS_ENABLED" } },
+        { manifest: gadgets, enabled: false, reason: "not enabled: GADGETS_ENABLED is not true", enabledBy: [{ env: "GADGETS_ENABLED" }] },
         { manifest: widgets, enabled: true },
       ],
     });
@@ -801,21 +801,23 @@ describe("capability-aware nav: disabled modules' pages and their switch", () =>
     expect(ui.nav).toEqual([]);
     expect(ui.disabledPages).toEqual([gadgetsPage]);
     expect(ui.modules.find((m) => m.id === "gadgets")).toEqual({
-      id: "gadgets", version: "1.0.0", enabled: false, reason: "not enabled: GADGETS_ENABLED is not true", origin: "module", enabledBy: { env: "GADGETS_ENABLED" },
+      id: "gadgets", version: "1.0.0", enabled: false, reason: "not enabled: GADGETS_ENABLED is not true", origin: "module", enabledBy: [{ env: "GADGETS_ENABLED" }],
     });
     expect(ui.findings).toEqual([]);
   });
 
-  it("lists no disabled pages while every module is on, and never a switch for an enabled module", () => {
-    const ui = resolve({ modules: [{ manifest: gadgets, enabled: true, enabledBy: { config: "modules.gadgets" } }] });
-    expect(ui.disabledPages).toEqual([]);
-    expect(ui.modules.find((m) => m.id === "gadgets")).not.toHaveProperty("enabledBy");
+  it("lists no disabled pages while every module is on, and never switches for an enabled module or an empty list", () => {
+    const on = resolve({ modules: [{ manifest: gadgets, enabled: true, enabledBy: [{ config: "modules.gadgets" }] }] });
+    expect(on.disabledPages).toEqual([]);
+    expect(on.modules.find((m) => m.id === "gadgets")).not.toHaveProperty("enabledBy");
+    const none = resolve({ modules: [{ manifest: gadgets, enabled: false, reason: "off", enabledBy: [] }] });
+    expect(none.modules.find((m) => m.id === "gadgets")).not.toHaveProperty("enabledBy");
   });
 
-  it("copies only the switch's name, whatever else its input object carries", () => {
-    const enabledBy = { env: "GADGETS_ENABLED", value: "s3cret" } as unknown as { env: string };
+  it("copies only each switch's name, whatever else its input object carries", () => {
+    const enabledBy = [{ env: "GADGETS_ENABLED", value: "s3cret" }, { config: "modules.gadgets", value: "s3cret" }] as unknown as { env: string }[];
     const ui = resolve({ modules: [{ manifest: gadgets, enabled: false, reason: "off", enabledBy }] });
-    expect(ui.modules.find((m) => m.id === "gadgets")?.enabledBy).toEqual({ env: "GADGETS_ENABLED" });
+    expect(ui.modules.find((m) => m.id === "gadgets")?.enabledBy).toEqual([{ env: "GADGETS_ENABLED" }, { config: "modules.gadgets" }]);
     expect(JSON.stringify(ui)).not.toContain("s3cret");
   });
 
@@ -839,20 +841,58 @@ describe("capability-aware nav: disabled modules' pages and their switch", () =>
     expect(ui.disabledPages).toEqual([]);
   });
 
-  it("the host names the unmet switch (env var or config key), and only when that is why the module is off", () => {
+  it("leaves out a disabled page whose path the web router could not compile, with a finding; the others stay", () => {
+    const tools = manifest("tools", {
+      pages: [
+        { id: "page:tools/broken", path: "/tools/[", title: "Broken", component: "BrokenPage" },
+        { id: "page:tools/api", path: "/api/tools", title: "Api", component: "ApiPage" },
+        { id: "page:tools/overview", path: "/tools", title: "Tools", component: "ToolsPage" },
+      ],
+    });
+    const ui = resolve({ modules: [{ manifest: tools, enabled: false, reason: "off" }] });
+    expect(ui.disabledPages).toEqual([{ id: "page:tools/overview", module: "tools", path: "/tools", title: "Tools" }]);
+    expect(ui.findings.map((f) => `${f.code} ${f.id}`)).toEqual(["UI_INVALID_PAGE page:tools/broken", "UI_INVALID_PAGE page:tools/api"]);
+  });
+
+  it("the host names a module's unmet switches (env var and config key), and only when they are why it is off", () => {
     const { host } = testHost(
       [
         testModule({ id: "envgated", enabledBy: { env: "ENVGATED_ENABLED" }, env: ["ENVGATED_ENABLED", "ENVGATED_TOKEN"] }),
         testModule({ id: "configgated", enabledBy: { config: true } }),
+        testModule({ id: "both", enabledBy: { config: true, env: "BOTH_ENABLED" }, env: ["BOTH_ENABLED"] }),
         testModule({ id: "orphan", dependsOn: ["missing"] }),
       ],
       { env: { ENVGATED_ENABLED: "no", ENVGATED_TOKEN: "tok-9f2c1e-s3cret" } },
     );
     const byId = new Map(host.plan.map((entry) => [entry.id, entry]));
-    expect(byId.get("envgated")).toMatchObject({ enabled: false, gate: { env: "ENVGATED_ENABLED" } });
-    expect(byId.get("configgated")).toMatchObject({ enabled: false, gate: { config: "modules.configgated" } });
+    expect(byId.get("envgated")).toMatchObject({ enabled: false, gates: [{ env: "ENVGATED_ENABLED" }] });
+    expect(byId.get("configgated")).toMatchObject({ enabled: false, gates: [{ config: "modules.configgated" }] });
+    // Both of its own switches are unmet: both are named (the reason gives the first).
+    expect(byId.get("both")).toEqual({ id: "both", enabled: false, reason: "not enabled: no modules.both section", gates: [{ config: "modules.both" }, { env: "BOTH_ENABLED" }] });
     expect(byId.get("orphan")).toMatchObject({ enabled: false });
-    expect(byId.get("orphan")).not.toHaveProperty("gate");
+    expect(byId.get("orphan")).not.toHaveProperty("gates");
+  });
+
+  it("the host names a dependency's switches when that dependency is off only because of them", () => {
+    const { host } = testHost(
+      [
+        testModule({ id: "base", enabledBy: { env: "BASE_ENABLED" }, env: ["BASE_ENABLED"] }),
+        testModule({ id: "addon", dependsOn: ["base"] }),
+        testModule({ id: "gated-addon", dependsOn: ["base"], enabledBy: { env: "ADDON_ENABLED" }, env: ["ADDON_ENABLED"] }),
+        testModule({ id: "top", dependsOn: ["addon"] }),
+        testModule({ id: "mixed", dependsOn: ["base", "missing"] }),
+      ],
+      {},
+    );
+    const byId = new Map(host.plan.map((entry) => [entry.id, entry]));
+    expect(byId.get("addon")).toMatchObject({ enabled: false, gates: [{ env: "BASE_ENABLED" }] });
+    expect(byId.get("addon")?.reason).toMatch(/depends on "base"/);
+    // Its own switch, then its dependency's.
+    expect(byId.get("gated-addon")).toMatchObject({ enabled: false, gates: [{ env: "ADDON_ENABLED" }, { env: "BASE_ENABLED" }] });
+    // Transitively: top needs addon, which needs base's switch.
+    expect(byId.get("top")).toMatchObject({ enabled: false, gates: [{ env: "BASE_ENABLED" }] });
+    // A dependency that is missing outright: no setting would enable it.
+    expect(byId.get("mixed")).not.toHaveProperty("gates");
   });
 
   it("/api/ui names env vars and config keys, never a value set for them", async () => {
@@ -865,7 +905,7 @@ describe("capability-aware nav: disabled modules' pages and their switch", () =>
     });
     const { host } = testHost([tools], { env: { TOOLS_ENABLED: "nope-7d1a", TOOLS_TOKEN: "tok-9f2c1e-s3cret" } });
     const ui = buildUiManifest({ config: {}, providers: { listProviders: () => [] }, modules: host, capabilities: {} });
-    expect(ui.modules.find((m) => m.id === "tools")).toMatchObject({ enabled: false, enabledBy: { env: "TOOLS_ENABLED" } });
+    expect(ui.modules.find((m) => m.id === "tools")).toMatchObject({ enabled: false, enabledBy: [{ env: "TOOLS_ENABLED" }] });
     expect(ui.disabledPages).toEqual([{ id: "page:tools/overview", module: "tools", path: "/tools", title: "Tools" }]);
     const body = JSON.stringify(ui);
     expect(body).not.toContain("nope-7d1a");

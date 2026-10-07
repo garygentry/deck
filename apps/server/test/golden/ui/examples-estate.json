@@ -10,9 +10,11 @@
       "enabled": false,
       "reason": "not enabled: DECK_ACTIONS_ENABLED is not true",
       "origin": "module",
-      "enabledBy": {
-        "env": "DECK_ACTIONS_ENABLED"
-      }
+      "enabledBy": [
+        {
+          "env": "DECK_ACTIONS_ENABLED"
+        }
+      ]
     },
     {
       "id": "alertmanager",
@@ -86,9 +88,11 @@
       "enabled": false,
       "reason": "not enabled: DECK_METRICS_ENABLED is not true",
       "origin": "module",
-      "enabledBy": {
-        "env": "DECK_METRICS_ENABLED"
-      }
+      "enabledBy": [
+        {
+          "env": "DECK_METRICS_ENABLED"
+        }
+      ]
     },
     {
       "id": "monitoring",

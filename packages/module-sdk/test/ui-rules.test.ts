@@ -39,6 +39,13 @@ describe("shared UI rules", () => {
     expect(pagePathProblem("/metrics", "p")).toMatch(/reserved root path/);
     expect(pagePathProblem("/metrics", "p", [])).toBeNull();
     expect(pagePathProblem("/kernel.txt", "p", ["/kernel.txt"])).toMatch(/reserved root path/);
+    // Only patterns the web router compiles: a stray bracket or group would throw there.
+    for (const ok of ["/", "/hosts/:name", "/services/:host/:name", "/_ui", "/files/*", "/a/:b?", "/v1.2/x~y"]) {
+      expect(pagePathProblem(ok, "p")).toBeNull();
+    }
+    for (const bad of ["/tools/[", "/x(y", "/a b", "/a//b", "/a/", "/*/b", "/:1x", "/a+", "/%zz"]) {
+      expect(pagePathProblem(bad, "p")).toMatch(/literal segments/);
+    }
     expect(isSafeHref("https://x.lab")).toBe(true);
     expect(isSafeHref("javascript:alert(1)")).toBe(false);
     expect(isSafeHref("//evil")).toBe(false);

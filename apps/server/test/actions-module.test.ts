@@ -87,7 +87,7 @@ describe("actions module manifest", () => {
     const { host } = testHost([actionsModule], { env });
     expect(host.plan).toEqual([enabled
       ? { id: "actions", enabled: true }
-      : { id: "actions", enabled: false, reason: "not enabled: DECK_ACTIONS_ENABLED is not true", gate: { env: "DECK_ACTIONS_ENABLED" } }]);
+      : { id: "actions", enabled: false, reason: "not enabled: DECK_ACTIONS_ENABLED is not true", gates: [{ env: "DECK_ACTIONS_ENABLED" }] }]);
   });
 });
 

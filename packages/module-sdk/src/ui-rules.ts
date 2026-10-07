@@ -91,12 +91,28 @@ export function orderProblem(order: unknown, label: string): Problem {
   return order === undefined || (typeof order === "number" && Number.isFinite(order)) ? null : `${label} must be a finite number`;
 }
 
+/** A literal path segment: unreserved URL characters, none a route-pattern or RegExp operator. */
+const PATH_LITERAL = /^[A-Za-z0-9._~-]+$/;
+
+/** A route parameter (`:name`, optionally `:name?`). */
+const PATH_PARAM = /^:[A-Za-z_][A-Za-z0-9_]*\??$/;
+
 /**
- * Why a page path is unusable: not absolute, under `/api` (the server answers it), or a
- * reserved root path (by default the kernel's and the built-in modules', {@link RESERVED_PAGE_PATHS}).
+ * Why a page path is unusable: not absolute, not a route pattern the web router compiles
+ * (`/` or `/`-separated literal segments, `:params` and a final `*`), under `/api` (the server
+ * answers it), or a reserved root path (by default the kernel's and the built-in modules',
+ * {@link RESERVED_PAGE_PATHS}).
  */
 export function pagePathProblem(path: unknown, label: string, reservedRootPaths: readonly string[] = RESERVED_PAGE_PATHS): Problem {
   if (typeof path !== "string" || !path.startsWith("/")) return `${label} path must start with "/"`;
+  if (path !== "/") {
+    const segments = path.slice(1).split("/");
+    const bad = segments.findIndex((segment, index) =>
+      !(PATH_LITERAL.test(segment) || PATH_PARAM.test(segment) || (segment === "*" && index === segments.length - 1)));
+    if (bad !== -1) {
+      return `${label} path "${path}" must be "/"-separated literal segments ([A-Za-z0-9._~-]), :params or a final *`;
+    }
+  }
   if (path === "/api" || path.startsWith("/api/")) return `${label} path "${path}" is under /api, which the server answers`;
   if (reservedRootPaths.includes(path)) return `${label} path "${path}" is a reserved root path, which the server answers`;
   return null;

@@ -202,8 +202,8 @@ describe("module host planning", () => {
     ]);
     expect(host.findings).toEqual([]);
     expect(host.plan).toEqual([
-      { id: "a", enabled: false, reason: "not enabled: no modules.a section", gate: { config: "modules.a" } },
-      { id: "b", enabled: false, reason: "not enabled: no modules.b section", gate: { config: "modules.b" } },
+      { id: "a", enabled: false, reason: "not enabled: no modules.a section", gates: [{ config: "modules.a" }] },
+      { id: "b", enabled: false, reason: "not enabled: no modules.b section", gates: [{ config: "modules.b" }] },
     ]);
     expect(lines.filter((l) => l.code === "MODULE_DEPENDENCY_CYCLE")).toEqual([]);
   });
@@ -219,8 +219,8 @@ describe("module host planning", () => {
     expect(host.plan).toEqual([
       // drift and inventory depend on snapshot, so they follow it.
       ...["alertmanager", "docker", "file-tree", "gatus", "http-health", "link", "llm-usage", "markdown-tree", "monitoring", "portal", "prometheus", "snapshot", "drift", "inventory", "sources"].map((id) => ({ id, enabled: true })),
-      { id: "actions", enabled: false, reason: "not enabled: DECK_ACTIONS_ENABLED is not true", gate: { env: "DECK_ACTIONS_ENABLED" } },
-      { id: "metrics", enabled: false, reason: "not enabled: DECK_METRICS_ENABLED is not true", gate: { env: "DECK_METRICS_ENABLED" } },
+      { id: "actions", enabled: false, reason: "not enabled: DECK_ACTIONS_ENABLED is not true", gates: [{ env: "DECK_ACTIONS_ENABLED" }] },
+      { id: "metrics", enabled: false, reason: "not enabled: DECK_METRICS_ENABLED is not true", gates: [{ env: "DECK_METRICS_ENABLED" }] },
     ]);
     const on = testHost([...BUILTIN_MODULES], { env: { DECK_ACTIONS_ENABLED: "1", DECK_METRICS_ENABLED: "1" }, kernelRoutes: planningRouteTable(), reservedRootPaths: RESERVED_ROOT_PATHS });
     expect(on.host.findings).toEqual([]);

@@ -225,8 +225,9 @@ components:
 - The sidebar lists the manifest's `navGroups` in order, and in each its `nav` entries, with
   their labels and icons. An entry to a page the web does not route is left out, and so is the
   page of a module that is off.
-- The top bar's slots (`app/topbar.status`, `app/topbar.actions`) and the entity pages'
-  sections render the manifest's entries for the slot, in its order, each with the web
+- The top bar's slots (`app/topbar.status`, `app/topbar.actions`), the portal's summary cards
+  (`portal/summary`, declared by the portal module's manifest) and the entity pages' sections
+  render the manifest's entries for the slot, in its order, each with the web
   extension of the same id and kind and the entry's resolved `config` in place of the
   registered one (`placeExtensions`, `useManifestSlot(slot)`).
 - The brand in the sidebar header and the document title (`"{page} · {brand}"`) is the

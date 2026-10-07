@@ -28,8 +28,12 @@ import {
   EndpointStatusSummary,
 } from "../src/features/portal/EndpointStatusSummary.js";
 import { CARD_STATUS, PortalCard } from "../src/features/portal/PortalCard.js";
-import { getPages } from "../src/registry/registry.js";
-import { resetQueryClient } from "../src/data/query-client.js";
+import { PORTAL_SUMMARY_SLOT, PORTAL_UI } from "@deck/contract/modules/portal";
+import { getAllExtensions, getPages, getSlot, registerCard } from "../src/registry/registry.js";
+import { getQueryClient, resetQueryClient } from "../src/data/query-client.js";
+import { queryKeys } from "../src/data/index.js";
+import { manifestPlacing } from "./support/manifest.js";
+import { resolveComponent } from "./support/lazy.js";
 
 const fresh: FreshnessStamp = {
   state: "fresh",
@@ -175,7 +179,7 @@ describe("portal registration and assembled page", () => {
     portalData = loaded();
     const pages = getPages();
     expect(pages.map(({ id }) => id)).toEqual(["page:portal/overview"]);
-    expect(pages[0]).toMatchObject({ id: "page:portal/overview", path: "/", order: -1, component: PortalPage });
+    expect(pages[0]).toMatchObject({ id: "page:portal/overview", path: "/", component: PortalPage });
 
     vi.stubGlobal("location", new URL("http://localhost/"));
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
@@ -187,6 +191,23 @@ describe("portal registration and assembled page", () => {
     render(<App />);
     expect(screen.getByRole("heading", { level: 1, name: "Portal" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Portal links" })).not.toBeInTheDocument();
+  });
+
+  it("registers exactly its module's contributions, with no placement of its own", async () => {
+    const ours = getAllExtensions().filter(({ module }) => module === "portal");
+    const declared = PORTAL_UI.contributes!;
+    expect(ours.map(({ id }) => id).sort()).toEqual(
+      [...declared.pages!, ...declared.nav!, ...declared.extensions!].map(({ id }) => id).sort(),
+    );
+    // The nav entry keeps the manifest's order; the route takes none of its own.
+    expect(ours.find(({ id }) => id === "nav:portal/overview")!.attachTo).toEqual({ slot: "app/nav", order: -1 });
+    const pill = ours.find(({ id }) => id === "pill:portal/endpoints")!;
+    expect(pill.attachTo).toEqual({ slot: "app/topbar.status", order: 100 });
+    expect(await resolveComponent(pill.component!)).toBe(EndpointStatusSummary);
+    expect(getPages()[0]).toMatchObject({ label: "Portal", icon: "layout-grid", group: "overview" });
+    // The portal hosts the summary slot, declared from its manifest.
+    expect(PORTAL_SUMMARY_SLOT).toBe("portal/summary");
+    expect(getSlot(PORTAL_SUMMARY_SLOT)).toMatchObject({ accepts: "widget", module: "portal" });
   });
 
   it("renders one page landmark with no nested <main>", () => {
@@ -422,10 +443,9 @@ describe("slot host isolation (review L8)", () => {
     throw new Error("internal card failure must never reach the UI");
   };
 
-  it("a throwing portal/summary widget leaves the portal heading, filters and cards intact", async () => {
-    const { registerCard } = await import("../src/registry/registry.js");
-    const { PORTAL_SUMMARY_SLOT } = await import("../src/shell/portal-summary-slot.js");
+  it("a throwing portal/summary widget leaves the portal heading, filters and cards intact", () => {
     registerCard({ id: "card:probe/throws", slot: PORTAL_SUMMARY_SLOT, component: Throws });
+    getQueryClient().setQueryData(queryKeys.uiManifest, manifestPlacing(getAllExtensions()));
     portalData = loaded();
     const quiet = vi.spyOn(console, "error").mockImplementation(() => undefined);
     render(<PortalPage />);
@@ -435,5 +455,44 @@ describe("slot host isolation (review L8)", () => {
     expect(cardTitles().length).toBeGreaterThan(0);
     expect(screen.getByRole("alert")).toHaveTextContent("Summary card unavailable");
     expect(document.body.textContent).not.toContain("internal card failure");
+  });
+});
+
+describe("portal summary placement", () => {
+  const First = () => <p>first card</p>;
+  const Second = () => <p>second card</p>;
+  const shown = () => [...document.querySelectorAll("p")].map((el) => el.textContent).filter((text) => text?.endsWith(" card"));
+  const placed = (id: string, order: number) => ({ id, kind: "widget", module: "probe", slot: PORTAL_SUMMARY_SLOT, order });
+
+  it("renders the cards the UI manifest places, in its order, and none of a module that is off", () => {
+    registerCard({ id: "card:probe/first", slot: PORTAL_SUMMARY_SLOT, component: First, order: 10 });
+    registerCard({ id: "card:probe/second", slot: PORTAL_SUMMARY_SLOT, component: Second, order: 20 });
+    portalData = loaded();
+
+    // The manifest's order wins over the registered one.
+    getQueryClient().setQueryData(queryKeys.uiManifest, { ...manifestPlacing([]), extensions: [placed("card:probe/second", 1), placed("card:probe/first", 2)] });
+    render(<PortalPage />);
+    expect(shown()).toEqual(["second card", "first card"]);
+    cleanup();
+
+    // A card the manifest does not list (its module is off) renders nothing.
+    getQueryClient().setQueryData(queryKeys.uiManifest, { ...manifestPlacing([]), extensions: [placed("card:probe/first", 1)] });
+    render(<PortalPage />);
+    expect(shown()).toEqual(["first card"]);
+    cleanup();
+
+    // Until the manifest loads, none render.
+    resetQueryClient();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    render(<PortalPage />);
+    expect(shown()).toEqual([]);
+    expect(screen.getByRole("heading", { level: 1, name: "Portal" })).toBeInTheDocument();
+  });
+
+  it("falls back to the registered cards when the manifest cannot be read", () => {
+    portalData = loaded();
+    getQueryClient().setQueryData(queryKeys.uiManifest, { unavailable: true, message: "down" });
+    render(<PortalPage />);
+    expect(shown()).toEqual(["first card", "second card"]);
   });
 });

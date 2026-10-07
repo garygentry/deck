@@ -1,5 +1,6 @@
 import type { Host, Link, Service } from "@deck/schema";
 import type { FreshnessStamp } from "@deck/contract";
+import { PORTAL_SUMMARY_SLOT } from "@deck/contract/modules/portal";
 import type { DeckConfig } from "@deck/server";
 import type { Group, GroupItem, PortalModuleConfig, ServiceItem, Subgroup } from "@deck/server/portal";
 import { useMemo, useRef, type FunctionComponent, type JSX, type ReactNode } from "react";
@@ -39,10 +40,9 @@ import {
   type IndexedCard,
   type PortalFacet,
 } from "./search-filter.js";
-import { getCards } from "../../registry/registry.js";
-import { useRegistryVersion } from "../../registry/use-registry.js";
+import type { CardRegistration } from "../../registry/registry-types.js";
 import { useSlotResetKey } from "../../shell/use-slot-reset-key.js";
-import { PORTAL_SUMMARY_SLOT } from "../../shell/portal-summary-slot.js";
+import { useManifestSlot } from "../../shell/manifest-slot.js";
 import { PortalDataContext, usePortalData } from "./usePortalData.js";
 
 const STATIC_STAMP: FreshnessStamp = {
@@ -249,8 +249,9 @@ function PortalGroup({ group, cards }: { group: Group; cards: readonly IndexedCa
 
 export const PortalPage: FunctionComponent = () => {
   const data = usePortalData();
-  useRegistryVersion();
-  const summaryCards = getCards(PORTAL_SUMMARY_SLOT);
+  // The UI manifest places the summary cards, as it does every shell slot: its order wins, and
+  // a card of a module that is off is not listed.
+  const summaryCards = useManifestSlot(PORTAL_SUMMARY_SLOT).filter(({ kind }) => kind === "widget");
   const summaryResetKey = useSlotResetKey();
   const headingId = usePageHeadingId("Portal");
   const rootRef = useRef<HTMLElement>(null);
@@ -309,11 +310,14 @@ export const PortalPage: FunctionComponent = () => {
       >
         <PageHeader title="Portal" />
         {/* Summary cards other features contribute (e.g. LLM usage); each renders nothing when it has nothing to say. */}
-        {summaryCards.map(({ id, component: Card }) => (
-          <FragmentBoundary key={id} label="Summary card" resetKey={summaryResetKey}>
-            <Card data={null} freshness={STATIC_STAMP} />
-          </FragmentBoundary>
-        ))}
+        {summaryCards.map(({ id, component }) => {
+          const Card = component as CardRegistration["component"];
+          return (
+            <FragmentBoundary key={id} label="Summary card" resetKey={summaryResetKey}>
+              <Card data={null} freshness={STATIC_STAMP} />
+            </FragmentBoundary>
+          );
+        })}
         <FilterBar
           label="Portal filters"
           search={(

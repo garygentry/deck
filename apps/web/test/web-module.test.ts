@@ -188,7 +188,7 @@ describe("the llm-usage web half", () => {
   it("registers exactly its module's contributions, with no placement of its own", async () => {
     vi.resetModules();
     await import("../src/shell/health-header/slot.js");
-    await import("../src/shell/portal-summary-slot.js");
+    await import("../src/features/portal/index.js");
     await import("../src/features/llm-usage/index.js");
     const registry = await import("../src/registry/registry.js");
     const { LLM_USAGE_UI } = await import("@deck/contract/modules/llm-usage");

@@ -4,10 +4,26 @@ import type { PageRegistration } from "../registry/registry-types.js";
 import { NAV_SLOT } from "../registry/registry.js";
 
 /**
- * Group order for the fallback nav only (the manifest cannot be read): the built-in groups in
- * the order the server's default ui config gives them. With a manifest, the manifest decides.
+ * The built-in nav groups for the fallback nav only (the manifest cannot be read), in the
+ * order the server's default ui config gives them. With a manifest, the manifest decides.
  */
-const FALLBACK_GROUP_ORDER: readonly string[] = ["Overview", "Inventory", "Health", "Operate", "Knowledge"];
+const FALLBACK_GROUPS: readonly { id: string; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "inventory", label: "Inventory" },
+  { id: "health", label: "Health" },
+  { id: "operate", label: "Operate" },
+  { id: "knowledge", label: "Knowledge" },
+];
+
+/**
+ * The built-in group a page's `group` names: by id (a page registered through
+ * `registerWebModule` carries its manifest group id), or by label. The label match serves
+ * pages still registered with `registerPage` and a group heading; it is removed once every
+ * built-in feature registers through `registerWebModule`.
+ */
+function fallbackGroup(group: string): { id: string; label: string } | undefined {
+  return FALLBACK_GROUPS.find(({ id }) => id === group) ?? FALLBACK_GROUPS.find(({ label }) => label === group);
+}
 
 /** One sidebar link. */
 export interface NavLink {
@@ -68,17 +84,19 @@ function navFromManifest(manifest: UiManifest, pages: readonly PageRegistration[
  * no heading.
  */
 export function groupNavPages(pages: readonly PageRegistration[]): NavGroup[] {
-  const groups = new Map<string | undefined, NavLink[]>();
+  const groups = new Map<string | undefined, { label: string | undefined; links: NavLink[] }>();
   for (const page of pages) {
     if (page.nav === false) continue;
-    const list = groups.get(page.group) ?? [];
-    list.push({ id: page.id, label: page.label, icon: page.icon, href: page.path });
-    groups.set(page.group, list);
+    const known = page.group === undefined ? undefined : fallbackGroup(page.group);
+    const id = known?.id ?? page.group;
+    const group = groups.get(id) ?? { label: known?.label ?? page.group, links: [] };
+    group.links.push({ id: page.id, label: page.label, icon: page.icon, href: page.path });
+    groups.set(id, group);
   }
-  const rank = (label: string | undefined): [number, string] => {
-    if (label === undefined) return [2, ""];
-    const known = FALLBACK_GROUP_ORDER.indexOf(label);
-    return known === -1 ? [1, label] : [0, String(known).padStart(3, "0")];
+  const rank = (id: string | undefined): [number, string] => {
+    if (id === undefined) return [2, ""];
+    const known = FALLBACK_GROUPS.findIndex((group) => group.id === id);
+    return known === -1 ? [1, id] : [0, String(known).padStart(3, "0")];
   };
   return [...groups.entries()]
     .sort(([a], [b]) => {
@@ -86,7 +104,7 @@ export function groupNavPages(pages: readonly PageRegistration[]): NavGroup[] {
       const [rb, kb] = rank(b);
       return ra - rb || (ka < kb ? -1 : ka > kb ? 1 : 0);
     })
-    .map(([label, links]) => ({ id: label, label, links }));
+    .map(([id, { label, links }]) => ({ id, label, links }));
 }
 
 /**

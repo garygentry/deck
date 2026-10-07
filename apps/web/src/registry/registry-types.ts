@@ -44,7 +44,10 @@ export interface PageRegistration {
   order?: number;
   /** Whether the page appears in primary navigation; defaults to true. */
   nav?: boolean;
-  /** Navigation group heading, e.g. "Inventory"; ungrouped pages are listed last. */
+  /**
+   * Navigation group: a manifest group id (`inventory`) or a built-in group's heading
+   * ("Inventory"); used by the fallback nav only. Ungrouped pages are listed last.
+   */
   group?: string;
 }
 

@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import type { UiManifest, UiModule } from "@deck/module-sdk";
+import type { UiManifest } from "@deck/module-sdk";
 import { primary } from "@deck/schema/fixtures";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,11 +11,11 @@ import type { UiManifestState } from "../src/data/index.js";
 import { resetQueryClient } from "../src/data/query-client.js";
 import type { PageRegistration } from "../src/registry/registry.js";
 import { ModuleNotEnabledPage } from "../src/shell/ModuleNotEnabledPage.js";
-import { resolveRoutes, type NotEnabledRoute } from "../src/shell/routes.js";
+import { moduleSwitches, resolveRoutes, type NotEnabledRoute } from "../src/shell/routes.js";
 
 /**
- * Capability-aware routing: a page of a module the UI manifest lists as disabled is not
- * routed; its path says the module is off and names the setting that turns it on. The server
+ * Capability-aware routing: a page the UI manifest lists as a disabled module's page is not
+ * routed; its path says the module is off and names the settings that turn it on. The server
  * golden for the example estate (default env: actions off) is what the real server serves.
  */
 const TEST_FILE_URL = import.meta.url;
@@ -46,14 +46,21 @@ describe("resolveRoutes", () => {
     const routes = resolveRoutes(ready(golden), pages);
     expect(ids(routes.routed)).toEqual(["page:portal/overview", "page:_ui/workbench"]);
     expect(routes.notEnabled).toEqual([
-      { id: "page:actions/overview", path: "/actions", label: "Actions", module: golden.modules.find((m) => m.id === "actions") },
+      {
+        id: "page:actions/overview",
+        path: "/actions",
+        label: "Actions",
+        module: "actions",
+        enabledBy: [{ env: "DECK_ACTIONS_ENABLED" }],
+        reason: "not enabled: DECK_ACTIONS_ENABLED is not true",
+      },
     ]);
-    expect(routes.notEnabled[0]?.module?.enabledBy).toEqual({ env: "DECK_ACTIONS_ENABLED" });
   });
 
-  it("does not route a page of a module listed as disabled even without a disabled page for it", () => {
+  it("never drops a page without a not-enabled page in its place", () => {
+    // The module is listed off, but its page is not a disabled page (e.g. its path is taken).
     const manifest: UiManifest = { ...golden, disabledPages: [] };
-    expect(ids(resolveRoutes(ready(manifest), pages).routed)).not.toContain("page:actions/overview");
+    expect(ids(resolveRoutes(ready(manifest), pages).routed)).toContain("page:actions/overview");
   });
 
   it("routes every registered page until the manifest loads, or when it cannot be read", () => {
@@ -62,18 +69,33 @@ describe("resolveRoutes", () => {
     }
   });
 
-  it("routes every registered page for an older server's manifest (no modules or disabled pages)", () => {
-    const older = { ...golden, modules: undefined, disabledPages: undefined } as unknown as UiManifest;
-    expect(resolveRoutes(ready(older), pages)).toEqual({ routed: pages, notEnabled: [] });
+  it("routes every registered page for the previous server's manifest (modules, but no disabled pages)", () => {
+    // The real previous shape: the golden without the two fields this change added.
+    const { disabledPages: _dropped, ...rest } = golden;
+    const previous = { ...rest, modules: golden.modules.map(({ enabledBy: _hint, ...module }) => module) } as UiManifest;
+    expect(previous.modules.find((m) => m.id === "actions")).toMatchObject({ enabled: false });
+    expect(resolveRoutes(ready(previous), pages)).toEqual({ routed: pages, notEnabled: [] });
+  });
+});
+
+describe("moduleSwitches (lenient)", () => {
+  it("keeps entries naming an env var or a config key, ignoring other keys; drops the rest", () => {
+    expect(moduleSwitches([{ env: "A", extra: 1 }, { config: "modules.b" }, { env: 1 }, {}, null, "C", { env: "" }])).toEqual([
+      { env: "A" },
+      { config: "modules.b" },
+    ]);
+    expect(moduleSwitches({ env: "A" })).toEqual([]);
+    expect(moduleSwitches(undefined)).toEqual([]);
   });
 });
 
 describe("ModuleNotEnabledPage", () => {
-  const route = (module: UiModule | undefined): NotEnabledRoute => ({ id: "page:tools/overview", path: "/tools", label: "Tools", module });
-  const off: UiModule = { id: "tools", version: "1.0.0", enabled: false, origin: "module", reason: "not enabled: TOOLS_ENABLED is not true" };
+  const route = (parts: Partial<NotEnabledRoute>): NotEnabledRoute => ({
+    id: "page:tools/overview", path: "/tools", label: "Tools", module: "tools", enabledBy: [], reason: "not enabled: TOOLS_ENABLED is not true", ...parts,
+  });
 
   it("has one h1 (the page's title) and names the env var that enables the module", () => {
-    render(<ModuleNotEnabledPage route={route({ ...off, enabledBy: { env: "TOOLS_ENABLED" } })} />);
+    render(<ModuleNotEnabledPage route={route({ enabledBy: [{ env: "TOOLS_ENABLED" }] })} />);
     expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual(["Tools"]);
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent("The tools module is not enabled");
@@ -82,12 +104,19 @@ describe("ModuleNotEnabledPage", () => {
   });
 
   it("names the config key when a config section enables the module", () => {
-    render(<ModuleNotEnabledPage route={route({ ...off, enabledBy: { config: "modules.tools" } })} />);
+    render(<ModuleNotEnabledPage route={route({ enabledBy: [{ config: "modules.tools" }] })} />);
     expect(screen.getByRole("status")).toHaveTextContent("Add a modules.tools section to the estate config and restart deck.");
   });
 
+  it("names every switch when more than one is unmet", () => {
+    render(<ModuleNotEnabledPage route={route({ enabledBy: [{ config: "modules.tools" }, { env: "TOOLS_ENABLED" }, { env: "BASE_ENABLED" }] })} />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Add a modules.tools section to the estate config, set TOOLS_ENABLED=true in deck's environment, set BASE_ENABLED=true in deck's environment and restart deck.",
+    );
+  });
+
   it("gives the module's reason when no setting would enable it", () => {
-    render(<ModuleNotEnabledPage route={route({ ...off, reason: 'Module "tools" depends on "x", which is not available.' })} />);
+    render(<ModuleNotEnabledPage route={route({ reason: 'Module "tools" depends on "x", which is not available.' })} />);
     expect(screen.getByRole("status")).toHaveTextContent('Module "tools" depends on "x", which is not available.');
   });
 });
@@ -95,10 +124,8 @@ describe("ModuleNotEnabledPage", () => {
 describe("the shell at a disabled module's path", () => {
   async function renderApp(ui: () => Response | Promise<Response>, path: string) {
     vi.resetModules();
-    const requests: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
-      requests.push(url);
       if (url === "/api/config") return Response.json(primary.merged);
       if (url === "/api/ui") return ui();
       return new Response(null, { status: 404 });
@@ -114,20 +141,37 @@ describe("the shell at a disabled module's path", () => {
     await import("../src/registry/discover.js");
     const { App } = await import("../src/shell/App.js");
     render(<App />);
-    return { requests };
   }
 
-  it("renders the not-enabled page naming the env var, and the actions page never loads", async () => {
-    const { requests } = await renderApp(() => Response.json(golden), "/actions");
+  it("renders the not-enabled page naming the env var, with the page's h1 and no nav link", async () => {
+    await renderApp(() => Response.json(golden), "/actions");
     const main = screen.getByRole("main");
-    await waitFor(() => expect(within(main).getByRole("status")).toHaveTextContent("Set DECK_ACTIONS_ENABLED=true"));
+    await waitFor(() => expect(main.querySelector('[data-slot="module-not-enabled-page"]')).not.toBeNull());
+    expect(within(main).getByRole("status")).toHaveTextContent("Set DECK_ACTIONS_ENABLED=true");
     expect(within(main).getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual(["Actions"]);
-    expect(main.querySelector('[data-slot="module-not-enabled-page"]')).not.toBeNull();
     await waitFor(() => expect(document.title).toBe("Actions · example-estate"));
-    // Not listed in the nav either.
     const nav = screen.getByRole("navigation", { name: "Primary" });
     expect(within(nav).queryByRole("link", { name: "Actions" })).not.toBeInTheDocument();
-    expect(requests.some((url) => url.startsWith("/api/actions"))).toBe(false);
+  });
+
+  const withBadDisabledPath: UiManifest = {
+    ...golden,
+    disabledPages: [{ id: "page:tools/broken", module: "tools", path: "/tools/[", title: "Broken" }, ...(golden.disabledPages ?? [])],
+  };
+
+  it("a disabled page with a path the router cannot compile does not break another disabled page", async () => {
+    await renderApp(() => Response.json(withBadDisabledPath), "/actions");
+    const main = screen.getByRole("main");
+    await waitFor(() => expect(main.querySelector('[data-slot="module-not-enabled-page"]')).not.toBeNull());
+    expect(within(main).getByRole("status")).toHaveTextContent("DECK_ACTIONS_ENABLED=true");
+  });
+
+  it("…nor the not-found page", async () => {
+    await renderApp(() => Response.json(withBadDisabledPath), "/nowhere");
+    await waitFor(() => expect(screen.getByText("Page not found")).toBeInTheDocument());
+    // Let the manifest settle, then check routing still answers.
+    await waitFor(() => expect(screen.getByRole("navigation", { name: "Primary" }).querySelectorAll("a[href='/hosts']").length).toBe(1));
+    expect(screen.getByText("Page not found")).toBeInTheDocument();
   });
 
   it("routes the page while the manifest is still loading (no not-found flash)", async () => {

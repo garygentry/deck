@@ -1,20 +1,20 @@
-import type { ReactNode } from "react";
+import type { UiModuleSwitch } from "@deck/module-sdk";
+import { Fragment, type ReactNode } from "react";
 import { Button, EmptyState, PageHeader } from "@/ui";
 import type { NotEnabledRoute } from "./routes.js";
 
 /**
- * Rendered at the path of a page whose module is off: says so, and names the setting that
- * turns the module on (an env var or a config key), or why else it is off.
+ * Rendered at the path of a page whose module is off: says so, and names every setting that
+ * turns the module on (env vars and config keys), or why else it is off.
  */
 export function ModuleNotEnabledPage({ route }: { route: NotEnabledRoute }) {
-  const moduleId = route.module?.id ?? route.id.slice(route.id.indexOf(":") + 1, route.id.indexOf("/"));
   return (
     <div data-slot="module-not-enabled-page" className="flex flex-col gap-6">
       <PageHeader title={route.label} />
       <EmptyState
         icon="power-off"
-        title={`The ${moduleId} module is not enabled`}
-        description={howToEnable(route.module)}
+        title={`The ${route.module} module is not enabled`}
+        description={howToEnable(route)}
         action={
           <Button asChild variant="outline">
             <a href="/">Go to the portal</a>
@@ -25,21 +25,34 @@ export function ModuleNotEnabledPage({ route }: { route: NotEnabledRoute }) {
   );
 }
 
-function howToEnable(module: NotEnabledRoute["module"]): ReactNode {
-  const enabledBy = module?.enabledBy;
-  if (enabledBy !== undefined && "env" in enabledBy) {
+function howToEnable({ enabledBy, reason }: NotEnabledRoute): ReactNode {
+  if (enabledBy.length === 0) return reason ?? "This module is off on this deck instance.";
+  const steps = [...enabledBy.map((entry, index) => step(entry, index === 0)), "restart deck"];
+  // "Set A, add B and restart deck."
+  return (
+    <>
+      {steps.map((part, index) => (
+        <Fragment key={index}>
+          {index === 0 ? "" : index === steps.length - 1 ? " and " : ", "}
+          {part}
+        </Fragment>
+      ))}
+      .
+    </>
+  );
+}
+
+function step(entry: UiModuleSwitch, first: boolean): ReactNode {
+  if ("env" in entry) {
     return (
       <>
-        Set <code className="font-mono">{enabledBy.env}=true</code> in deck&apos;s environment and restart deck.
+        {first ? "Set" : "set"} <code className="font-mono">{entry.env}=true</code> in deck&apos;s environment
       </>
     );
   }
-  if (enabledBy !== undefined && "config" in enabledBy) {
-    return (
-      <>
-        Add a <code className="font-mono">{enabledBy.config}</code> section to the estate config and restart deck.
-      </>
-    );
-  }
-  return module?.reason ?? "This module is off on this deck instance.";
+  return (
+    <>
+      {first ? "Add" : "add"} a <code className="font-mono">{entry.config}</code> section to the estate config
+    </>
+  );
 }

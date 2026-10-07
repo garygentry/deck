@@ -1,4 +1,4 @@
-import type { UiManifest, UiModule } from "@deck/module-sdk";
+import type { UiManifest, UiModuleSwitch } from "@deck/module-sdk";
 import type { UiManifestState } from "../data/index.js";
 import type { PageRegistration } from "../registry/registry-types.js";
 
@@ -8,8 +8,12 @@ export interface NotEnabledRoute {
   path: string;
   /** The page's title, for the heading and the document title. */
   label: string;
-  /** The module, as the manifest lists it (with why it is off); absent if it does not. */
-  module: UiModule | undefined;
+  /** The page's module id, as the manifest lists it. */
+  module: string;
+  /** The settings that would enable the module (names only); empty when none would. */
+  enabledBy: readonly UiModuleSwitch[];
+  /** Why the module is off, as the manifest says; absent if it does not. */
+  reason: string | undefined;
 }
 
 export interface ResolvedRoutes {
@@ -20,36 +24,51 @@ export interface ResolvedRoutes {
 }
 
 /**
- * Which pages the router renders. With the UI manifest, a registered page of a module the
- * manifest lists as disabled is not routed, and every page the manifest lists as disabled
- * answers its path with the not-enabled page. Until the manifest loads, or if it cannot be
- * read, every registered page is routed, as the fallback nav lists them all. Pages the
- * manifest never declares (the `_ui` workbench) are routed either way.
+ * Which pages the router renders. With the UI manifest, a registered page the manifest lists
+ * as a disabled page is not routed, and every disabled page answers its path with the
+ * not-enabled page. A page is only ever dropped for such a replacement: until the manifest
+ * loads, if it cannot be read, or if it lists no disabled pages (an older server), every
+ * registered page is routed, as the fallback nav lists them all.
  */
 export function resolveRoutes(manifest: UiManifestState, pages: readonly PageRegistration[]): ResolvedRoutes {
-  if (manifest.status !== "ready") return { routed: pages, notEnabled: [] };
-  return routesFromManifest(manifest.manifest, pages);
+  if (manifest.status !== "ready" || !Array.isArray(manifest.manifest.disabledPages)) return { routed: pages, notEnabled: [] };
+  return routesFromManifest(manifest.manifest, manifest.manifest.disabledPages, pages);
 }
 
-function routesFromManifest(manifest: UiManifest, pages: readonly PageRegistration[]): ResolvedRoutes {
-  // An older server sends neither list; a module it does not list is not known to be off.
+function routesFromManifest(
+  manifest: UiManifest,
+  disabledPages: NonNullable<UiManifest["disabledPages"]>,
+  pages: readonly PageRegistration[],
+): ResolvedRoutes {
   const modules = new Map((Array.isArray(manifest.modules) ? manifest.modules : []).map((module) => [module.id, module]));
-  const disabledPages = Array.isArray(manifest.disabledPages) ? manifest.disabledPages : [];
   const disabledIds = new Set<string>(disabledPages.map((page) => page.id));
-  const isOff = (page: PageRegistration): boolean =>
-    disabledIds.has(page.id) || modules.get(moduleOf(page.id))?.enabled === false;
   return {
-    routed: pages.filter((page) => !isOff(page)),
-    notEnabled: disabledPages.map((page) => ({
-      id: page.id,
-      path: page.path,
-      label: page.title,
-      module: modules.get(page.module),
-    })),
+    routed: pages.filter((page) => !disabledIds.has(page.id)),
+    notEnabled: disabledPages.map((page) => {
+      const module = modules.get(page.module);
+      return {
+        id: page.id,
+        path: page.path,
+        label: page.title,
+        module: page.module,
+        enabledBy: moduleSwitches(module?.enabledBy),
+        reason: module?.reason,
+      };
+    }),
   };
 }
 
-/** The module segment of an extension id (`page:<module>/<name>`). */
-function moduleOf(id: string): string {
-  return id.slice(id.indexOf(":") + 1, id.indexOf("/"));
+/**
+ * A module's switches, read leniently: an entry is kept when it names an env var or a config
+ * key (other keys are ignored), anything else is dropped. A malformed value only loses the hint.
+ */
+export function moduleSwitches(value: unknown): UiModuleSwitch[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry): UiModuleSwitch[] => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const { env, config } = entry as { env?: unknown; config?: unknown };
+    if (typeof env === "string" && env !== "") return [{ env }];
+    if (typeof config === "string" && config !== "") return [{ config }];
+    return [];
+  });
 }

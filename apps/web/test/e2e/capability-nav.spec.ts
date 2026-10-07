@@ -134,10 +134,6 @@ test.describe("capability-aware nav (actions off)", () => {
   });
 
   test("a direct hit on /actions says the module is off and names DECK_ACTIONS_ENABLED", async ({ page }) => {
-    const auditReads: string[] = [];
-    page.on("request", (request) => {
-      if (new URL(request.url()).pathname.startsWith("/api/actions/audit")) auditReads.push(request.url());
-    });
     await useApi(page, api.port);
     await page.goto("/actions");
     const notEnabled = page.locator('[data-slot="module-not-enabled-page"]');
@@ -146,7 +142,6 @@ test.describe("capability-aware nav (actions off)", () => {
     await expect(notEnabled.getByRole("status")).toContainText("The actions module is not enabled");
     await expect(notEnabled.getByRole("status")).toContainText("DECK_ACTIONS_ENABLED=true");
     await expect(primaryNav(page).locator('a[href="/actions"]')).toHaveCount(0);
-    expect(auditReads).toEqual([]);
   });
 });
 

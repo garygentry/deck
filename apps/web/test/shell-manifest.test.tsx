@@ -192,10 +192,15 @@ describe("uiManifestProblem", () => {
     ["nav that is not a list", { nav: {} }, "nav is not a list"],
     ["a brand without a title", { brand: {} }, "brand is malformed"],
     ["a module without enabled", { modules: [{ id: "a" }] }, "modules[0] is malformed"],
-    ["a module switch with two names", { modules: [{ id: "a", enabled: false, enabledBy: { env: "A", config: "modules.a" } }] }, "modules[0] is malformed"],
     ["a disabled page without a path", { disabledPages: [{ id: "page:a/b", module: "a", title: "B" }] }, "disabledPages[0] is malformed"],
   ])("rejects %s", (_label, patch, problem) => {
     expect(uiManifestProblem({ ...golden, ...patch })).toBe(problem);
+  });
+
+  it("never rejects a manifest for a malformed module switch (it is only a hint)", () => {
+    for (const enabledBy of [{ env: "A", config: "modules.a" }, "A", [{}], [{ env: 1 }], null]) {
+      expect(uiManifestProblem({ ...golden, modules: [{ id: "a", version: "1", enabled: false, origin: "module", enabledBy }] })).toBeNull();
+    }
   });
 });
 

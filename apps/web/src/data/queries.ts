@@ -1,7 +1,7 @@
 import { POLL_DEFAULTS } from "@deck/contract";
 import type { ProviderEnvelope } from "@deck/contract";
 import type { DeckConfig } from "@deck/server";
-import type { UiManifest } from "@deck/module-sdk";
+import { pagePathProblem, type UiManifest } from "@deck/module-sdk";
 
 /** A non-2xx answer to a data request; `status` is the HTTP status. */
 export class HttpStatusError extends Error {
@@ -102,14 +102,6 @@ function listProblem(value: unknown, at: string, entryProblem: (entry: Record<st
   return index === -1 ? null : `${at}[${index}] is malformed`;
 }
 
-/** An absent module switch, or one naming an env var or a config key. */
-function isModuleSwitch(value: unknown): boolean {
-  if (value === undefined) return true;
-  if (!isRecord(value)) return false;
-  const keys = Object.keys(value);
-  return keys.length === 1 && (isString(value.env) || isString(value.config));
-}
-
 /**
  * Why a decoded body is not a UI manifest the shell can render from, or null. The shell
  * fields are checked entry by entry, so a malformed document takes the "unavailable" path
@@ -138,7 +130,8 @@ export function uiManifestProblem(body: unknown): string | null {
     listProblem(
       body.modules,
       "modules",
-      (m) => !isString(m.id) || typeof m.enabled !== "boolean" || !isOptionalString(m.reason) || !isModuleSwitch(m.enabledBy),
+      // `enabledBy` is only a hint: its readers parse it leniently, so it never rejects the manifest.
+      (m) => !isString(m.id) || typeof m.enabled !== "boolean" || !isOptionalString(m.reason),
     ) ??
     listProblem(
       body.disabledPages,
@@ -146,6 +139,21 @@ export function uiManifestProblem(body: unknown): string | null {
       (p) => !isString(p.id) || !isString(p.module) || !isString(p.path) || !isString(p.title) || !isOptionalString(p.icon),
     )
   );
+}
+
+/**
+ * The manifest without the disabled pages the web router could not compile (the server leaves
+ * them out too; this guards against an older or foreign server): one bad path must not take
+ * down routing for every other page.
+ */
+function withRoutableDisabledPages(manifest: UiManifest): UiManifest {
+  if (manifest.disabledPages === undefined) return manifest;
+  const routable = manifest.disabledPages.filter((page) => {
+    const problem = pagePathProblem(page.path, `disabled page "${page.id}"`, []);
+    if (problem !== null) console.warn(`[deck] ${problem}; it is not routed`);
+    return problem === null;
+  });
+  return routable.length === manifest.disabledPages.length ? manifest : { ...manifest, disabledPages: routable };
 }
 
 /**
@@ -161,7 +169,7 @@ export const uiManifestQuery = {
       const body = await getJson<unknown>(UI_MANIFEST_URL, signal);
       const problem = uiManifestProblem(body);
       if (problem !== null) throw new DecodeError(UI_MANIFEST_URL, `response is not a UI manifest: ${problem}`);
-      return body as UiManifest;
+      return withRoutableDisabledPages(body as UiManifest);
     } catch (error) {
       if (signal?.aborted) throw error;
       console.warn("[deck] UI manifest unavailable; falling back to polling every provider", error);

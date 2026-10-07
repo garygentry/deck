@@ -1,27 +1,16 @@
-import { registerPage, registerSummaryFragment } from "../../registry/registry.js";
-import { HealthHeaderSlot } from "../../shell/health-header/slot.js";
+import { MONITORING_UI } from "@deck/contract/modules/monitoring";
+import { defineWebModule } from "@deck/module-sdk";
+
+import { registerWebModule } from "../../registry/web-module.js";
 import { AlertsSummary } from "./AlertsSummary.js";
 import { MetricsSummary } from "./MetricsSummary.js";
 import { MonitoringPage } from "./pages.js";
 
-// Three eager registrations discovered by the shell's `import.meta.glob`: the /monitoring page and the
-// two persistent HealthHeader summary fragments. Registration errors are intentionally uncaught so
-// eager discovery fails loudly rather than silently omitting a required surface.
-registerPage({
-  id: "page:monitoring/overview",
-  path: "/monitoring",
-  label: "Monitoring",
-  icon: "activity",
-  group: "Health",
-  component: MonitoringPage,
+// Where each component attaches (the page's path, the pills' slot and order) is the monitoring
+// module's manifest data; the UI manifest decides at runtime what renders. The metrics module
+// contributes no UI, so this feature serves monitoring alone.
+export const monitoringWebModule = defineWebModule(MONITORING_UI, {
+  components: { MonitoringPage, AlertsSummary, MetricsSummary },
 });
-registerSummaryFragment(HealthHeaderSlot, {
-  id: "pill:monitoring/alerts",
-  component: AlertsSummary,
-  order: 10,
-});
-registerSummaryFragment(HealthHeaderSlot, {
-  id: "pill:monitoring/metrics",
-  component: MetricsSummary,
-  order: 20,
-});
+
+registerWebModule(monitoringWebModule);

@@ -290,16 +290,17 @@ export function registerPage(registration: PageRegistration): void {
   // Checked up front so a page and its nav entry register together or not at all.
   requireNoProblem(pagePathProblem(registration.path, "page"), `registerPage(${registration.id})`);
   requireNoProblem(orderProblem(registration.order, "order"), `registerPage(${registration.id})`);
+  requireNoProblem(orderProblem(registration.navOrder, "navOrder"), `registerPage(${registration.id})`);
   if (extensions.has(registration.id)) {
     throw new RegistrationError("DUPLICATE_ID", `registerPage: duplicate page id "${registration.id}"`);
   }
   // Only registerPage mints `nav:` ids, one per page id, so the nav id is free here.
   const navId = `nav:${registration.id.slice("page:".length)}` as ExtensionId;
   const listed = registration.nav !== false;
-  const { id, component, order, ...page } = registration;
+  const { id, component, order, navOrder = order, ...page } = registration;
   addExtension({ id, kind: "page", attachTo: { slot: ROUTES_SLOT, ...(order === undefined ? {} : { order }) }, config: page, component }, "page", "registerPage");
   if (listed) {
-    addExtension({ id: navId, kind: "nav", attachTo: { slot: NAV_SLOT, ...(order === undefined ? {} : { order }) }, config: { page: id } }, "nav", "registerPage");
+    addExtension({ id: navId, kind: "nav", attachTo: { slot: NAV_SLOT, ...(navOrder === undefined ? {} : { order: navOrder }) }, config: { page: id } }, "nav", "registerPage");
   }
 }
 
@@ -459,13 +460,15 @@ export function getEntityFragments(
 /**
  * Group an entity page's placed extensions (its `entity:<entity>/sections` slot, in render
  * order) into sections: in the order of each section's first fragment, headed by that
- * fragment's title. Anything not an entity section is ignored. A module that is off has no
+ * fragment's title. Anything not an entity section, or without a usable section config, is
+ * ignored. A module that is off has no
  * extensions in the UI manifest, so its sections are simply absent: no heading, no placeholder.
  */
 export function groupEntitySections(entity: "host" | "service", placed: readonly Extension[]): readonly EntitySection[] {
   const sections = new Map<string, { section: string; title: string; fragments: EntityFragmentRegistration[] }>();
   for (const extension of placed) {
-    if (extension.kind !== "entity-section") continue;
+    // A placed config that is not a usable section (no title) cannot head one.
+    if (extension.kind !== "entity-section" || entitySectionProblem(extension.config, "entity section") !== null) continue;
     const fragment = toEntityFragment(entity, extension);
     const name = fragmentSection(fragment);
     const section = sections.get(name);

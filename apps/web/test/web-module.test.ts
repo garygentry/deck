@@ -39,10 +39,12 @@ describe("registerWebModule", () => {
     const { registry, registerWebModule } = await fresh();
     registerWebModule(defineWebModule(DEMO, { components: { Page, Pill, Card } }));
 
+    // The routes keep the default order; the nav entry's order orders only the nav.
     expect(registry.getPages()).toEqual([
       { id: "page:demo/hidden", path: "/demo/hidden", label: "Hidden", component: Page, nav: false },
-      { id: "page:demo/overview", path: "/demo", label: "Demo", icon: "gauge", component: Page, group: "health", order: 30 },
-    ].sort((a, b) => (a.order ?? 100) - (b.order ?? 100)));
+      { id: "page:demo/overview", path: "/demo", label: "Demo", icon: "gauge", component: Page, group: "health" },
+    ]);
+    expect(registry.getExtensions("app/routes").map(({ attachTo }) => attachTo.order)).toEqual([100, 100]);
     expect(registry.getExtensions("app/nav").map(({ id, attachTo }) => `${id} ${attachTo.order}`)).toEqual(["nav:demo/overview 30"]);
     expect(registry.getSlot("demo/cards")).toEqual({ id: "demo/cards", accepts: "widget", module: "demo" });
 
@@ -54,10 +56,41 @@ describe("registerWebModule", () => {
     ]);
   });
 
+  it("labels a route by its page's title and icon, whatever its nav entry shows", async () => {
+    const { registry, registerWebModule } = await fresh();
+    const relabelled = manifest({
+      pages: [{ id: "page:demo/overview", path: "/demo", title: "Demo", icon: "gauge", component: "Page" }],
+      nav: [{ id: "nav:demo/overview", page: "page:demo/overview", group: "health", label: "Demo nav", icon: "cpu" }],
+    });
+    registerWebModule(defineWebModule(relabelled, { components: { Page } }));
+    expect(registry.getPages()).toMatchObject([{ label: "Demo", icon: "gauge" }]);
+  });
+
   it("skips widget-descriptor extensions, which name no component", async () => {
     const { registry, registerWebModule } = await fresh();
     registerWebModule(defineWebModule(DEMO, { components: { Page, Pill, Card } }));
     expect(registry.getAllExtensions().map(({ id }) => id)).not.toContain("widget:demo/descriptor");
+  });
+
+  it("refuses any other extension without a component, naming the module and extension", async () => {
+    const { registerWebModule } = await fresh();
+    for (const extension of [
+      { id: "pill:demo/bare", kind: "pill", attachTo: { slot: "app/topbar.status" } },
+      { id: "section:demo/bare", kind: "entity-section", attachTo: { slot: "entity:host/sections" }, config: { title: "Bare" } },
+    ] as const) {
+      expect(() => registerWebModule(defineWebModule(manifest({ extensions: [extension] }), { components: {} }))).toThrow(
+        `registerWebModule(demo): extension "${extension.id}" names no component and is not a widget descriptor`,
+      );
+    }
+  });
+
+  it("counts a widget type's component as named, and leaves it unregistered", async () => {
+    const { registry, registerWebModule } = await fresh();
+    const Stat = () => null;
+    const withType = manifest({ widgetTypes: [{ type: "demo/stat", optionsSchema: {}, component: "Stat" }] });
+    expect(() => registerWebModule(defineWebModule(withType, { components: {} }))).toThrow('component "Stat" is named by the manifest');
+    registerWebModule(defineWebModule(withType, { components: { Stat } }));
+    expect(registry.getAllExtensions().filter(({ module }) => module === "demo")).toEqual([]);
   });
 
   it("refuses a component the manifest names but the table lacks, naming the module and component", async () => {
@@ -72,7 +105,7 @@ describe("registerWebModule", () => {
     const { registerWebModule } = await fresh();
     const Spare = () => null;
     expect(() => registerWebModule(defineWebModule(DEMO, { components: { Page, Pill, Card, Spare } }))).toThrow(
-      'registerWebModule(demo): component "Spare" is in the component table but no page or extension names it',
+      'registerWebModule(demo): component "Spare" is in the component table but no page, extension or widget type names it',
     );
   });
 
@@ -82,11 +115,37 @@ describe("registerWebModule", () => {
     const cases: [WebModuleManifest["contributes"], string][] = [
       [{ pages: [page], nav: [{ id: "nav:demo/docs", href: "https://example.test", group: "knowledge" }] }, 'registerWebModule(demo): nav entry "nav:demo/docs" has no page; href nav entries are not supported'],
       [{ pages: [page], nav: [{ id: "nav:demo/other", page: page.id, group: "health" }] }, 'registerWebModule(demo): nav entry "nav:demo/other" must be named after its page, "nav:demo/overview"'],
+      [{ pages: [page], nav: [{ id: "nav:demo/overview", page: page.id, group: "health" }, { id: "nav:demo/overview", page: page.id, group: "operate" }] }, 'registerWebModule(demo): page "page:demo/overview" has more than one nav entry'],
       [{ pages: [], nav: [{ id: "nav:demo/overview", page: page.id, group: "health" }] }, 'registerWebModule(demo): a nav entry targets "page:demo/overview", which is not one of the module\'s pages'],
     ];
     for (const [contributes, message] of cases) {
       const components = (contributes?.pages ?? []).length > 0 ? { Page } : {};
       expect(() => registerWebModule(defineWebModule(manifest(contributes), { components }))).toThrow(message);
+    }
+  });
+
+  it("registers nothing of a module it refuses, whichever part is wrong", async () => {
+    const { registry, registerWebModule } = await fresh();
+    registry.defineSlot({ id: "other/pills", accepts: "pill", module: "other" });
+    registry.registerExtension({ id: "pill:other/taken", kind: "pill", attachTo: { slot: "other/pills" }, component: Pill });
+    const page = { id: "page:demo/overview", path: "/demo", title: "Demo", component: "Page" } as const;
+    const pill = { id: "pill:demo/summary", kind: "pill", attachTo: { slot: "app/topbar.status" }, component: "Pill" } as const;
+    const cases: [WebModuleManifest["contributes"], Record<string, unknown>, RegExp][] = [
+      // The last extension attaches to a slot of another kind.
+      [{ pages: [page], slots: [{ id: "demo/cards", accepts: "widget" }], extensions: [pill, { ...pill, id: "pill:demo/misplaced", attachTo: { slot: "demo/cards" } }] }, { Page, Pill }, /accepts widget/],
+      // An entity section with no title.
+      [{ pages: [page], extensions: [{ id: "section:demo/host", kind: "entity-section", attachTo: { slot: "entity:host/sections" }, component: "Pill" }] }, { Page, Pill }, /entity section/],
+      // An id another module already registered, and one of another module's.
+      [{ pages: [page], extensions: [{ ...pill, id: "pill:demo/twice" }, { ...pill, id: "pill:demo/twice" }] }, { Page, Pill }, /duplicate extension id "pill:demo\/twice"/],
+      [{ pages: [page], extensions: [{ ...pill, id: "pill:other/taken" }] }, { Page, Pill }, /must name its own module|duplicate extension id/],
+      // A bad page path, and a non-finite order.
+      [{ pages: [{ ...page, path: "/api/demo" }], extensions: [pill] }, { Page, Pill }, /page "page:demo\/overview"/],
+      [{ pages: [page], extensions: [{ ...pill, attachTo: { slot: "app/topbar.status", order: Number.NaN } }] }, { Page, Pill }, /order/],
+    ];
+    for (const [contributes, components, message] of cases) {
+      expect(() => registerWebModule(defineWebModule(manifest(contributes), { components }))).toThrow(message);
+      expect(registry.getAllExtensions().filter(({ module }) => module === "demo")).toEqual([]);
+      expect(registry.getSlot("demo/cards")).toBeUndefined();
     }
   });
 });

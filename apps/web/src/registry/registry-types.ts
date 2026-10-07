@@ -42,6 +42,8 @@ export interface PageRegistration {
   icon?: IconRef;
   component: ComponentType;
   order?: number;
+  /** The nav entry's order, when it differs from the route's; defaults to `order`. */
+  navOrder?: number;
   /** Whether the page appears in primary navigation; defaults to true. */
   nav?: boolean;
   /**

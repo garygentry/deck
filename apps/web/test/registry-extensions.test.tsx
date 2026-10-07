@@ -21,7 +21,7 @@ async function load() {
   vi.resetModules();
   const { getQueryClient } = await import("../src/data/query-client.js");
   getQueryClient().setQueryData(["ui"], {
-    uiApi: 1, brand: { title: "Deck" }, modules: [], slots: [], pages: [], navGroups: [], nav: [], providers: [], findings: [],
+    uiApi: 1, brand: { title: "Deck" }, modules: [], slots: [], pages: [], disabledPages: [], navGroups: [], nav: [], providers: [], findings: [],
     extensions: Object.entries(LISTED_PILLS).map(([id, order]) => ({ id, kind: "pill", module: "t", slot: "app/topbar.status", order })),
   });
   const registry = await import("../src/registry/registry.js");

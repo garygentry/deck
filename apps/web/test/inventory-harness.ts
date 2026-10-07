@@ -383,6 +383,7 @@ export const DEFAULT_UI_MANIFEST = Object.freeze({
   modules: [],
   slots: [],
   pages: [],
+  disabledPages: [],
   nav: [],
   extensions: [],
   providers: [{ id: "snapshot", kind: "snapshot" }],

@@ -238,6 +238,7 @@
       "component": "DocsPage"
     }
   ],
+  "disabledPages": [],
   "navGroups": [
     {
       "id": "overview",

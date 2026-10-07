@@ -27,6 +27,7 @@ export function buildUiManifest(deps: UiManifestDeps): UiManifest {
       manifest,
       enabled: entry.enabled,
       ...(entry.reason === undefined ? {} : { reason: entry.reason }),
+      ...(entry.gate === undefined ? {} : { enabledBy: entry.gate }),
       // By id: the host snapshots each manifest, and ids are unique per host.
       ...(deps.modules?.builtinIds.has(entry.id) === true ? { builtin: true } : {}),
     };

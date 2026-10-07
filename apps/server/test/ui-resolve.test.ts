@@ -786,3 +786,89 @@ describe("open entity sections", () => {
     ]);
   });
 });
+
+describe("capability-aware nav: disabled modules' pages and their switch", () => {
+  const gadgetsPage = { id: "page:gadgets/overview", module: "gadgets", path: "/gadgets", title: "Gadgets", icon: "boxes" };
+
+  it("lists a disabled module's pages as disabled pages, with the switch that enables it", () => {
+    const ui = resolve({
+      modules: [
+        { manifest: gadgets, enabled: false, reason: "not enabled: GADGETS_ENABLED is not true", enabledBy: { env: "GADGETS_ENABLED" } },
+        { manifest: widgets, enabled: true },
+      ],
+    });
+    expect(ui.pages).toEqual([]);
+    expect(ui.nav).toEqual([]);
+    expect(ui.disabledPages).toEqual([gadgetsPage]);
+    expect(ui.modules.find((m) => m.id === "gadgets")).toEqual({
+      id: "gadgets", version: "1.0.0", enabled: false, reason: "not enabled: GADGETS_ENABLED is not true", origin: "module", enabledBy: { env: "GADGETS_ENABLED" },
+    });
+    expect(ui.findings).toEqual([]);
+  });
+
+  it("lists no disabled pages while every module is on, and never a switch for an enabled module", () => {
+    const ui = resolve({ modules: [{ manifest: gadgets, enabled: true, enabledBy: { config: "modules.gadgets" } }] });
+    expect(ui.disabledPages).toEqual([]);
+    expect(ui.modules.find((m) => m.id === "gadgets")).not.toHaveProperty("enabledBy");
+  });
+
+  it("copies only the switch's name, whatever else its input object carries", () => {
+    const enabledBy = { env: "GADGETS_ENABLED", value: "s3cret" } as unknown as { env: string };
+    const ui = resolve({ modules: [{ manifest: gadgets, enabled: false, reason: "off", enabledBy }] });
+    expect(ui.modules.find((m) => m.id === "gadgets")?.enabledBy).toEqual({ env: "GADGETS_ENABLED" });
+    expect(JSON.stringify(ui)).not.toContain("s3cret");
+  });
+
+  it("leaves out a disabled page whose path an enabled page or a root path serves", () => {
+    const rival = manifest("rival", {
+      pages: [{ id: "page:rival/overview", path: "/gadgets", title: "Rival", component: "RivalPage" }],
+    });
+    const rooted = manifest("rooted", { routes: { rootPaths: ["/gizmos"] } });
+    const gizmos = manifest("gizmos", {
+      pages: [{ id: "page:gizmos/overview", path: "/gizmos", title: "Gizmos", component: "GizmosPage" }],
+    });
+    const ui = resolve({
+      modules: [
+        { manifest: gadgets, enabled: false, reason: "off" },
+        { manifest: rival, enabled: true },
+        { manifest: rooted, enabled: false, reason: "off" },
+        { manifest: gizmos, enabled: false, reason: "off" },
+      ],
+    });
+    expect(ids(ui.pages)).toEqual(["page:rival/overview"]);
+    expect(ui.disabledPages).toEqual([]);
+  });
+
+  it("the host names the unmet switch (env var or config key), and only when that is why the module is off", () => {
+    const { host } = testHost(
+      [
+        testModule({ id: "envgated", enabledBy: { env: "ENVGATED_ENABLED" }, env: ["ENVGATED_ENABLED", "ENVGATED_TOKEN"] }),
+        testModule({ id: "configgated", enabledBy: { config: true } }),
+        testModule({ id: "orphan", dependsOn: ["missing"] }),
+      ],
+      { env: { ENVGATED_ENABLED: "no", ENVGATED_TOKEN: "tok-9f2c1e-s3cret" } },
+    );
+    const byId = new Map(host.plan.map((entry) => [entry.id, entry]));
+    expect(byId.get("envgated")).toMatchObject({ enabled: false, gate: { env: "ENVGATED_ENABLED" } });
+    expect(byId.get("configgated")).toMatchObject({ enabled: false, gate: { config: "modules.configgated" } });
+    expect(byId.get("orphan")).toMatchObject({ enabled: false });
+    expect(byId.get("orphan")).not.toHaveProperty("gate");
+  });
+
+  it("/api/ui names env vars and config keys, never a value set for them", async () => {
+    const { buildUiManifest } = await import("../src/ui/manifest.js");
+    const tools = testModule({
+      id: "tools",
+      enabledBy: { env: "TOOLS_ENABLED" },
+      env: ["TOOLS_ENABLED", "TOOLS_TOKEN"],
+      contributes: { pages: [{ id: "page:tools/overview", path: "/tools", title: "Tools", component: "ToolsPage" }] },
+    });
+    const { host } = testHost([tools], { env: { TOOLS_ENABLED: "nope-7d1a", TOOLS_TOKEN: "tok-9f2c1e-s3cret" } });
+    const ui = buildUiManifest({ config: {}, providers: { listProviders: () => [] }, modules: host, capabilities: {} });
+    expect(ui.modules.find((m) => m.id === "tools")).toMatchObject({ enabled: false, enabledBy: { env: "TOOLS_ENABLED" } });
+    expect(ui.disabledPages).toEqual([{ id: "page:tools/overview", module: "tools", path: "/tools", title: "Tools" }]);
+    const body = JSON.stringify(ui);
+    expect(body).not.toContain("nope-7d1a");
+    expect(body).not.toContain("tok-9f2c1e-s3cret");
+  });
+});

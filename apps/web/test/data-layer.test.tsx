@@ -20,7 +20,7 @@ const CONFIG = {
 };
 
 function manifest(providers: { id: string; kind: string }[]) {
-  return { uiApi: 1, modules: [], slots: [], pages: [], nav: [], extensions: [], providers, findings: [] };
+  return { uiApi: 1, modules: [], slots: [], pages: [], disabledPages: [], nav: [], extensions: [], providers, findings: [] };
 }
 
 function envelope(id: string) {

@@ -8,7 +8,9 @@ import type {
   UiFinding,
   UiManifest,
   UiBrand,
+  UiDisabledPage,
   UiModule,
+  UiModuleSwitch,
   UiNavGroup,
   UiNavItem,
   UiOverride,
@@ -39,6 +41,8 @@ export interface UiModuleInput {
   reason?: string;
   /** A module that ships with deck: it keeps contested ids, slots and paths over other modules. */
   builtin?: boolean;
+  /** The unset setting that keeps the module off, when that is why (a name, never a value). */
+  enabledBy?: UiModuleSwitch;
 }
 
 export interface ResolveUiInput {
@@ -64,6 +68,7 @@ interface Unit {
   enabled: boolean;
   reason?: string;
   builtin?: boolean;
+  enabledBy?: UiModuleSwitch;
 }
 
 type Owned<T> = T & { module: string };
@@ -87,6 +92,8 @@ type Override = Exclude<UiOverride, boolean>;
  *    an unknown slot or to a slot that does not accept the contribution's kind, two pages on
  *    one path or a page on a module's root path, an id or slot contributed twice, a nav entry
  *    to an undeclared page.
+ *    Their pages are listed as disabled pages, unless an enabled page or a root path serves
+ *    the path, so the shell can say the module is off rather than that nothing is there.
  * 5. Sort pages by id, nav by group/order/id, extensions by slot/order/id. Nav groups follow
  *    the ui config's group order, then any other group by id.
  */
@@ -239,6 +246,26 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
   }
   const routedPages = new Set<string>(pages.map((page) => page.id));
 
+  // Pages of disabled modules, on paths nothing routed or root-served claims. The first by
+  // precedence keeps a path two disabled modules declare.
+  const disabledPages: UiDisabledPage[] = [];
+  const disabledIds = new Set<string>();
+  for (const unit of byPrecedence) {
+    if (unit.enabled) continue;
+    for (const page of unit.manifest.contributes?.pages ?? []) {
+      if (pathOwner.has(page.path) || rootPathOwner.has(page.path) || seen.has(page.id) || disabledIds.has(page.id)) continue;
+      pathOwner.set(page.path, page.id);
+      disabledIds.add(page.id);
+      disabledPages.push({
+        id: page.id,
+        module: unit.manifest.id,
+        path: page.path,
+        title: page.title,
+        ...(page.icon === undefined ? {} : { icon: page.icon }),
+      });
+    }
+  }
+
   // Nav: attached to `app/nav` by default and resolved like any attachment. An entry to a
   // page that is not routed is dropped; one to a page no module declares is a finding.
   const nav: UiNavItem[] = [];
@@ -296,15 +323,17 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
   return {
     uiApi: 1,
     brand: resolveBrand(input.estateName),
-    modules: units.map(({ manifest, origin, enabled, reason }) => ({
+    modules: units.map(({ manifest, origin, enabled, reason, enabledBy }) => ({
       id: manifest.id,
       version: manifest.version,
       enabled,
       ...(reason === undefined ? {} : { reason }),
       origin,
+      ...(enabled || enabledBy === undefined ? {} : { enabledBy: copySwitch(enabledBy) }),
     })),
     slots: [...slots.values()].sort((a, b) => compareIds(a.id, b.id)),
     pages: pages.sort((a, b) => compareIds(a.id, b.id)),
+    disabledPages: disabledPages.sort((a, b) => compareIds(a.id, b.id)),
     navGroups,
     nav: nav.sort((a, b) => rankOf(a.group) - rankOf(b.group) || compareIds(a.group, b.group) || a.order - b.order || compareIds(a.id, b.id)),
     extensions: extensions.sort((a, b) => compareIds(a.slot, b.slot) || a.order - b.order || compareIds(a.id, b.id)),
@@ -347,12 +376,13 @@ function resolveNavGroups(nav: readonly UiNavItem[], ui: UiDefaults, findings: U
 
 /** Modules, then the kernel features no module replaces, by id (a reserved id is listed twice, by origin). */
 function collectUnits(input: ResolveUiInput): Unit[] {
-  const units: Unit[] = input.modules.map(({ manifest, enabled, reason, builtin }) => ({
+  const units: Unit[] = input.modules.map(({ manifest, enabled, reason, builtin, enabledBy }) => ({
     manifest,
     origin: "module",
     enabled,
     ...(reason === undefined ? {} : { reason }),
     ...(builtin === true ? { builtin } : {}),
+    ...(enabledBy === undefined ? {} : { enabledBy }),
   }));
   const moduleIds = new Set(units.map((unit) => unit.manifest.id));
   for (const { manifest, requires } of input.kernelFeatures ?? []) {
@@ -427,6 +457,11 @@ function isEnabled(override: UiOverride | undefined, byDefault: boolean): boolea
 
 function replacement(override: UiOverride | undefined): Override | undefined {
   return typeof override === "object" ? override : undefined;
+}
+
+/** The switch's name alone: an input object carrying anything else never leaks it. */
+function copySwitch(enabledBy: UiModuleSwitch): UiModuleSwitch {
+  return "env" in enabledBy ? { env: enabledBy.env } : { config: enabledBy.config };
 }
 
 /** Code-unit order, independent of locale. */

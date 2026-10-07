@@ -90,7 +90,15 @@ export interface ModulePlanEntry {
   readonly enabled: boolean;
   /** Why the module is not running; absent when enabled. */
   readonly reason?: string;
+  /**
+   * The unmet `enabledBy` switch, when that is why the module is off: the env var's name or
+   * the config key (`modules.<id>`). Never a value.
+   */
+  readonly gate?: ModuleGate;
 }
+
+/** The setting that switches a module on: an env var name, or a config key. */
+export type ModuleGate = { readonly env: string } | { readonly config: string };
 
 export interface ModuleHostOptions {
   modules: readonly ServerModule<any>[];
@@ -674,11 +682,19 @@ export function planModules(options: PlanOptions): ModulePlanning {
   const manifests = [...usable.values()].map((entry) => entry.manifest);
   assertCompatible(manifests);
 
+  // The unmet switch of each module its `enabledBy` keeps off, with the reason it gave.
+  const gates = new Map<string, { reason: string; gate: ModuleGate }>();
   const notEnabledReason = (manifest: ModuleManifest): string | null => {
     const { id, enabledBy } = manifest;
-    if (enabledBy?.config === true && options.sectionOf(id) === undefined) return `not enabled: no modules.${id} section`;
+    const off = (reason: string, gate: ModuleGate): string => {
+      gates.set(id, { reason, gate });
+      return reason;
+    };
+    if (enabledBy?.config === true && options.sectionOf(id) === undefined) {
+      return off(`not enabled: no modules.${id} section`, { config: `modules.${id}` });
+    }
     if (enabledBy?.env !== undefined && !parseBool(options.env[enabledBy.env], false)) {
-      return `not enabled: ${enabledBy.env} is not true`;
+      return off(`not enabled: ${enabledBy.env} is not true`, { env: enabledBy.env });
     }
     return null;
   };
@@ -785,7 +801,11 @@ export function planModules(options: PlanOptions): ModulePlanning {
 
   const plan: ModulePlanEntry[] = [
     ...order.filter((id) => !disabled.has(id)).map((id) => ({ id, enabled: true })),
-    ...[...disabled].sort(([a], [b]) => compareText(a, b)).map(([id, reason]) => ({ id, enabled: false, reason })),
+    ...[...disabled].sort(([a], [b]) => compareText(a, b)).map(([id, reason]) => {
+      // Only when the switch is still the reason (a later refusal replaces it).
+      const gated = gates.get(id);
+      return { id, enabled: false, reason, ...(gated?.reason === reason ? { gate: gated.gate } : {}) };
+    }),
   ];
   return { plan, findings, usable, disabled, seenIds, envOwners, builtinIds };
 }

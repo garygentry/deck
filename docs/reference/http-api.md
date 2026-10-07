@@ -36,7 +36,13 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
 
 - `modules` lists every known module with `enabled` and, when not enabled, a `reason`. A
   module that is disabled (its enabling section or env var is absent, its manifest is unusable,
-  or a kernel capability such as actions is off) contributes nothing.
+  or a kernel capability such as actions is off) contributes nothing. When the module is off
+  only because the setting that enables it is unset, `enabledBy` names that setting:
+  `{"env": "DECK_ACTIONS_ENABLED"}` or `{"config": "modules.<id>"}`. It holds names only, never
+  a value.
+- `disabledPages` lists the pages of disabled modules (`id`, `module`, `path`, `title`, `icon`),
+  so the shell can answer their paths with "module not enabled". A page whose path an enabled
+  page or a root path serves is left out.
 - `pages`, `nav` and `extensions` hold only what renders. Extension ids have the form
   `<kind>:<module>/<name>` (for example `pill:llm-usage/summary`). Each extension and nav entry
   names the slot it attaches to and its order there, and attaches only to a slot that accepts

@@ -7,6 +7,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { LLM_USAGE_UI } from "@deck/contract/modules/llm-usage";
 import type { Logger } from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -52,6 +53,12 @@ describe("llm-usage module", () => {
       health: { legacyKey: "llmUsage" },
     });
     expect(LLM_USAGE_MANIFEST.enabledBy).toBeUndefined();
+  });
+
+  it("takes its identity and UI contributions from the copy the web half registers against", () => {
+    const { id, version, deckApi, contributes } = LLM_USAGE_MANIFEST;
+    expect({ id, version, deckApi, contributes }).toEqual(LLM_USAGE_UI);
+    expect(contributes).toBe(LLM_USAGE_UI.contributes);
   });
 
   it("serves byte-identical bodies at /api/m/llm-usage and the legacy /api/llm-usage", async () => {

@@ -324,6 +324,9 @@ describe("usage store", () => {
     await act(() => store.refresh());
     expect(urls(fetchMock).at(-1)).toBe("/api/llm-usage/refresh");
     expect(store.getSnapshot()).toMatchObject({ status: "ready", data: { now: NOW }, error: "HTTP 502" });
+    // The refresh route was a one-shot: the query's own function still reads the state route.
+    await act(() => client.refetchQueries({ queryKey: llmUsageKey }));
+    expect(urls(fetchMock).at(-1)).toBe("/api/llm-usage");
     // The next good poll clears the error.
     await vi.advanceTimersByTimeAsync(15_000);
     expect(store.getSnapshot()).toMatchObject({ status: "ready", error: null });

@@ -78,10 +78,20 @@ export function createUsageStore(options: UsageStoreOptions = {}): UsageStore {
     return { data, clockOffsetMs: data.now - Date.now() };
   }
 
+  // One query function serves every read of the key, so the query's cached function is always
+  // this one (a refetch from anywhere reads `/api/llm-usage`). A refresh asks it, once, for the
+  // refresh route instead.
+  let refreshNext = false;
+  const queryFn = ({ signal }: { signal?: AbortSignal }) => {
+    const url = refreshNext ? LLM_USAGE_REFRESH_URL : LLM_USAGE_URL;
+    refreshNext = false;
+    return read(url, signal);
+  };
+
   const off = (query: UsageQuery) => query.state.data?.data.enabled === false;
   const observerOptions = {
     queryKey: llmUsageKey,
-    queryFn: ({ signal }: { signal: AbortSignal }) => read(LLM_USAGE_URL, signal),
+    queryFn,
     // Hidden or switched off: no mount read, no interval tick, nothing to refetch on return.
     enabled: (query: UsageQuery) => !off(query) && focusManager.isFocused(),
     refetchInterval: intervalMs,
@@ -107,13 +117,19 @@ export function createUsageStore(options: UsageStoreOptions = {}): UsageStore {
     for (const listener of [...listeners]) listener();
   };
 
-  /** Read `url` now, through the query so a failure lands in its state; never throws. */
-  async function fetchNow(url: string, cancelInFlight: boolean): Promise<void> {
+  /** Read now, through the query so a failure lands in its state; never throws. */
+  async function fetchNow(refresh: boolean): Promise<void> {
     // A refresh is newer than a poll in flight, so it must not join it.
-    if (cancelInFlight) await client().cancelQueries({ queryKey: llmUsageKey });
+    if (refresh) {
+      await client().cancelQueries({ queryKey: llmUsageKey });
+      refreshNext = true;
+    }
     await client()
-      .fetchQuery({ queryKey: llmUsageKey, queryFn: ({ signal }) => read(url, signal), staleTime: 0 })
-      .catch(() => undefined);
+      .fetchQuery({ queryKey: llmUsageKey, queryFn, staleTime: 0 })
+      .catch(() => undefined)
+      .finally(() => {
+        refreshNext = false;
+      });
   }
 
   return {
@@ -141,8 +157,8 @@ export function createUsageStore(options: UsageStoreOptions = {}): UsageStore {
       };
     },
     getSnapshot,
-    refresh: () => fetchNow(LLM_USAGE_REFRESH_URL, true),
-    reload: () => fetchNow(LLM_USAGE_URL, false),
+    refresh: () => fetchNow(true),
+    reload: () => fetchNow(false),
   };
 }
 

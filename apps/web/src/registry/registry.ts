@@ -89,7 +89,7 @@ function requireString(value: unknown, field: string, context: string): asserts 
 }
 
 /** A function component or class, or a React object component (lazy, memo, forwardRef). */
-function isComponent(value: unknown): boolean {
+export function isComponent(value: unknown): boolean {
   return (
     typeof value === "function" ||
     (typeof value === "object" && value !== null && "$$typeof" in value)
@@ -405,8 +405,11 @@ function withOrder<T extends object>(view: T, extension: Extension): T & { order
 
 export function getPages(): readonly PageRegistration[] {
   return getExtensions(ROUTES_SLOT).map((extension) => {
-    const page = extension.config as Omit<PageRegistration, "id" | "component" | "order">;
-    return withOrder<PageRegistration>({ id: extension.id, ...page, component: extension.component! }, extension);
+    const page = extension.config as Omit<PageRegistration, "id" | "component" | "order" | "navOrder">;
+    // The nav entry's order, when it differs from the route's (the fallback nav sorts by it).
+    const nav = extensions.get(`nav:${extension.id.slice("page:".length)}`);
+    const navOrder = nav !== undefined && nav.attachTo.order !== extension.attachTo.order ? { navOrder: nav.attachTo.order } : {};
+    return withOrder<PageRegistration>({ id: extension.id, ...page, ...navOrder, component: extension.component! }, extension);
   });
 }
 

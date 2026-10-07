@@ -79,13 +79,15 @@ function navFromManifest(manifest: UiManifest, pages: readonly PageRegistration[
 
 /**
  * The fallback navigation, from the page registry alone: the navigable pages (nav !== false)
- * grouped by their `group`, each keeping registry order. The built-in groups come first, in
- * their default order, then any other group alphabetically; ungrouped pages come last, under
- * no heading.
+ * grouped by their `group`, each in nav order (`navOrder`, else the page's order, then registry
+ * order). The built-in groups come first, in their default order, then any other group
+ * alphabetically; ungrouped pages come last, under no heading.
  */
 export function groupNavPages(pages: readonly PageRegistration[]): NavGroup[] {
   const groups = new Map<string | undefined, { label: string | undefined; links: NavLink[] }>();
-  for (const page of pages) {
+  // By each page's nav order (stable, so equal orders keep registry order); routes keep theirs.
+  const navOrder = (page: PageRegistration) => page.navOrder ?? page.order ?? 100;
+  for (const page of [...pages].sort((a, b) => navOrder(a) - navOrder(b))) {
     if (page.nav === false) continue;
     const known = page.group === undefined ? undefined : fallbackGroup(page.group);
     const id = known?.id ?? page.group;

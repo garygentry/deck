@@ -149,16 +149,17 @@ extension per `extensions` entry. Widget descriptors (a `widget` and no componen
 through their widget type, not here; a widget type's component already belongs in the table.
 The web adds no paths, slots or orders of its own. Everything is checked before anything
 registers, so a refused module leaves nothing behind. It refuses, naming the module and the
-component or extension: a name the manifest references that the table lacks, a table entry
-nothing references, any other extension without a component, a nav entry it cannot express
+component or extension: a name the manifest references that the table lacks (or holds
+something other than a component under), a table entry nothing references, any other extension without a component, a nav entry it cannot express
 (an `href` entry, one not named `nav:<page name>`, two for one page), and whatever the registry
 itself refuses (ids, paths, orders, slot kinds, entity-section config, duplicates). The
 registrations are the defaults; at runtime the UI manifest still decides what renders, where
 and with what config (below).
 
 Labels and order: a page's `title` labels its route, in the top bar, the document title and the
-fallback nav. A nav entry's own `label` and `icon` show only in the manifest-driven sidebar, and
-its `order` orders the nav, never the routes.
+fallback nav. A nav entry's own `label` and `icon` show only in the manifest-driven sidebar. Its
+`order` orders the nav (the manifest's sidebar, and the fallback nav as the page's `navOrder`),
+never the routes.
 
 Moving a feature onto it:
 1. Move the module's `id`, `version`, `deckApi` and `contributes` to

@@ -42,7 +42,7 @@ describe("registerWebModule", () => {
     // The routes keep the default order; the nav entry's order orders only the nav.
     expect(registry.getPages()).toEqual([
       { id: "page:demo/hidden", path: "/demo/hidden", label: "Hidden", component: Page, nav: false },
-      { id: "page:demo/overview", path: "/demo", label: "Demo", icon: "gauge", component: Page, group: "health" },
+      { id: "page:demo/overview", path: "/demo", label: "Demo", icon: "gauge", component: Page, group: "health", navOrder: 30 },
     ]);
     expect(registry.getExtensions("app/routes").map(({ attachTo }) => attachTo.order)).toEqual([100, 100]);
     expect(registry.getExtensions("app/nav").map(({ id, attachTo }) => `${id} ${attachTo.order}`)).toEqual(["nav:demo/overview 30"]);
@@ -142,11 +142,45 @@ describe("registerWebModule", () => {
       [{ pages: [{ ...page, path: "/api/demo" }], extensions: [pill] }, { Page, Pill }, /page "page:demo\/overview"/],
       [{ pages: [page], extensions: [{ ...pill, attachTo: { slot: "app/topbar.status", order: Number.NaN } }] }, { Page, Pill }, /order/],
     ];
+    // A table entry that is there but is not a component: undefined, null, a string.
+    const card = { id: "card:demo/main", kind: "widget", attachTo: { slot: "demo/cards" }, component: "Card" } as const;
+    for (const value of [undefined, null, "Card"]) {
+      cases.push([
+        { pages: [page], nav: [{ id: "nav:demo/overview", page: page.id, group: "health" }], slots: [{ id: "demo/cards", accepts: "widget" }], extensions: [pill, card] },
+        { Page, Pill, Card: value },
+        /registerWebModule\(demo\): component "Card" in the component table is not a component/,
+      ]);
+    }
     for (const [contributes, components, message] of cases) {
       expect(() => registerWebModule(defineWebModule(manifest(contributes), { components }))).toThrow(message);
       expect(registry.getAllExtensions().filter(({ module }) => module === "demo")).toEqual([]);
+      expect(registry.getPages().filter(({ id }) => id.startsWith("page:demo/"))).toEqual([]);
       expect(registry.getSlot("demo/cards")).toBeUndefined();
     }
+  });
+
+  it("orders the fallback nav by the nav entries' order, and leaves the routes' order alone", async () => {
+    const { registry, registerWebModule } = await fresh();
+    const { groupNavPages, resolveNav } = await import("../src/shell/nav.js");
+    registerWebModule(defineWebModule(manifest({
+      pages: [
+        { id: "page:demo/a", path: "/a", title: "A", component: "Page" },
+        { id: "page:demo/b", path: "/b", title: "B", component: "Page" },
+      ],
+      nav: [
+        { id: "nav:demo/a", page: "page:demo/a", group: "health", order: 20 },
+        { id: "nav:demo/b", page: "page:demo/b", group: "health", order: 10 },
+      ],
+    }), { components: { Page } }));
+
+    // The manifest cannot be read: the sidebar falls back to the registered pages.
+    const fallback = resolveNav({ status: "error", message: "HTTP 502" }, registry.getPages());
+    expect(fallback).toEqual(groupNavPages(registry.getPages()));
+    expect(fallback.map(({ id, links }) => `${id}: ${links.map(({ label }) => label).join(",")}`)).toEqual(["health: B,A"]);
+    // Route precedence keeps the default order (then id).
+    expect(registry.getPages().map(({ id }) => id)).toEqual(["page:demo/a", "page:demo/b"]);
+    expect(registry.getExtensions("app/routes").map(({ attachTo }) => attachTo.order)).toEqual([100, 100]);
+    expect(registry.getPages().map(({ navOrder }) => navOrder)).toEqual([20, 10]);
   });
 });
 

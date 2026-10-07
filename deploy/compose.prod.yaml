@@ -1,0 +1,72 @@
+# Production Docker Compose template for deck.
+#
+# Copy this file, set the image tag and the two env vars marked "SET ME", point
+# the volumes at your estate, and bring it up:
+#
+#   cp deploy/compose.prod.yaml /srv/deck/compose.yaml
+#   $EDITOR /srv/deck/compose.yaml      # set image tag, DECK_SNAPSHOT_SOURCE, volumes
+#   docker compose -f /srv/deck/compose.yaml up -d
+#   # open http://localhost:8080 (front it with your authenticating proxy)
+#
+# Unlike examples/compose.yaml this pulls a PUBLISHED, pinned image (no local
+# build) and is structured for a real estate: a read-only config bind mount, a
+# snapshot source you control, a named volume for the git-sources cache, and a
+# restart policy. deck serves web + /api from one process on one port; front it
+# with an authenticating reverse proxy — it has no built-in auth. See
+# docs/guides/deploy.md and docs/reference/environment-variables.md.
+services:
+  deck:
+    # Pin an explicit release tag (not :latest) so deploys are reproducible and
+    # upgrades are a deliberate bump. Multi-arch: runs on amd64 and arm64.
+    image: ghcr.io/garygentry/deck:0.3.2
+    ports:
+      # Bound to loopback by default: deck has NO built-in auth and trusts every
+      # request that reaches it, so it must not be published to an untrusted
+      # network directly. Front it with an authenticating reverse proxy on this
+      # host (proxy -> 127.0.0.1:8080). Only widen to "8080:8080" (all
+      # interfaces) when the proxy runs on another host inside a trusted network.
+      - "127.0.0.1:8080:8080"
+    environment:
+      # SET ME — where your collector's snapshot lives: a file path inside the
+      # container (see the snapshot bind mount below) or an http(s) URL deck
+      # fetches. Unset it entirely to run declared-inventory-only (no observed
+      # state).
+      DECK_SNAPSHOT_SOURCE: /snapshot/snapshot.json
+      # Writable cache for acquired git-repo sources, so deck does not re-clone
+      # on every restart. Backed by the named volume below.
+      DECK_SOURCES_CACHE_DIR: /var/cache/deck/sources
+      # Governed actions are OFF by default. To enable, uncomment all three and
+      # mount a writable, persistent data dir (the commented named volume below).
+      # A missing/invalid required setting here fails the boot by design.
+      # DECK_ACTIONS_ENABLED: "true"
+      # DECK_DATA_DIR: /var/lib/deck
+      # DECK_RUNNERS_FILE: /config/runners.yaml
+      # LLM usage statusLine ingest token, when llmUsage.claude.statusLine names
+      # this variable (see docs/guides/llm-usage.md). Unset = no ingest route.
+      # DECK_LLM_USAGE_INGEST_TOKEN: ${DECK_LLM_USAGE_INGEST_TOKEN}
+    volumes:
+      # SET ME — your estate config directory, mounted read-only (deck never
+      # writes to it). Validate it first: `deck validate /path/to/your/estate`.
+      - /path/to/your/estate:/config:ro
+      # SET ME — your snapshot file, if DECK_SNAPSHOT_SOURCE is a file path.
+      # Remove this mount when DECK_SNAPSHOT_SOURCE is an http(s) URL.
+      - /path/to/snapshot.json:/snapshot/snapshot.json:ro
+      # Persistent git-sources cache (named volume, survives restarts).
+      - deck-sources-cache:/var/cache/deck/sources
+      # Uncomment when governed actions are enabled (see DECK_DATA_DIR above).
+      # - deck-data:/var/lib/deck
+      # LLM usage (llmUsage section): the Claude directory read-only (not the
+      # credentials file alone: a refreshed file would not show through), and the
+      # host's own Codex home read-write at the SAME path (the app-server refreshes
+      # auth.json, and the standalone install's `current` symlink is absolute). The
+      # image has no codex: point llmUsage.codex.command at the host binary, e.g.
+      # /home/you/.codex/packages/standalone/current/bin/codex. npm installs and
+      # file ownership: see docs/guides/llm-usage.md.
+      # - /home/you/.claude:/data/claude:ro
+      # - /home/you/.codex:/home/you/.codex
+    restart: unless-stopped
+
+volumes:
+  deck-sources-cache:
+  # Uncomment when governed actions are enabled.
+  # deck-data:

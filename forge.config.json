@@ -1,0 +1,45 @@
+{
+  "specsDir": "./specs",
+  "docsDir": "./docs/architecture",
+  "backlogDir": null,
+  "gitCommitAfterStage": true,
+  "commitPrefix": "forge",
+  "stack": "typescript",
+  "typeCheckCommand": "pnpm -r typecheck",
+  "testCommand": "pnpm -r test",
+  "smokeCommand": "bash apps/server/test/smoke.sh",
+  "loopIterationMultiplier": 1.5,
+  "autoInvokeNextStage": true,
+  "contextWindowTokens": null,
+  "contextWarnThreshold": 0.7,
+  "autoVerify": true,
+  "autoVerifyStages": {},
+  "autoFix": false,
+  "loopRunner": {
+    "name": "rauf",
+    "bin": "rauf"
+  },
+  "workspaces": [
+    {
+      "name": "schema",
+      "path": "packages/schema",
+      "stack": "typescript",
+      "typeCheckCommand": "npx tsc --noEmit",
+      "testCommand": "pnpm test"
+    },
+    {
+      "name": "server",
+      "path": "apps/server",
+      "stack": "typescript",
+      "typeCheckCommand": "npx tsc --noEmit",
+      "testCommand": "pnpm test"
+    },
+    {
+      "name": "web",
+      "path": "apps/web",
+      "stack": "typescript",
+      "typeCheckCommand": "npx tsc --noEmit",
+      "testCommand": "pnpm test"
+    }
+  ]
+}

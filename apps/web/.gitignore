@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.forge-bootstrap.json
+
+# Ephemeral Playwright inventory E2E runtime and artifacts — never tracked
+.tmp/
+test-results/
+playwright-report/

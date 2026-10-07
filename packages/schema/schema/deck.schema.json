@@ -1,0 +1,266 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:deck:schema:config:1",
+  "title": "DeckConfigDocument",
+  "description": "A merged deck config document containing projected estate inventory and presentation data.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "estate"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1, "description": "The shared schema contract version." },
+    "estate": { "$ref": "#/$defs/Estate", "description": "Estate-wide identity and conventions." },
+    "hosts": { "type": "array", "items": { "$ref": "#/$defs/Host" }, "description": "Declared hosts; absent is equivalent to an empty array." },
+    "services": { "type": "array", "items": { "$ref": "#/$defs/Service" }, "description": "Declared services; absent is equivalent to an empty array." },
+    "groups": { "type": "array", "items": { "$ref": "#/$defs/Group" }, "description": "Portal layout groups; absent is equivalent to an empty array." },
+    "sources": { "type": "array", "items": { "$ref": "#/$defs/Source" }, "description": "Document and configuration source declarations; absent is equivalent to an empty array." },
+    "integrations": { "type": "array", "items": { "$ref": "#/$defs/Integration" }, "description": "External tool integrations; absent is equivalent to an empty array." },
+    "llmUsage": { "$ref": "#/$defs/LlmUsage", "description": "Optional subscription plan-usage limits; absent disables the feature." },
+    "actions": { "type": "array", "items": { "$ref": "#/$defs/Action" }, "description": "Governed actions; absent is equivalent to an empty array." },
+    "agents": { "type": "array", "items": { "$ref": "#/$defs/Agent" }, "description": "Reserved agent slots; absent is equivalent to an empty array." }
+  },
+  "$defs": {
+    "Estate": {
+      "title": "Estate", "type": "object", "additionalProperties": false, "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "description": "Human-readable estate name shown in the shell header." },
+        "domains": { "type": "object", "description": "Per-network domain suffixes keyed by network label.", "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" }, "additionalProperties": { "type": "string", "description": "A domain suffix for the network named by the key." } },
+        "timezone": { "type": "string", "description": "IANA timezone name used by consumers for display." },
+        "freshness": { "type": "object", "additionalProperties": false, "description": "Freshness defaults consumers use to derive staleness.", "properties": {
+          "snapshotStaleAfter": { "type": "string", "description": "ISO-8601 duration after which a snapshot is considered stale." }
+        } }
+      }
+    },
+    "Host": {
+      "title": "Host", "type": "object", "additionalProperties": false, "required": ["name", "kind", "purpose"],
+      "dependentRequired": { "hypervisor": ["vmid"], "vmid": ["hypervisor"] },
+      "properties": {
+        "name": { "type": "string", "description": "Host name, unique across the config." },
+        "kind": { "$ref": "#/$defs/HostKind", "description": "What kind of host this is." },
+        "purpose": { "type": "string", "description": "One-line statement of what the host is for." },
+        "status": { "$ref": "#/$defs/HostStatus", "description": "Declared lifecycle status rather than observed state." },
+        "hypervisor": { "type": "string", "description": "Name of the host that runs this guest; required with vmid." },
+        "vmid": { "type": "integer", "minimum": 1, "description": "Numeric guest id on its hypervisor; required with hypervisor." },
+        "addresses": { "type": "array", "items": { "$ref": "#/$defs/Address" }, "description": "Network addresses labelled by network." },
+        "access": { "$ref": "#/$defs/Access", "description": "Reachability and collection-method summary, never credentials." },
+        "backup": { "$ref": "#/$defs/Backup", "description": "Backup expectations for this host." },
+        "managedConfigs": { "type": "array", "items": { "$ref": "#/$defs/ManagedConfig" }, "description": "Live config files mapped to source-of-truth files." },
+        "stacksRoot": { "type": "string", "description": "Filesystem root under which container stacks live." },
+        "secrets": { "type": "array", "items": { "$ref": "#/$defs/SecretRef" }, "description": "Opaque secret references this host depends on." },
+        "links": { "type": "array", "items": { "$ref": "#/$defs/Link" }, "description": "Presentation links shown on the host card." },
+        "bindings": { "$ref": "#/$defs/Bindings", "description": "Live-provider bindings keyed by provider kind." },
+        "hidden": { "type": "boolean", "description": "Hide this host from default views without affecting validation." }
+      }
+    },
+    "HostKind": { "title": "HostKind", "type": "string", "description": "Kind of host.", "enum": ["bare-metal", "vm", "lxc", "appliance", "endpoint", "unknown"] },
+    "HostStatus": { "title": "HostStatus", "type": "string", "description": "Declared lifecycle status.", "enum": ["active", "planned", "retired"] },
+    "Address": {
+      "title": "Address", "type": "object", "additionalProperties": false, "required": ["network", "address"],
+      "properties": {
+        "network": { "type": "string", "description": "Network label for this address (e.g. lan, tailnet). An open label — the same vocabulary Estate.domains keys off." },
+        "address": { "type": "string", "description": "The address on that network." },
+        "primary": { "type": "boolean", "description": "Whether this is the host's primary address on that network." }
+      }
+    },
+    "Access": {
+      "title": "Access", "type": "object", "additionalProperties": false,
+      "properties": {
+        "reachable": { "type": "boolean", "description": "Whether the host is expected to be reachable." },
+        "method": { "type": "string", "enum": ["ssh", "api", "none"], "description": "Expected collection or access method." },
+        "port": { "type": "integer", "description": "Network port used by the access method." },
+        "user": { "type": "string", "description": "Non-secret user name used for access." },
+        "sudo": { "type": "boolean", "description": "Whether privileged elevation is expected." },
+        "notes": { "type": "string", "description": "Additional non-secret access notes." }
+      }
+    },
+    "Backup": {
+      "title": "Backup", "type": "object", "additionalProperties": false, "required": ["expected"],
+      "properties": {
+        "expected": { "type": "boolean", "description": "Whether this entity is expected to be backed up." },
+        "schedule": { "type": "string", "description": "Human-readable backup schedule." },
+        "target": { "type": "string", "description": "Non-secret backup destination identifier." },
+        "notes": { "type": "string", "description": "Additional backup notes." }
+      }
+    },
+    "ManagedConfig": {
+      "title": "ManagedConfig", "type": "object", "additionalProperties": false, "required": ["path", "source"],
+      "properties": {
+        "path": { "type": "string", "description": "Live configuration file path." },
+        "source": { "type": "string", "description": "Owning source-of-truth file reference." },
+        "notes": { "type": "string", "description": "Additional management notes." }
+      }
+    },
+    "Service": {
+      "title": "Service", "type": "object", "additionalProperties": false, "required": ["name", "host", "kind", "purpose"],
+      "properties": {
+        "name": { "type": "string", "description": "Service name, unique per host." },
+        "host": { "type": "string", "description": "Name of the host this service runs on." },
+        "kind": { "$ref": "#/$defs/ServiceKind", "description": "What kind of service this is." },
+        "purpose": { "type": "string", "description": "One-line statement of what the service is for." },
+        "status": { "$ref": "#/$defs/ServiceStatus", "description": "Declared lifecycle status rather than observed state." },
+        "stack": { "type": "string", "description": "Stack directory when it differs from the service name." },
+        "secrets": { "type": "array", "items": { "$ref": "#/$defs/SecretRef" }, "description": "Opaque secret references this service depends on." },
+        "backup": { "$ref": "#/$defs/Backup", "description": "Backup expectations for this service." },
+        "links": { "type": "array", "items": { "$ref": "#/$defs/Link" }, "description": "Presentation links shown on the service card." },
+        "bindings": { "$ref": "#/$defs/Bindings", "description": "Live-provider bindings keyed by provider kind." },
+        "hidden": { "type": "boolean", "description": "Hide this service from default views without affecting validation." }
+      }
+    },
+    "ServiceKind": { "title": "ServiceKind", "type": "string", "description": "Kind of service.", "enum": ["docker-compose", "systemd", "appliance", "container", "external"] },
+    "ServiceStatus": { "title": "ServiceStatus", "type": "string", "description": "Declared lifecycle status.", "enum": ["active", "planned", "retired"] },
+    "Bindings": { "title": "Bindings", "type": "object", "description": "Provider-defined live bindings keyed by provider kind.", "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" }, "additionalProperties": true },
+    "Group": {
+      "title": "Group", "type": "object", "additionalProperties": false, "required": ["id", "title", "items"],
+      "properties": {
+        "id": { "type": "string", "description": "Group id, unique across the groups tree." },
+        "title": { "type": "string", "description": "Group heading shown in the portal." },
+        "order": { "type": "integer", "description": "Optional sort key among sibling groups." },
+        "icon": { "type": "string", "description": "Optional icon token for the group heading." },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/GroupItem" }, "description": "Ordered service, link, or subgroup items." }
+      }
+    },
+    "ServiceItem": {
+      "title": "ServiceItem", "type": "object", "additionalProperties": false, "required": ["type", "host", "name"],
+      "properties": {
+        "type": { "const": "service", "description": "Discriminator for a declared service reference." },
+        "host": { "type": "string", "description": "Host name of the referenced service." },
+        "name": { "type": "string", "description": "Service name on the referenced host." },
+        "title": { "type": "string", "description": "Optional label override." },
+        "icon": { "type": "string", "description": "Optional icon token." },
+        "description": { "type": "string", "description": "Optional one-line description." }
+      }
+    },
+    "LinkItem": {
+      "title": "LinkItem", "type": "object", "additionalProperties": false, "required": ["type", "title", "href"],
+      "properties": {
+        "type": { "const": "link", "description": "Discriminator for a plain external link." },
+        "title": { "type": "string", "description": "Link label." },
+        "href": { "type": "string", "description": "Link target URL." },
+        "icon": { "type": "string", "description": "Optional icon token." },
+        "description": { "type": "string", "description": "Optional one-line description." }
+      }
+    },
+    "Subgroup": {
+      "title": "Subgroup", "type": "object", "additionalProperties": false, "required": ["type", "id", "title", "items"],
+      "properties": {
+        "type": { "const": "group", "description": "Discriminator for a one-level subgroup." },
+        "id": { "type": "string", "description": "Subgroup id, unique across the groups tree." },
+        "title": { "type": "string", "description": "Subgroup heading." },
+        "order": { "type": "integer", "description": "Optional sort key among sibling items." },
+        "icon": { "type": "string", "description": "Optional icon token." },
+        "items": { "type": "array", "description": "Service or link items only; nested subgroups are forbidden.", "items": { "oneOf": [{ "$ref": "#/$defs/ServiceItem" }, { "$ref": "#/$defs/LinkItem" }] } }
+      }
+    },
+    "GroupItem": { "title": "GroupItem", "description": "A service reference, plain link, or one-level subgroup.", "oneOf": [{ "$ref": "#/$defs/ServiceItem" }, { "$ref": "#/$defs/LinkItem" }, { "$ref": "#/$defs/Subgroup" }] },
+    "Source": {
+      "title": "Source", "type": "object", "additionalProperties": false, "required": ["id", "kind", "title", "location"],
+      "properties": {
+        "id": { "type": "string", "description": "Source id, unique across sources." },
+        "kind": { "type": "string", "description": "Open source kind string." },
+        "title": { "type": "string", "description": "Human-readable source title." },
+        "location": { "type": "object", "additionalProperties": false, "description": "Filesystem or repository source location.", "properties": {
+          "path": { "type": "string", "description": "Filesystem path to the source root." },
+          "repo": { "type": "string", "description": "Repository reference." },
+          "ref": { "type": "string", "description": "Optional revision or branch." }
+        } },
+        "include": { "type": "array", "items": { "type": "string" }, "description": "Optional include glob patterns." },
+        "exclude": { "type": "array", "items": { "type": "string" }, "description": "Optional exclude glob patterns." },
+        "owner": { "type": "object", "additionalProperties": false, "description": "Optional owning host or service.", "required": ["host"], "properties": {
+          "host": { "type": "string", "description": "Owning host name." },
+          "service": { "type": "string", "description": "Optional owning service name on that host." }
+        } },
+        "credentialEnv": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "description": "Environment variable name holding a credential, never its value." }
+      }
+    },
+    "Integration": {
+      "title": "Integration", "type": "object", "additionalProperties": false, "required": ["id", "kind", "title", "baseUrl"],
+      "properties": {
+        "id": { "type": "string", "description": "Integration id, unique across integrations." },
+        "kind": { "type": "string", "description": "Open provider kind string." },
+        "title": { "type": "string", "description": "Human-readable integration title." },
+        "baseUrl": { "type": "string", "description": "Base URL of the integrated tool." },
+        "deepLink": { "type": "string", "description": "Optional deep-link template into the tool." },
+        "card": { "type": "object", "description": "Opaque provider-defined card specification.", "additionalProperties": true },
+        "credentialEnv": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "description": "Environment variable name holding a credential, never its value." }
+      }
+    },
+    "LlmUsage": {
+      "title": "LlmUsage", "type": "object", "additionalProperties": false, "description": "Subscription plan-usage limits for Claude Code and Codex accounts.",
+      "properties": {
+        "claude": { "type": "object", "additionalProperties": false, "description": "Claude Code (Claude.ai Pro/Max) usage; presence enables the Claude panel.", "properties": {
+          "credentialsFile": { "type": "string", "description": "Read-only path to a Claude Code .credentials.json; enables the OAuth usage backfill. Never written or refreshed by deck." },
+          "transcriptsDir": { "type": "string", "description": "Optional read-only path to a Claude Code projects directory for the token-count transcript scan." },
+          "statusLine": { "type": "object", "additionalProperties": false, "description": "statusLine hook ingest; the route exists only when the credential is set.", "required": ["credentialEnv"], "properties": {
+            "credentialEnv": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "description": "Environment variable name holding the ingest bearer token, never its value." }
+          } },
+          "activeInterval": { "type": "string", "pattern": "^P(?!$)(\\d+(?:[.,]\\d+)?Y)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?W)?(\\d+(?:[.,]\\d+)?D)?(T(?=\\d)(\\d+(?:[.,]\\d+)?H)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?S)?)?$", "description": "ISO-8601 OAuth poll interval while a session is active; clamped to at least PT2M." },
+          "idleInterval": { "type": "string", "pattern": "^P(?!$)(\\d+(?:[.,]\\d+)?Y)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?W)?(\\d+(?:[.,]\\d+)?D)?(T(?=\\d)(\\d+(?:[.,]\\d+)?H)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?S)?)?$", "description": "ISO-8601 OAuth poll interval while idle; clamped to at least PT2M." }
+        } },
+        "codex": { "type": "object", "additionalProperties": false, "description": "Codex (ChatGPT subscription) usage; presence enables the Codex panel.", "required": ["codexHome"], "properties": {
+          "codexHome": { "type": "string", "description": "Read-write CODEX_HOME holding auth.json (the app-server refreshes it); mount the host's ~/.codex at the same path so its absolute symlinks resolve." },
+          "command": { "type": "string", "description": "Codex executable path as deck sees it; defaults to codex on PATH. The deck image ships no codex: mount the host's Linux binary and point this at it." },
+          "rolloutDir": { "type": "string", "description": "Optional rollout sessions directory; defaults to <codexHome>/sessions." }
+        } },
+        "thresholds": { "type": "object", "additionalProperties": false, "description": "Percent-used bands for warn and danger tones.", "properties": {
+          "warn": { "type": "number", "minimum": 0, "maximum": 100, "description": "Percent used at which a bar turns warn; default 75." },
+          "danger": { "type": "number", "minimum": 0, "maximum": 100, "description": "Percent used at which a bar turns danger; default 90." }
+        } },
+        "idlePause": { "type": "string", "pattern": "^P(?!$)(\\d+(?:[.,]\\d+)?Y)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?W)?(\\d+(?:[.,]\\d+)?D)?(T(?=\\d)(\\d+(?:[.,]\\d+)?H)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?S)?)?$", "description": "ISO-8601 duration without a viewer after which upstream polling pauses; default PT5M." }
+      }
+    },
+    "Action": {
+      "title": "Action", "type": "object", "additionalProperties": false, "required": ["id", "title", "runner", "confirm"],
+      "properties": {
+        "id": { "type": "string", "description": "Action id, unique across actions." },
+        "title": { "type": "string", "description": "Human-readable action label." },
+        "runner": { "type": "string", "description": "Estate-side runner or playbook name, never a command." },
+        "confirm": { "type": "string", "enum": ["none", "confirm", "typed-confirm"], "description": "Confirmation policy before running." },
+        "params": { "type": "array", "items": { "$ref": "#/$defs/ActionParam" }, "description": "Typed parameters accepted by the runner." },
+        "target": { "type": "object", "additionalProperties": false, "description": "Optional host or service target.", "required": ["host"], "properties": {
+          "host": { "type": "string", "description": "Target host name." },
+          "service": { "type": "string", "description": "Optional target service name on that host." }
+        } },
+        "description": { "type": "string", "description": "Optional longer action description." }
+      }
+    },
+    "ActionParam": {
+      "title": "ActionParam", "type": "object", "additionalProperties": false, "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string", "description": "Parameter name, unique within the action." },
+        "type": { "type": "string", "enum": ["string", "number", "boolean", "enum"], "description": "Parameter value type." },
+        "required": { "type": "boolean", "description": "Whether the parameter must be supplied." },
+        "default": { "$ref": "#/$defs/JsonValue", "description": "Optional default value matching the declared type." },
+        "values": { "type": "array", "items": { "type": "string" }, "description": "Allowed values when the type is enum." },
+        "description": { "type": "string", "description": "Optional parameter description." }
+      }
+    },
+    "Agent": {
+      "title": "Agent", "type": "object", "additionalProperties": false, "required": ["id", "kind"],
+      "properties": {
+        "id": { "type": "string", "description": "Reserved agent id, unique across agents." },
+        "kind": { "type": "string", "description": "Reserved and unstable agent kind." },
+        "config": { "type": "object", "description": "Opaque reserved agent configuration.", "additionalProperties": true }
+      }
+    },
+    "Link": {
+      "title": "Link", "type": "object", "additionalProperties": false, "required": ["title", "href"],
+      "properties": {
+        "title": { "type": "string", "description": "Human-readable link label." },
+        "href": { "type": "string", "description": "Link target URL." },
+        "icon": { "type": "string", "description": "Optional icon token." }
+      }
+    },
+    "SecretRef": { "title": "SecretRef", "type": "string", "description": "An opaque secret reference id, never a secret value.", "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$", "maxLength": 64 },
+    "JsonValue": {
+      "title": "JsonValue",
+      "description": "Any value representable in JSON.",
+      "anyOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        { "type": "null" },
+        { "type": "array", "items": { "$ref": "#/$defs/JsonValue" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/JsonValue" } }
+      ]
+    }
+  }
+}

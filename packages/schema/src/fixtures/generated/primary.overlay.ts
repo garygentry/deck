@@ -1,0 +1,215 @@
+/* GENERATED from primary/10-overlay.yaml by scripts/build-fixtures.ts — do not edit; run pnpm fixtures:build */
+
+import type { JsonObject } from "../../types.js";
+
+export const overlay = {
+  "schemaVersion": 1,
+  "hosts": [
+    {
+      "name": "azurite",
+      "bindings": {
+        "docker": {
+          "endpoint": "fixture-docker"
+        },
+        "snapshot": {
+          "dataset": "fixture-alpha"
+        }
+      },
+      "links": [
+        {
+          "title": "Alpha Console",
+          "href": "https://azurite.lantern.invalid/"
+        }
+      ]
+    },
+    {
+      "name": "beryl",
+      "bindings": {
+        "alertmanager": {
+          "route": "fixture-alerts"
+        }
+      }
+    },
+    {
+      "name": "cirrus",
+      "bindings": {
+        "gatus": {
+          "group": "fixture-apps"
+        }
+      }
+    },
+    {
+      "name": "dapple",
+      "bindings": {
+        "prometheus": {
+          "job": "fixture-metrics"
+        },
+        "http-health": {
+          "url": "https://dapple.lantern.invalid/health"
+        }
+      }
+    },
+    {
+      "name": "ember"
+    },
+    {
+      "name": "hush",
+      "hidden": true
+    }
+  ],
+  "services": [
+    {
+      "name": "beacon",
+      "host": "cirrus",
+      "bindings": {
+        "link": {
+          "href": "https://beacon.lantern.invalid/"
+        }
+      },
+      "links": [
+        {
+          "title": "Beacon",
+          "href": "https://beacon.lantern.invalid/"
+        }
+      ]
+    },
+    {
+      "name": "beacon",
+      "host": "dapple",
+      "links": [
+        {
+          "title": "Relay",
+          "href": "https://relay.lantern.invalid/"
+        }
+      ]
+    },
+    {
+      "name": "lumen",
+      "host": "ember",
+      "bindings": {
+        "markdown-tree": {
+          "source": "fixture-handbook"
+        }
+      }
+    },
+    {
+      "name": "quill",
+      "host": "cirrus",
+      "bindings": {
+        "file-tree": {
+          "source": "fixture-files"
+        }
+      },
+      "hidden": true
+    }
+  ],
+  "groups": [
+    {
+      "id": "overview",
+      "title": "Fixture Overview",
+      "order": 1,
+      "icon": "lantern",
+      "items": [
+        {
+          "type": "service",
+          "host": "cirrus",
+          "name": "beacon",
+          "title": "Portal"
+        },
+        {
+          "type": "link",
+          "title": "Fixture Guide",
+          "href": "https://guide.lantern.invalid/"
+        },
+        {
+          "type": "group",
+          "id": "operations",
+          "title": "Operations",
+          "items": [
+            {
+              "type": "service",
+              "host": "dapple",
+              "name": "beacon"
+            },
+            {
+              "type": "link",
+              "title": "Operations Guide",
+              "href": "https://ops.lantern.invalid/"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "id": "fixture-handbook",
+      "kind": "markdown-tree",
+      "title": "Fixture Handbook",
+      "location": {
+        "repo": "lantern-docs",
+        "ref": "main"
+      },
+      "include": [
+        "guides/**"
+      ],
+      "exclude": [
+        "drafts/**"
+      ],
+      "owner": {
+        "host": "ember",
+        "service": "lumen"
+      }
+    }
+  ],
+  "integrations": [
+    {
+      "id": "fixture-metrics",
+      "kind": "prometheus",
+      "title": "Fixture Metrics",
+      "baseUrl": "https://metrics.lantern.invalid/",
+      "deepLink": "/targets/{target}",
+      "card": {
+        "theme": "lantern"
+      },
+      "credentialEnv": "FIXTURE_METRICS_REF"
+    }
+  ],
+  "actions": [
+    {
+      "id": "restart-beacon",
+      "title": "Restart Fixture Beacon",
+      "runner": "fixture-restart-service",
+      "confirm": "typed-confirm",
+      "params": [
+        {
+          "name": "reason",
+          "type": "string",
+          "required": true,
+          "default": "routine",
+          "description": "Fixture change note"
+        },
+        {
+          "name": "graceful",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "name": "mode",
+          "type": "enum",
+          "values": [
+            "safe",
+            "quick"
+          ],
+          "default": null
+        }
+      ],
+      "target": {
+        "host": "cirrus",
+        "service": "beacon"
+      },
+      "description": "Exercises the governed action shape"
+    }
+  ],
+  "agents": []
+} satisfies JsonObject;

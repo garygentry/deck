@@ -1,0 +1,58 @@
+name: release
+
+# Publish a versioned, multi-arch container image to GHCR on a `v*` tag.
+# Kept separate from ci.yml (which fires on every branch push) so image
+# publishing only happens on a release tag. Tag a release the usual way —
+# `git tag -a v0.1.0 -m 'deck v0.1.0' && git push origin v0.1.0` — and this
+# builds `ghcr.io/<owner>/deck:<version>` (+ `:latest`) for amd64 and arm64.
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      # Read the repo to build; write packages to push to GHCR.
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # QEMU + buildx give us cross-arch builds from a single amd64 runner.
+      # The arm64 leg builds under emulation (only Vite/esbuild compiles — the
+      # server and @deck/schema run from TS source under Bun), which is slower
+      # but needs no arch-specific logic in the Dockerfile.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      # Log in to GHCR as the tagging actor with the workflow's own token.
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Derive tags/labels from the git ref. `type=semver,pattern={{version}}`
+      # strips the leading `v` (tag v0.1.0 -> image :0.1.0); `:latest` also
+      # moves to the newest release. Image name is the lowercased owner/repo.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+
+      # Build the existing multi-stage Dockerfile for both arches and push.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Speed repeat builds via the GitHub Actions cache backend.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

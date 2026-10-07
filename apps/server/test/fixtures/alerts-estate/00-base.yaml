@@ -1,0 +1,13 @@
+schemaVersion: 1
+estate:
+  name: Alerts smoke estate
+hosts:
+  - name: atlas
+    kind: bare-metal
+    purpose: Monitoring host
+services:
+  - name: monitoring
+    host: atlas
+    kind: container
+    purpose: Metrics and alerts backend
+    status: active

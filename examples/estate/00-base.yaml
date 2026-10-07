@@ -1,0 +1,50 @@
+schemaVersion: 1
+estate:
+  name: example-estate
+  domains:
+    lan: home.example
+    tailnet: home-tail.example
+  timezone: Etc/UTC
+hosts:
+  - name: gateway
+    kind: appliance
+    purpose: Router / firewall at the edge of the home network
+    addresses:
+      - { network: lan, address: 192.0.2.1, primary: true }
+    access: { reachable: true, method: api, port: 443 }
+  - name: nas
+    kind: bare-metal
+    purpose: Storage and backup target
+    addresses:
+      - { network: lan, address: 192.0.2.10, primary: true }
+    access: { reachable: true, method: ssh, port: 22, user: admin }
+    backup: { expected: true, schedule: nightly, target: nas-local }
+  - name: apps
+    kind: vm
+    purpose: Application host running the home services
+    hypervisor: nas
+    vmid: 100
+    addresses:
+      - { network: lan, address: 192.0.2.20, primary: true }
+    access: { reachable: true, method: ssh, port: 22, user: admin }
+  - name: media
+    kind: vm
+    purpose: Media server and transcoder
+    hypervisor: nas
+    vmid: 101
+    addresses:
+      - { network: lan, address: 192.0.2.21, primary: true }
+    access: { reachable: true, method: ssh, port: 22, user: admin }
+  - name: sensor
+    kind: appliance
+    purpose: Environmental sensor bridge (not yet under collection)
+    addresses:
+      - { network: lan, address: 192.0.2.30, primary: true }
+    access: { reachable: true, method: none }
+services:
+  - { name: portal, host: apps, kind: docker-compose, purpose: Home dashboard, status: active }
+  - { name: reverse-proxy, host: apps, kind: docker-compose, purpose: TLS termination and routing, status: active }
+  - { name: files, host: nas, kind: systemd, purpose: File sharing, status: active }
+  - { name: backups, host: nas, kind: systemd, purpose: Nightly backup job, status: active }
+  - { name: router-ui, host: gateway, kind: appliance, purpose: Gateway admin UI, status: active }
+  - { name: jellyfin, host: media, kind: docker-compose, purpose: Media streaming, status: active }

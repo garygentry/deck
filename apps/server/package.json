@@ -1,0 +1,34 @@
+{
+  "name": "@deck/server",
+  "version": "0.3.2",
+  "private": true,
+  "description": "A generic, config-driven hub engine — the single human entry point to a home-lab estate: launch portal, inventory beside reality, drift, and monitoring overview.",
+  "type": "module",
+  "bin": {
+    "deck": "./src/cli/deck.ts"
+  },
+  "exports": {
+    ".": "./src/contract/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "gen:providers": "bun src/scripts/gen-providers.ts",
+    "render:golden": "bun src/cli/deck.ts render ../../packages/schema/src/fixtures/primary --out test/golden/deck.config.json",
+    "smoke:bun": "bun src/server/boot.ts"
+  },
+  "dependencies": {
+    "@deck/schema": "workspace:*",
+    "hono": "^4.6.0",
+    "iso8601-duration": "^2",
+    "picomatch": "^4.0.2",
+    "yaml": "^2.9.0",
+    "pino": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/picomatch": "^3.0.1",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}

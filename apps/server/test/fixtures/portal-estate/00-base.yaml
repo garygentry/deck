@@ -1,0 +1,36 @@
+schemaVersion: 1
+estate:
+  name: Portal smoke estate
+hosts:
+  - name: atlas
+    kind: bare-metal
+    purpose: Visible application host
+  - name: shadow
+    kind: vm
+    purpose: Host hidden from the portal
+services:
+  - name: containers
+    host: atlas
+    kind: docker-compose
+    purpose: Docker-backed service
+    status: active
+  - name: status
+    host: atlas
+    kind: container
+    purpose: Gatus-backed service
+    status: active
+  - name: hidden-service
+    host: atlas
+    kind: systemd
+    purpose: Service hidden from the portal
+    status: active
+  - name: hidden-host-service
+    host: shadow
+    kind: systemd
+    purpose: Service on a hidden host
+    status: active
+  - name: no-link
+    host: atlas
+    kind: appliance
+    purpose: Focusable service without navigation
+    status: active

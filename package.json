@@ -1,0 +1,22 @@
+{
+  "name": "deck-workspace",
+  "version": "0.3.2",
+  "private": true,
+  "packageManager": "pnpm@10.34.5",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm --filter @deck/web build",
+    "snapshot:example": "node scripts/make-example-snapshot.mjs",
+    "dev": "pnpm snapshot:example && concurrently -k -n api,web -c blue,green \"DECK_CONFIG_DIR=${DECK_CONFIG_DIR:-examples/estate} DECK_SNAPSHOT_SOURCE=${DECK_SNAPSHOT_SOURCE:-examples/estate/.runtime/snapshot.json} DECK_PORT=${DECK_PORT:-8788} bun apps/server/src/server/boot.ts\" \"DECK_PROXY_TARGET=${DECK_PROXY_TARGET:-http://127.0.0.1:${DECK_PORT:-8788}} pnpm --filter @deck/web dev\"",
+    "start": "pnpm build && pnpm snapshot:example && DECK_CONFIG_DIR=${DECK_CONFIG_DIR:-examples/estate} DECK_SNAPSHOT_SOURCE=${DECK_SNAPSHOT_SOURCE:-examples/estate/.runtime/snapshot.json} DECK_WEB_DIST=apps/web/dist DECK_PORT=${DECK_PORT:-8080} bun apps/server/src/server/boot.ts"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.4.0"
+  }
+}

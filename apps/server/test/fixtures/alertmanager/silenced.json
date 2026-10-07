@@ -1,0 +1,36 @@
+{
+  "alerts": [
+    {
+      "fingerprint": "a1b2c3",
+      "labels": { "alertname": "HostDown", "severity": "critical", "instance": "db-01" },
+      "annotations": { "summary": "db-01 is unreachable" },
+      "startsAt": "2026-09-15T09:12:00.000Z",
+      "generatorURL": "https://prometheus.lantern.invalid/graph?g0.expr=up",
+      "status": { "state": "active", "silencedBy": [], "inhibitedBy": [] }
+    },
+    {
+      "fingerprint": "d4e5f6",
+      "labels": { "alertname": "DiskFilling", "severity": "warning", "instance": "web-02" },
+      "annotations": {},
+      "startsAt": "2026-09-15T08:40:00.000Z",
+      "status": { "state": "suppressed", "silencedBy": ["sil-777"], "inhibitedBy": [] }
+    }
+  ],
+  "silences": [
+    {
+      "id": "sil-777",
+      "status": { "state": "active" },
+      "matchers": [
+        { "name": "instance", "value": "web-02", "isRegex": false, "isEqual": true },
+        { "name": "severity", "value": "warn.*", "isRegex": true, "isEqual": true }
+      ],
+      "endsAt": "2026-09-15T12:00:00.000Z"
+    },
+    {
+      "id": "sil-000",
+      "status": { "state": "expired" },
+      "matchers": [{ "name": "severity", "value": "info", "isRegex": false, "isEqual": true }],
+      "endsAt": "2026-09-14T00:00:00.000Z"
+    }
+  ]
+}

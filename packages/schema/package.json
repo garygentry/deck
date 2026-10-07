@@ -1,0 +1,35 @@
+{
+  "name": "@deck/schema",
+  "version": "0.3.2",
+  "private": true,
+  "description": "A generic, config-driven hub engine — the single human entry point to a home-lab estate: launch portal, inventory beside reality, drift, and monitoring overview.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./fixtures": "./src/fixtures/index.ts",
+    "./deck.schema.json": "./schema/deck.schema.json",
+    "./snapshot.schema.json": "./schema/snapshot.schema.json"
+  },
+  "files": [
+    "schema",
+    "src",
+    "docs"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "types:build": "bun scripts/build-types.ts",
+    "fixtures:build": "bun scripts/build-fixtures.ts",
+    "denylist:add": "bun scripts/denylist-add.ts"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "json-schema-to-typescript": "^16.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0",
+    "yaml": "^2.9.0"
+  }
+}

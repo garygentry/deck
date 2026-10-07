@@ -1,0 +1,86 @@
+/*
+ * highlight.js token theme, mapped to design tokens.
+ *
+ * Imported into the `components` layer (see app.css). Scoped to the library's
+ * code surfaces (`CodeBlock`, and fenced code inside `Prose`).
+ *
+ * Every colour is an existing theme.css text token that tokens-contrast.test.ts
+ * holds to WCAG AA (4.5:1) on `--muted`, the code background, in light and
+ * dark. The tokens switch under `.dark`, so this file needs no dark block.
+ * Colour is never the only cue: comments are also italic, and
+ * additions/deletions also carry the diff's own +/- markers.
+ */
+:where([data-slot="code-block"], [data-slot="prose"]) {
+  --hljs-keyword: var(--status-pending-fg);
+  --hljs-string: var(--status-ok-fg);
+  --hljs-number: var(--status-warn-fg);
+  --hljs-title: var(--status-info-fg);
+  --hljs-attr: var(--primary);
+  --hljs-comment: var(--muted-foreground);
+  --hljs-deletion: var(--status-danger-fg);
+
+  & .hljs {
+    color: var(--foreground);
+    background: transparent;
+  }
+
+  & :is(.hljs-keyword, .hljs-selector-tag, .hljs-meta .hljs-keyword, .hljs-doctag, .hljs-template-tag) {
+    color: var(--hljs-keyword);
+  }
+
+  & :is(.hljs-string, .hljs-regexp, .hljs-addition, .hljs-meta .hljs-string, .hljs-char.escape_) {
+    color: var(--hljs-string);
+  }
+
+  & :is(.hljs-number, .hljs-literal, .hljs-symbol, .hljs-bullet, .hljs-variable.constant_, .hljs-link) {
+    color: var(--hljs-number);
+  }
+
+  & :is(
+      .hljs-title,
+      .hljs-title.class_,
+      .hljs-title.function_,
+      .hljs-section,
+      .hljs-built_in,
+      .hljs-type,
+      .hljs-selector-id,
+      .hljs-selector-class
+    ) {
+    color: var(--hljs-title);
+  }
+
+  & :is(
+      .hljs-attr,
+      .hljs-attribute,
+      .hljs-property,
+      .hljs-name,
+      .hljs-tag,
+      .hljs-variable,
+      .hljs-template-variable,
+      .hljs-params,
+      .hljs-selector-attr,
+      .hljs-selector-pseudo
+    ) {
+    color: var(--hljs-attr);
+  }
+
+  & :is(.hljs-comment, .hljs-quote, .hljs-meta) {
+    color: var(--hljs-comment);
+  }
+
+  & :is(.hljs-comment, .hljs-quote) {
+    font-style: italic;
+  }
+
+  & .hljs-deletion {
+    color: var(--hljs-deletion);
+  }
+
+  & :is(.hljs-section, .hljs-strong) {
+    font-weight: 600;
+  }
+
+  & .hljs-emphasis {
+    font-style: italic;
+  }
+}

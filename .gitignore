@@ -1,0 +1,36 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.tpl
+*.log
+.DS_Store
+# Local browser-verification screenshots (not project source)
+screenshots/
+
+# Generated example snapshot (materialized from snapshot.template.json at dev/start)
+examples/estate/.runtime/
+
+# Default output of `deck render <dir>` with no --out (written to the repo root).
+# Anchored so it never masks the tracked golden fixture at
+# apps/server/test/golden/deck.config.json.
+/deck.config.json
+
+# feature-forge verifier agent memory (per-machine, not project truth)
+.claude/agent-memory/
+# Rauf runtime — transient files that must never be tracked
+**/.rauf/.loop.lock
+**/.rauf/state.json
+**/.rauf/DONE
+**/.rauf/CANCEL
+**/.rauf/iteration-status.json
+**/.rauf/rauf.log
+**/.rauf/events.ndjson
+**/.rauf/archive/
+**/backlog.json.bak
+**/.rauf/forge-decisions.json
+
+# Planning artifacts and loop state stay local (not published).
+/specs
+/.rauf
+/.rauf.json

@@ -1,0 +1,317 @@
+import {
+  POLL_DEFAULTS,
+  type FailureFreshness,
+  type FreshnessState,
+  type Provider,
+  type ProviderConfig,
+  type ProviderDescriptor,
+  type ProviderEnvelope,
+  type ProviderHealthEntry,
+} from "../contract/index.js";
+import { logger, type ProviderPollEvent } from "../log/logger.js";
+
+export interface ResolvedTiming {
+  pollIntervalMs: number;
+  ttlMs: number;
+  unreachableAfterMs: number;
+  timeoutMs: number;
+  failureFreshness: FailureFreshness;
+}
+
+export interface DeriveInput {
+  isStatic: boolean;
+  hasSuccess: boolean;
+  errored: boolean;
+  failureFreshness: FailureFreshness;
+  ageMs: number | null;
+  ttlMs: number;
+  unreachableAfterMs: number;
+}
+
+interface Slot<T = unknown> {
+  readonly provider: Provider<T>;
+  readonly timing: ResolvedTiming;
+  readonly isStatic: boolean;
+  envelope: ProviderEnvelope<T>;
+  /** RFC 3339 timestamp of the latest successful fetch only. */
+  lastSuccessAt: string | null;
+  /** Current publishable payload, including an optional failure projection. */
+  retainedData: T | null;
+  /** Cached non-I/O health published by the latest completed poll. */
+  health: ProviderHealthEntry;
+  timer?: ReturnType<typeof setInterval>;
+  inFlight: boolean;
+  /** Wall-clock duration of the latest completed poll; null before the first poll. */
+  lastLatencyMs: number | null;
+  /** Completed polls that fetched successfully. */
+  successCount: number;
+  /** Completed polls that failed (threw, rejected, or timed out). */
+  failureCount: number;
+}
+
+/** Per-provider poll counters and last-poll latency, retained on the slot by tick(). */
+export interface ProviderPollMetrics {
+  readonly id: string;
+  readonly kind: ProviderDescriptor["kind"];
+  readonly successTotal: number;
+  readonly failureTotal: number;
+  /** Latest completed poll duration in ms; null before the first poll. */
+  readonly lastLatencyMs: number | null;
+}
+
+const slots = new Map<string, Slot<unknown>>();
+
+/** Derive the public freshness state from cached success, age, and failure policy. */
+export function deriveState(input: DeriveInput): FreshnessState {
+  if (input.isStatic) return "static";
+  if (!input.hasSuccess) return "pending";
+  if (input.errored && input.failureFreshness === "immediate-unreachable") return "unreachable";
+  const age = input.ageMs ?? Number.POSITIVE_INFINITY;
+  if (age > input.unreachableAfterMs) return "unreachable";
+  if (age > input.ttlMs) return "stale";
+  return "fresh";
+}
+
+/** Resolve provider timing defaults, including the TTL-derived unreachable threshold. */
+export function resolveTiming(opts?: ProviderConfig): ResolvedTiming {
+  const ttlMs = opts?.ttlMs ?? POLL_DEFAULTS.ttlMs;
+  return {
+    pollIntervalMs: opts?.pollIntervalMs ?? POLL_DEFAULTS.pollIntervalMs,
+    ttlMs,
+    unreachableAfterMs: opts?.unreachableAfterMs ?? 3 * ttlMs,
+    timeoutMs: opts?.timeoutMs ?? POLL_DEFAULTS.timeoutMs,
+    failureFreshness: opts?.failureFreshness ?? "immediate-unreachable",
+  };
+}
+
+/** Register one provider and initialize its cached envelope; duplicate ids throw. */
+export function register<T>(provider: Provider<T>, opts?: ProviderConfig): void {
+  if (slots.has(provider.id)) {
+    const error = new Error(`Provider id already registered: ${provider.id}`) as Error & {
+      code: string;
+    };
+    error.code = "PROVIDER_DUPLICATE_ID";
+    throw error;
+  }
+
+  const slot = {
+    provider,
+    timing: resolveTiming(opts),
+    isStatic: provider.kind === "link",
+    lastSuccessAt: null,
+    retainedData: null,
+    health: { kind: provider.kind, ok: false, detail: "Awaiting first poll" },
+    inFlight: false,
+    lastLatencyMs: null,
+    successCount: 0,
+    failureCount: 0,
+  } as Slot<T>;
+  publish(slot, null);
+  slots.set(provider.id, slot as Slot<unknown>);
+
+  if (slot.isStatic) void tick(slot);
+}
+
+/** Read one cached envelope without invoking provider, filesystem, or network I/O. */
+export function read(id: string): ProviderEnvelope<unknown> | undefined {
+  const slot = slots.get(id);
+  if (!slot) return undefined;
+  publish(slot, slot.envelope.error);
+  return slot.envelope;
+}
+
+/** Start polling every registered dynamic provider and trigger its initial poll. */
+export function startScheduler(): void {
+  for (const slot of slots.values()) {
+    if (slot.isStatic || slot.timer !== undefined) continue;
+    slot.timer = setInterval(() => void tick(slot), slot.timing.pollIntervalMs);
+    void tick(slot);
+  }
+}
+
+/** Stop every polling timer and clear all registered provider state. */
+export function stopScheduler(): void {
+  for (const slot of slots.values()) {
+    if (slot.timer !== undefined) clearInterval(slot.timer);
+  }
+  slots.clear();
+}
+
+/** Return the number of providers currently held by the process-local registry. */
+export function providerCount(): number {
+  return slots.size;
+}
+
+/** Return cached provider envelopes in deterministic id order without provider I/O. */
+export function listEnvelopes(): readonly ProviderEnvelope<unknown>[] {
+  return [...slots.keys()].sort().map((id) => read(id)!);
+}
+
+/**
+ * Return the registered providers' identities (id + kind) in deterministic id
+ * order. Performs no provider, filesystem, or network I/O — it is the discovery
+ * list the web reads so it polls only providers that actually registered.
+ */
+export function listProviders(): readonly ProviderDescriptor[] {
+  return [...slots.keys()].sort().map((id) => ({ id, kind: slots.get(id)!.provider.kind }));
+}
+
+/**
+ * Return a deeply frozen, id-sorted snapshot of cached provider health.
+ * Performs no provider, filesystem, or network I/O.
+ */
+export function listHealth(): Readonly<Record<string, ProviderHealthEntry>> {
+  const result = Object.create(null) as Record<string, ProviderHealthEntry>;
+  for (const id of [...slots.keys()].sort()) {
+    result[id] = Object.freeze({ ...slots.get(id)!.health });
+  }
+  return Object.freeze(result);
+}
+
+/**
+ * Return per-provider poll counters and last-poll latency in deterministic id order.
+ * Performs no provider, filesystem, or network I/O.
+ */
+export function listMetrics(): readonly ProviderPollMetrics[] {
+  return [...slots.keys()].sort().map((id) => {
+    const slot = slots.get(id)!;
+    return Object.freeze({
+      id,
+      kind: slot.provider.kind,
+      successTotal: slot.successCount,
+      failureTotal: slot.failureCount,
+      lastLatencyMs: slot.lastLatencyMs,
+    });
+  });
+}
+
+async function tick<T>(slot: Slot<T>): Promise<void> {
+  if (slot.inFlight) return;
+  slot.inFlight = true;
+  const startedAt = Date.now();
+  const from = slot.envelope.freshness.state;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), slot.timing.timeoutMs);
+  let ok = false;
+
+  try {
+    const data = await withTimeout(
+      slot.provider.fetch({ signal: controller.signal }),
+      controller.signal,
+      slot.timing.timeoutMs,
+    );
+    slot.lastSuccessAt = new Date().toISOString();
+    slot.retainedData = data;
+    publish(slot, null);
+    ok = true;
+    slot.health = await captureHealth(slot);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    projectFailure(slot, error);
+    publish(slot, { message });
+    slot.health = { kind: slot.provider.kind, ok: false, detail: message };
+  } finally {
+    clearTimeout(timeout);
+    slot.inFlight = false;
+    const latencyMs = Date.now() - startedAt;
+    slot.lastLatencyMs = latencyMs;
+    if (ok) slot.successCount += 1;
+    else slot.failureCount += 1;
+    try {
+      // A failed poll logs at warn so it stays visible under DECK_LOG_LEVEL=warn;
+      // a successful poll stays at info.
+      const pollEvent = {
+        event: "provider.poll",
+        id: slot.provider.id,
+        kind: slot.provider.kind,
+        ok,
+        latencyMs,
+        from,
+        to: slot.envelope.freshness.state,
+      } satisfies ProviderPollEvent;
+      if (ok) {
+        logger.info(pollEvent, "provider poll");
+      } else {
+        logger.warn(pollEvent, "provider poll failed");
+      }
+    } catch {
+      // Observability must never turn an isolated provider failure into a scheduler failure.
+    }
+  }
+}
+
+/** Read the now non-I/O provider health, isolating a rejecting or invalid snapshot. */
+async function captureHealth<T>(slot: Slot<T>): Promise<ProviderHealthEntry> {
+  try {
+    const health = await slot.provider.health();
+    if (health === null || typeof health !== "object" || typeof health.ok !== "boolean") {
+      return { kind: slot.provider.kind, ok: false, detail: "Provider health unavailable" };
+    }
+    return { kind: slot.provider.kind, ok: health.ok, ...(health.detail === undefined ? {} : { detail: health.detail }) };
+  } catch {
+    return { kind: slot.provider.kind, ok: false, detail: "Provider health unavailable" };
+  }
+}
+
+/**
+ * Project a failed poll into retained data via the optional hook without recording success.
+ * A throwing hook is isolated and leaves the pre-hook retained data unchanged.
+ */
+function projectFailure<T>(slot: Slot<T>, error: unknown): void {
+  if (slot.provider.onFetchError === undefined) return;
+  try {
+    const projected = slot.provider.onFetchError(error, slot.retainedData);
+    slot.retainedData = projected === null ? null : deepFreeze(projected);
+  } catch {
+    // Hook exceptions are never published; retain the pre-hook payload unchanged.
+  }
+}
+
+function publish<T>(slot: Slot<T>, error: { message: string } | null): void {
+  const observedAt = slot.isStatic ? null : slot.lastSuccessAt;
+  const ageMs = observedAt === null ? null : Math.max(0, Date.now() - Date.parse(observedAt));
+  const state = deriveState({
+    isStatic: slot.isStatic,
+    hasSuccess: slot.lastSuccessAt !== null,
+    errored: error !== null,
+    failureFreshness: slot.timing.failureFreshness,
+    ageMs,
+    ttlMs: slot.timing.ttlMs,
+    unreachableAfterMs: slot.timing.unreachableAfterMs,
+  });
+  slot.envelope = deepFreeze({
+    id: slot.provider.id,
+    kind: slot.provider.kind,
+    freshness: {
+      state,
+      observedAt,
+      ageMs: slot.isStatic ? null : ageMs,
+      ttlMs: slot.isStatic ? null : slot.timing.ttlMs,
+    },
+    data: slot.retainedData,
+    error,
+  });
+}
+
+function withTimeout<T>(promise: Promise<T>, signal: AbortSignal, timeoutMs: number): Promise<T> {
+  if (signal.aborted) return Promise.reject(timeoutError(timeoutMs));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(timeoutError(timeoutMs));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
+function timeoutError(timeoutMs: number): Error {
+  const error = new Error(`Provider poll timed out after ${timeoutMs}ms`);
+  error.name = "TimeoutError";
+  return error;
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
+}

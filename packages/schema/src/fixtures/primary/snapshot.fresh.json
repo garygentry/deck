@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-02T15:00:00Z",
+  "hosts": [{ "name": "azurite", "coverage": "collected", "collectedAt": "2026-09-02T14:59:00Z", "reachable": true }]
+}

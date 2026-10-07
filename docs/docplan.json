@@ -1,0 +1,567 @@
+{
+  "version": "1.0",
+  "provenance": {
+    "generatedBy": "content-architect",
+    "generatedAt": "2026-09-20",
+    "repoRef": "main"
+  },
+  "scope": "both",
+  "project": {
+    "name": "deck",
+    "kind": "app",
+    "summary": "A generic, config-driven hub engine — the single human entry point to a home-lab estate: launch portal with service status, inventory beside reality (drift and coverage), and a monitoring overview, with slots for governed actions and in-deck docs/configs."
+  },
+  "audiences": [
+    {
+      "id": "operator",
+      "name": "Estate operator",
+      "description": "Runs deck against their own home-lab estate: authors the estate config repo, deploys deck, wires monitoring, and keeps the observed-reality snapshot fresh. Comfortable with YAML, Docker, and a terminal; not a deck contributor.",
+      "expertise": "intermediate"
+    },
+    {
+      "id": "maintainer",
+      "name": "Engine maintainer",
+      "description": "Works on deck's own code — the schema, server, providers, drift engine, and web app. Needs the architecture spine and the internal HTTP contract.",
+      "expertise": "expert"
+    }
+  ],
+  "sources": [
+    { "id": "s-cli", "path": "apps/server/src/cli/{deck,render,validate,args}.ts", "type": "entrypoint", "note": "The `deck` bin: `validate` and `render` subcommands, arg parsing, exit classes (0 clean / 1 findings / 2 tool error)." },
+    { "id": "s-boot", "path": "apps/server/src/server/{boot,app}.ts", "type": "entrypoint", "note": "Server boot: load config, resolve sources+actions runtimes, register providers, start poll scheduler, build Hono app, serve under Bun. Fail-fast on bad config." },
+    { "id": "s-web", "path": "apps/web/src/{main.tsx,shell/App.tsx,registry/,features/}", "type": "entrypoint", "note": "React SPA. Feature auto-discovery via registry; registered nav: home, portal, hosts, services, docs, monitoring, drift, actions (+ detail routes)." },
+    { "id": "s-root-pkg", "path": "package.json, pnpm-workspace.yaml", "type": "manifest", "note": "Real workspace commands: dev, start, build, test, typecheck, snapshot:example. Bun runs server+schema from TS source; only web is built." },
+    { "id": "s-schema-pkg", "path": "packages/schema/package.json, packages/schema/src/index.ts", "type": "manifest", "note": "@deck/schema public exports: validate, validateSnapshot, merge, classify, KNOWN_PROVIDER_KINDS, and all config/snapshot/findings types. JSON Schemas are authoritative; .ts types are generated." },
+    { "id": "s-deck-schema", "path": "packages/schema/schema/deck.schema.json, packages/schema/src/types.config.generated.ts", "type": "schema", "note": "Authoritative estate-config shape: required schemaVersion(1)+estate; optional hosts/services/groups/sources/integrations/actions/agents/llmUsage. Defines Source (incl. credentialEnv = env-var NAME), Integration, Action, LlmUsage." },
+    { "id": "s-snapshot-schema", "path": "packages/schema/schema/snapshot.schema.json, packages/schema/src/types.snapshot.generated.ts", "type": "schema", "note": "Authoritative observed-reality contract: ObservedHost/Service, coverage (collected|partial|unreachable), DriftFinding, Waiver, generatedAt." },
+    { "id": "s-config", "path": "apps/server/src/config/{resolve-dir,load,canonical}.ts, packages/schema/src/merge.ts", "type": "config", "note": "Config dir resolution (--config / $DECK_CONFIG_DIR / ./config), lexical *.yaml layering (00-base before 10-overlay), YAML→merge→validate, canonicalization." },
+    { "id": "s-validate", "path": "packages/schema/src/validate/**", "type": "api", "note": "Rule-based validator: identity, layers, provider-kinds, references, secrets, types, version. Findings + exit classification." },
+    { "id": "s-api", "path": "apps/server/src/server/app.ts, apps/server/src/{sources,actions}/route.ts, apps/server/src/contract/{api,index}.ts", "type": "api", "note": "HTTP route table (/api/config, /api/providers[/:id], /api/health, /api/sources/:id/{tree,file,raw,search}, /api/actions*) and the typed @deck/server contract barrel consumed by the web app." },
+    { "id": "s-providers", "path": "apps/server/src/providers/**", "type": "api", "note": "9 provider kinds — alertmanager, docker, file-tree, gatus, http-health, link, markdown-tree, prometheus, snapshot — plus registry (register/read/startScheduler/listHealth) and wiring (registerAllProviders)." },
+    { "id": "s-drift", "path": "apps/server/src/drift/**", "type": "api", "note": "Server-derived drift/coverage projection: deriveDriftProjection, filters, evidence, ordering, coverage rows/counts, severities, waiver state." },
+    { "id": "s-sources", "path": "apps/server/src/sources/**", "type": "api", "note": "Read-only source browsing: tree/file/raw/search, path confinement (confine.ts), git acquisition + on-disk cache, capability gating (SOURCE_NOT_FOUND when off)." },
+    { "id": "s-llm-usage", "path": "apps/server/src/llm-usage/**", "type": "api", "note": "LLM usage collector: Claude statusLine/OAuth/transcripts and Codex app-server/rollout sources, adaptive cadence with the 2-minute OAuth floor, /api/llm-usage routes and the ingest bearer gate."},
+    { "id": "s-actions", "path": "apps/server/src/actions/**", "type": "api", "note": "Governed actions: executor, runner allowlist, param validation, audit store, run events. Capability OFF by default; routes 403 until enabled." },
+    { "id": "s-secrets", "path": "packages/schema/src/secrets.ts, packages/schema/src/validate/rules/secrets.ts", "type": "config", "note": "Secret-reference model: credentialEnv holds an env-var NAME (pattern ^[A-Z][A-Z0-9_]*$), never a value; suspected-secret detection in validation." },
+    { "id": "s-freshness", "path": "apps/server/src/contract/freshness.ts, apps/server/src/providers/registry.ts", "type": "api", "note": "Freshness model (FreshnessStamp/State, ProviderEnvelope) and deriveState; snapshotStaleAfter drives host freshness." },
+    { "id": "s-env", "path": "apps/server/src/server/boot.ts, apps/server/src/sources/runtime.ts, apps/server/src/actions/runtime.ts", "type": "config", "note": "DECK_* env vars: CONFIG_DIR, PORT, SNAPSHOT_SOURCE, WEB_DIST, LOG_LEVEL, SOURCES_CACHE_DIR, ACTIONS_ENABLED, DATA_DIR, RUNNERS_FILE, ACTION_TIMEOUT_MS." },
+    { "id": "s-e2e", "path": "apps/web/test/e2e/*.spec.ts, apps/web/test/e2e/start-inventory-api.ts", "type": "test", "note": "Playwright operator flows (inventory, drift, actions, alerts, sources). start-inventory-api.ts is the canonical full-engine wiring: build config/overlay/snapshot scenario, boot(), materialize source fixtures." },
+    { "id": "s-server-tests", "path": "apps/server/test/*.integration.test.ts", "type": "test", "note": "HTTP integration tests (provider-routes, alerts-routes, sources-routes) — verified request/response usage." },
+    { "id": "s-schema-tests", "path": "packages/schema/src/**/*.test.ts, packages/schema/src/fixtures/**", "type": "test", "note": "Validation/merge/ownership behavior with rich valid + invalid fixtures — ground truth for what a well-formed estate/snapshot is." },
+    { "id": "s-examples", "path": "examples/estate/**, examples/compose.yaml", "type": "config", "note": "Worked estate: 00-base + 10-overlay YAML, configs/, docs/, snapshot.template.json; reference docker-compose mounting ./estate:/config:ro." },
+    { "id": "s-docker", "path": "Dockerfile, docker/entrypoint.sh, .dockerignore", "type": "ci", "note": "Multi-stage build (node:22 builder → oven/bun runtime), single Bun process serves web+API, container defaults (/config, :8080), HEALTHCHECK on /api/health, snapshot templating at boot." },
+    { "id": "s-ci", "path": ".github/workflows/ci.yml", "type": "ci", "note": "Jobs: node-pnpm (typecheck+unit), web-e2e (sharded Playwright), bun-parity (vitest under Bun), gates (barrel-drift, golden render, boot smoke)." },
+    { "id": "s-charter", "path": "specs/deck/charter/01-decisions.md, specs/deck/**/.rauf/forge-decisions.json", "type": "history", "note": "Design decisions recorded during the forge pipeline — the why behind runtime, config layering, and the two-document model. Provenance for proposed ADRs; not user docs." }
+  ],
+  "documents": [
+    {
+      "id": "t1",
+      "title": "Get started with deck",
+      "slug": "get-started",
+      "family": "diataxis",
+      "type": "tutorial",
+      "audience": ["operator"],
+      "purpose": "Take a newcomer from clone to a running deck showing live data on every surface, using the bundled example estate — guaranteed to succeed, no estate of their own required.",
+      "sourceRefs": ["s-root-pkg", "s-examples", "s-boot", "s-e2e"],
+      "status": "planned",
+      "priority": 1,
+      "outline": [
+        { "heading": "Prerequisites", "intent": "State the exact runtime versions needed (Bun, Node 22, pnpm 10) — one path, no alternatives.", "sourceRefs": ["s-root-pkg", "s-docker"] },
+        { "heading": "Install and run", "intent": "`pnpm install` then `pnpm dev`, landing on the web UI. On-rails, one outcome.", "sourceRefs": ["s-root-pkg"] },
+        { "heading": "Tour the surfaces", "intent": "Click through portal, hosts/services, drift, docs, and configs populated from the example estate; note that monitoring shows an empty 'no backends' state until an integration is connected.", "sourceRefs": ["s-web", "s-examples"] },
+        { "heading": "Where the data came from", "intent": "One paragraph pointing at examples/estate/ and the generated snapshot, as the bridge to the how-to guides — no deep explanation.", "sourceRefs": ["s-examples"] }
+      ],
+      "verification": "Flow verified against the `dev` script in package.json and the e2e boot harness (start-inventory-api.ts). The example estate populates portal, hosts, services, drift (snapshot) and docs/configs (local sources) with no network; it declares no integrations, so the monitoring surface stays empty until one is connected (see gap g-example-monitoring)."
+    },
+    {
+      "id": "h1",
+      "title": "Configure your estate",
+      "slug": "guides/configure-your-estate",
+      "family": "diataxis",
+      "type": "how-to",
+      "audience": ["operator"],
+      "purpose": "Guide an operator through authoring their own estate config repo — hosts, services, portal groups, and base/overlay layering — pointing deck at it via DECK_CONFIG_DIR.",
+      "sourceRefs": ["s-deck-schema", "s-config", "s-examples", "s-cli"],
+      "status": "needs-restructure",
+      "priority": 2,
+      "outline": [
+        { "heading": "Set up the config directory and layers", "intent": "How base (00-*.yaml) and overlay (10-*.yaml) files combine; where deck looks.", "sourceRefs": ["s-config"] },
+        { "heading": "Declare hosts and services", "intent": "Task-focused steps to add inventory entities, with a minimal working example.", "sourceRefs": ["s-deck-schema", "s-examples"] },
+        { "heading": "Lay out the portal (groups)", "intent": "Arrange the launch portal via groups/items.", "sourceRefs": ["s-deck-schema"] },
+        { "heading": "Validate before you run", "intent": "Use `deck validate` to catch problems; link to the CLI reference.", "sourceRefs": ["s-cli", "s-validate"] }
+      ],
+      "verification": "RESTRUCTURE of the existing docs/configuring-your-estate.md (~313 lines), which mixes how-to steps with full field-by-field description. Split: keep task steps here; move exhaustive key documentation to the Estate configuration reference (r1) and provider config to r3. Sources/integrations/actions authoring split into dedicated how-tos (h3/h2/h4)."
+    },
+    {
+      "id": "h2",
+      "title": "Connect monitoring and alerts",
+      "slug": "guides/connect-monitoring",
+      "family": "diataxis",
+      "type": "how-to",
+      "audience": ["operator"],
+      "purpose": "Wire deck to existing monitoring/alert endpoints (Gatus, Prometheus, Alertmanager, Docker) via estate integrations so the monitoring overview and health header populate; per-host/service http-health checks are added as bindings, covered in the reference.",
+      "sourceRefs": ["s-providers", "s-deck-schema", "s-env", "s-secrets"],
+      "status": "planned",
+      "priority": 3,
+      "outline": [
+        { "heading": "Declare an integration", "intent": "Add an integration entry (id/kind/title/baseUrl) for your monitoring backend (gatus/prometheus/alertmanager/docker).", "sourceRefs": ["s-deck-schema"] },
+        { "heading": "Authenticate to a protected endpoint", "intent": "Reference a credential via credentialEnv (env-var name), sent verbatim as the Authorization header; set the value at deploy time.", "sourceRefs": ["s-secrets", "s-env"] },
+        { "heading": "Verify it is polling", "intent": "Check /api/health and the monitoring surface; interpret degraded vs ok.", "sourceRefs": ["s-providers", "s-freshness"] }
+      ],
+      "verification": "RESOLVED: per-kind config verified by reading each provider's index.ts. Note the verified facts now reflected in the draft: http-health and link are host/service BINDINGS, not integrations; integration providers register under a fixed id equal to their kind and only the first integration of each kind is polled; the credentialEnv value is sent verbatim as the Authorization header (no Bearer prefix)."
+    },
+    {
+      "id": "h3",
+      "title": "Serve docs and configs from your estate",
+      "slug": "guides/serve-docs-and-configs",
+      "family": "diataxis",
+      "type": "how-to",
+      "audience": ["operator"],
+      "purpose": "Expose an estate's runbooks and config files inside deck by declaring file-tree / markdown-tree sources, so the Docs and Configs surfaces render them read-only.",
+      "sourceRefs": ["s-sources", "s-deck-schema", "s-examples"],
+      "status": "planned",
+      "priority": 4,
+      "outline": [
+        { "heading": "Declare a source", "intent": "Add a source (id/kind/title/location) pointing at a path or repo, with include/exclude globs.", "sourceRefs": ["s-deck-schema"] },
+        { "heading": "Enable the sources capability", "intent": "What must be present for the Docs/Configs surfaces and /api/sources routes to activate.", "sourceRefs": ["s-sources"] },
+        { "heading": "Browse and search", "intent": "How the tree, file view, raw, and search behave in the UI.", "sourceRefs": ["s-sources", "s-e2e"] }
+      ],
+      "verification": "Source model and capability gating verified against apps/server/src/sources/** and sources-routes integration + e2e. Private-repo authentication is covered separately in h7."
+    },
+    {
+      "id": "h4",
+      "title": "Enable and define governed actions",
+      "slug": "guides/governed-actions",
+      "family": "diataxis",
+      "type": "how-to",
+      "audience": ["operator"],
+      "purpose": "Turn on the (default-off) actions capability, register an allowlisted runner, author an action with confirmation and params, and run it from the UI with an audit trail.",
+      "sourceRefs": ["s-actions", "s-deck-schema", "s-env"],
+      "status": "planned",
+      "priority": 5,
+      "outline": [
+        { "heading": "Enable the capability", "intent": "Set DECK_ACTIONS_ENABLED, DECK_DATA_DIR, DECK_RUNNERS_FILE; explain the 403-until-enabled posture.", "sourceRefs": ["s-actions", "s-env"] },
+        { "heading": "Register a runner", "intent": "Map a runner name to an executable in the runners allowlist (deck never runs a raw command).", "sourceRefs": ["s-actions"] },
+        { "heading": "Author an action", "intent": "Add an action (runner, confirm level, params, target) to the estate config.", "sourceRefs": ["s-deck-schema"] },
+        { "heading": "Run and audit", "intent": "Trigger a run, confirm, cancel, and read the audit history.", "sourceRefs": ["s-actions"] }
+      ],
+      "verification": "Capability gating, runner allowlist, confirm levels, and audit verified against apps/server/src/actions/** and actions tests. Complements the governed-actions architecture note (ax2), which is why (not how)."
+    },
+    {
+      "id": "h5",
+      "title": "Produce and refresh a snapshot",
+      "slug": "guides/produce-a-snapshot",
+      "family": "diataxis",
+      "type": "how-to",
+      "audience": ["operator"],
+      "purpose": "Generate an observed-reality snapshot for a real estate and keep it fresh, pointing deck at it via DECK_SNAPSHOT_SOURCE (file or HTTP URL).",
+      "sourceRefs": ["s-snapshot-schema", "s-docker", "s-examples", "s-env"],
+      "status": "needs-restructure",
+      "priority": 6,
+      "outline": [
+        { "heading": "Point deck at a snapshot", "intent": "Set DECK_SNAPSHOT_SOURCE to a file path or URL; what feeds Hosts/Services/Drift.", "sourceRefs": ["s-env"] },
+        { "heading": "Generate one from a template", "intent": "Use the template→snapshot mechanism (make-example-snapshot.mjs / entrypoint) for now-relative timestamps.", "sourceRefs": ["s-docker", "s-examples"] },
+        { "heading": "Keep it fresh", "intent": "How snapshotStaleAfter and the wall clock drive host freshness; scheduling a refresh.", "sourceRefs": ["s-freshness"] }
+      ],
+      "verification": "RESTRUCTURE of docs/producing-a-snapshot.md (~203 lines), which mixes the contract with the how-to. Split: keep generation/refresh steps here; move the field-by-field snapshot contract to the Snapshot contract reference (r2)."
+    },
+    {
+      "id": "h6",
+      "title": "Deploy deck",
+      "slug": "guides/deploy",
+      "family": "diataxis",
+      "type": "how-to",
+      "audience": ["operator"],
+      "purpose": "Run deck against a real estate in production: Docker/compose, config and snapshot volumes, health checks, and fronting it with an authenticating reverse proxy.",
+      "sourceRefs": ["s-docker", "s-examples", "s-env"],
+      "status": "needs-restructure",
+      "priority": 7,
+      "outline": [
+        { "heading": "Run the container", "intent": "docker/compose with ./estate mounted at /config:ro; the single Bun process serving web+API.", "sourceRefs": ["s-docker", "s-examples"] },
+        { "heading": "Wire config and snapshot", "intent": "Mount config, set DECK_SNAPSHOT_SOURCE; link to h5.", "sourceRefs": ["s-env"] },
+        { "heading": "Health and restarts", "intent": "The /api/health check and container restart posture.", "sourceRefs": ["s-docker"] },
+        { "heading": "Front with an authenticating proxy", "intent": "Deck has no built-in auth; access control is the proxy's job. Link to the security explanation (e3).", "sourceRefs": ["s-docker"] }
+      ],
+      "verification": "EXISTING docs/deploying.md (~210 lines) is a solid how-to; restructure only to relocate its env-var table into the Environment variables reference (r4) and keep this as steps."
+    },
+    {
+      "id": "h7",
+      "title": "Use private repositories as sources",
+      "slug": "guides/private-repo-sources",
+      "family": "diataxis",
+      "type": "how-to",
+      "audience": ["operator"],
+      "purpose": "Point a source or integration at a private git repo or protected endpoint by referencing a credential through credentialEnv and supplying the value at deploy time.",
+      "sourceRefs": ["s-sources", "s-deck-schema", "s-secrets", "s-env"],
+      "status": "planned",
+      "priority": 8,
+      "outline": [
+        { "heading": "Name the credential in config", "intent": "Set credentialEnv to an env-var NAME (never the secret) on the source/integration.", "sourceRefs": ["s-deck-schema", "s-secrets"] },
+        { "heading": "Provide the value at deploy time", "intent": "Set that env var in the container/host; how git acquisition uses it.", "sourceRefs": ["s-env", "s-sources"] },
+        { "heading": "Verify without leaking", "intent": "Confirm the fetch works; note that secrets never enter config or the API surface.", "sourceRefs": ["s-secrets"] }
+      ],
+      "verification": "RESOLVED: git-auth mechanism fully verified in sources/acquire.ts. h7 is written as fact — the token applies only to HTTPS remotes, is sent as Authorization: Basic base64('x-access-token:<token>') via GIT_CONFIG_* env for the clone spawn only (never in URL/argv, so it never persists to .git/config), ssh remotes ignore it, and a named-but-unset var yields an unauthenticated clone."
+    },
+    {
+      "id": "h8",
+      "title": "Track Claude Code and Codex plan usage",
+      "slug": "guides/llm-usage",
+      "family": "diataxis",
+      "type": "how-to",
+      "audience": ["operator"],
+      "purpose": "Enable the llmUsage section, mount the Claude credentials and the Codex home, and wire the Claude Code statusLine hook to the ingest route.",
+      "sourceRefs": ["s-llm-usage", "s-deck-schema", "s-env", "s-docker"],
+      "status": "drafted",
+      "priority": 9,
+      "outline": [
+        { "heading": "How deck gets the numbers", "intent": "The six sources, what each gives and needs, and the statusLine/OAuth merge.", "sourceRefs": ["s-deck-schema"] },
+        { "heading": "Enable it in the estate config", "intent": "The llmUsage keys, the 2-minute OAuth floor, idle pause and thresholds.", "sourceRefs": ["s-deck-schema"] },
+        { "heading": "Mount the credentials and data", "intent": "Read-only Claude credentials, read-write Codex home (the host's own, not a copy).", "sourceRefs": ["s-docker"] },
+        { "heading": "Push live Claude Code numbers with the statusLine hook", "intent": "Token setup, settings.json, reverse-proxy exemption for the ingest route only.", "sourceRefs": ["s-env"] },
+        { "heading": "Read the page", "intent": "Per-bar attribution and the source states in Diagnostics.", "sourceRefs": ["s-deck-schema"] }
+      ],
+      "verification": "Written against apps/server/src/llm-usage (collector, routes, config) and scripts/statusline-ingest.sh."
+    },
+    {
+      "id": "r1",
+      "title": "Estate configuration reference",
+      "slug": "reference/estate-config",
+      "family": "diataxis",
+      "type": "reference",
+      "audience": ["operator", "maintainer"],
+      "purpose": "A complete, scannable description of every estate-config key: top-level document, estate, hosts, services, groups, sources, integrations, actions, agents.",
+      "sourceRefs": ["s-deck-schema", "s-schema-pkg", "s-validate"],
+      "status": "planned",
+      "priority": 2,
+      "outline": [
+        { "heading": "Document envelope", "intent": "schemaVersion (const 1) and estate; how layers merge into one document.", "sourceRefs": ["s-deck-schema"] },
+        { "heading": "Inventory: hosts and services", "intent": "Every field with type and constraints.", "sourceRefs": ["s-deck-schema"] },
+        { "heading": "Portal: groups and items", "intent": "Group/subgroup/item shapes.", "sourceRefs": ["s-deck-schema"] },
+        { "heading": "Sources, integrations, actions, agents", "intent": "Field tables incl. credentialEnv, confirm levels, params.", "sourceRefs": ["s-deck-schema"] }
+      ],
+      "verification": "Derived directly from the authoritative deck.schema.json (types are generated from it). Extracts the reference material currently embedded in configuring-your-estate.md."
+    },
+    {
+      "id": "r2",
+      "title": "Snapshot contract reference",
+      "slug": "reference/snapshot-contract",
+      "family": "diataxis",
+      "type": "reference",
+      "audience": ["operator", "maintainer"],
+      "purpose": "The authoritative shape of the observed-reality snapshot: envelope, observed hosts/services, coverage states, drift findings, and waivers.",
+      "sourceRefs": ["s-snapshot-schema", "s-schema-pkg"],
+      "status": "planned",
+      "priority": 3,
+      "outline": [
+        { "heading": "Envelope", "intent": "schemaVersion and generatedAt (RFC3339).", "sourceRefs": ["s-snapshot-schema"] },
+        { "heading": "Observed hosts and services", "intent": "Fields, collectors, coverage enum (collected|partial|unreachable).", "sourceRefs": ["s-snapshot-schema"] },
+        { "heading": "Drift findings and waivers", "intent": "DriftFinding/DriftLocation/Waiver fields and severities.", "sourceRefs": ["s-snapshot-schema"] }
+      ],
+      "verification": "Derived from the authoritative snapshot.schema.json. Extracts the contract material currently embedded in producing-a-snapshot.md."
+    },
+    {
+      "id": "r3",
+      "title": "Provider kinds reference",
+      "slug": "reference/provider-kinds",
+      "family": "diataxis",
+      "type": "reference",
+      "audience": ["operator", "maintainer"],
+      "purpose": "Look up each of the nine provider kinds and its configuration: alertmanager, docker, file-tree, gatus, http-health, link, markdown-tree, prometheus, snapshot.",
+      "sourceRefs": ["s-providers", "s-deck-schema"],
+      "status": "planned",
+      "priority": 5,
+      "outline": [
+        { "heading": "How providers are configured", "intent": "The integration/source → provider mapping and polling.", "sourceRefs": ["s-providers", "s-deck-schema"] },
+        { "heading": "Per-kind configuration", "intent": "One scannable subsection per kind: purpose, config keys, credentialEnv support.", "sourceRefs": ["s-providers"] }
+      ],
+      "verification": "RESOLVED: per-kind config keys read from each provider's index.ts. Documents the split between integration-backed kinds (docker/gatus/prometheus/alertmanager), source-backed kinds (file-tree/markdown-tree), the host/service binding kinds (http-health/link), and the runtime singleton (snapshot), with POLL_DEFAULTS and freshness states."
+    },
+    {
+      "id": "r4",
+      "title": "Environment variables",
+      "slug": "reference/environment-variables",
+      "family": "diataxis",
+      "type": "reference",
+      "audience": ["operator", "maintainer"],
+      "purpose": "A single lookup table of every DECK_* environment variable: meaning, default, and which capability it gates.",
+      "sourceRefs": ["s-env", "s-boot", "s-docker"],
+      "status": "planned",
+      "priority": 4,
+      "outline": [
+        { "heading": "Core", "intent": "DECK_CONFIG_DIR, DECK_PORT, DECK_SNAPSHOT_SOURCE, DECK_WEB_DIST, DECK_LOG_LEVEL.", "sourceRefs": ["s-env", "s-boot"] },
+        { "heading": "Sources and actions", "intent": "DECK_SOURCES_CACHE_DIR; DECK_ACTIONS_ENABLED/DATA_DIR/RUNNERS_FILE/ACTION_TIMEOUT_MS.", "sourceRefs": ["s-env"] },
+        { "heading": "Credential env vars", "intent": "Estate-defined vars named via credentialEnv (values supplied at deploy time).", "sourceRefs": ["s-secrets"] }
+      ],
+      "verification": "Var names/defaults verified against boot.ts, sources/runtime.ts, actions/runtime.ts, and Dockerfile. Consolidates the tables currently in README and deploying.md."
+    },
+    {
+      "id": "r5",
+      "title": "CLI reference",
+      "slug": "reference/cli",
+      "family": "diataxis",
+      "type": "reference",
+      "audience": ["operator", "maintainer"],
+      "purpose": "Look up the `deck` CLI: the validate and render subcommands, their flags, and exit classes.",
+      "sourceRefs": ["s-cli", "s-validate"],
+      "status": "planned",
+      "priority": 6,
+      "outline": [
+        { "heading": "deck validate", "intent": "Args (dir / --config), what it checks, output.", "sourceRefs": ["s-cli", "s-validate"] },
+        { "heading": "deck render", "intent": "Args (dir / --config, --out), canonical output.", "sourceRefs": ["s-cli"] },
+        { "heading": "Exit classes", "intent": "0 clean, 1 findings, 2 tool error.", "sourceRefs": ["s-cli"] }
+      ],
+      "verification": "Verified against cli/{deck,render,validate,args}.ts and cli.test.ts."
+    },
+    {
+      "id": "r6",
+      "title": "HTTP API reference",
+      "slug": "reference/http-api",
+      "family": "diataxis",
+      "type": "reference",
+      "audience": ["maintainer"],
+      "purpose": "Reference for deck's internal HTTP surface — the routes the web app consumes — for contributors and anyone scripting against a deck instance.",
+      "sourceRefs": ["s-api", "s-providers", "s-sources", "s-actions"],
+      "status": "planned",
+      "priority": 9,
+      "outline": [
+        { "heading": "Config, providers, health", "intent": "GET /api/config, /api/providers[/:id], /api/health with response shapes.", "sourceRefs": ["s-api"] },
+        { "heading": "Sources", "intent": "GET /api/sources/:id/{tree,file,raw,search}; capability gating.", "sourceRefs": ["s-sources"] },
+        { "heading": "Actions", "intent": "GET/POST /api/actions*; 403-when-disabled.", "sourceRefs": ["s-actions"] },
+        { "heading": "Errors", "intent": "Error envelope and codes (NOT_FOUND, PROVIDER_NOT_FOUND, INTERNAL).", "sourceRefs": ["s-api"] }
+      ],
+      "verification": "Routes verified from app.ts + sources/route.ts + actions/route.ts; response shapes from contract/api.ts and integration tests. This surface is internal (proxy-fronted), so mark it as such rather than a stable public API."
+    },
+    {
+      "id": "e1",
+      "title": "Engine and estate: the config-driven contract",
+      "slug": "explanation/engine-and-estate",
+      "family": "diataxis",
+      "type": "explanation",
+      "audience": ["operator", "maintainer"],
+      "purpose": "Explain why deck carries no estate facts of its own — the generic engine reads a config-driven estate, and declared intent is kept separate from observed reality.",
+      "sourceRefs": ["s-deck-schema", "s-snapshot-schema", "s-config", "s-charter"],
+      "status": "planned",
+      "priority": 7,
+      "outline": [
+        { "heading": "Generic engine, projected estate", "intent": "Why deck is estate-agnostic and an estate repo projects facts into its schema.", "sourceRefs": ["s-deck-schema", "s-charter"] },
+        { "heading": "Layered configuration", "intent": "Why base/overlay layering, and the trade-offs.", "sourceRefs": ["s-config"] },
+        { "heading": "Intent vs reality", "intent": "Why config (intent) and snapshot (reality) are two documents, not one.", "sourceRefs": ["s-snapshot-schema"] }
+      ],
+      "diagrams": [
+        { "description": "Two-document model: estate config (declared intent, deck.schema.json) and the snapshot (observed reality, snapshot.schema.json) flowing into the deck engine, which derives drift from their difference.", "sourceRefs": ["s-deck-schema", "s-snapshot-schema", "s-drift"] }
+      ],
+      "verification": "Grounded in the two authoritative schemas, the config loader/merge, and the recorded charter decisions. The 'why' should be attributed to specs/deck/charter, not asserted as fact beyond it."
+    },
+    {
+      "id": "e2",
+      "title": "Inventory beside reality: how drift and coverage work",
+      "slug": "explanation/drift-and-coverage",
+      "family": "diataxis",
+      "type": "explanation",
+      "audience": ["operator", "maintainer"],
+      "purpose": "Explain how deck compares declared inventory to the observed snapshot to derive drift findings and coverage, and how freshness is judged from the wall clock.",
+      "sourceRefs": ["s-drift", "s-snapshot-schema", "s-freshness"],
+      "status": "planned",
+      "priority": 8,
+      "outline": [
+        { "heading": "What drift is", "intent": "Declared vs observed, and what a finding represents.", "sourceRefs": ["s-drift"] },
+        { "heading": "Coverage states", "intent": "collected / partial / unreachable and what they mean for trust.", "sourceRefs": ["s-snapshot-schema"] },
+        { "heading": "Freshness", "intent": "snapshotStaleAfter and clock-relative host freshness.", "sourceRefs": ["s-freshness"] }
+      ],
+      "verification": "Verified against apps/server/src/drift/**, the snapshot schema, and freshness.ts + registry.ts. Important nuance now reflected in the draft: drift FINDINGS are collector-authored into snapshot.drift[] — deck projects, groups, orders, counts, and classifies waivers, it does not itself diff config vs snapshot for findings. COVERAGE is deck's own comparison over declared∪observed, with five states (fresh/stale/partial/unreachable/never-collected)."
+    },
+    {
+      "id": "e3",
+      "title": "Access and security model",
+      "slug": "explanation/security",
+      "family": "diataxis",
+      "type": "explanation",
+      "audience": ["operator", "maintainer"],
+      "purpose": "Explain deck's security posture: no built-in auth (front it with an authenticating reverse proxy), the default-off actions capability, and secrets-by-reference (credentialEnv).",
+      "sourceRefs": ["s-secrets", "s-actions", "s-docker"],
+      "status": "existing",
+      "priority": 9,
+      "verification": "EXISTING docs/security.md (~61 lines) is already single-mode explanation and accurate. Keep; optionally expand with the actions default-off posture and credentialEnv-never-a-value rule, both verified in code."
+    },
+    {
+      "id": "c4-1",
+      "title": "System context and containers",
+      "slug": "architecture/context-and-containers",
+      "family": "architecture",
+      "type": "c4-view",
+      "subtype": "container",
+      "audience": ["maintainer"],
+      "purpose": "Show deck's running parts (web SPA, Bun server, @deck/schema) and its neighbors (estate config repo, snapshot source, monitoring endpoints, source repos) at a glance.",
+      "sourceRefs": ["s-boot", "s-web", "s-providers", "s-docker"],
+      "status": "planned",
+      "priority": 1,
+      "diagrams": [
+        { "description": "deck as one system: a single Bun process serving the React web SPA and the /api surface, using @deck/schema; reading an estate config directory and a snapshot source; polling monitoring endpoints (Gatus/Prometheus/Alertmanager/Docker/HTTP) and browsing source repos. Fronted by an operator-provided authenticating reverse proxy.", "sourceRefs": ["s-boot", "s-providers", "s-docker"] }
+      ],
+      "verification": "Containers and wiring derived from boot.ts/app.ts, the provider set, and the Dockerfile (single process). The reverse proxy is operator-provided and not in-repo (see gap g-topology)."
+    },
+    {
+      "id": "bb1",
+      "title": "Building-block view: engine subsystems",
+      "slug": "architecture/building-blocks",
+      "family": "architecture",
+      "type": "arc42-chapter",
+      "subtype": "building-block view",
+      "audience": ["maintainer"],
+      "purpose": "Map the server's internal subsystems and how a request/poll flows through them: config load/merge/validate, provider registry + scheduler, drift derivation, sources, and actions.",
+      "sourceRefs": ["s-config", "s-validate", "s-providers", "s-drift", "s-sources", "s-actions"],
+      "status": "planned",
+      "priority": 2,
+      "diagrams": [
+        { "description": "Server building blocks: config loader (YAML→merge→validate via @deck/schema) → boot wiring → provider registry + poll scheduler (9 provider kinds) → drift projection; plus the sources and actions runtimes, each capability-gated, exposed through the Hono app.", "sourceRefs": ["s-boot", "s-config", "s-providers", "s-drift"] }
+      ],
+      "verification": "Derived from the server source tree and boot wiring. Note that only 3 of the shipped features currently have per-feature architecture notes (ax1–ax3); this chapter is the missing spine that ties them together."
+    },
+    {
+      "id": "ax1",
+      "title": "Hosts and services",
+      "slug": "architecture/hosts-and-services",
+      "family": "architecture",
+      "type": "arc42-chapter",
+      "subtype": "building-block view",
+      "audience": ["maintainer"],
+      "purpose": "Describe the hosts-and-services (inventory) subsystem: how declared entities are matched to observed ones and presented.",
+      "sourceRefs": ["s-deck-schema", "s-snapshot-schema", "s-drift"],
+      "status": "existing",
+      "priority": 3,
+      "verification": "EXISTING docs/architecture/hosts-and-services.md (~83 lines). Keep as a building-block note under bb1; verify it still matches drift/derive.ts before publishing."
+    },
+    {
+      "id": "ax2",
+      "title": "Governed actions",
+      "slug": "architecture/governed-actions",
+      "family": "architecture",
+      "type": "arc42-chapter",
+      "subtype": "building-block view",
+      "audience": ["maintainer"],
+      "purpose": "Describe the governed-actions subsystem: capability gating, runner allowlist, confirmation, execution, and audit.",
+      "sourceRefs": ["s-actions"],
+      "status": "existing",
+      "priority": 4,
+      "verification": "EXISTING docs/architecture/governed-actions.md (~231 lines). Keep; it is the 'why/shape' companion to the how-to h4."
+    },
+    {
+      "id": "ax3",
+      "title": "Sources, docs and configs",
+      "slug": "architecture/sources-docs-and-configs",
+      "family": "architecture",
+      "type": "arc42-chapter",
+      "subtype": "building-block view",
+      "audience": ["maintainer"],
+      "purpose": "Describe the sources subsystem: acquisition, path confinement, caching, tree/file/search, and capability gating.",
+      "sourceRefs": ["s-sources", "s-secrets"],
+      "status": "existing",
+      "priority": 5,
+      "verification": "EXISTING docs/architecture/sources-docs-and-configs.md (~94 lines). Keep; it is the companion to how-tos h3/h7."
+    },
+    {
+      "id": "dep1",
+      "title": "Deployment view",
+      "slug": "architecture/deployment",
+      "family": "architecture",
+      "type": "arc42-chapter",
+      "subtype": "deployment view",
+      "audience": ["maintainer", "operator"],
+      "purpose": "Show how deck is packaged and run: the multi-stage Docker build, the single Bun runtime process, compose topology, and the CI gates that guard releases.",
+      "sourceRefs": ["s-docker", "s-ci", "s-examples"],
+      "status": "planned",
+      "priority": 6,
+      "diagrams": [
+        { "description": "Build/deploy pipeline: node:22 builder (pnpm install + vite build of @deck/web) → oven/bun runtime image (whole /app, serves web dist + /api on one process) → compose with ./estate mounted at /config:ro; CI gates (typecheck, unit, sharded e2e, bun-parity, barrel/golden/smoke).", "sourceRefs": ["s-docker", "s-ci"] }
+      ],
+      "verification": "Derived from Dockerfile, docker/entrypoint.sh, examples/compose.yaml, and ci.yml. No published-registry/release workflow exists; deployment is self-hosted Docker/compose (see gap g-topology)."
+    },
+    {
+      "id": "adr1",
+      "title": "ADR-001: Run the server and schema from TypeScript source under Bun",
+      "slug": "architecture/decisions/adr-001-bun-from-source",
+      "family": "architecture",
+      "type": "adr",
+      "audience": ["maintainer"],
+      "purpose": "Record the decision to run @deck/server and @deck/schema directly from TypeScript source under Bun, compiling only the web bundle.",
+      "sourceRefs": ["s-docker", "s-root-pkg", "s-charter"],
+      "status": "planned",
+      "priority": 1,
+      "verification": "Decision is observable in the Dockerfile and scripts (no server compile step). Confirm the rationale against specs/deck/charter/01-decisions.md before wording it as settled (see gap g-adr)."
+    },
+    {
+      "id": "adr2",
+      "title": "ADR-002: Layered estate config merged into one document",
+      "slug": "architecture/decisions/adr-002-layered-config",
+      "family": "architecture",
+      "type": "adr",
+      "audience": ["maintainer"],
+      "purpose": "Record the decision to author estate config as ordered YAML layers (base + overlay) merged and validated into a single canonical document.",
+      "sourceRefs": ["s-config", "s-validate", "s-charter"],
+      "status": "planned",
+      "priority": 2,
+      "verification": "Mechanism observable in config/resolve-dir.ts + merge.ts + the layer validation rules. Confirm rationale against charter decisions before finalizing (see gap g-adr)."
+    },
+    {
+      "id": "adr3",
+      "title": "ADR-003: Separate declared intent from observed reality",
+      "slug": "architecture/decisions/adr-003-intent-vs-reality",
+      "family": "architecture",
+      "type": "adr",
+      "audience": ["maintainer"],
+      "purpose": "Record the decision to model the estate as two documents — config (declared intent) and snapshot (observed reality) — with drift derived from their difference.",
+      "sourceRefs": ["s-deck-schema", "s-snapshot-schema", "s-drift", "s-charter"],
+      "status": "planned",
+      "priority": 3,
+      "verification": "Mechanism observable in the two schemas + drift/derive.ts. Confirm rationale against charter decisions before finalizing (see gap g-adr)."
+    },
+    {
+      "id": "ax4",
+      "title": "Web UI: stack, component library, and conventions",
+      "slug": "architecture/ui",
+      "family": "architecture",
+      "type": "arc42-chapter",
+      "subtype": "building-block view",
+      "audience": ["maintainer"],
+      "purpose": "Explain the web app's layers (@/ui primitives, patterns, hooks, lib; shell; features), the token/tone system, page registration and lazy loading, how to add a page or pattern, and how UI is tested (unit, E2E, axe, CI-only visual baselines).",
+      "sourceRefs": ["s-web"],
+      "status": "drafted",
+      "priority": 2,
+      "verification": "Derived from apps/web/src/{ui,shell,registry,styles} and the web test suites; the guardrail meta test enforces the conventions it describes."
+    },
+    {
+      "id": "adr4",
+      "title": "ADR-004: React 19, Tailwind CSS v4 and shadcn/ui for the web UI",
+      "slug": "architecture/decisions/adr-004-web-ui-stack",
+      "family": "architecture",
+      "type": "adr",
+      "audience": ["maintainer"],
+      "purpose": "Record the decision to rebuild the web UI on React 19, Tailwind CSS v4 and vendored shadcn/ui with a deck pattern layer and tone vocabulary.",
+      "sourceRefs": ["s-web"],
+      "status": "drafted",
+      "priority": 3,
+      "verification": "Stack observable in apps/web/package.json and apps/web/src/ui; consequences checked against the bundle build and CI."
+    }
+  ],
+  "grouping": [
+    { "title": "Getting started", "documents": ["t1"] },
+    { "title": "How-to guides", "documents": ["h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8"] },
+    { "title": "Reference", "documents": ["r1", "r2", "r3", "r4", "r5", "r6"] },
+    { "title": "Explanation", "documents": ["e1", "e2", "e3"] },
+    { "title": "Architecture", "documents": ["c4-1", "bb1", "ax1", "ax2", "ax3", "ax4", "dep1"] },
+    { "title": "Decisions", "documents": ["adr1", "adr2", "adr3", "adr4"] }
+  ],
+  "gaps": [
+    { "note": "docs/initial-release-plan.md (~425 lines) is a release-planning artifact, not product documentation. It is intentionally excluded from the corpus (like specs/); do not fold it into a user-facing doc.", "affects": [] },
+    { "note": "g-providers (RESOLVED during drafting): per-kind config was read from each provider's index.ts. Verified structure now in r3/h2 — integration-backed kinds are docker/gatus/prometheus/alertmanager (register under a fixed id equal to their kind; only the first integration of each kind is polled; credentialEnv is sent verbatim as the Authorization header); source-backed kinds are file-tree/markdown-tree; http-health and link are host/service BINDING kinds (http-health has url/method, no credentialEnv); snapshot is a runtime singleton fed by DECK_SNAPSHOT_SOURCE.", "affects": ["r3", "h2"] },
+    { "note": "g-git-auth (RESOLVED during drafting): verified in sources/acquire.ts. Token applies to HTTPS remotes only, sent as Authorization: Basic base64('x-access-token:<token>') via GIT_CONFIG_* env for the clone spawn only (never in URL/argv, so never persisted to .git/config); ssh remotes ignore it; a named-but-unset var yields an unauthenticated clone. h7 is written as fact.", "affects": ["h7"] },
+    { "note": "g-http-health-known-kinds (RESOLVED): confirmed bug — http-health is a real host/service binding kind (collectBinding in apps/server/src/providers/index.ts) but was omitted from KNOWN_PROVIDER_KINDS, so an http-health binding drew a spurious PROVIDER_KIND_UNKNOWN warning. Fixed: added http-health to the registry and CONTRACT.md, covered it in the primary fixture + golden render, and added a regression test.", "affects": ["r3", "h2"] },
+    { "note": "g-example-monitoring: the bundled example estate declares no integrations, so the monitoring surface renders an empty 'no backends' state; the tutorial (t1) says so and does not claim monitoring is populated by the example.", "affects": ["t1", "h2"] },
+    { "note": "g-sources-flag: there is no global sources enable/disable env flag (unlike actions). The capability activates by declaring a supported-kind source; gating is per-source (unknown id → 404). h3 documents this per-source activation rather than a switch. DECK_SOURCES_CACHE_DIR only affects git-repo sources.", "affects": ["h3"] },
+    { "note": "g-confirm-enforcement (RESOLVED): Action.confirm has no server-side enforcement in apps/server/src/actions/ — it is a UI-only affordance. Maintainer confirmed UI-only is intended (not a server guarantee). Documented as such in h4 (governed-actions guide) and r1 (estate-config reference); no code change.", "affects": ["h4", "r1"] },
+    { "note": "g-snapshot-out: DECK_SNAPSHOT_OUT is a real env var read by docker/entrypoint.sh (default /tmp/deck/snapshot.json) to redirect where the templated example snapshot is materialized. It is entrypoint-only (not read by boot.ts) and was missing from the s-env enumeration; add it to r4 as a container-entrypoint convenience var.", "affects": ["r4", "h5"] },
+    { "note": "g-topology: Deployment is self-hosted Docker/compose with an operator-provided authenticating reverse proxy. There is no published-registry/release workflow and no infrastructure-as-code, so proxy/network topology is operator-specific and shown as an external boundary, not asserted.", "affects": ["c4-1", "dep1", "h6", "e3"] },
+    { "note": "g-adr: No ADRs exist under docs/. adr1–adr3 propose formalizing decisions whose mechanism is observable in code; their rationale lives in specs/deck/charter/01-decisions.md and forge-decisions.json. Confirm intent with the maintainer before publishing them as settled records.", "affects": ["adr1", "adr2", "adr3"] },
+    { "note": "Architecture notes exist for only 3 of the ~7 shipped features (hosts-and-services, governed-actions, sources-docs-and-configs). Drift-and-coverage, alerts-and-health, portal, and engine-core have none; bb1 is planned as the connecting spine rather than one note per feature, to keep the architecture set at a surviving altitude.", "affects": ["bb1"] },
+    { "note": "The HTTP API (r6) is an internal, proxy-fronted surface consumed by the bundled web app, not a committed public API. It should be documented as internal/subject-to-change, not as a stability contract.", "affects": ["r6"] }
+  ]
+}

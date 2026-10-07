@@ -1,0 +1,21 @@
+schemaVersion: 1
+estate:
+  name: Portal broken-reference fixture
+hosts:
+  - name: atlas
+    kind: bare-metal
+    purpose: Fixture host
+services:
+  - name: declared-service
+    host: atlas
+    kind: systemd
+    purpose: Declared fixture service
+    status: active
+groups:
+  - id: broken-references
+    title: Broken references
+    items:
+      - type: service
+        host: atlas
+        name: undeclared-service
+        title: Undeclared service

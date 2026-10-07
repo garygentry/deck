@@ -1,0 +1,261 @@
+/* GENERATED from primary/snapshot.*.json by scripts/build-fixtures.ts — do not edit; run pnpm fixtures:build */
+
+import type { SnapshotDocument } from "../../types.js";
+
+export const combined = {
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-02T15:00:00Z",
+  "hosts": [
+    {
+      "name": "azurite",
+      "coverage": "collected",
+      "collectedAt": "2026-09-02T14:59:00Z",
+      "reachable": true,
+      "addresses": [
+        {
+          "network": "lan",
+          "address": "192.0.2.10",
+          "primary": true
+        }
+      ],
+      "os": {
+        "name": "FixtureOS",
+        "version": "1",
+        "kernel": "fixture-kernel"
+      },
+      "uptimeSeconds": 7200,
+      "guests": [
+        {
+          "vmid": 100,
+          "name": "cirrus",
+          "state": "running"
+        },
+        {
+          "vmid": 101,
+          "name": "ember",
+          "state": "running"
+        }
+      ],
+      "managedConfigs": [
+        {
+          "path": "/etc/lantern/azurite.conf",
+          "inSync": true
+        }
+      ],
+      "facts": {
+        "role": "alpha"
+      }
+    },
+    {
+      "name": "beryl",
+      "coverage": "collected",
+      "collectedAt": "2020-01-01T00:00:00Z",
+      "reachable": true,
+      "guests": [
+        {
+          "vmid": 100,
+          "name": "dapple",
+          "state": "running"
+        }
+      ]
+    },
+    {
+      "name": "cirrus",
+      "coverage": "partial",
+      "collectedAt": "2026-09-02T14:58:00Z",
+      "reachable": true,
+      "collectors": {
+        "succeeded": [
+          "system",
+          "containers"
+        ],
+        "failed": [
+          {
+            "name": "configs",
+            "reason": "invented fixture timeout"
+          }
+        ]
+      },
+      "containers": [
+        {
+          "name": "beacon",
+          "image": "fixture/beacon:1",
+          "state": "running"
+        }
+      ]
+    },
+    {
+      "name": "dapple",
+      "coverage": "unreachable",
+      "reachable": false
+    },
+    {
+      "name": "ember",
+      "coverage": "collected",
+      "collectedAt": "2026-09-02T14:57:00Z",
+      "reachable": true
+    },
+    {
+      "name": "fable",
+      "coverage": "collected",
+      "collectedAt": "2026-09-02T14:56:00Z",
+      "reachable": true
+    },
+    {
+      "name": "glint",
+      "coverage": "collected",
+      "collectedAt": "2026-09-02T14:55:00Z",
+      "reachable": true
+    }
+  ],
+  "services": [
+    {
+      "host": "cirrus",
+      "name": "beacon",
+      "state": "running",
+      "facts": {
+        "replicas": 1
+      }
+    },
+    {
+      "host": "dapple",
+      "name": "beacon",
+      "state": "unknown"
+    },
+    {
+      "host": "azurite",
+      "name": "kiln",
+      "state": "running"
+    },
+    {
+      "host": "ember",
+      "name": "lumen",
+      "state": "running"
+    },
+    {
+      "host": "fable",
+      "name": "mirage",
+      "state": "stopped"
+    },
+    {
+      "host": "azurite",
+      "name": "northstar",
+      "state": "running"
+    },
+    {
+      "host": "beryl",
+      "name": "opal",
+      "state": "degraded"
+    },
+    {
+      "host": "cirrus",
+      "name": "quill",
+      "state": "running"
+    }
+  ],
+  "drift": [
+    {
+      "id": "drift-error",
+      "severity": "error",
+      "location": {
+        "host": "azurite",
+        "path": "/etc/lantern/azurite.conf"
+      },
+      "category": "config",
+      "message": "Invented fixture config differs",
+      "expected": true,
+      "observed": false
+    },
+    {
+      "id": "drift-warning",
+      "severity": "warning",
+      "location": {
+        "host": "cirrus",
+        "service": "beacon"
+      },
+      "category": "runtime",
+      "message": "Invented fixture replica count differs",
+      "expected": [
+        2,
+        "ready"
+      ],
+      "observed": null,
+      "waiver": {
+        "reason": "Fixture demonstration",
+        "who": "fixture-operator",
+        "until": "2027-01-01T00:00:00Z"
+      }
+    },
+    {
+      "id": "drift-info",
+      "severity": "info",
+      "location": {
+        "host": "beryl"
+      },
+      "category": "inventory",
+      "message": "Invented fixture observation recorded"
+    }
+  ]
+} satisfies SnapshotDocument;
+
+export const fresh = {
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-02T15:00:00Z",
+  "hosts": [
+    {
+      "name": "azurite",
+      "coverage": "collected",
+      "collectedAt": "2026-09-02T14:59:00Z",
+      "reachable": true
+    }
+  ]
+} satisfies SnapshotDocument;
+
+export const stale = {
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-02T15:00:00Z",
+  "hosts": [
+    {
+      "name": "beryl",
+      "coverage": "collected",
+      "collectedAt": "2020-01-01T00:00:00Z",
+      "reachable": true
+    }
+  ]
+} satisfies SnapshotDocument;
+
+export const partial = {
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-02T15:00:00Z",
+  "hosts": [
+    {
+      "name": "cirrus",
+      "coverage": "partial",
+      "collectedAt": "2026-09-02T14:58:00Z",
+      "reachable": true,
+      "collectors": {
+        "succeeded": [
+          "system"
+        ],
+        "failed": [
+          {
+            "name": "configs",
+            "reason": "invented fixture timeout"
+          }
+        ]
+      }
+    }
+  ]
+} satisfies SnapshotDocument;
+
+export const unreachable = {
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-02T15:00:00Z",
+  "hosts": [
+    {
+      "name": "dapple",
+      "coverage": "unreachable",
+      "reachable": false
+    }
+  ]
+} satisfies SnapshotDocument;

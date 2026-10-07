@@ -1,0 +1,278 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-docs.dev/schemas/content-architect/docplan.schema.json",
+  "title": "docplan.json",
+  "description": "Engine-neutral information-architecture plan authored by the content-architect skill and consumed by the endpoint skills (doc-site, readme-author). Hand-authored static JSON Schema (Draft 2020-12), shipped verbatim into target repos beside the emitted docs/docplan.json. Accuracy rule: any claim that cannot be verified against a source in `sources[]` must be recorded in `gaps[]` or a per-document `verification` note, never asserted as fact. Single-mode rule: every DocPlanEntry has exactly one `type` — a document must not mix Diataxis modes. `project.kind` aligns with readme-author's project-kind detection (library | app | cli | framework) plus `service`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "scope",
+    "project",
+    "audiences",
+    "sources",
+    "documents",
+    "grouping",
+    "gaps"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "DocPlan schema version, e.g. '1.0'."
+    },
+    "provenance": {
+      "type": "object",
+      "description": "How and when this plan was generated. Network-free; never transmits repo data.",
+      "additionalProperties": true,
+      "properties": {
+        "generatedBy": {
+          "type": "string",
+          "description": "Tool that produced the plan, e.g. 'content-architect'."
+        },
+        "generatedAt": {
+          "type": "string",
+          "description": "Timestamp (advisory; not format-validated)."
+        },
+        "repoRef": {
+          "type": "string",
+          "description": "Analyzed repo ref (commit or branch) if known."
+        }
+      }
+    },
+    "scope": {
+      "enum": ["end-user", "architecture", "both"],
+      "description": "Which documentation spine(s) this plan covers. Routed in Phase 2."
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "summary"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "kind": {
+          "enum": ["library", "app", "cli", "framework", "service"],
+          "description": "Project kind. Aligns with readme-author detection (library | app | cli | framework) plus `service` for internal backend services."
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One-line description of what the project is."
+        }
+      }
+    },
+    "audiences": {
+      "type": "array",
+      "description": "The reader groups this corpus serves. Referenced by DocPlanEntry.audience.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable id, referenced by documents."
+          },
+          "name": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "expertise": {
+            "enum": ["beginner", "intermediate", "expert"],
+            "description": "Assumed reader expertise; drives tone and depth."
+          }
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "description": "Ground-truth references discovered during Phase 1 analysis. Referenced by DocPlanEntry.sourceRefs and outline sourceRefs.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path", "type"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable id, referenced by documents."
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Repo-relative path or glob."
+          },
+          "type": {
+            "enum": [
+              "entrypoint",
+              "manifest",
+              "api",
+              "test",
+              "config",
+              "schema",
+              "ci",
+              "adr",
+              "history"
+            ],
+            "description": "Source category. Tests (especially integration) are the most reliable ground truth."
+          },
+          "note": { "type": "string", "description": "What this source establishes." }
+        }
+      }
+    },
+    "documents": {
+      "type": "array",
+      "description": "The planned documentation corpus.",
+      "items": { "$ref": "#/$defs/DocPlanEntry" }
+    },
+    "grouping": {
+      "type": "array",
+      "description": "The corpus's information architecture: ordered sections that map onto doc-site's sidebar model. Array order is sidebar order.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "documents"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "description": "Sidebar group label." },
+          "documents": {
+            "type": "array",
+            "description": "Ordered DocPlanEntry ids in this group; order is sidebar order within the group.",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "description": "Things that could not be verified against ground truth, open questions, and explicit assumptions. The accuracy through-line — must not be silently empty when uncertainty exists.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["note"],
+        "properties": {
+          "note": { "type": "string", "minLength": 1 },
+          "affects": {
+            "type": "array",
+            "description": "Optional DocPlanEntry ids this gap affects.",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "DocPlanEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "family", "type", "audience", "purpose", "sourceRefs", "status"],
+      "description": "One planned document. Single-mode invariant: exactly one `type`; a document must not mix Diataxis modes.",
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "slug": {
+          "type": "string",
+          "description": "Route slug (POSIX-style), e.g. 'guides/setup'. `slug` or `path` identifies where the document lands."
+        },
+        "path": {
+          "type": "string",
+          "description": "Repo-relative output path, if preferred over a slug."
+        },
+        "family": {
+          "enum": ["diataxis", "architecture"],
+          "description": "Discriminator selecting the valid `type` set."
+        },
+        "type": {
+          "enum": [
+            "tutorial",
+            "how-to",
+            "reference",
+            "explanation",
+            "adr",
+            "arc42-chapter",
+            "c4-view"
+          ],
+          "description": "The single mode of this document. If family is 'diataxis': tutorial | how-to | reference | explanation. If family is 'architecture': adr | arc42-chapter | c4-view."
+        },
+        "subtype": {
+          "type": "string",
+          "description": "Refines an architecture `type`: for c4-view use context | container | component; for arc42-chapter use the chapter name."
+        },
+        "audience": {
+          "type": "array",
+          "minItems": 1,
+          "description": "One or more audiences[].id.",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A single sentence: the reader need this document serves."
+        },
+        "sourceRefs": {
+          "type": "array",
+          "description": "The sources[].id this document is derived from.",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "outline": {
+          "type": "array",
+          "description": "Ordered sections of the document.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["heading", "intent"],
+            "properties": {
+              "heading": { "type": "string", "minLength": 1 },
+              "intent": {
+                "type": "string",
+                "minLength": 1,
+                "description": "What this section accomplishes for the reader."
+              },
+              "sourceRefs": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        },
+        "status": {
+          "enum": ["planned", "existing", "needs-restructure", "drafted"],
+          "description": "Lifecycle state. In audit mode, classify existing docs and flag those that need restructuring."
+        },
+        "priority": {
+          "type": "integer",
+          "description": "Coarse rank so endpoints can stage output (lower = higher priority)."
+        },
+        "diagrams": {
+          "type": "array",
+          "description": "Prose diagram requests to hand to diagram-generator during drafting. Describe only components verified in source.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["description"],
+            "properties": {
+              "description": { "type": "string", "minLength": 1 },
+              "sourceRefs": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "verification": {
+          "type": "string",
+          "description": "Per-document note on what was verified against sources vs assumed."
+        }
+      },
+      "allOf": [
+        {
+          "description": "family 'diataxis' ⇒ type is a Diataxis mode.",
+          "if": { "properties": { "family": { "const": "diataxis" } }, "required": ["family"] },
+          "then": {
+            "properties": { "type": { "enum": ["tutorial", "how-to", "reference", "explanation"] } }
+          }
+        },
+        {
+          "description": "family 'architecture' ⇒ type is an architecture doc kind.",
+          "if": { "properties": { "family": { "const": "architecture" } }, "required": ["family"] },
+          "then": { "properties": { "type": { "enum": ["adr", "arc42-chapter", "c4-view"] } } }
+        }
+      ]
+    }
+  }
+}

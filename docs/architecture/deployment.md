@@ -1,0 +1,91 @@
+# Deployment view
+
+## Purpose
+
+This chapter describes how deck is packaged and run, for a maintainer who needs the shape of the
+build and deployment rather than its line detail.
+Deck's runtime story is deliberately small: one image, one process, one mounted estate, fronted
+by a proxy the operator brings.
+Understanding that shape explains why the Dockerfile has the stages it does, why there is only
+one port, and what the CI gates are protecting when they guard a release.
+
+Deployment is self-hosted Docker or Compose.
+Each `v*` tag publishes a versioned, multi-arch image to GHCR (`ghcr.io/garygentry/deck`) via the
+`release.yml` workflow, and the repository ships a `deploy/compose.prod.yaml` template that pulls
+it; building the image from source stays a supported fallback. There is still no
+infrastructure-as-code in the repository — the reverse proxy, TLS, and network topology are
+operator-provided and sit outside deck's boundary.
+This chapter therefore stops at the container and the Compose file, and treats everything in
+front of them as an external responsibility.
+
+For the operator-facing procedure, see [Deploy deck](../guides/deploy.md); for the security
+posture behind the proxy assumption, see [Access and security model](../security.md).
+
+## Content
+
+### Build shape: two stages, one asset
+
+The image is a multi-stage build with a clean split of responsibility.
+The **builder** stage runs on `node:22-alpine`, installs the whole pnpm workspace from the
+lockfile, and builds exactly one thing — the web bundle (`pnpm --filter @deck/web build`, Vite
+into `apps/web/dist`).
+Nothing else is compiled, because the server and `@deck/schema` run directly from TypeScript
+source under Bun at runtime; only the browser needs a bundling step.
+
+The **runtime** stage is `oven/bun:1.3.9-alpine`.
+It copies the fully installed and built workspace across at the same `/app` path, which preserves
+pnpm's `node_modules/.pnpm` symlink store so the server's dependencies and `@deck/schema` resolve
+unchanged under Bun.
+It sets the container defaults (`DECK_CONFIG_DIR=/config`, `DECK_WEB_DIST=/app/apps/web/dist`,
+`DECK_PORT=8080`), exposes `8080`, and declares a `HEALTHCHECK` that polls `/api/health`.
+
+### Runtime shape: one process, one port
+
+At runtime deck is a single Bun process that serves the built web assets and the `/api` surface
+together — there is no separate frontend server and no database.
+The entrypoint (`docker/entrypoint.sh`) supplies the container defaults and then `exec`s the
+server; its one convenience is materializing a now-relative snapshot from a templated estate when
+no `DECK_SNAPSHOT_SOURCE` is set, which is for the bundled example, not real deployments.
+Because web and API share one process and one port, the deployment topology is just "publish
+`DECK_PORT`," and a proxy in front forwards both `/` and `/api` to the same upstream.
+
+State lives outside the image: the estate config is a mounted volume at `/config`, and the
+observed snapshot is a mounted file or a fetched URL.
+The image is therefore stateless and replaceable — the unit of deployment is "this image plus
+that mounted estate."
+
+### Compose topology
+
+[`examples/compose.yaml`](../../examples/compose.yaml) is the reference topology and the smallest
+complete deployment: it builds the image, publishes `8080:8080`, mounts `./estate` at
+`/config:ro`, and runs under `restart: unless-stopped`.
+An operator deploying their own estate copies this file and repoints the config volume; the
+authenticating reverse proxy is added in front of it and is not part of the file.
+
+### CI gates that guard a release
+
+The GitHub Actions workflow (`.github/workflows/ci.yml`) is the release gate, and its jobs mirror
+the dual Node/Bun nature of the build.
+`node-pnpm` runs typecheck plus the schema, server, and web unit tests under Node.
+`web-e2e` runs the Playwright suite sharded across runners (the suite is single-worker by design,
+so parallelism comes from cross-runner shards).
+`bun-parity` re-runs the unit tests under Bun, proving the code that ships in the runtime image
+behaves the same on the runtime engine.
+`gates` runs the correctness guards: provider-barrel drift, a golden `deck render` comparison, and
+a bare-Bun boot smoke that boots the server and asserts a well-formed `/api/health` payload.
+Together they protect the invariant this deployment depends on — that the same source runs
+correctly under Bun and boots to a healthy process.
+
+![Deployment view: a Node builder produces the web bundle, the Bun runtime image serves web and API from one process on :8080, Compose mounts the estate read-only, and CI gates guard releases.](./diagrams/deployment.svg)
+
+*The build-to-deploy pipeline: a Node builder produces the web bundle, the Bun runtime image
+serves web and API from one process on :8080, Compose mounts the estate read-only, and the CI
+gates guard the release.*
+
+## Related decisions
+
+The single most load-bearing choice here — running the server and schema from TypeScript source
+under Bun and compiling only the web bundle — is recorded in
+[ADR-001: Run the server and schema from TypeScript source under Bun](../architecture/decisions/adr-001-bun-from-source.md).
+It is what makes the builder stage compile one asset instead of three and lets the runtime image
+carry source rather than a server build, and it is why `bun-parity` exists as a distinct gate.

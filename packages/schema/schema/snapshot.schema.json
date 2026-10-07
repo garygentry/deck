@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:deck:schema:snapshot:1",
+  "title": "SnapshotDocument",
+  "description": "Observed reality projected from observation and drift outputs without a fresh or stale judgement.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1, "description": "The shared schema contract version." },
+    "generatedAt": { "type": "string", "format": "date-time", "description": "When this snapshot was produced in RFC 3339 form." },
+    "hosts": { "type": "array", "items": { "$ref": "#/$defs/ObservedHost" }, "description": "Observed hosts; absent is equivalent to an empty array." },
+    "services": { "type": "array", "items": { "$ref": "#/$defs/ObservedService" }, "description": "Observed services; absent is equivalent to an empty array." },
+    "drift": { "type": "array", "items": { "$ref": "#/$defs/DriftFinding" }, "description": "Drift findings; absent is equivalent to an empty array." }
+  },
+  "$defs": {
+    "ObservedHost": {
+      "title": "ObservedHost", "type": "object", "additionalProperties": false, "required": ["name", "coverage"],
+      "properties": {
+        "name": { "type": "string", "description": "Host name and join key to the config host." },
+        "coverage": { "$ref": "#/$defs/Coverage", "description": "How completely this host was observed." },
+        "collectedAt": { "type": "string", "format": "date-time", "description": "When this host was observed, subject to coverage conditions." },
+        "collectors": { "$ref": "#/$defs/Collectors", "description": "Per-collector outcomes required for partial coverage." },
+        "reachable": { "type": "boolean", "description": "Whether the host answered at all." },
+        "addresses": { "type": "array", "items": { "$ref": "#/$defs/Address" }, "description": "Observed addresses labelled by network." },
+        "os": { "type": "object", "additionalProperties": false, "description": "Observed operating-system and kernel summary.", "properties": {
+          "name": { "type": "string", "description": "Operating-system name." },
+          "version": { "type": "string", "description": "Operating-system version." },
+          "kernel": { "type": "string", "description": "Kernel version." }
+        } },
+        "uptimeSeconds": { "type": "integer", "minimum": 0, "description": "Observed uptime in seconds." },
+        "containers": { "type": "array", "items": { "$ref": "#/$defs/Container" }, "description": "Observed containers." },
+        "guests": { "type": "array", "items": { "$ref": "#/$defs/Guest" }, "description": "Observed guests for hypervisors." },
+        "managedConfigs": { "type": "array", "items": { "$ref": "#/$defs/ObservedManagedConfig" }, "description": "Observed managed configuration files and sync state." },
+        "facts": { "type": "object", "description": "Open display-only observed facts outside the structured core.", "additionalProperties": true }
+      },
+      "allOf": [
+        { "description": "collectedAt is required for collected or partial coverage.", "if": { "properties": { "coverage": { "enum": ["collected", "partial"], "description": "Coverage values that require a collection timestamp." } }, "required": ["coverage"] }, "then": { "properties": { "collectedAt": { "type": "string", "description": "The required collection timestamp for collected or partial coverage." } }, "required": ["collectedAt"] } },
+        { "description": "collectedAt is forbidden for unreachable coverage.", "if": { "properties": { "coverage": { "const": "unreachable", "description": "The coverage value that forbids a collection timestamp." } }, "required": ["coverage"] }, "then": { "not": { "required": ["collectedAt"] } } },
+        { "description": "collectors is required for partial coverage.", "if": { "properties": { "coverage": { "const": "partial", "description": "The coverage value that requires collector outcomes." } }, "required": ["coverage"] }, "then": { "properties": { "collectors": { "$ref": "#/$defs/Collectors", "description": "The required collector outcomes for partial coverage." } }, "required": ["collectors"] } }
+      ]
+    },
+    "Coverage": { "title": "Coverage", "type": "string", "description": "How completely a host was observed.", "enum": ["collected", "partial", "unreachable"] },
+    "Collectors": {
+      "title": "Collectors", "type": "object", "additionalProperties": false, "description": "Per-collector outcomes for partial coverage.", "required": ["succeeded", "failed"],
+      "properties": {
+        "succeeded": { "type": "array", "items": { "type": "string" }, "description": "Names of collectors that succeeded." },
+        "failed": { "type": "array", "description": "Collectors that failed with reasons.", "items": { "type": "object", "additionalProperties": false, "required": ["name", "reason"], "properties": {
+          "name": { "type": "string", "description": "Collector name." },
+          "reason": { "type": "string", "description": "Reason the collector failed." }
+        } } }
+      }
+    },
+    "Container": {
+      "title": "Container", "type": "object", "additionalProperties": false, "required": ["name", "image", "state"],
+      "properties": {
+        "name": { "type": "string", "description": "Container name." },
+        "image": { "type": "string", "description": "Container image reference." },
+        "state": { "type": "string", "description": "Observed container state." }
+      }
+    },
+    "Guest": {
+      "title": "Guest", "type": "object", "additionalProperties": false, "required": ["vmid", "name", "state"],
+      "properties": {
+        "vmid": { "type": "integer", "minimum": 1, "description": "Guest id on this hypervisor." },
+        "name": { "type": "string", "description": "Guest name." },
+        "state": { "type": "string", "description": "Observed guest state." }
+      }
+    },
+    "ObservedManagedConfig": {
+      "title": "ObservedManagedConfig", "type": "object", "additionalProperties": false, "required": ["path", "inSync"],
+      "properties": {
+        "path": { "type": "string", "description": "Live configuration file path." },
+        "inSync": { "type": "boolean", "description": "Whether the live file matches its source of truth." }
+      }
+    },
+    "ObservedService": {
+      "title": "ObservedService", "type": "object", "additionalProperties": false, "required": ["host", "name", "state"],
+      "properties": {
+        "host": { "type": "string", "description": "Host name in the service join key." },
+        "name": { "type": "string", "description": "Service name in the service join key." },
+        "state": { "$ref": "#/$defs/ServiceState", "description": "Observed running state." },
+        "facts": { "type": "object", "description": "Open display-only observed service facts.", "additionalProperties": true }
+      }
+    },
+    "ServiceState": { "title": "ServiceState", "type": "string", "description": "Observed service running state.", "enum": ["running", "stopped", "degraded", "unknown"] },
+    "DriftFinding": {
+      "title": "DriftFinding", "type": "object", "additionalProperties": false, "required": ["id", "severity", "location", "category", "message"],
+      "properties": {
+        "id": { "type": "string", "description": "Stable drift-finding id, unique across drift." },
+        "severity": { "$ref": "#/$defs/Severity", "description": "Finding severity shared with validation findings." },
+        "location": { "$ref": "#/$defs/DriftLocation", "description": "Location of the drift." },
+        "category": { "type": "string", "description": "Open category string grouping the finding." },
+        "message": { "type": "string", "description": "Plain-language description of the drift." },
+        "expected": { "$ref": "#/$defs/JsonValue", "description": "Optional expected value of any JSON type." },
+        "observed": { "$ref": "#/$defs/JsonValue", "description": "Optional observed value of any JSON type." },
+        "waiver": { "$ref": "#/$defs/Waiver", "description": "Optional waiver that labels rather than removes the finding." }
+      }
+    },
+    "DriftLocation": {
+      "title": "DriftLocation", "type": "object", "additionalProperties": false, "required": ["host"],
+      "properties": {
+        "host": { "type": "string", "description": "Host on which the drift occurs." },
+        "service": { "type": "string", "description": "Optional service on that host." },
+        "path": { "type": "string", "description": "Optional managed-configuration path." }
+      }
+    },
+    "Waiver": {
+      "title": "Waiver", "type": "object", "additionalProperties": false, "required": ["reason", "who"],
+      "properties": {
+        "reason": { "type": "string", "description": "Reason the finding is waived." },
+        "who": { "type": "string", "description": "Identity of who waived the finding." },
+        "until": { "type": "string", "format": "date-time", "description": "Optional expiry evaluated by display-time consumers." }
+      }
+    },
+    "Severity": { "title": "Severity", "type": "string", "description": "Finding severity shared by drift and validation findings.", "enum": ["error", "warning", "info"] },
+    "JsonValue": {
+      "title": "JsonValue",
+      "description": "Any value representable in JSON.",
+      "anyOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        { "type": "null" },
+        { "type": "array", "items": { "$ref": "#/$defs/JsonValue" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/JsonValue" } }
+      ]
+    },
+    "Address": {
+      "title": "Address", "type": "object", "additionalProperties": false, "required": ["network", "address"],
+      "properties": {
+        "network": { "type": "string", "description": "Network label for this address (e.g. lan, tailnet). An open label — the same vocabulary Estate.domains keys off." },
+        "address": { "type": "string", "description": "The address on that network." },
+        "primary": { "type": "boolean", "description": "Whether this is the host's primary address on that network." }
+      }
+    }
+  }
+}

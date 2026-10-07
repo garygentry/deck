@@ -1,0 +1,42 @@
+/*
+ * deck — stylesheet entry point. Tailwind v4 (cascade layers), the shadcn/deck
+ * design tokens in theme.css, and the highlight.js token theme. Every component
+ * lives in @/ui; there is no global stylesheet beyond the base rules below.
+ */
+@layer theme, base, components, utilities;
+
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+@import "./theme.css";
+@import "./hljs.css" layer(components);
+
+/*
+ * shadcn's base defaults (Tailwind v4 borders are `currentColor` unless told
+ * otherwise), plus deck's document defaults: 14px body text (13px on narrow
+ * phones) on the theme background.
+ */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  @media (max-width: 480px) {
+    body {
+      font-size: 13px;
+    }
+  }
+}
+

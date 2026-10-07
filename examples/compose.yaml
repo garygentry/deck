@@ -1,0 +1,23 @@
+# Example Docker Compose for running Deck against the bundled example estate.
+#
+#   cd examples && docker compose up --build
+#   open http://localhost:8080
+#
+# The build context is the repo root (..). The example estate is mounted
+# read-only at /config; the entrypoint materializes a now-relative snapshot
+# from its snapshot.template.json into the container's writable /tmp. To run
+# your own estate, point the volume at your config directory instead.
+services:
+  deck:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: deck:local
+    ports:
+      - "8080:8080"
+    environment:
+      DECK_CONFIG_DIR: /config
+      DECK_PORT: "8080"
+    volumes:
+      - ./estate:/config:ro
+    restart: unless-stopped

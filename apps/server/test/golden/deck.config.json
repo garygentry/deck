@@ -1,0 +1,373 @@
+{
+  "actions": [
+    {
+      "confirm": "typed-confirm",
+      "description": "Exercises the governed action shape",
+      "id": "restart-beacon",
+      "params": [
+        {
+          "default": "routine",
+          "description": "Fixture change note",
+          "name": "reason",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "default": true,
+          "name": "graceful",
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "name": "mode",
+          "type": "enum",
+          "values": [
+            "safe",
+            "quick"
+          ]
+        }
+      ],
+      "runner": "fixture-restart-service",
+      "target": {
+        "host": "cirrus",
+        "service": "beacon"
+      },
+      "title": "Restart Fixture Beacon"
+    }
+  ],
+  "agents": [],
+  "estate": {
+    "domains": {
+      "lan": "lantern.invalid",
+      "mgmt": "lantern-mgmt.invalid",
+      "tailnet": "lantern-tail.invalid"
+    },
+    "name": "lantern-estate",
+    "timezone": "Etc/UTC"
+  },
+  "groups": [
+    {
+      "icon": "lantern",
+      "id": "overview",
+      "items": [
+        {
+          "host": "cirrus",
+          "name": "beacon",
+          "title": "Portal",
+          "type": "service"
+        },
+        {
+          "href": "https://guide.lantern.invalid/",
+          "title": "Fixture Guide",
+          "type": "link"
+        },
+        {
+          "id": "operations",
+          "items": [
+            {
+              "host": "dapple",
+              "name": "beacon",
+              "type": "service"
+            },
+            {
+              "href": "https://ops.lantern.invalid/",
+              "title": "Operations Guide",
+              "type": "link"
+            }
+          ],
+          "title": "Operations",
+          "type": "group"
+        }
+      ],
+      "order": 1,
+      "title": "Fixture Overview"
+    }
+  ],
+  "hosts": [
+    {
+      "access": {
+        "method": "ssh",
+        "port": 22,
+        "reachable": true,
+        "user": "fixture"
+      },
+      "addresses": [
+        {
+          "address": "192.0.2.10",
+          "network": "lan",
+          "primary": true
+        },
+        {
+          "address": "100.64.10.10",
+          "network": "tailnet"
+        },
+        {
+          "address": "198.51.100.10",
+          "network": "mgmt"
+        }
+      ],
+      "backup": {
+        "expected": true,
+        "schedule": "nightly",
+        "target": "archive-alpha"
+      },
+      "bindings": {
+        "docker": {
+          "endpoint": "fixture-docker"
+        },
+        "snapshot": {
+          "dataset": "fixture-alpha"
+        }
+      },
+      "kind": "bare-metal",
+      "links": [
+        {
+          "href": "https://azurite.lantern.invalid/",
+          "title": "Alpha Console"
+        }
+      ],
+      "managedConfigs": [
+        {
+          "path": "/etc/lantern/azurite.conf",
+          "source": "configs/azurite.conf"
+        }
+      ],
+      "name": "azurite",
+      "purpose": "Invented fixture hypervisor alpha",
+      "secrets": [
+        "azurite.ssh-key"
+      ],
+      "stacksRoot": "/srv/lantern/stacks"
+    },
+    {
+      "addresses": [
+        {
+          "address": "192.0.2.11",
+          "network": "lan",
+          "primary": true
+        },
+        {
+          "address": "198.51.100.11",
+          "network": "mgmt"
+        }
+      ],
+      "backup": {
+        "expected": true,
+        "schedule": "weekly",
+        "target": "archive-beta"
+      },
+      "bindings": {
+        "alertmanager": {
+          "route": "fixture-alerts"
+        }
+      },
+      "kind": "bare-metal",
+      "name": "beryl",
+      "purpose": "Invented fixture hypervisor beta"
+    },
+    {
+      "addresses": [
+        {
+          "address": "192.0.2.20",
+          "network": "lan",
+          "primary": true
+        }
+      ],
+      "bindings": {
+        "gatus": {
+          "group": "fixture-apps"
+        }
+      },
+      "hypervisor": "azurite",
+      "kind": "vm",
+      "name": "cirrus",
+      "purpose": "Invented application guest",
+      "secrets": [
+        "cirrus.runtime-ref"
+      ],
+      "vmid": 100
+    },
+    {
+      "addresses": [
+        {
+          "address": "192.0.2.21",
+          "network": "lan",
+          "primary": true
+        }
+      ],
+      "bindings": {
+        "http-health": {
+          "url": "https://dapple.lantern.invalid/health"
+        },
+        "prometheus": {
+          "job": "fixture-metrics"
+        }
+      },
+      "hypervisor": "beryl",
+      "kind": "vm",
+      "name": "dapple",
+      "purpose": "Invented monitoring guest",
+      "vmid": 100
+    },
+    {
+      "hypervisor": "azurite",
+      "kind": "lxc",
+      "name": "ember",
+      "purpose": "Invented lightweight guest",
+      "vmid": 101
+    },
+    {
+      "addresses": [
+        {
+          "address": "198.51.100.30",
+          "network": "mgmt",
+          "primary": true
+        }
+      ],
+      "kind": "appliance",
+      "name": "fable",
+      "purpose": "Invented network appliance"
+    },
+    {
+      "kind": "endpoint",
+      "name": "glint",
+      "purpose": "Invented operator endpoint"
+    },
+    {
+      "hidden": true,
+      "kind": "unknown",
+      "name": "hush",
+      "purpose": "Invented unclassified device"
+    }
+  ],
+  "integrations": [
+    {
+      "baseUrl": "https://metrics.lantern.invalid/",
+      "card": {
+        "theme": "lantern"
+      },
+      "credentialEnv": "FIXTURE_METRICS_REF",
+      "deepLink": "/targets/{target}",
+      "id": "fixture-metrics",
+      "kind": "prometheus",
+      "title": "Fixture Metrics"
+    }
+  ],
+  "schemaVersion": 1,
+  "services": [
+    {
+      "backup": {
+        "expected": true,
+        "schedule": "nightly",
+        "target": "archive-alpha"
+      },
+      "bindings": {
+        "link": {
+          "href": "https://beacon.lantern.invalid/"
+        }
+      },
+      "host": "cirrus",
+      "kind": "docker-compose",
+      "links": [
+        {
+          "href": "https://beacon.lantern.invalid/",
+          "title": "Beacon"
+        }
+      ],
+      "name": "beacon",
+      "purpose": "Invented portal service",
+      "secrets": [
+        "beacon.session-ref"
+      ],
+      "stack": "beacon",
+      "status": "active"
+    },
+    {
+      "host": "dapple",
+      "kind": "systemd",
+      "links": [
+        {
+          "href": "https://relay.lantern.invalid/",
+          "title": "Relay"
+        }
+      ],
+      "name": "beacon",
+      "purpose": "Invented metrics relay",
+      "status": "active"
+    },
+    {
+      "host": "azurite",
+      "kind": "appliance",
+      "name": "kiln",
+      "purpose": "Invented management interface",
+      "status": "active"
+    },
+    {
+      "bindings": {
+        "markdown-tree": {
+          "source": "fixture-handbook"
+        }
+      },
+      "host": "ember",
+      "kind": "container",
+      "name": "lumen",
+      "purpose": "Invented document service",
+      "status": "active"
+    },
+    {
+      "host": "fable",
+      "kind": "external",
+      "name": "mirage",
+      "purpose": "Invented external catalogue",
+      "status": "planned"
+    },
+    {
+      "host": "azurite",
+      "kind": "docker-compose",
+      "name": "northstar",
+      "purpose": "Invented status collector",
+      "status": "active"
+    },
+    {
+      "host": "beryl",
+      "kind": "systemd",
+      "name": "opal",
+      "purpose": "Invented alert relay",
+      "status": "active"
+    },
+    {
+      "bindings": {
+        "file-tree": {
+          "source": "fixture-files"
+        }
+      },
+      "hidden": true,
+      "host": "cirrus",
+      "kind": "container",
+      "name": "quill",
+      "purpose": "Invented file browser",
+      "status": "active"
+    }
+  ],
+  "sources": [
+    {
+      "exclude": [
+        "drafts/**"
+      ],
+      "id": "fixture-handbook",
+      "include": [
+        "guides/**"
+      ],
+      "kind": "markdown-tree",
+      "location": {
+        "ref": "main",
+        "repo": "lantern-docs"
+      },
+      "owner": {
+        "host": "ember",
+        "service": "lumen"
+      },
+      "title": "Fixture Handbook"
+    }
+  ]
+}

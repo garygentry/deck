@@ -1,0 +1,6 @@
+{
+  "debug": false,
+  "retries": 3,
+  "endpoints": ["https://a.example", "https://b.example"],
+  "flags": { "beta": true, "canary": false }
+}

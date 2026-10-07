@@ -1,0 +1,163 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      update_visuals:
+        # Visual baselines are generated on CI Linux only (local font rendering
+        # differs). Dispatch with this set, then download the artifact into
+        # apps/web/test/e2e and commit it.
+        description: Regenerate the Playwright visual baselines and upload them as an artifact
+        type: boolean
+        default: false
+
+# Read-only token: no job pushes or comments. Visual baselines leave as an
+# artifact and are committed by hand.
+permissions:
+  contents: read
+
+jobs:
+  node-pnpm:
+    # Typecheck + unit tests under Node. The Playwright e2e runs separately in the
+    # sharded `web-e2e` job below, so this job stays fast (~2-3 min) and no longer
+    # gates on the full ~10-min browser suite.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The web unit run does not need Bun, but keep parity of the toolchain simple.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install (frozen)
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck all workspaces
+        run: pnpm -r typecheck
+      - name: Unit tests (schema + server + web)
+        run: |
+          pnpm --filter @deck/schema test
+          pnpm --filter @deck/server test
+          pnpm --filter @deck/web test:unit
+
+  web-e2e:
+    # Playwright e2e, sharded across runners. The suite is workers:1 /
+    # fullyParallel:false by design (shared runtime dir + a single Bun API per
+    # run), so parallelism comes from cross-runner shards — each shard boots its
+    # own webServer and runs a disjoint subset. Playwright shards by whole file
+    # and the largest file (inventory, ~42 of 91 tests) is the atomic floor, so
+    # two shards (~42 vs ~49) roughly halve the wall time; more shards just idle.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/2", "2/2"]
+    steps:
+      - uses: actions/checkout@v4
+      # The e2e webServer boots the Bun-only API (`exec bun …`); without Bun on
+      # PATH it exits 127.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install (frozen)
+        run: pnpm install --frozen-lockfile
+      # Cache the downloaded browser binary, keyed by the resolved Playwright
+      # version in the lockfile so an upgrade invalidates it.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install Playwright Chromium
+        run: pnpm --filter @deck/web exec playwright install --with-deps chromium
+      - name: e2e (shard ${{ matrix.shard }})
+        if: ${{ !inputs.update_visuals }}
+        run: pnpm --filter @deck/web exec playwright test --shard=${{ matrix.shard }}
+      # The update_visuals dispatch regenerates every `toHaveScreenshot` baseline
+      # on this Linux image (one shard does it) instead of verifying them. Fetch:
+      #   gh run download <run-id> -n visual-baselines -D apps/web/test/e2e
+      - name: Regenerate visual baselines
+        if: ${{ inputs.update_visuals && matrix.shard == '1/2' }}
+        env:
+          UPDATE_VISUALS: "1"
+        run: pnpm --filter @deck/web exec playwright test --grep "visual baselines" --update-snapshots
+      - name: Upload visual baselines
+        if: ${{ inputs.update_visuals && matrix.shard == '1/2' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines
+          path: apps/web/test/e2e/*-snapshots/
+          if-no-files-found: error
+
+  bun-parity:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace: [packages/schema, apps/server, apps/web]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install with Bun
+        run: bun install
+      - name: Run Vitest under Bun
+        working-directory: ${{ matrix.workspace }}
+        run: bunx vitest run
+
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install with Bun
+        run: bun install
+      - name: Regenerate provider barrel
+        working-directory: apps/server
+        run: bun run gen:providers
+      - name: Check provider barrel drift
+        run: git diff --exit-code apps/server/src/providers/generated.ts
+      - name: Check golden render
+        run: |
+          bun apps/server/src/cli/deck.ts render packages/schema/src/fixtures/primary --out /tmp/rendered.deck.config.json
+          diff -u apps/server/test/golden/deck.config.json /tmp/rendered.deck.config.json
+      - name: Bare-Bun boot smoke
+        run: |
+          export DECK_PORT=8787
+          DECK_CONFIG_DIR=packages/schema/src/fixtures/primary bun apps/server/src/server/boot.ts &
+          BOOT_PID=$!
+          trap 'kill "$BOOT_PID" 2>/dev/null || true' EXIT
+
+          healthy=0
+          for _ in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:${DECK_PORT}/api/health" -o /tmp/health.json; then
+              healthy=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$healthy" -ne 1 ]; then
+            echo "::error::server did not become healthy under bare Bun within 30 seconds"
+            exit 1
+          fi
+
+          # The smoke proves the server boots under bare Bun and serves a
+          # well-formed health payload. Accept "degraded" as well as "ok":
+          # fixtures/primary declares a git-repo markdown source that cannot be
+          # cloned in a network-less CI runner, which is a correct degraded
+          # health, not a boot failure.
+          grep -Eq '"status"[[:space:]]*:[[:space:]]*"(ok|degraded)"' /tmp/health.json

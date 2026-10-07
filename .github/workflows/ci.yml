@@ -1,34 +1,13 @@
 name: ci
 
-# Actions minutes are metered on this private repo, and one full run costs ~45
-# billable minutes, so CI only runs where a result is needed:
-#   - push: only the long-lived branches. Work branches get CI from their PR, so
-#     a push to a branch with an open PR runs once, not twice.
-#   - paths: commits that only touch planning/notes (specs/, ledger docs, root
-#     markdown, agent state) skip CI. docs/reference/ stays in: a server test
-#     reads docs/reference/environment-variables.md. If a check here is ever made
-#     required, a skipped docs-only PR will wait on it; dispatch the run by hand.
+# The repo is public, so Actions minutes are free. CI runs on every PR, and on
+# pushes to the long-lived branches only: work branches get CI from their PR, so a
+# push to a branch with an open PR runs once, not twice. There are no path
+# filters, because the required checks must report on every PR.
 on:
   push:
     branches: [main, "epic/**"]
-    paths:
-      - "**"
-      - "!specs/**"
-      - "!docs/**"
-      - "docs/reference/**"
-      - "!*.md"
-      - "!.rauf/**"
-      - "!.claude/**"
   pull_request:
-    # Keep in step with the push paths above.
-    paths:
-      - "**"
-      - "!specs/**"
-      - "!docs/**"
-      - "docs/reference/**"
-      - "!*.md"
-      - "!.rauf/**"
-      - "!.claude/**"
   workflow_dispatch:
     inputs:
       update_visuals:

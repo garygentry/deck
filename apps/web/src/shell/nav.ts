@@ -107,10 +107,7 @@ function patternMatches(pattern: string, path: string): boolean {
   );
 }
 
-/** The page the router renders for `path`: the first registration whose pattern matches. */
-export function matchPage(
-  pages: readonly PageRegistration[],
-  path: string,
-): PageRegistration | undefined {
+/** The page the router renders for `path`: the first route whose pattern matches. */
+export function matchPage<T extends { path: string }>(pages: readonly T[], path: string): T | undefined {
   return pages.find((page) => patternMatches(page.path, path));
 }

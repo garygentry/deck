@@ -102,11 +102,19 @@ function listProblem(value: unknown, at: string, entryProblem: (entry: Record<st
   return index === -1 ? null : `${at}[${index}] is malformed`;
 }
 
+/** An absent module switch, or one naming an env var or a config key. */
+function isModuleSwitch(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!isRecord(value)) return false;
+  const keys = Object.keys(value);
+  return keys.length === 1 && (isString(value.env) || isString(value.config));
+}
+
 /**
  * Why a decoded body is not a UI manifest the shell can render from, or null. The shell
  * fields are checked entry by entry, so a malformed document takes the "unavailable" path
  * (the registry fallback, asked again each poll interval) instead of being cached. Fields an
- * older server does not send (`brand`, `navGroups`) may be absent.
+ * older server does not send (`brand`, `navGroups`, `disabledPages`) may be absent.
  */
 export function uiManifestProblem(body: unknown): string | null {
   if (!isRecord(body)) return "not an object";
@@ -126,6 +134,16 @@ export function uiManifestProblem(body: unknown): string | null {
       body.extensions,
       "extensions",
       (e) => !isString(e.id) || !isString(e.kind) || !isString(e.slot) || typeof e.order !== "number",
+    ) ??
+    listProblem(
+      body.modules,
+      "modules",
+      (m) => !isString(m.id) || typeof m.enabled !== "boolean" || !isOptionalString(m.reason) || !isModuleSwitch(m.enabledBy),
+    ) ??
+    listProblem(
+      body.disabledPages,
+      "disabledPages",
+      (p) => !isString(p.id) || !isString(p.module) || !isString(p.path) || !isString(p.title) || !isOptionalString(p.icon),
     )
   );
 }

@@ -174,10 +174,17 @@ components:
   (`useManifestSlot(slot)`).
 - The brand in the sidebar header and the document title (`"{page} · {brand}"`) is the
   manifest's `brand.title`.
+- Routing follows the manifest too (`resolveRoutes`): a registered page of a module the manifest
+  lists as off is not routed. Its path renders `ModuleNotEnabledPage`, which names the env var or
+  config key that turns the module on (`modules[].enabledBy`), or else gives the module's
+  `reason`. Pages the manifest never declares, such as the `_ui` workbench, are always routed.
+  A page switched off by a `ui.extensions` override is left out of the nav, but the web still
+  routes it.
 
-Until the manifest loads, the sidebar and the top bar's slots are empty. If it cannot be read,
-they fall back to the registry: the sidebar lists the registered pages by their `group` (and
-`nav: false`), the slots render what is registered there, and the brand is "Deck". So
+Until the manifest loads, the sidebar and the top bar's slots are empty, and every registered
+page is routed. If it cannot be read, they fall back to the registry: the sidebar lists the
+registered pages by their `group` (and `nav: false`), every registered page is routed, the slots
+render what is registered there, and the brand is "Deck". So
 `registerPage`'s `group` only matters in that fallback.
 
 The registry is reactive. The shell's slot hosts call `useRegistryVersion()` and read their

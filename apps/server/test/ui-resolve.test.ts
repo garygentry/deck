@@ -895,6 +895,19 @@ describe("capability-aware nav: disabled modules' pages and their switches", () 
     expect(byId.get("mixed")).not.toHaveProperty("gates");
   });
 
+  it("names no switch for an own-gated module whose dependency was refused (no setting enables that)", () => {
+    const { host } = testHost([
+      // Refused outright: it requires a deckApi this deck does not provide.
+      testModule({ id: "refused", deckApi: "^99.0" }),
+      testModule({ id: "gated", dependsOn: ["refused"], enabledBy: { env: "GATED_ENABLED" }, env: ["GATED_ENABLED"] }),
+    ]);
+    const byId = new Map(host.plan.map((entry) => [entry.id, entry]));
+    expect(byId.get("refused")).toMatchObject({ enabled: false });
+    expect(byId.get("refused")).not.toHaveProperty("gates");
+    // Its own reason stands, but GATED_ENABLED alone would not enable it.
+    expect(byId.get("gated")).toEqual({ id: "gated", enabled: false, reason: "not enabled: GATED_ENABLED is not true" });
+  });
+
   it("/api/ui names env vars and config keys, never a value set for them", async () => {
     const { buildUiManifest } = await import("../src/ui/manifest.js");
     const tools = testModule({

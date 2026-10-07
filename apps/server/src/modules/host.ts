@@ -733,7 +733,10 @@ export function planModules(options: PlanOptions): ModulePlanning {
       const reason = notEnabledReason(manifest);
       if (reason !== null) {
         disabled.set(id, reason);
-        gate(id, reason, [...unmetSwitches(manifest), ...(dependencySwitches(manifest) ?? [])]);
+        // A dependency no setting can enable blocks the module whatever its own switches say,
+        // so then it gets no switches (its own reason still stands).
+        const fromDependencies = dependencySwitches(manifest);
+        if (fromDependencies !== null) gate(id, reason, [...unmetSwitches(manifest), ...fromDependencies]);
         // A section for a module that is not running is ignored; say so rather than silently.
         if (manifest.enabledBy?.env !== undefined && options.sectionOf(id) !== undefined) {
           findings.push({
@@ -753,7 +756,8 @@ export function planModules(options: PlanOptions): ModulePlanning {
       if (missing.length > 0) {
         const message = `Module "${id}" depends on ${missing.map((dep) => `"${dep}"`).join(", ")}, which ${missing.length === 1 ? "is" : "are"} not available.`;
         refuse(id, "MODULE_DEPENDENCY_MISSING", message);
-        gate(id, message, dependencySwitches(manifest) ?? []);
+        const fromDependencies = dependencySwitches(manifest);
+        if (fromDependencies !== null) gate(id, message, fromDependencies);
       }
     }
     for (const id of stuck) {

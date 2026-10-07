@@ -3,6 +3,9 @@ import { act, cleanup, render, screen, within } from "@testing-library/react";
 import type { JSX } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { UiManifestAnswer } from "../src/data/queries.js";
+import { manifestPlacing } from "./support/manifest.js";
+
 /**
  * The entity pages are open: a module attaches a section to `entity:host/sections` or
  * `entity:service/sections` by its id, and the page renders it with no change to the host.
@@ -12,8 +15,18 @@ async function freshHost() {
   vi.resetModules();
   const registry = await import("../src/registry/registry.js");
   const { EntitySections } = await import("../src/features/hosts-and-services/components/EntitySections.js");
-  return { registry, EntitySections };
+  const { getQueryClient } = await import("../src/data/query-client.js");
+  const { queryKeys } = await import("../src/data/queries.js");
+  /** Serve a UI manifest: by default one placing every registered extension (every module on). */
+  const serve = (manifest: UiManifestAnswer = manifestPlacing(registry.getAllExtensions())) =>
+    getQueryClient().setQueryData(queryKeys.uiManifest, manifest);
+  return { registry, EntitySections, serve };
 }
+
+/** A manifest entry placing an entity section. */
+const placed = (id: `${string}:${string}/${string}`, entity: "host" | "service", order: number) => ({
+  id, kind: "entity-section", module: id.split(/[:/]/)[1]!, slot: `entity:${entity}/sections`, order,
+});
 
 const text = (label: string) => (): JSX.Element => <span>{label}</span>;
 const headings = () => screen.getAllByRole("heading").map((heading) => heading.textContent);
@@ -27,12 +40,13 @@ afterEach(() => {
 
 describe("open entity sections", () => {
   it("renders a section any module attaches, between the built-ins by order", async () => {
-    const { registry, EntitySections } = await freshHost();
+    const { registry, EntitySections, serve } = await freshHost();
     // The built-ins' placement: findings at 10, configs at 20.
     registry.registerEntityFragment({ id: "section:drift/host-findings", entity: "host", section: "findings", title: "Findings", order: 10, component: text("FINDINGS") });
     registry.registerEntityFragment({ id: "section:sources/host-configs", entity: "host", section: "configs", title: "Configs", order: 20, component: text("CONFIGS") });
     registry.registerEntityFragment({ id: "section:backups/host", entity: "host", title: "Backups", order: 15, component: text("BACKUPS") });
 
+    serve();
     render(<EntitySections entity={Object.freeze({ entity: "host", host: "alpha" })} />);
     expect(headings()).toEqual(["Findings", "Backups", "Configs"]);
     const backups = screen.getByRole("region", { name: "Backups" });
@@ -43,10 +57,11 @@ describe("open entity sections", () => {
   });
 
   it("renders fragments that share a section under its first fragment's heading", async () => {
-    const { registry, EntitySections } = await freshHost();
+    const { registry, EntitySections, serve } = await freshHost();
     registry.registerEntityFragment({ id: "section:drift/host-findings", entity: "host", section: "findings", title: "Findings", order: 10, component: text("DRIFT") });
     registry.registerEntityFragment({ id: "section:audit/host-findings", entity: "host", section: "findings", title: "Audit", order: 50, component: text("AUDIT") });
 
+    serve();
     render(<EntitySections entity={Object.freeze({ entity: "host", host: "alpha" })} />);
     expect(headings()).toEqual(["Findings"]);
     const findings = screen.getByRole("region", { name: "Findings" }).textContent ?? "";
@@ -54,10 +69,11 @@ describe("open entity sections", () => {
   });
 
   it("renders two modules' same-named sections apart, each under its own heading", async () => {
-    const { registry, EntitySections } = await freshHost();
+    const { registry, EntitySections, serve } = await freshHost();
     registry.registerEntityFragment({ id: "section:backups/host", entity: "host", title: "Backups", order: 10, component: text("BACKUPS") });
     registry.registerEntityFragment({ id: "section:audit/host", entity: "host", title: "Audit", order: 20, component: text("AUDIT") });
 
+    serve();
     render(<EntitySections entity={Object.freeze({ entity: "host", host: "alpha" })} />);
     expect(headings()).toEqual(["Backups", "Audit"]);
     expect(within(screen.getByRole("region", { name: "Audit" })).getByText("AUDIT")).toBeInTheDocument();
@@ -65,8 +81,10 @@ describe("open entity sections", () => {
   });
 
   it("keeps host and service sections apart, and a section added later renders", async () => {
-    const { registry, EntitySections } = await freshHost();
+    const { registry, EntitySections, serve } = await freshHost();
     registry.registerEntityFragment({ id: "section:x/host", entity: "host", title: "Host only", component: text("HOST") });
+    // The manifest lists the service section; the web registers it later (a late-loading module).
+    serve({ ...manifestPlacing(registry.getAllExtensions()), extensions: [placed("section:x/host", "host", 100), placed("section:x/service", "service", 100)] });
     const service = Object.freeze({ entity: "service" as const, host: "alpha", name: "api" });
     const view = render(<EntitySections entity={service} />);
     expect(view.container).toBeEmptyDOMElement();
@@ -77,5 +95,51 @@ describe("open entity sections", () => {
     });
     expect(screen.getByRole("heading", { name: "Service only" })).toBeInTheDocument();
     expect(screen.queryByText("HOST")).toBeNull();
+  });
+
+  it("places sections where the UI manifest puts them, not where the web registered them", async () => {
+    const { registry, EntitySections, serve } = await freshHost();
+    registry.registerEntityFragment({ id: "section:drift/host-findings", entity: "host", section: "findings", title: "Findings", order: 10, component: text("FINDINGS") });
+    registry.registerEntityFragment({ id: "section:sources/host-configs", entity: "host", section: "configs", title: "Configs", order: 20, component: text("CONFIGS") });
+    serve({ ...manifestPlacing([]), extensions: [placed("section:sources/host-configs", "host", 5), placed("section:drift/host-findings", "host", 50)] });
+
+    render(<EntitySections entity={Object.freeze({ entity: "host", host: "alpha" })} />);
+    expect(headings()).toEqual(["Configs", "Findings"]);
+  });
+
+  it("renders nothing for a module that is off: no heading, no region, no placeholder", async () => {
+    const { registry, EntitySections, serve } = await freshHost();
+    registry.registerEntityFragment({ id: "section:drift/host-findings", entity: "host", section: "findings", title: "Findings", order: 10, component: text("FINDINGS") });
+    registry.registerEntityFragment({ id: "section:sources/host-configs", entity: "host", section: "configs", title: "Configs", order: 20, component: text("CONFIGS") });
+    // `/api/ui` drops every extension of a module that is not enabled: here, drift's.
+    serve({ ...manifestPlacing([]), extensions: [placed("section:sources/host-configs", "host", 20)] });
+
+    render(<EntitySections entity={Object.freeze({ entity: "host", host: "alpha" })} />);
+    expect(headings()).toEqual(["Configs"]);
+    expect(screen.queryByRole("region", { name: "Findings" })).toBeNull();
+    expect(document.querySelector('[data-entity-slot="findings"]')).toBeNull();
+    expect(document.body.textContent).toBe("ConfigsCONFIGS");
+
+    // Every module with sections off: the host renders nothing at all.
+    cleanup();
+    serve({ ...manifestPlacing([]), extensions: [] });
+    const { container } = render(<EntitySections entity={Object.freeze({ entity: "host", host: "alpha" })} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("renders nothing while the manifest loads, and the registered sections if it cannot be read", async () => {
+    const { registry, EntitySections, serve } = await freshHost();
+    registry.registerEntityFragment({ id: "section:drift/host-findings", entity: "host", section: "findings", title: "Findings", order: 10, component: text("FINDINGS") });
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    try {
+      const { container, unmount } = render(<EntitySections entity={Object.freeze({ entity: "host", host: "alpha" })} />);
+      expect(container).toBeEmptyDOMElement();
+      unmount();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    serve({ unavailable: true, message: "HTTP 502" });
+    render(<EntitySections entity={Object.freeze({ entity: "host", host: "alpha" })} />);
+    expect(headings()).toEqual(["Findings"]);
   });
 });

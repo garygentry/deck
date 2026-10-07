@@ -431,41 +431,56 @@ export function fragmentSection(fragment: Pick<EntityFragmentRegistration, "id" 
   return entitySectionName(fragment.id, fragment)!;
 }
 
+/** An entity-section extension in the shape `registerEntityFragment` registered it. */
+function toEntityFragment(entity: "host" | "service", extension: Extension): EntityFragmentRegistration {
+  const named = extension.config.section as string | undefined;
+  return withOrder<EntityFragmentRegistration>(
+    {
+      id: extension.id,
+      entity,
+      title: extension.config.title as string,
+      ...(named === undefined ? {} : { section: named }),
+      component: extension.component as EntityFragmentRegistration["component"],
+    },
+    extension,
+  );
+}
+
 /** The fragments attached to an entity page, by order then id; only `section`'s when given. */
 export function getEntityFragments(
   entity: "host" | "service",
   section?: string,
 ): readonly EntityFragmentRegistration[] {
   return getExtensions(entitySectionsSlot(entity))
-    .map((extension) => {
-      const named = extension.config.section as string | undefined;
-      return withOrder<EntityFragmentRegistration>(
-        {
-          id: extension.id,
-          entity,
-          title: extension.config.title as string,
-          ...(named === undefined ? {} : { section: named }),
-          component: extension.component as EntityFragmentRegistration["component"],
-        },
-        extension,
-      );
-    })
+    .map((extension) => toEntityFragment(entity, extension))
     .filter((fragment) => section === undefined || fragmentSection(fragment) === section);
 }
 
 /**
- * An entity page's sections: every attached fragment grouped by section, in the order of each
- * section's first fragment, headed by that fragment's title.
+ * Group an entity page's placed extensions (its `entity:<entity>/sections` slot, in render
+ * order) into sections: in the order of each section's first fragment, headed by that
+ * fragment's title. Anything not an entity section is ignored. A module that is off has no
+ * extensions in the UI manifest, so its sections are simply absent: no heading, no placeholder.
  */
-export function getEntitySections(entity: "host" | "service"): readonly EntitySection[] {
+export function groupEntitySections(entity: "host" | "service", placed: readonly Extension[]): readonly EntitySection[] {
   const sections = new Map<string, { section: string; title: string; fragments: EntityFragmentRegistration[] }>();
-  for (const fragment of getEntityFragments(entity)) {
+  for (const extension of placed) {
+    if (extension.kind !== "entity-section") continue;
+    const fragment = toEntityFragment(entity, extension);
     const name = fragmentSection(fragment);
     const section = sections.get(name);
     if (section === undefined) sections.set(name, { section: name, title: fragment.title, fragments: [fragment] });
     else section.fragments.push(fragment);
   }
   return [...sections.values()];
+}
+
+/**
+ * An entity page's sections from the registry alone: every attached fragment grouped by
+ * section ({@link groupEntitySections}).
+ */
+export function getEntitySections(entity: "host" | "service"): readonly EntitySection[] {
+  return groupEntitySections(entity, getExtensions(entitySectionsSlot(entity)));
 }
 
 /**

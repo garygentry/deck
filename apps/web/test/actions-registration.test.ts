@@ -49,16 +49,15 @@ describe("the governed-actions web half", () => {
     expect(await resolveComponent(feature.actionsWebModule.components.ActionsPage)).toBe(ActionsPage);
   });
 
-  it("fails loudly with DUPLICATE_ID when the page id is re-registered", async () => {
-    // Eager discovery must not swallow RegistrationError.
-    const { registry } = await loadFreshFeature();
-    expect(() =>
-      registry.registerPage({
-        id: "page:actions/overview",
-        path: "/actions-again",
-        label: "Actions Again",
-        component: () => null,
-      }),
-    ).toThrowError(expect.objectContaining({ code: "DUPLICATE_ID" }));
+  it("fails loudly with DUPLICATE_ID when its page id is already taken, registering nothing", async () => {
+    // Eager discovery must not swallow RegistrationError: the feature's own import rejects.
+    vi.resetModules();
+    const registry = await import("../src/registry/registry.js");
+    registry.registerPage({ id: "page:actions/overview", path: "/actions-taken", label: "Taken", component: () => null, nav: false });
+    await expect(import("../src/features/governed-actions/index.js")).rejects.toThrowError(
+      expect.objectContaining({ code: "DUPLICATE_ID", message: expect.stringContaining("registerWebModule(actions)") }),
+    );
+    expect(registry.getPages().filter(({ id }) => id === "page:actions/overview").map(({ path }) => path)).toEqual(["/actions-taken"]);
+    expect(registry.getAllExtensions().filter(({ id }) => id === "nav:actions/overview")).toEqual([]);
   });
 });

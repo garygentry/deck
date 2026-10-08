@@ -76,7 +76,7 @@ describe("density spacing tokens", () => {
         <EmptyState compact title="Nothing either" />
       </Section>,
     );
-    expect(tokensOf(screen.getByRole("region", { name: "Power" }))).toEqual(["--section-gap", "--section-card-p", "--section-card-p-md"]);
+    expect(tokensOf(screen.getByRole("region", { name: "Power" }))).toEqual(["--section-gap", "--section-card-p"]);
     const [full, compact] = screen.getAllByRole("status");
     expect(tokensOf(full!)).toEqual(["--empty-state-px", "--empty-state-py"]);
     expect(tokensOf(compact!)).toEqual(["--empty-state-compact-py"]);
@@ -92,7 +92,7 @@ describe("density spacing tokens", () => {
     );
     const section = screen.getByRole("region", { name: "Power" });
     expect(classes(section)).toEqual(expect.arrayContaining(["gap-6", "p-8"]));
-    expect(tokensOf(section)).toEqual(["--section-card-p-md"]);
+    expect(tokensOf(section)).toEqual([]);
     expect(tokensOf(screen.getByRole("list", { name: "Hosts" }))).toEqual([]);
     expect(tokensOf(screen.getByRole("listitem"))).toEqual([]);
   });

@@ -48,7 +48,7 @@ export function Section({
         // Spacing tokens (theme.css), which the operator's compact density tightens.
         "flex flex-col gap-(--section-gap)",
         variant === "card" &&
-          "rounded-xl border bg-card p-(--section-card-p) text-card-foreground shadow-sm md:p-(--section-card-p-md)",
+          "rounded-xl border bg-card p-(--section-card-p) text-card-foreground shadow-sm",
         className,
       )}
       {...props}

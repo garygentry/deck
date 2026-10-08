@@ -449,6 +449,39 @@ ui:
 An override for an id deck does not know, or one that does not fit its target, is reported in
 `GET /api/ui` (`UI_UNKNOWN_EXTENSION`, `UI_INVALID_OVERRIDE`) and otherwise ignored.
 
+### Hot reload
+
+deck watches the config directory while it runs. When the directory has been quiet for a
+moment, deck loads and validates the whole document again and compares it with the config it
+started with:
+
+- If only `ui` changed, the new `ui` takes effect without a restart. `GET /api/ui` serves the
+  new manifest under a new `ETag`. An open page picks it up when its window regains focus, or
+  within a minute.
+- If the config no longer loads (a YAML error, or a finding that would stop deck from
+  starting), deck keeps serving the last good config. `GET /api/ui` adds a `UI_CONFIG_INVALID`
+  finding, the shell shows it in a notice, and deck logs a `config.reload` warning. The finding
+  names the problem only by finding code and the path in the document (`SCHEMA_INVALID at
+  /ui/brand/title`), never with a file's content or a module's own message, which could hold
+  a secret. Run `deck validate` on the directory for the details.
+- If anything outside `ui` changed, deck logs `restart required` and keeps serving the last good
+  config, including its `ui`, until it restarts. `GET /api/ui` reports this as
+  `UI_RESTART_REQUIRED`, naming the changed keys.
+
+Fixing or reverting the edit clears the finding. Every change in the directory is noticed,
+including files swapped in through temporary names or a symlinked directory, as with a
+Kubernetes ConfigMap. Most changes are seen at once. Some raise no file-system event, such as a
+ConfigMap re-pointing its `..data` link under Bun, which deck runs on. deck also checks the
+config files every 5 seconds, so even those take effect within about 5 seconds, as do changes
+on mounts that report no file events at all (some network or Docker Desktop mounts). deck also
+reads the directory once more right after it starts, so an edit made while it was starting
+counts. If the directory is removed or replaced, deck reports
+it as missing, and within a few seconds of it coming back watches it again and reloads.
+
+`theme` (mode, preset, density and radius) and the home page used before the manifest arrives
+are written into the page when it loads. deck serves a changed value at once, but an open page
+applies it on its next load.
+
 ## modules.llm-usage
 
 `modules.llm-usage` is an object with no additional properties. Every key is optional, and an absent

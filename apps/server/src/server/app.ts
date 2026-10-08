@@ -16,6 +16,7 @@ import type {
 } from "../contract/index.js";
 import type { ModuleHost } from "../modules/host.js";
 import { requestLogger } from "../log/logger.js";
+import { etagMatches, etagOf, type LiveUi } from "../ui/live.js";
 import { deckBootOf, renderIndexHtml } from "./index-html.js";
 import { RESERVED_ROOT_PATHS } from "./reserved-paths.js";
 
@@ -38,6 +39,12 @@ export interface AppDeps {
   modules?: Pick<ModuleHost, "mount" | "health" | "rootPaths">;
   /** The resolved UI manifest served at `/api/ui`, built once at boot. */
   ui?: UiManifest;
+  /**
+   * What to serve now, read per request: the config and UI manifest a `ui` hot reload swaps.
+   * When given, it takes the place of `config` and `ui` for `/api/config`, `/api/ui` and the
+   * page's boot object.
+   */
+  live?: () => LiveUi;
   webDistDir?: string;
   startedAtMs?: number;
 }
@@ -111,16 +118,25 @@ export { RESERVED_ROOT_PATHS } from "./reserved-paths.js";
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
   const startedAtMs = deps.startedAtMs ?? Date.now();
+  const staticUi = deps.ui === undefined ? undefined : { config: deps.config, ui: deps.ui, etag: etagOf(deps.ui) };
+  const current = (): { config: DeckConfig; ui?: UiManifest; etag?: string } =>
+    deps.live?.() ?? staticUi ?? { config: deps.config };
 
   app.use("*", requestLogger(deps.logger));
 
-  app.get("/api/config", (context) => context.json(deps.config));
+  app.get("/api/config", (context) => context.json(current().config));
 
-  app.get("/api/ui", (context) =>
-    deps.ui === undefined
-      ? apiError(context, 404, "No UI manifest was resolved for this server", "UI_MANIFEST_UNAVAILABLE")
-      : context.json(deps.ui),
-  );
+  app.get("/api/ui", (context) => {
+    const { ui, etag } = current();
+    if (ui === undefined || etag === undefined) {
+      return apiError(context, 404, "No UI manifest was resolved for this server", "UI_MANIFEST_UNAVAILABLE");
+    }
+    // Revalidated on every read, so a reloaded manifest is seen at once and an unchanged one costs a 304.
+    context.header("ETag", etag);
+    context.header("Cache-Control", "no-cache");
+    if (etagMatches(context.req.header("If-None-Match"), etag)) return context.body(null, 304);
+    return context.json(ui);
+  });
 
   app.get("/api/providers", (context) => {
     const response: ProvidersResponse = { providers: [...deps.providers.listProviders()] };
@@ -190,7 +206,8 @@ export function createApp(deps: AppDeps): Hono {
       if (template === undefined) return next();
       // Rendered per request from the current manifest and config: it carries their brand.
       context.header("Cache-Control", "no-cache");
-      return context.html(renderIndexHtml(template, deckBootOf(deps.ui, deps.config)));
+      const { ui, config } = current();
+      return context.html(renderIndexHtml(template, deckBootOf(ui, config)));
     });
   }
 

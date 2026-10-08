@@ -3,6 +3,8 @@ import type { ProviderEnvelope } from "@deck/contract";
 import type { DeckConfig } from "@deck/server";
 import { pagePathProblem, type UiManifest } from "@deck/module-sdk";
 
+import { getQueryClient } from "./query-client.js";
+
 /** A non-2xx answer to a data request; `status` is the HTTP status. */
 export class HttpStatusError extends Error {
   constructor(
@@ -165,10 +167,11 @@ function withRoutableDisabledPages(manifest: UiManifest): UiManifest {
 }
 
 /**
- * The resolved UI manifest, fixed for the life of the server process. A failed read settles
- * as "unavailable" rather than an error, so readers keep a settled answer while it is asked
- * again (once per poll interval) instead of flashing back to loading; it leaves one warning
- * per failed read.
+ * The resolved UI manifest, which the server swaps when the `ui` config changes. A failed read
+ * settles as "unavailable" rather than an error, so readers keep a settled answer while it is
+ * asked again (once per poll interval) instead of flashing back to loading; it leaves one
+ * warning per failed read. Once a manifest has been read, a failed re-read keeps it: the shell
+ * keeps its nav, home and module gating rather than falling back for a blip.
  */
 export const uiManifestQuery = {
   queryKey: queryKeys.uiManifest,
@@ -180,6 +183,11 @@ export const uiManifestQuery = {
       return withRoutableDisabledPages(body as UiManifest);
     } catch (error) {
       if (signal?.aborted) throw error;
+      const previous = getQueryClient().getQueryData<UiManifestAnswer>(queryKeys.uiManifest);
+      if (previous !== undefined && !isUiManifestUnavailable(previous)) {
+        console.warn("[deck] UI manifest could not be read again; keeping the last one", error);
+        return previous;
+      }
       console.warn("[deck] UI manifest unavailable; falling back to polling every provider", error);
       return { unavailable: true, message: error instanceof Error ? error.message : String(error) };
     }

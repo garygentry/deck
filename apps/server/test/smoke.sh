@@ -254,4 +254,42 @@ MOFF="$(curl -sS -o /dev/null -w '%{http_code}' \
 [ "${MOFF}" = "404" ] || fail "metrics GET with flag off expected 404, got ${MOFF}"
 stop_server
 
-printf 'SMOKE OK: portal GET 200; actions enabled end/succeeded; actions disabled 403 ACTIONS_DISABLED; sources manifest+file 200, traversal rejected; metrics 200 text/plain, off 404\n'
+# ---------------------------------------------------------------------------
+# 6. ui hot reload under Bun from a Kubernetes ConfigMap layout: files linked
+#    through a `..data` symlink that is re-pointed atomically. Bun raises no
+#    file-system event for that, so the reload comes from the watch's periodic
+#    fingerprint of the config files (seen within about 5 s).
+# ---------------------------------------------------------------------------
+CM_DIR="${TMP_ROOT}/configmap"
+mkdir -p "${CM_DIR}/..v1" "${CM_DIR}/..v2"
+for v in v1 v2; do
+  printf 'schemaVersion: 2\nestate:\n  name: smoke\n' >"${CM_DIR}/..${v}/00-base.yaml"
+done
+printf 'schemaVersion: 2\nui:\n  brand:\n    title: Before swap\n' >"${CM_DIR}/..v1/10-overlay.yaml"
+printf 'schemaVersion: 2\nui:\n  brand:\n    title: After swap\n' >"${CM_DIR}/..v2/10-overlay.yaml"
+ln -s ..v1 "${CM_DIR}/..data"
+ln -s ..data/00-base.yaml "${CM_DIR}/00-base.yaml"
+ln -s ..data/10-overlay.yaml "${CM_DIR}/10-overlay.yaml"
+
+DECK_CONFIG_DIR="${CM_DIR}" DECK_PORT="${PORTAL_PORT}" bun "${BOOT}" &
+SRV=$!
+wait_ready "http://127.0.0.1:${PORTAL_PORT}/api/ui" \
+  || fail "configmap server did not become ready"
+curl -sS "http://127.0.0.1:${PORTAL_PORT}/api/ui" | grep -q '"title":"Before swap"' \
+  || fail "configmap server did not serve the first version's brand"
+# Past the boot-time re-read, so only the watch can see the swap.
+sleep 1
+ln -s ..v2 "${CM_DIR}/..data_tmp"
+mv -T "${CM_DIR}/..data_tmp" "${CM_DIR}/..data"
+SWAPPED=""
+for i in $(seq 1 40); do
+  if curl -sS "http://127.0.0.1:${PORTAL_PORT}/api/ui" 2>/dev/null | grep -q '"title":"After swap"'; then
+    SWAPPED=1
+    break
+  fi
+  sleep 0.25
+done
+[ -n "${SWAPPED}" ] || fail "configmap ..data swap was not reloaded within 10 s"
+stop_server
+
+printf 'SMOKE OK: portal GET 200; actions enabled end/succeeded; actions disabled 403 ACTIONS_DISABLED; sources manifest+file 200, traversal rejected; metrics 200 text/plain, off 404; configmap ..data swap reloaded under Bun\n'

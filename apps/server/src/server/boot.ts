@@ -23,6 +23,7 @@ import {
 } from "../providers/registry.js";
 import { BUILTIN_MODULES } from "../modules/builtin.js";
 import { buildUiManifest } from "../ui/manifest.js";
+import { createUiReloader, type UiReloader } from "../ui/live.js";
 import { createModuleHost, startModules, type ModuleHost } from "../modules/host.js";
 import { settlesWithin } from "./settle.js";
 import { FORCE_CLOSE_WAIT_MS, resolveStopTimings, type StopTimings } from "./stop-timings.js";
@@ -44,6 +45,12 @@ export interface BootOptions {
   modules?: readonly ServerModule<any>[];
   /** Shutdown stage bounds; defaults in `stop-timings.ts`. */
   shutdown?: StopTimings;
+  /**
+   * `ui` hot reload: watch the config directory and swap the UI manifest when only `ui`
+   * changes (default on). `false` turns it off; `debounceMs` sets how long the directory must
+   * be quiet before it is read again.
+   */
+  uiReload?: false | { debounceMs?: number };
 }
 
 /** What a request that arrives once shutdown has begun gets. */
@@ -84,7 +91,8 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
   const startedAtMs = Date.now();
   const serverModules = options.modules ?? BUILTIN_MODULES;
   const stopTimings = resolveStopTimings(options.shutdown);
-  const result = load({ arg: options.configDir, boot: true, ...(options.modules === undefined ? {} : { modules: options.modules }) });
+  const loadOptions = { arg: options.configDir, boot: true, ...(options.modules === undefined ? {} : { modules: options.modules }) };
+  const result = load(loadOptions);
   const logger = createLogger();
   const configDir = resolve(
     options.configDir ?? process.env.DECK_CONFIG_DIR ?? "config",
@@ -166,24 +174,33 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
     process.exit(2);
   }
 
-  // The UI manifest, resolved once: config, modules and providers are fixed from here on.
+  // The UI manifest: modules and providers are fixed from here on, and so is the config but
+  // for `ui`, which a hot reload may swap (with the manifest resolved from it).
+  const buildUi = (config: typeof result.config) => buildUiManifest({ config, providers, modules, capabilities: {} });
   let ui: UiManifest;
   try {
-    ui = buildUiManifest({
-      config: result.config,
-      providers,
-      modules,
-      capabilities: {},
-    });
+    ui = buildUi(result.config);
   } catch (cause) {
     process.stderr.write(`${(cause as Error).message}\n`);
     process.exit(2);
+  }
+  let reloader: UiReloader | undefined;
+  if (options.uiReload !== false) {
+    reloader = createUiReloader({
+      configDir,
+      config: result.config,
+      ui,
+      load: () => load({ ...loadOptions, arg: configDir }),
+      build: buildUi,
+      logger,
+      ...(options.uiReload?.debounceMs === undefined ? {} : { debounceMs: options.uiReload.debounceMs }),
+    });
   }
 
   // Mounting re-checks module routes against the live kernel table (a backstop).
   let app: ReturnType<typeof createApp>;
   try {
-    app = createApp({ ...kernelDeps, modules, ui });
+    app = createApp({ ...kernelDeps, modules, ui, ...(reloader === undefined ? {} : { live: reloader.current }) });
   } catch (cause) {
     process.stderr.write(`${(cause as Error).message}\n`);
     process.exit(2);
@@ -225,6 +242,7 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
      */
     async stop() {
       stopping = true;
+      reloader?.stop();
       const drained = Promise.resolve(server.stop());
       if (!(await settlesWithin(modules.stop(), stopTimings.modulesMs))) {
         logger.warn({ event: "server.stop-stage-timeout", stage: "modules", boundMs: stopTimings.modulesMs } satisfies ServerStopStageTimeoutEvent, "modules still stopping; continuing");

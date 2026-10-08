@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
 
 import { getQueryClient } from "./query-client.js";
-import { configQuery, isUiManifestUnavailable, providerQuery, uiManifestQuery } from "./queries.js";
+import { configQuery, isUiManifestUnavailable, providerQuery, queryKeys, uiManifestQuery } from "./queries.js";
 
 export type ConfigState =
   | { status: "loading" }
@@ -47,17 +47,42 @@ export type UiManifestState =
   | { status: "ready"; manifest: UiManifest }
   | { status: "error"; message: string };
 
+/** How often a page re-reads the UI manifest, which the server swaps when the `ui` config changes. */
+export const UI_MANIFEST_REFRESH_MS = 60_000;
+
+let refreshOnFocusInstalled = false;
+
 /**
- * The resolved UI manifest (`/api/ui`), read once per page load. When it cannot be read the
- * state is `error` (a settled answer), asked again every poll interval by its readers until it
+ * Re-read the UI manifest when the window regains focus or the page becomes visible again,
+ * once per page: only the manifest (other queries keep the client's focus defaults), and one
+ * read when both events fire together.
+ */
+function refreshManifestOnFocus(): void {
+  if (refreshOnFocusInstalled || typeof window === "undefined") return;
+  refreshOnFocusInstalled = true;
+  const refresh = () => {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    void getQueryClient().refetchQueries({ queryKey: queryKeys.uiManifest, type: "active" }, { cancelRefetch: false });
+  };
+  window.addEventListener("focus", refresh);
+  window.addEventListener("visibilitychange", refresh);
+}
+
+/**
+ * The resolved UI manifest (`/api/ui`), shared by every reader: one read per page load, then
+ * again when the window regains focus (or the page becomes visible) and every
+ * {@link UI_MANIFEST_REFRESH_MS}, so a `ui` config change shows without a reload (an unchanged
+ * manifest keeps its references). Once read, a failed re-read keeps it. When it cannot be read
+ * at all the state is `error` (a settled answer), asked again every poll interval until it
  * succeeds; it never goes back to `loading` while it is asked again.
  */
 export function useUiManifest(): UiManifestState {
+  refreshManifestOnFocus();
   const query = useQuery(
     {
       ...uiManifestQuery,
       // While it is unavailable, ask again each poll interval so readers heal within a tick.
-      refetchInterval: (q) => (isUiManifestUnavailable(q.state.data) ? POLL_DEFAULTS.pollIntervalMs : false),
+      refetchInterval: (q) => (isUiManifestUnavailable(q.state.data) ? POLL_DEFAULTS.pollIntervalMs : UI_MANIFEST_REFRESH_MS),
       refetchIntervalInBackground: true,
     },
     getQueryClient(),

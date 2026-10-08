@@ -214,3 +214,9 @@ export const DEFAULT_HOME_PAGE = "page:portal/overview";
 export function homePathProblem(path: string): string | null {
   return /[:*]/.test(path) ? `its path "${path}" has parameters, which "/" cannot supply` : null;
 }
+
+/**
+ * The UI finding codes about reloading the config itself, rather than about resolving it: the
+ * config changed and no longer loads, or changed outside `ui`. The shell shows these.
+ */
+export const UI_RELOAD_FINDING_CODES: readonly string[] = ["UI_CONFIG_INVALID", "UI_RESTART_REQUIRED"];

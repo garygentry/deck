@@ -161,7 +161,11 @@ export type UiFindingCode =
   | "UI_INVALID_PAGE"
   | "UI_HOME_UNKNOWN"
   | "UI_HOME_DISABLED"
-  | "UI_HOME_NOT_ROUTABLE";
+  | "UI_HOME_NOT_ROUTABLE"
+  /** The config directory changed and no longer loads: the last good config is still served. */
+  | "UI_CONFIG_INVALID"
+  /** The config directory changed outside `ui`: that change takes effect when deck restarts. */
+  | "UI_RESTART_REQUIRED";
 
 export interface UiFinding {
   code: UiFindingCode;

@@ -89,7 +89,7 @@ function requireString(value: unknown, field: string, context: string): asserts 
 }
 
 /** A function component or class, or a React object component (lazy, memo, forwardRef). */
-function isComponent(value: unknown): boolean {
+export function isComponent(value: unknown): boolean {
   return (
     typeof value === "function" ||
     (typeof value === "object" && value !== null && "$$typeof" in value)
@@ -290,16 +290,17 @@ export function registerPage(registration: PageRegistration): void {
   // Checked up front so a page and its nav entry register together or not at all.
   requireNoProblem(pagePathProblem(registration.path, "page"), `registerPage(${registration.id})`);
   requireNoProblem(orderProblem(registration.order, "order"), `registerPage(${registration.id})`);
+  requireNoProblem(orderProblem(registration.navOrder, "navOrder"), `registerPage(${registration.id})`);
   if (extensions.has(registration.id)) {
     throw new RegistrationError("DUPLICATE_ID", `registerPage: duplicate page id "${registration.id}"`);
   }
   // Only registerPage mints `nav:` ids, one per page id, so the nav id is free here.
   const navId = `nav:${registration.id.slice("page:".length)}` as ExtensionId;
   const listed = registration.nav !== false;
-  const { id, component, order, ...page } = registration;
+  const { id, component, order, navOrder = order, ...page } = registration;
   addExtension({ id, kind: "page", attachTo: { slot: ROUTES_SLOT, ...(order === undefined ? {} : { order }) }, config: page, component }, "page", "registerPage");
   if (listed) {
-    addExtension({ id: navId, kind: "nav", attachTo: { slot: NAV_SLOT, ...(order === undefined ? {} : { order }) }, config: { page: id } }, "nav", "registerPage");
+    addExtension({ id: navId, kind: "nav", attachTo: { slot: NAV_SLOT, ...(navOrder === undefined ? {} : { order: navOrder }) }, config: { page: id } }, "nav", "registerPage");
   }
 }
 
@@ -404,8 +405,11 @@ function withOrder<T extends object>(view: T, extension: Extension): T & { order
 
 export function getPages(): readonly PageRegistration[] {
   return getExtensions(ROUTES_SLOT).map((extension) => {
-    const page = extension.config as Omit<PageRegistration, "id" | "component" | "order">;
-    return withOrder<PageRegistration>({ id: extension.id, ...page, component: extension.component! }, extension);
+    const page = extension.config as Omit<PageRegistration, "id" | "component" | "order" | "navOrder">;
+    // The nav entry's order, when it differs from the route's (the fallback nav sorts by it).
+    const nav = extensions.get(`nav:${extension.id.slice("page:".length)}`);
+    const navOrder = nav !== undefined && nav.attachTo.order !== extension.attachTo.order ? { navOrder: nav.attachTo.order } : {};
+    return withOrder<PageRegistration>({ id: extension.id, ...page, ...navOrder, component: extension.component! }, extension);
   });
 }
 
@@ -431,41 +435,58 @@ export function fragmentSection(fragment: Pick<EntityFragmentRegistration, "id" 
   return entitySectionName(fragment.id, fragment)!;
 }
 
+/** An entity-section extension in the shape `registerEntityFragment` registered it. */
+function toEntityFragment(entity: "host" | "service", extension: Extension): EntityFragmentRegistration {
+  const named = extension.config.section as string | undefined;
+  return withOrder<EntityFragmentRegistration>(
+    {
+      id: extension.id,
+      entity,
+      title: extension.config.title as string,
+      ...(named === undefined ? {} : { section: named }),
+      component: extension.component as EntityFragmentRegistration["component"],
+    },
+    extension,
+  );
+}
+
 /** The fragments attached to an entity page, by order then id; only `section`'s when given. */
 export function getEntityFragments(
   entity: "host" | "service",
   section?: string,
 ): readonly EntityFragmentRegistration[] {
   return getExtensions(entitySectionsSlot(entity))
-    .map((extension) => {
-      const named = extension.config.section as string | undefined;
-      return withOrder<EntityFragmentRegistration>(
-        {
-          id: extension.id,
-          entity,
-          title: extension.config.title as string,
-          ...(named === undefined ? {} : { section: named }),
-          component: extension.component as EntityFragmentRegistration["component"],
-        },
-        extension,
-      );
-    })
+    .map((extension) => toEntityFragment(entity, extension))
     .filter((fragment) => section === undefined || fragmentSection(fragment) === section);
 }
 
 /**
- * An entity page's sections: every attached fragment grouped by section, in the order of each
- * section's first fragment, headed by that fragment's title.
+ * Group an entity page's placed extensions (its `entity:<entity>/sections` slot, in render
+ * order) into sections: in the order of each section's first fragment, headed by that
+ * fragment's title. Anything not an entity section, or without a usable section config, is
+ * ignored. A module that is off has no
+ * extensions in the UI manifest, so its sections are simply absent: no heading, no placeholder.
  */
-export function getEntitySections(entity: "host" | "service"): readonly EntitySection[] {
+export function groupEntitySections(entity: "host" | "service", placed: readonly Extension[]): readonly EntitySection[] {
   const sections = new Map<string, { section: string; title: string; fragments: EntityFragmentRegistration[] }>();
-  for (const fragment of getEntityFragments(entity)) {
+  for (const extension of placed) {
+    // A placed config that is not a usable section (no title) cannot head one.
+    if (extension.kind !== "entity-section" || entitySectionProblem(extension.config, "entity section") !== null) continue;
+    const fragment = toEntityFragment(entity, extension);
     const name = fragmentSection(fragment);
     const section = sections.get(name);
     if (section === undefined) sections.set(name, { section: name, title: fragment.title, fragments: [fragment] });
     else section.fragments.push(fragment);
   }
   return [...sections.values()];
+}
+
+/**
+ * An entity page's sections from the registry alone: every attached fragment grouped by
+ * section ({@link groupEntitySections}).
+ */
+export function getEntitySections(entity: "host" | "service"): readonly EntitySection[] {
+  return groupEntitySections(entity, getExtensions(entitySectionsSlot(entity)));
 }
 
 /**

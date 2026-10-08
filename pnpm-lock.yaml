@@ -196,6 +196,9 @@ importers:
 
   packages/contract:
     dependencies:
+      '@deck/module-sdk':
+        specifier: workspace:*
+        version: link:../module-sdk
       '@deck/schema':
         specifier: workspace:*
         version: link:../schema

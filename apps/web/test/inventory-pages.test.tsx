@@ -6,7 +6,7 @@ import { URL, fileURLToPath } from "node:url";
 const TEST_FILE_URL = import.meta.url;
 import { cleanup, render, screen, within } from "@testing-library/react";
 import type { JSX } from "react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InventoryData } from "../src/features/hosts-and-services/use-inventory-data.js";
 import {
   availableState,
@@ -61,7 +61,10 @@ import { ServiceDetailPage } from "../src/features/hosts-and-services/services/d
 import * as registry from "../src/registry/registry.js";
 import { getPages, registerEntityFragment } from "../src/registry/registry.js";
 import type { EntityRef } from "../src/registry/registry.js";
+import { getQueryClient } from "../src/data/query-client.js";
+import { queryKeys } from "../src/data/queries.js";
 import { resolveComponent } from "./support/lazy.js";
+import { manifestPlacing } from "./support/manifest.js";
 
 afterEach(() => {
   cleanup();
@@ -245,6 +248,11 @@ beforeAll(() => {
   registerEntityFragment({ id: "section:test/svc-cond", entity: "service", section: "configs", title: "Configs", order: 30, component: SvcCond });
 });
 
+// The UI manifest places every registered section (every module is on).
+beforeEach(() => {
+  getQueryClient().setQueryData(queryKeys.uiManifest, manifestPlacing(registry.getAllExtensions()));
+});
+
 /** Fragment render failures are expected in these tests; keep React's report quiet. */
 function quietErrors(): () => void {
   const spy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -287,7 +295,7 @@ describe("EntitySections ordering and states", () => {
   });
 
   it("renders no sections, and no drift, when nothing is attached", () => {
-    const spy = vi.spyOn(registry, "getEntitySections").mockReturnValue([]);
+    const spy = vi.spyOn(registry, "groupEntitySections").mockReturnValue([]);
     try {
       const { container } = render(<EntitySections entity={Object.freeze({ entity: "host", host: "empty" })} />);
       expect(container).toBeEmptyDOMElement();
@@ -298,7 +306,8 @@ describe("EntitySections ordering and states", () => {
   });
 
   it("shows one alert for a registry-read failure without exposing exception text", () => {
-    const spy = vi.spyOn(registry, "getEntitySections").mockImplementation(() => {
+    // The registry accessor itself throws, as a broken registry would.
+    const spy = vi.spyOn(registry, "getAllExtensions").mockImplementation(() => {
       throw new Error("registry read boom secret detail");
     });
     try {

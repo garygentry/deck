@@ -1,3 +1,4 @@
+import { LLM_USAGE_UI } from "@deck/contract/modules/llm-usage";
 import { defineServerModule, type JsonSchema, type ModuleManifest } from "@deck/module-sdk";
 
 import { LlmUsageCollector, type CollectorDeps } from "./collector.js";
@@ -17,24 +18,14 @@ import schema from "./schema.json" with { type: "json" };
  * `/api/health.llmUsage` field.
  */
 export const LLM_USAGE_MANIFEST: ModuleManifest = {
-  id: "llm-usage",
-  version: "1.0.0",
-  deckApi: "^0.1",
+  // Identity, routes and UI contributions are shared with the web half.
+  ...LLM_USAGE_UI,
   // The section names the env var holding the statusLine ingest token, never the token.
   envFromConfig: ["/claude/statusLine/credentialEnv"],
   config: {
     schema: schema as JsonSchema,
     ownership: { "": "overlay" },
     findings: [LLM_USAGE_INVALID],
-  },
-  contributes: {
-    routes: { legacyAliases: ["/api/llm-usage"] },
-    pages: [{ id: "page:llm-usage/overview", path: "/usage", title: "LLM usage", icon: "gauge", component: "LlmUsagePage" }],
-    nav: [{ id: "nav:llm-usage/overview", page: "page:llm-usage/overview", group: "health" }],
-    extensions: [
-      { id: "pill:llm-usage/summary", kind: "pill", attachTo: { slot: "app/topbar.status", order: 40 }, component: "LlmUsageSummary" },
-      { id: "card:llm-usage/portal", kind: "widget", attachTo: { slot: "portal/summary" }, component: "LlmUsagePortalCard" },
-    ],
   },
   health: { legacyKey: "llmUsage" },
 };

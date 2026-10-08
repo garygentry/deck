@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { LlmUsageResponse, UsageBar } from "@deck/server/llm-usage";
+import { focusManager, type QueryClient } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TONES, type StatusMap } from "@/ui";
@@ -14,7 +15,8 @@ import {
   formatResetIn,
   worstBar,
 } from "../src/features/llm-usage/status.js";
-import { createUsageStore, type UsageStore, type UsageView } from "../src/features/llm-usage/store.js";
+import { createUsageStore, llmUsageKey, type UsageStore, type UsageView } from "../src/features/llm-usage/store.js";
+import { createDeckQueryClient } from "../src/data/query-client.js";
 import { AA_TEXT_TOKENS } from "./support/tokens.js";
 
 const NOW = Date.parse("2026-09-24T12:00:00Z");
@@ -232,88 +234,131 @@ describe("LlmUsagePortalCard", () => {
 
 describe("usage store", () => {
   const ok = (data: LlmUsageResponse) => new Response(JSON.stringify(data), { status: 200 });
-
-  function fakeDoc() {
-    const listeners = new Set<() => void>();
-    return {
-      visibilityState: "visible" as DocumentVisibilityState,
-      addEventListener: (_: string, fn: () => void) => listeners.add(fn),
-      removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
-      fire() {
-        for (const fn of listeners) fn();
-      },
-      listeners,
-    };
-  }
+  const urls = (mock: { mock: { calls: unknown[][] } }) => mock.mock.calls.map(([url]) => url);
+  let client: QueryClient;
 
   beforeEach(() => {
     vi.useFakeTimers({ now: NOW });
+    client = createDeckQueryClient();
+    focusManager.setFocused(true);
+  });
+  afterEach(() => {
+    client.clear();
+    focusManager.setFocused(undefined);
   });
 
-  it("polls only while subscribed and visible", async () => {
-    const fetchMock = vi.fn(async () => ok(response()));
-    const doc = fakeDoc();
-    const store = createUsageStore({ fetch: fetchMock, intervalMs: 15_000, doc: doc as never });
+  it("polls on the shared query client only while subscribed and visible", async () => {
+    const fetchMock = vi.fn(async (_url: string) => ok(response()));
+    const store = createUsageStore({ client, fetch: fetchMock as never, intervalMs: 15_000 });
     expect(fetchMock).not.toHaveBeenCalled();
 
     const off = store.subscribe(() => {});
     await vi.advanceTimersByTimeAsync(0);
-    expect(fetchMock).toHaveBeenCalledWith("/api/llm-usage");
+    expect(urls(fetchMock)).toEqual(["/api/llm-usage"]);
     expect(store.getSnapshot().status).toBe("ready");
-
-    doc.visibilityState = "hidden";
-    await vi.advanceTimersByTimeAsync(45_000);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    doc.visibilityState = "visible";
-    doc.fire();
-    await vi.advanceTimersByTimeAsync(0);
+    expect(client.getQueryData(llmUsageKey)).toMatchObject({ data: { now: NOW } });
+    await vi.advanceTimersByTimeAsync(15_000);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    focusManager.setFocused(false);
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Back to visible: one poll at once, and the interval restarts from it.
+    await vi.advanceTimersByTimeAsync(5_000);
+    focusManager.setFocused(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(14_000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
 
     off();
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(doc.listeners.size).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not read while hidden, even on the first subscription", async () => {
+    const fetchMock = vi.fn(async () => ok(response()));
+    const store = createUsageStore({ client, fetch: fetchMock as never, intervalMs: 15_000 });
+    focusManager.setFocused(false);
+    store.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(store.getSnapshot()).toEqual({ status: "loading" });
+    focusManager.setFocused(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("serves every reader from one request per tick", async () => {
+    const fetchMock = vi.fn(async () => ok(response()));
+    // Two readers on the shared client (the store the page and pill share, and any other).
+    createUsageStore({ client, fetch: fetchMock as never, intervalMs: 15_000 }).subscribe(() => {});
+    createUsageStore({ client, fetch: fetchMock as never, intervalMs: 15_000 }).subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("stops for good once the feature is reported off", async () => {
     const fetchMock = vi.fn(async () => ok(response({ enabled: false, claude: null, codex: null })));
-    const store = createUsageStore({ fetch: fetchMock, intervalMs: 15_000, doc: fakeDoc() as never });
+    const store = createUsageStore({ client, fetch: fetchMock as never, intervalMs: 15_000 });
     const off = store.subscribe(() => {});
     await vi.advanceTimersByTimeAsync(60_000);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
     off();
-    store.subscribe(() => {});
+    // A later reader (another store on the same client, as after a remount) does not ask again.
+    createUsageStore({ client, fetch: fetchMock as never, intervalMs: 15_000 }).subscribe(() => {});
     await vi.advanceTimersByTimeAsync(60_000);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot()).toMatchObject({ status: "ready", data: { enabled: false } });
   });
 
   it("keeps the last good data on a failed poll, and refresh hits the refresh route", async () => {
     const fetchMock = vi.fn(async (url: string) => (url.endsWith("/refresh") ? new Response("", { status: 502 }) : ok(response())));
-    const store = createUsageStore({ fetch: fetchMock as never, intervalMs: 15_000, doc: fakeDoc() as never });
+    const store = createUsageStore({ client, fetch: fetchMock as never, intervalMs: 15_000 });
     store.subscribe(() => {});
     await vi.advanceTimersByTimeAsync(0);
     await act(() => store.refresh());
-    expect(fetchMock).toHaveBeenLastCalledWith("/api/llm-usage/refresh");
-    expect(store.getSnapshot()).toMatchObject({ status: "ready", error: "HTTP 502" });
+    expect(urls(fetchMock).at(-1)).toBe("/api/llm-usage/refresh");
+    expect(store.getSnapshot()).toMatchObject({ status: "ready", data: { now: NOW }, error: "HTTP 502" });
+    // The refresh route was a one-shot: the query's own function still reads the state route.
+    await act(() => client.refetchQueries({ queryKey: llmUsageKey }));
+    expect(urls(fetchMock).at(-1)).toBe("/api/llm-usage");
+    // The next good poll clears the error.
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(store.getSnapshot()).toMatchObject({ status: "ready", error: null });
 
-    // An older response resolving late never replaces a newer one.
-    const older = response({ now: NOW - 60_000 });
-    const ordered = createUsageStore({ fetch: vi.fn(async () => ok(older)), doc: fakeDoc() as never });
-    await act(async () => {
-      await ordered.reload();
-    });
-    expect(ordered.getSnapshot()).toMatchObject({ data: { now: NOW - 60_000 } });
-    const newer = createUsageStore({ fetch: fetchMock as never, doc: fakeDoc() as never });
-    await act(() => newer.reload());
-    const seen = newer.getSnapshot();
-    fetchMock.mockImplementationOnce(async () => ok(older));
-    await act(() => newer.reload());
-    expect(newer.getSnapshot()).toBe(seen);
-
-    const failing = createUsageStore({ fetch: vi.fn(async () => { throw new TypeError("offline"); }), doc: fakeDoc() as never });
+    const failing = createUsageStore({ client: createDeckQueryClient(), fetch: vi.fn(async () => { throw new TypeError("offline"); }) as never });
     failing.subscribe(() => {});
     await vi.advanceTimersByTimeAsync(0);
     expect(failing.getSnapshot()).toEqual({ status: "error", message: "offline" });
+  });
+
+  it("never steps back: a slow poll resolving after a newer refresh is ignored", async () => {
+    let releasePoll: (value: Response) => void = () => {};
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/refresh")) return ok(response({ now: NOW + 1_000 }));
+      if (fetchMock.mock.calls.length === 1) return ok(response());
+      return new Promise<Response>((resolve) => (releasePoll = resolve));
+    });
+    const store = createUsageStore({ client, fetch: fetchMock as never, intervalMs: 15_000 });
+    store.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(() => store.refresh());
+    expect(store.getSnapshot()).toMatchObject({ data: { now: NOW + 1_000 } });
+    const seen = store.getSnapshot();
+    releasePoll(ok(response({ now: NOW - 60_000 })));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getSnapshot()).toBe(seen);
+
+    // A plain re-read that answers older than the cache keeps the cache, too.
+    fetchMock.mockImplementationOnce(async () => ok(response({ now: NOW - 60_000 })));
+    await act(() => store.reload());
+    expect(store.getSnapshot()).toMatchObject({ data: { now: NOW + 1_000 } });
   });
 });
 

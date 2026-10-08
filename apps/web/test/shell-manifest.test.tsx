@@ -109,6 +109,21 @@ describe("resolveNav", () => {
     ]);
   });
 
+  it("files a page under a built-in group by its manifest id or its heading, as one group", () => {
+    const page = (id: string, group: string) => ({ id: `page:${id}/main` as const, path: `/${id}`, label: id, component: () => null, group });
+    expect(groupNavPages([page("monitoring", "Health"), page("llm-usage", "health"), page("portal", "overview")])).toEqual([
+      { id: "overview", label: "Overview", links: [{ id: "page:portal/main", label: "portal", icon: undefined, href: "/portal" }] },
+      {
+        id: "health",
+        label: "Health",
+        links: [
+          { id: "page:monitoring/main", label: "monitoring", icon: undefined, href: "/monitoring" },
+          { id: "page:llm-usage/main", label: "llm-usage", icon: undefined, href: "/llm-usage" },
+        ],
+      },
+    ]);
+  });
+
   it("heads groups by id for a manifest without navGroups", () => {
     const old = { ...served, navGroups: undefined } as unknown as UiManifest;
     expect(resolveNav(ready(old), pages).map(({ id, label }) => `${id}:${label}`)).toEqual(["second:second", "first:first"]);

@@ -21,6 +21,7 @@ import {
   FIXTURE,
 } from "./inventory-fixture.js";
 import { perfBudget } from "./perf-budget.js";
+import { editManifestExtensions, type ManifestExtension } from "./ui-manifest.js";
 
 /**
  * Core observable inventory scenarios against the real Bun API + Vite harness.
@@ -538,9 +539,35 @@ test.describe("fragment slots", () => {
     ).toBeVisible();
   });
 
+  test("renders no section, heading or placeholder for a module the manifest leaves out", async ({ page }) => {
+    // The server drops every extension of a module that is off; here, drift's sections.
+    await editManifestExtensions(page, (real) => real.filter((extension) => extension.module !== "drift"));
+    await page.goto(`/hosts/${enc(FIXTURE.hostAlpha)}`);
+    await expect(page.getByRole("heading", { name: `Host: ${FIXTURE.hostAlpha}`, level: 1 })).toBeVisible();
+    await expect(page.locator('[data-entity-slot="configs"]')).toBeVisible();
+    await expect(page.locator("[data-entity-slot]")).toHaveCount(1);
+    await expect(page.getByRole("heading", { name: "Findings", exact: true })).toHaveCount(0);
+    await expect(page.locator('[data-slot="drift-findings"]')).toHaveCount(0);
+  });
+
   test("synthetic fragments render for host and service references in section order", async ({
     page,
   }) => {
+    // The manifest lists the synthetic sections, as the server does for a module that is on;
+    // the web registers them after load, below.
+    const synthetic = (name: string, entity: "host" | "service", config: Record<string, string>, order = 100): ManifestExtension => ({
+      id: `section:e2e/${name}`, kind: "entity-section", module: "e2e", slot: `entity:${entity}/sections`, order, config,
+    });
+    const findings = { section: "findings", title: "Findings" };
+    const configs = { section: "configs", title: "Configs" };
+    await editManifestExtensions(page, (real) => [
+      ...real,
+      synthetic("host-find", "host", findings),
+      synthetic("host-conf", "host", configs),
+      synthetic("host-extra", "host", { title: "E2E extra" }, 15),
+      synthetic("svc-find", "service", findings),
+      synthetic("svc-conf", "service", configs),
+    ]);
     await openList(page, "/hosts");
     // Inject synthetic fragments into the live singleton registry (dev module graph).
     // Each returns text encoding the exact frozen EntityRef it received.

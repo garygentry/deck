@@ -1,7 +1,9 @@
 import { Suspense, type JSX } from "react";
 import { Callout, ErrorState, FragmentBoundary, LoadingState, Section } from "@/ui";
-import { getEntitySections, type EntityRef, type EntitySection } from "../../../registry/registry.js";
+import { useUiManifest } from "../../../data/index.js";
+import { entitySectionsSlot, getAllExtensions, groupEntitySections, type EntityRef, type EntitySection } from "../../../registry/registry.js";
 import { useRegistryVersion } from "../../../registry/use-registry.js";
+import { placeExtensions } from "../../../shell/manifest-slot.js";
 
 /** Props owned and exported by `components/EntitySections.tsx`. */
 export interface EntitySectionsProps {
@@ -22,15 +24,19 @@ const FRAGMENT_FAILED = (
  * The page is open: this host owns no section list. Each module attaches its sections by
  * extension id, with its own heading (drift's findings, sources' owned configs, or any other
  * module's), and fragments naming the same section render together under one heading. The
- * host never inspects `snapshot.drift` or renders owned config-file contents. A registry-read
- * failure shows one alert in place of the sections, and each fragment renders behind its own
- * error boundary so one sibling cannot blank the page or another section.
+ * UI manifest places them, as it does every shell slot: a section of a module that is off is
+ * not listed, so it renders nothing at all (no heading, no placeholder). The host never
+ * inspects `snapshot.drift` or renders owned config-file contents. A registry-read failure
+ * shows one alert in place of the sections, and each fragment renders behind its own error
+ * boundary so one sibling cannot blank the page or another section.
  */
 export function EntitySections({ entity }: EntitySectionsProps): JSX.Element | null {
   useRegistryVersion();
+  const manifest = useUiManifest();
   let sections: readonly EntitySection[];
   try {
-    sections = getEntitySections(entity.entity);
+    const placed = placeExtensions(entitySectionsSlot(entity.entity), manifest, getAllExtensions());
+    sections = groupEntitySections(entity.entity, placed);
   } catch {
     // Never expose the accessor exception text.
     return <ErrorState compact title="Unable to load attached sections." />;

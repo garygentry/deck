@@ -81,6 +81,11 @@ the hooks from `@/data`:
   list is never requested and reads as not configured. If the manifest is unavailable,
   providers are polled anyway.
 
+A module route that is not a provider (llm-usage's `/api/llm-usage`) is polled on the same
+client too: the feature's store owns a `QueryObserver` over its query, so every reader shares
+one request per tick and the cache holds its last good answer. Its timing is the feature's own
+(llm-usage polls only while read and visible, and stops once the server reports it off).
+
 Code outside React (the inventory store) reads through the same client: the cached config,
 and `isProviderPollable(id)`. While other readers hold a failing config, the store reports the
 failure without forcing a refetch; the shared query owns the retry. Feature code never fetches
@@ -95,7 +100,8 @@ The cache keeps deck's timing:
 ## Pages, the registry and the shell
 
 Features register surfaces at import time. `registry/discover.ts` imports every
-`features/*/index.ts`, and each one calls:
+`features/*/index.ts`. A feature on the module contract registers its module's web half (see
+"A module's web half" below); the others still call the blueprints directly:
 
 - `registerPage({ id, path, label, icon, group, component, nav? })` for a routed page;
 - `registerEntityFragment({ id, entity, title, section?, order?, component })` for a section on
@@ -118,6 +124,51 @@ config can address an extension by id.
 | `app/topbar.actions` (action) | `registerExtension` | the top bar's controls (the theme menu) |
 | `portal/summary` (widget) | `registerCard` | the portal page |
 | `entity:host/sections`, `entity:service/sections` (entity-section) | `registerEntityFragment` | host and service detail pages |
+
+### A module's web half
+
+A module's UI contributions are data in its manifest: each page's path, title and icon, each
+nav entry's group, each extension's slot, order and config, and the name of the component that
+renders it. For a built-in module the server's manifest spreads that part in from
+`@deck/contract/modules/<id>`, a data-only module the browser bundle can load (the web never
+loads server code). The feature's `index.ts` pairs it with a component table and registers it:
+
+```ts
+import { LLM_USAGE_UI } from "@deck/contract/modules/llm-usage";
+import { defineWebModule } from "@deck/module-sdk";
+import { registerWebModule } from "../../registry/web-module.js";
+
+registerWebModule(defineWebModule(LLM_USAGE_UI, {
+  components: { LlmUsagePage, LlmUsageSummary, LlmUsagePortalCard },
+}));
+```
+
+`registerWebModule` derives every registration from the manifest: a page per `pages` entry
+(in its nav entry's group, or `nav: false` without one), a slot per `slots` entry, and an
+extension per `extensions` entry. Widget descriptors (a `widget` and no component) render
+through their widget type, not here; a widget type's component already belongs in the table.
+The web adds no paths, slots or orders of its own. Everything is checked before anything
+registers, so a refused module leaves nothing behind. It refuses, naming the module and the
+component or extension: a name the manifest references that the table lacks (or holds
+something other than a component under), a table entry nothing references, any other extension without a component, a nav entry it cannot express
+(an `href` entry, one not named `nav:<page name>`, two for one page), and whatever the registry
+itself refuses (ids, paths, orders, slot kinds, entity-section config, duplicates). The
+registrations are the defaults; at runtime the UI manifest still decides what renders, where
+and with what config (below).
+
+Labels and order: a page's `title` labels its route, in the top bar, the document title and the
+fallback nav. A nav entry's own `label` and `icon` show only in the manifest-driven sidebar. Its
+`order` orders the nav (the manifest's sidebar, and the fallback nav as the page's `navOrder`),
+never the routes.
+
+Moving a feature onto it:
+1. Move the module's `id`, `version`, `deckApi` and `contributes` to
+   `packages/contract/src/modules/<id>.ts`, and spread it into the server manifest.
+2. Replace the feature's `register*` calls with one `registerWebModule` per module it serves,
+   and delete the placement constants (paths, slots, orders, group headings) from the web.
+3. Read module-route data through the shared query client (see "Data").
+4. Keep the server UI goldens and `test/extension-ids.test.ts` unchanged; a registration
+   test asserts the registry holds exactly the manifest's contributions.
 
 A slot is declared with `defineSlot({ id, accepts, module })`. Its id is namespaced to the
 module hosting it (`portal/summary`), and the `app/…` and `entity:…` namespaces belong to
@@ -156,8 +207,10 @@ registration's fields) carries:
 Sections render in the order of their first extension, then by id. The built-ins name their
 sections explicitly and place drift's `findings` at order 10 and sources' `configs` at order 20, so a module's section at order 15
 renders between them. Each section is a `Section` with the heading id `entity-slot-<section>`
-and the marker `data-entity-slot="<section>"`. With nothing attached, the pages show no
-sections. The naming rule is `entitySectionName` and the config rule `entitySectionProblem`, both
+and the marker `data-entity-slot="<section>"`. The UI manifest places the sections, like the
+top bar's slots (`placeExtensions`, grouped by `groupEntitySections`): its order and each
+entry's config (title, section) win, and a module that is off has no entries, so its sections
+render nothing at all (no heading, no placeholder). With nothing attached, the pages show no sections. The naming rule is `entitySectionName` and the config rule `entitySectionProblem`, both
 in `@deck/module-sdk`. The server validates the same config:
 a manifest entity section without a title disables its module. For a `ui.extensions` override
 whose replacement `config` is not a usable section, only the config is dropped, with
@@ -171,9 +224,10 @@ components:
 - The sidebar lists the manifest's `navGroups` in order, and in each its `nav` entries, with
   their labels and icons. An entry to a page the web does not route is left out, and so is the
   page of a module that is off.
-- The top bar's slots (`app/topbar.status`, `app/topbar.actions`) render the manifest's entries
-  for the slot, in its order, each with the web extension of the same id and kind
-  (`useManifestSlot(slot)`).
+- The top bar's slots (`app/topbar.status`, `app/topbar.actions`) and the entity pages'
+  sections render the manifest's entries for the slot, in its order, each with the web
+  extension of the same id and kind and the entry's resolved `config` in place of the
+  registered one (`placeExtensions`, `useManifestSlot(slot)`).
 - The brand in the sidebar header and the document title (`"{page} · {brand}"`) is the
   manifest's `brand.title`.
 - Routing follows the manifest too (`resolveRoutes`): no registered page of a module the
@@ -187,11 +241,11 @@ components:
   A page switched off by a `ui.extensions` override is left out of the nav, but the web still
   routes it.
 
-Until the manifest loads, the sidebar and the top bar's slots are empty, and every registered
-page is routed. If it cannot be read, they fall back to the registry: the sidebar lists the
-registered pages by their `group` (and `nav: false`), every registered page is routed, the slots
-render what is registered there, and the brand is "Deck". So
-`registerPage`'s `group` only matters in that fallback.
+Until the manifest loads, the sidebar and those slots are empty, and every registered page is
+routed. If it cannot be read, they fall back to the registry: the sidebar lists the registered
+pages by their `group` (and `nav: false`), every registered page is routed, the slots render what
+is registered there, and the brand is "Deck". So `registerPage`'s `group` (a manifest group id
+such as `health`, or a built-in group's heading) only matters in that fallback.
 
 The registry is reactive. The shell's slot hosts call `useRegistryVersion()` and read their
 blueprint view (`getPages()`, `getCards(slot)`, …). Module code that wants the raw extensions of a
@@ -229,8 +283,9 @@ ships.
 3. Map domain states with `defineStatusMap`; render them with `StatusBadge`.
 4. For keyboard list navigation use `useListNavigation`. Its editable-field guard and
    modifier-key passthrough are built in.
-5. Register it in `features/<name>/index.ts` (lazily via `pages.ts` if it pulls in heavy
-   dependencies), with an `icon` from `ui/lib/icons.ts` and a nav `group`.
+5. Declare it in the module's manifest (path, title, an `icon` from `ui/lib/icons.ts`, and a nav
+   entry with its `group`), and add the component to the table `features/<name>/index.ts`
+   registers (lazily via `pages.ts` if it pulls in heavy dependencies).
 6. Test the accessibility contract with React Testing Library role queries, and add a
    `test/e2e/visual-<name>.spec.ts` (see below).
 

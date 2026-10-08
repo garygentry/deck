@@ -13,6 +13,7 @@ import {
   type ServerModuleContext,
   type TaskHandle,
   type UniqueDecl,
+  type WebModuleManifest,
 } from "../src/index.js";
 import { pilotManifest } from "./pilot-manifest.js";
 
@@ -53,6 +54,10 @@ describe("pilot manifest types", () => {
     const UsagePage = () => null;
     const web = defineWebModule(pilotManifest, { components: { UsagePage } });
     expectTypeOf(web.components.UsagePage).toEqualTypeOf<typeof UsagePage>();
+    // The web half needs only the identity and the contributions, so a built-in can share that part alone.
+    const { id, version, deckApi, contributes } = pilotManifest;
+    const shared: WebModuleManifest = { id, version, deckApi, ...(contributes === undefined ? {} : { contributes }) };
+    expectTypeOf(defineWebModule(shared, { components: {} }).manifest).toEqualTypeOf<WebModuleManifest>();
   });
 
   it("rejects non-JSON manifest values at compile time", () => {

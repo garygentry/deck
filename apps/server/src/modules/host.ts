@@ -341,7 +341,7 @@ function kindsProblem(manifest: ModuleManifest, kinds: Readonly<Record<string, P
   for (const [kind, handler] of Object.entries(handlers)) {
     if (!declared.has(kind)) return `kinds has a handler for "${kind}", which the manifest does not declare`;
     if (handler === null || typeof handler !== "object") return `the handler for "${kind}" must be an object`;
-    for (const name of ["binding", "instances"] as const) {
+    for (const name of ["binding", "instances", "validate"] as const) {
       if (handler[name] !== undefined && typeof handler[name] !== "function") return `the ${name} handler for "${kind}" must be a function`;
     }
     if (declared.get(kind)!.static === true && handler.instances !== undefined) {
@@ -369,8 +369,12 @@ function snapshotKinds(module: ServerModule<any>): { kinds: Readonly<Record<stri
     const kinds: Record<string, ProviderKindHandler> = {};
     for (const [kind, handler] of Object.entries(raw as Record<string, unknown>)) {
       if (handler === null || typeof handler !== "object") return { problem: `the handler for "${kind}" must be an object` };
-      const { binding, instances } = handler as ProviderKindHandler;
-      kinds[kind] = Object.freeze({ ...(binding === undefined ? {} : { binding }), ...(instances === undefined ? {} : { instances }) });
+      const { binding, instances, validate } = handler as ProviderKindHandler;
+      kinds[kind] = Object.freeze({
+        ...(binding === undefined ? {} : { binding }),
+        ...(instances === undefined ? {} : { instances }),
+        ...(validate === undefined ? {} : { validate }),
+      });
     }
     return { kinds: Object.freeze(kinds) };
   } catch (cause) {

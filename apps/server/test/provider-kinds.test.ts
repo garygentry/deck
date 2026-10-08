@@ -366,6 +366,57 @@ describe("the data-source modules", () => {
   });
 });
 
+describe("a kind handler's validate rule", () => {
+  const feedKind = (validate: ProviderKindHandler["validate"]) =>
+    kindModule(
+      {
+        id: "feeds",
+        providerKinds: [{ kind: "feed", findings: [{ code: "FEED_BAD", severity: "error", summary: "bad feed", fix: "fix it" }] }],
+      },
+      { feed: { instances: () => [], validate } },
+    );
+  const run = (module: ServerModule) => {
+    const estateDir = makeConfigDir({
+      "00-base.yaml": { schemaVersion: 2, estate: { name: "rules" } },
+      "10-overlay.yaml": {
+        schemaVersion: 2,
+        integrations: [
+          { id: "a", kind: "feed", title: "A", baseUrl: "http://feed" },
+          { id: "b", kind: "other", title: "B", baseUrl: "http://b" },
+          { id: "c", kind: "feed", title: "C", baseUrl: "http://feed" },
+        ],
+      },
+    });
+    try {
+      return load({ arg: estateDir.dir, modules: [...BUILTIN_MODULES, module], env: {} }).findings;
+    } finally {
+      estateDir.cleanup();
+    }
+  };
+
+  it("runs on each instance of its kind in the merged document, paths relative to the instance", () => {
+    const findings = run(feedKind((instance) => [{ code: "FEED_BAD", path: "/title", message: `bad ${String(instance.id)}` }]));
+    expect(findings.filter((finding) => finding.code === "FEED_BAD")).toEqual([
+      { code: "FEED_BAD", severity: "error", path: "/integrations/0/title", message: "bad a" },
+      { code: "FEED_BAD", severity: "error", path: "/integrations/2/title", message: "bad c" },
+    ]);
+  });
+
+  it("is MODULE_RULE_FAILED when it throws or reports a code its kind does not declare", () => {
+    const thrown = run(feedKind(() => {
+      throw new Error("boom");
+    }));
+    expect(thrown).toContainEqual(expect.objectContaining({ code: "MODULE_RULE_FAILED", path: "/integrations/0", message: expect.stringContaining("boom") }));
+    const undeclared = run(feedKind(() => [{ code: "NOT_DECLARED", path: "", message: "x" }]));
+    expect(undeclared).toContainEqual(expect.objectContaining({ code: "MODULE_RULE_FAILED", path: "/integrations/2", message: expect.stringContaining("NOT_DECLARED") }));
+  });
+
+  it("must be a function", () => {
+    const { host } = testHost([kindModule({ id: "feeds", providerKinds: [{ kind: "feed" }] }, { feed: { validate: "no" as never } })]);
+    expect(host.findings).toEqual([expect.objectContaining({ code: "MODULE_MANIFEST_INVALID", message: expect.stringContaining('the validate handler for "feed" must be a function') })]);
+  });
+});
+
 describe("a binding of a kind that is not bindable (formerly ignored silently)", () => {
   it("is reported as PROVIDER_BINDING_UNSUPPORTED, and registers nothing", () => {
     const feeds = kindModule({ id: "feeds", providerKinds: [{ kind: "feed" }] }, { feed: { instances: () => [] } });

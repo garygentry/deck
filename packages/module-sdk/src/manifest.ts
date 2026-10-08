@@ -156,6 +156,8 @@ export interface ProviderKindDecl {
   bindable?: boolean;
   /** Its data can drive a status tone. */
   statusCapable?: boolean;
+  /** Finding codes the kind handler's `validate` rule may report. */
+  findings?: FindingCodeDecl[];
 }
 
 /** An extension id: `<kind>:<module>/<name>`, e.g. `pill:llm-usage/summary`. */

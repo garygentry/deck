@@ -105,12 +105,17 @@ export function moduleContribution(module: ServerModule<any>): ConfigContributio
     ...(manifest.providerKinds === undefined
       ? {}
       : {
-          providerKinds: manifest.providerKinds.map(({ kind, instanceSchema, instanceList, bindable }) => ({
-            kind,
-            ...(instanceSchema === undefined ? {} : { instanceSchema: instanceSchema as JsonObject }),
-            ...(instanceList === undefined ? {} : { instanceList }),
-            ...(bindable === undefined ? {} : { bindable }),
-          })),
+          providerKinds: manifest.providerKinds.map(({ kind, instanceSchema, instanceList, bindable, findings }) => {
+            const validate = module.kinds?.[kind]?.validate;
+            return {
+              kind,
+              ...(instanceSchema === undefined ? {} : { instanceSchema: instanceSchema as JsonObject }),
+              ...(instanceList === undefined ? {} : { instanceList }),
+              ...(bindable === undefined ? {} : { bindable }),
+              ...(findings === undefined ? {} : { findings }),
+              ...(validate === undefined ? {} : { validate }),
+            };
+          }),
         }),
     ...(module.configRules === undefined ? {} : { rules: module.configRules }),
   };

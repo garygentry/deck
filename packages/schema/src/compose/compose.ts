@@ -34,7 +34,17 @@ export interface ContributedProviderKind {
   instanceList?: "integrations" | "sources";
   /** May appear in `hosts[].bindings` / `services[].bindings`. */
   bindable?: boolean;
+  /** Finding codes `validate` may report. */
+  findings?: readonly ({ code: string } & FindingCodeEntry)[];
+  /** A pure check over one instance; finding paths are relative to the instance. */
+  validate?: ContributedInstanceRule;
 }
+
+/** A pure check over one `integrations[]` / `sources[]` instance of a contributed kind. */
+export type ContributedInstanceRule = (
+  instance: any,
+  context: { layer: ValidateLayer },
+) => readonly ContributedFinding[];
 
 /**
  * What a module contributes to the config contract. A module manifest's `config` and
@@ -201,6 +211,7 @@ export function composeConfig(contributions: readonly ConfigContribution[]): Com
     sources: [],
   };
   const rules: Array<{ id: string; codes: ReadonlySet<string>; rule: ContributedRule }> = [];
+  const instanceRules: Array<{ id: string; kind: string; list: "integrations" | "sources"; codes: ReadonlySet<string>; rule: ContributedInstanceRule }> = [];
   const sectionRoots: Array<{ id: string; def: string }> = [];
   const disabled = new Map<string, DisabledSection>();
   const checkedIdentity: Array<[string, IdentitySpec]> = [];
@@ -282,6 +293,20 @@ export function composeConfig(contributions: readonly ConfigContribution[]): Com
       }
       kindOwners.set(declared.kind, id);
       if (declared.bindable === true) bindableKinds.add(declared.kind);
+      const kindCodes = new Set<string>();
+      for (const { code, severity, summary, fix } of declared.findings ?? []) {
+        if (!CODE_PATTERN.test(code)) {
+          throw new ComposeError("MODULE_MANIFEST_INVALID", id, `finding code "${code}" is not UPPER_SNAKE_CASE`);
+        }
+        if (Object.prototype.hasOwnProperty.call(catalog, code)) {
+          throw new ComposeError("MODULE_MANIFEST_CONFLICT", id, `finding code ${code} is already catalogued`);
+        }
+        catalog[code] = { severity, summary, fix };
+        kindCodes.add(code);
+      }
+      if (declared.validate !== undefined) {
+        instanceRules.push({ id, kind: declared.kind, list: declared.instanceList ?? "integrations", codes: kindCodes, rule: declared.validate });
+      }
       if (declared.instanceSchema !== undefined) {
         instanceSchemas[declared.instanceList ?? "integrations"].push({
           kind: declared.kind,
@@ -402,6 +427,7 @@ export function composeConfig(contributions: readonly ConfigContribution[]): Com
           });
         }
       }
+      if (layer === "merged") findings.push(...instanceFindings(document, layer, instanceRules, catalogued, moduleFinding));
       if (layer === "merged") {
         for (const [id, section] of disabled) {
           if (!Object.prototype.hasOwnProperty.call(sections, id)) continue;
@@ -448,6 +474,50 @@ export function composeConfig(contributions: readonly ConfigContribution[]): Com
       return findings;
     },
   });
+}
+
+/**
+ * Run each kind's instance rule over the instances of that kind, in document order. A rule that
+ * throws, or reports a code its kind does not declare, is MODULE_RULE_FAILED.
+ */
+function instanceFindings(
+  document: JsonObject,
+  layer: ValidateLayer,
+  instanceRules: ReadonlyArray<{ id: string; kind: string; list: "integrations" | "sources"; codes: ReadonlySet<string>; rule: ContributedInstanceRule }>,
+  catalogued: Readonly<Record<string, FindingCodeEntry>>,
+  moduleFinding: (code: "MODULE_RULE_FAILED", id: string, message: string) => Finding,
+): Finding[] {
+  const findings: Finding[] = [];
+  for (const { id, kind, list, codes, rule } of instanceRules) {
+    const instances = document[list];
+    if (!Array.isArray(instances)) continue;
+    instances.forEach((instance, index) => {
+      if (!isObject(instance) || instance.kind !== kind) return;
+      const prefix = `/${list}/${index}`;
+      let reported: readonly ContributedFinding[];
+      try {
+        reported = rule(instance, { layer });
+        if (!Array.isArray(reported)) throw new Error("did not return a list of findings");
+      } catch (error) {
+        findings.push({ ...moduleFinding("MODULE_RULE_FAILED", id, `A config rule of module "${id}" for kind "${kind}" failed: ${(error as Error)?.message ?? String(error)}`), path: prefix });
+        return;
+      }
+      for (const item of reported) {
+        if (!codes.has(item.code)) {
+          findings.push({ ...moduleFinding("MODULE_RULE_FAILED", id, `A config rule of module "${id}" reported ${String(item.code)}, which its kind "${kind}" does not declare.`), path: prefix });
+          continue;
+        }
+        findings.push({
+          code: item.code,
+          severity: catalogued[item.code]!.severity,
+          path: `${prefix}${item.path}`,
+          message: item.message,
+          ...(item.hint ? { hint: item.hint } : {}),
+        });
+      }
+    });
+  }
+  return findings;
 }
 
 /** A disabled module's section: why it is off, and what it would be checked against if on. */

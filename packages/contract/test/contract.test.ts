@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 // `../src/index.js` and `../src/actions.js` are the package's `.` and `./actions` exports.
 import { validateActionParams } from "../src/actions.js";
 import { POLL_DEFAULTS } from "../src/index.js";
+import { INVENTORY_UI } from "../src/modules/inventory.js";
 import { LLM_USAGE_UI } from "../src/modules/llm-usage.js";
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "../src");
@@ -50,6 +51,11 @@ describe("@deck/contract", () => {
   it("serves built-in modules' UI contributions from its modules subpath, as plain JSON", () => {
     expect(LLM_USAGE_UI.id).toBe("llm-usage");
     expect(JSON.parse(JSON.stringify(LLM_USAGE_UI))).toEqual(LLM_USAGE_UI);
+  });
+
+  it("serves the inventory module's UI contributions as plain JSON", () => {
+    expect(INVENTORY_UI.id).toBe("inventory");
+    expect(JSON.parse(JSON.stringify(INVENTORY_UI))).toEqual(INVENTORY_UI);
   });
 
   it("depends on the module SDK for types only, and the SDK depends on no deck package, so there is no cycle", () => {

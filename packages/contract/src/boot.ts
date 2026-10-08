@@ -29,7 +29,7 @@ export interface DeckBoot {
 /**
  * The operator's theme settings, each absent when not configured. The pre-paint script sets the
  * three appearance settings on `<html>` as `data-theme-preset`, `data-theme-density` and
- * `data-theme-radius`; `theme.css` and the `density-compact:` variant key off those attributes.
+ * `data-theme-radius`; the preset, radius and density tokens in `theme.css` key off them.
  */
 export interface DeckBootTheme {
   mode?: ThemeMode;

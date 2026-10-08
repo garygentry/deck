@@ -7,7 +7,7 @@ import { interpolate, parse, wcagContrast } from "culori";
  * The server writes them into `index.html`'s boot object; the Vite dev server this suite runs
  * against writes nothing, so each test writes the boot object into the document itself, as the
  * server would (the server's side is covered by its index-html test). The pre-paint script then
- * sets `data-theme-*` on <html>, and theme.css and the `density-compact:` variant restyle the page.
+ * sets `data-theme-*` on <html>, and the preset, radius and spacing tokens in theme.css restyle the page.
  */
 
 const BOOT_ELEMENT = '<script type="application/json" id="deck-boot"></script>';

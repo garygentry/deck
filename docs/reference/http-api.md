@@ -20,7 +20,7 @@ follows the estate config schema.
 | `GET` | `/api/providers` | Registered providers' identities (id and kind), in deterministic id order. | `ProvidersResponse` |
 | `GET` | `/api/providers/:id` | One provider's cached envelope (data, freshness, error). Unknown id → 404 `PROVIDER_NOT_FOUND`. | `ProviderEnvelope` |
 | `GET` | `/api/health` | Cached readiness: overall status, uptime, provider count, and per-provider health. Performs no upstream I/O. | `HealthResponse` |
-| `GET` | `/api/ui` | The resolved UI manifest: brand, home page, modules, slots, pages, nav groups and entries, extensions and providers. Resolved once at startup. | `UiManifest` (`@deck/module-sdk`) |
+| `GET` | `/api/ui` | The resolved UI manifest: brand, home page, modules, slots, pages, nav groups and entries, extensions and providers. Resolved at startup, and again when only `ui` config changes. Sent with an `ETag` and `Cache-Control: no-cache`; a matching `If-None-Match` gets `304`. | `UiManifest` (`@deck/module-sdk`) |
 
 `HealthResponse.status` is `degraded` when any provider's latest health is not ok, otherwise `ok`.
 `HealthResponse.modules` lists every known module's state by id. A module with no health report
@@ -29,7 +29,7 @@ of its own (`portal`, `inventory`, `drift`, `monitoring`) shows `{state: "ok"}` 
 ### UI manifest
 
 `/api/ui` tells the web shell what to render, where, and with what config. It is built at startup
-from every module's declared contributions. The portal, inventory, drift, monitoring, actions and
+from every module's declared contributions, and rebuilt when only the `ui` config changes. The portal, inventory, drift, monitoring, actions and
 llm-usage features are built-in modules (`origin: "module"`), as is `metrics`, which contributes
 no UI. Features not yet on the module contract declare theirs from the kernel and are listed with
 `origin: "kernel"`.
@@ -84,6 +84,13 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
     a nav entry);
   - `UI_INVALID_PAGE`: a disabled module's page whose path is not a usable page path, so it is
     not listed in `disabledPages`.
+  - `UI_CONFIG_INVALID`: the config directory changed and no longer loads, so the last good
+    config is still served; the message names the problem;
+  - `UI_RESTART_REQUIRED`: the config directory changed outside `ui`, which applies only after
+    a restart; the message names the changed keys.
+
+  The shell shows the last two in a notice. They clear when the edit is fixed or reverted (see
+  [hot reload](estate-config.md#hot-reload)).
 
   Overrides come from the `ui.extensions` config section (see the
   [estate configuration reference](estate-config.md#ui)).

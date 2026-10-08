@@ -101,7 +101,9 @@ the hooks from `@/data`:
   shares one `/api/config` request per page load. A failed or malformed read is not cached.
   It is asked again every poll interval until it succeeds, and readers keep showing the error
   while it is asked again.
-- `useUiManifest()` gives the resolved UI manifest (`/api/ui`), also read once. If it cannot
+- `useUiManifest()` gives the resolved UI manifest (`/api/ui`), also read once per page load,
+  then again when the window regains focus and every minute. The server swaps the manifest
+  when the `ui` config changes, and `App` shows its reload findings in a Callout. If it cannot
   be read, the answer is "unavailable" (an error state, with one console warning per failed
   read). Its readers ask again every poll interval until it succeeds, and they never drop back
   to loading meanwhile.

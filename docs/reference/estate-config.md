@@ -449,6 +449,33 @@ ui:
 An override for an id deck does not know, or one that does not fit its target, is reported in
 `GET /api/ui` (`UI_UNKNOWN_EXTENSION`, `UI_INVALID_OVERRIDE`) and otherwise ignored.
 
+### Hot reload
+
+deck watches the config directory while it runs. When the directory has been quiet for a
+moment, deck loads and validates the whole document again and compares it with the config it
+started with:
+
+- If only `ui` changed, the new `ui` takes effect without a restart. `GET /api/ui` serves the
+  new manifest under a new `ETag`. An open page picks it up when its window regains focus, or
+  within a minute.
+- If the config no longer loads (a YAML error, or a finding that would stop deck from
+  starting), deck keeps serving the last good config. `GET /api/ui` adds a `UI_CONFIG_INVALID`
+  finding naming the problem, the shell shows it in a notice, and deck logs a `config.reload`
+  warning.
+- If anything outside `ui` changed, deck logs `restart required` and keeps serving the last good
+  config, including its `ui`, until it restarts. `GET /api/ui` reports this as
+  `UI_RESTART_REQUIRED`, naming the changed keys.
+
+Fixing or reverting the edit clears the finding. Every change in the directory is noticed,
+including files swapped in through temporary names or a symlinked directory, as with a
+Kubernetes ConfigMap. If the directory is removed or replaced, deck logs it and watches the new
+one once it appears.
+
+Some settings are written into the page when it loads, so changes to them apply on the next
+page load: `theme` (mode, preset, density and radius), and the home page used before the
+manifest arrives. Where the platform reports no file changes (some network or Docker
+Desktop mounts), nothing reloads, and a `ui` change needs a restart.
+
 ## modules.llm-usage
 
 `modules.llm-usage` is an object with no additional properties. Every key is optional, and an absent

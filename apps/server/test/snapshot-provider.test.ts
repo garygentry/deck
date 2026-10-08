@@ -14,6 +14,7 @@ import { validateSnapshot, type DeckConfigDocument } from "@deck/schema";
 import { POLL_DEFAULTS, type ProviderFetchContext } from "../src/contract/index.js";
 import { logger, type SnapshotReadEvent } from "../src/log/logger.js";
 import { SNAPSHOT_READ_MESSAGES, SnapshotReadFailure } from "../src/providers/snapshot/errors.js";
+import { SNAPSHOT_CONTENT, type SnapshotContent } from "../src/providers/snapshot/content.js";
 import { SnapshotProvider } from "../src/providers/snapshot/index.js";
 import { snapshotModule } from "../src/providers/snapshot/module.js";
 import type {
@@ -324,16 +325,29 @@ describe("SnapshotProvider.fetch — revision acceptance", () => {
 
 describe("the snapshot module's kind handler", () => {
   const handler = snapshotModule.kinds!.snapshot!.instances!;
-  const contextWith = (env: Record<string, string>) =>
+  const contextWith = (env: Record<string, string>, offered: Array<[string, unknown]> = []) =>
     ({
       env: { get: (name: string) => env[name] },
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       envFor: () => ({ get: () => undefined }),
       estate: config,
+      services: { provide: (ref: { name: string }, impl: unknown) => void offered.push([ref.name, impl]) },
     }) as unknown as ProviderKindContext;
 
   it("offers nothing when DECK_SNAPSHOT_SOURCE is unset", () => {
-    expect(handler([], contextWith({}))).toEqual([]);
+    const offered: Array<[string, unknown]> = [];
+    expect(handler([], contextWith({}, offered))).toEqual([]);
+    expect(offered).toEqual([]);
+  });
+
+  it("offers the snapshot/content service, backed by the provider it registers", async () => {
+    const offered: Array<[string, unknown]> = [];
+    const [offer] = handler([], contextWith({ DECK_SNAPSHOT_SOURCE: "/srv/snapshot.json" }, offered));
+    expect(offered.map(([name]) => name)).toEqual([SNAPSHOT_CONTENT.name]);
+    const content = offered[0]![1] as SnapshotContent;
+    const provider = offer!.provider as SnapshotProvider;
+    vi.spyOn(provider, "generatedAtMs").mockReturnValue(1_234);
+    expect(content.generatedAtMs()).toBe(1_234);
   });
 
   it("offers the fixed-id snapshot singleton with the exact engine policy", () => {
@@ -351,6 +365,93 @@ describe("the snapshot module's kind handler", () => {
       timeoutMs: POLL_DEFAULTS.timeoutMs,
       failureFreshness: "age-retained",
     });
+  });
+});
+
+describe("SnapshotProvider.generatedAtMs — the retained snapshot's content time", () => {
+  /** A classification-1 snapshot whose `generatedAt` is `value`, or missing when undefined. */
+  function generatedAtJson(value: unknown): string {
+    const doc: Record<string, unknown> = {
+      schemaVersion: 1,
+      hosts: [{ name: "host-a", coverage: "collected", collectedAt: COLLECTED_AT }],
+    };
+    if (value !== undefined) doc.generatedAt = value;
+    return JSON.stringify(doc);
+  }
+
+  function providerOver(outcomes: Array<SnapshotSourceResult | Error>): SnapshotProvider {
+    return new SnapshotProvider("snapshot", { source: new FakeSource(outcomes), config, now: clock([COLLECTED_AT]) });
+  }
+
+  it("is null before any read and the accepted generatedAt after one", async () => {
+    const provider = providerOver([changed(cleanSnapshotJson())]);
+    expect(provider.generatedAtMs()).toBeNull();
+    await provider.fetch(context());
+    expect(provider.generatedAtMs()).toBe(Date.parse(COLLECTED_AT));
+  });
+
+  it("follows a changed snapshot, and survives unchanged and refused reads", async () => {
+    const later = "2030-01-02T03:04:05.500Z";
+    const provider = providerOver([
+      changed(cleanSnapshotJson()),
+      unchanged(),
+      changed("{not json"),
+      changed(cleanSnapshotJson().replace(COLLECTED_AT, later)),
+    ]);
+    await provider.fetch(context());
+    await provider.fetch(context());
+    expect(provider.generatedAtMs()).toBe(Date.parse(COLLECTED_AT));
+    await expectRefusal(provider.fetch(context()), "JSON_INVALID");
+    expect(provider.generatedAtMs()).toBe(Date.parse(COLLECTED_AT));
+    await provider.fetch(context());
+    expect(provider.generatedAtMs()).toBe(Date.parse(later));
+  });
+
+  // Validation accepts these with a finding (classification 1), so the snapshot is served.
+  it("reads an explicit offset", async () => {
+    const provider = providerOver([changed(generatedAtJson("2030-01-01T02:00:00.250+02:00"))]);
+    await provider.fetch(context());
+    expect(provider.generatedAtMs()).toBe(Date.parse("2030-01-01T00:00:00.250Z"));
+  });
+
+  // Validation accepts these with a finding (classification 1), so the snapshot is served; each
+  // is one `Date.parse` alone would turn into a number.
+  it.each([
+    ["missing", undefined],
+    ["unparseable", "not-a-date"],
+    ["out of range", "2030-13-45T00:00:00Z"],
+    ["not a string", 1_700_000_000],
+    ["without an offset (host-local time)", "2030-01-01T00:00:00"],
+    ["a date only", "2030-01-01"],
+    ["a bare number", "1"],
+    ["a day the calendar lacks", "2025-02-29T00:00:00Z"],
+  ])("is null when the accepted snapshot's generatedAt is %s, without failing the read", async (_label, value) => {
+    const provider = providerOver([changed(cleanSnapshotJson()), changed(generatedAtJson(value))]);
+    await provider.fetch(context());
+    expect(provider.generatedAtMs()).toBe(Date.parse(COLLECTED_AT));
+    const result = await provider.fetch(context());
+    expect(result.readError).toBeNull();
+    expect(provider.generatedAtMs()).toBeNull();
+  });
+});
+
+describe("SnapshotProvider.fetch — a read that outlives the poll's signal", () => {
+  it("is refused as POLL_TIMEOUT and leaves the retained snapshot, generatedAt and revision alone", async () => {
+    const later = cleanSnapshotJson().replace(COLLECTED_AT, "2030-01-02T00:00:00.000Z");
+    const source = new FakeSource([changed(cleanSnapshotJson())]);
+    const provider = new SnapshotProvider("snapshot", { source, config, now: clock([COLLECTED_AT]) });
+    await provider.fetch(context());
+    const acceptedBefore = [...source.accepted];
+
+    const controller = new AbortController();
+    let settle!: (result: SnapshotSourceResult) => void;
+    vi.spyOn(source, "read").mockImplementationOnce(() => new Promise((resolve) => (settle = resolve)));
+    const attempt = provider.fetch({ signal: controller.signal });
+    controller.abort();
+    settle(changed(later));
+    await expectRefusal(attempt, "POLL_TIMEOUT");
+    expect(provider.generatedAtMs()).toBe(Date.parse(COLLECTED_AT));
+    expect(source.accepted).toEqual(acceptedBefore);
   });
 });
 

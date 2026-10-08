@@ -15,4 +15,5 @@ export { estateBindings, estateProviderIds } from "./provider-ids.js";
 export type { EstateBinding, EstateProviderId } from "./provider-ids.js";
 export { validate } from "./validate/validate.js";
 export { validateSnapshot } from "./validate/validate-snapshot.js";
+export { isRfc3339DateTime } from "./validate/ajv.js";
 export type * from "./types.js";

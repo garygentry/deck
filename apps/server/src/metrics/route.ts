@@ -13,11 +13,19 @@ export const METRICS_PATH = "/metrics";
 /** The runtime snapshot provider's fixed registry id. */
 const SNAPSHOT_PROVIDER_ID = "snapshot";
 
+/** What one scrape reads: the registry's cached stats, the snapshot's content time, and now. */
+export interface MetricsSources {
+  stats: readonly ProviderStats[];
+  /** The last successfully read snapshot's `generatedAt` in epoch ms; null when unknown. */
+  snapshotGeneratedAtMs: number | null;
+  nowMs: number;
+}
+
 /**
  * Answer one request to {@link METRICS_PATH}. Only `GET` (and so `HEAD`) is served; any other
  * method gets the same plain 404 a path deck does not serve gets.
  */
-export function metricsResponse(request: Request, stats: readonly ProviderStats[]): Response {
+export function metricsResponse(request: Request, { stats, snapshotGeneratedAtMs, nowMs }: MetricsSources): Response {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("404 Not Found", { status: 404, headers: { "content-type": "text/plain; charset=UTF-8" } });
   }
@@ -25,6 +33,8 @@ export function metricsResponse(request: Request, stats: readonly ProviderStats[
     providerCount: stats.length,
     polls: stats,
     snapshotAgeMs: stats.find((entry) => entry.id === SNAPSHOT_PROVIDER_ID)?.ageMs ?? null,
+    snapshotGeneratedAtMs,
+    nowMs,
   });
   return new Response(body, { status: 200, headers: { "content-type": METRICS_CONTENT_TYPE } });
 }
@@ -37,6 +47,10 @@ export interface MetricsInput {
   polls: readonly PollMetrics[];
   /** Age of the cached snapshot read in ms; null when no snapshot provider or no read yet. */
   snapshotAgeMs: number | null;
+  /** The last successfully read snapshot's `generatedAt` in epoch ms; null when unknown. */
+  snapshotGeneratedAtMs: number | null;
+  /** The scrape's time in epoch ms, the base of the content age. */
+  nowMs: number;
 }
 
 /** Render the exposition text. Metrics without samples still emit their HELP/TYPE lines. */
@@ -76,6 +90,20 @@ export function renderMetrics(input: MetricsInput): string {
     "gauge",
     "Seconds since deck last successfully read the observed-reality snapshot.",
     input.snapshotAgeMs === null ? [] : [`deck_snapshot_age_seconds ${seconds(input.snapshotAgeMs)}`],
+  );
+  const generatedAtMs = input.snapshotGeneratedAtMs;
+  family(
+    "deck_snapshot_generated_age_seconds",
+    "gauge",
+    "Seconds since the last successfully read observed-reality snapshot was generated (its generatedAt), floored at 0.",
+    // Floored like the read age: a producer clock ahead of deck's shows in the raw timestamp.
+    generatedAtMs === null ? [] : [`deck_snapshot_generated_age_seconds ${seconds(Math.max(0, input.nowMs - generatedAtMs))}`],
+  );
+  family(
+    "deck_snapshot_generated_timestamp_seconds",
+    "gauge",
+    "The generatedAt of the last successfully read observed-reality snapshot, as Unix seconds.",
+    generatedAtMs === null ? [] : [`deck_snapshot_generated_timestamp_seconds ${seconds(generatedAtMs)}`],
   );
   return `${lines.join("\n")}\n`;
 }

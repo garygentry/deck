@@ -4,7 +4,11 @@ import snapshotSchema from "../../schema/snapshot.schema.json" with { type: "jso
 const RFC3339 =
   /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[Zz]|([+-])(\d{2}):(\d{2}))$/;
 
-function isRfc3339DateTime(value: string): boolean {
+/**
+ * The `date-time` format the schemas validate: RFC 3339 with a `Z` or `±hh:mm` offset and a
+ * real calendar date and time.
+ */
+export function isRfc3339DateTime(value: string): boolean {
   const match = RFC3339.exec(value);
   if (match === null) return false;
 

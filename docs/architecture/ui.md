@@ -105,7 +105,9 @@ Features register surfaces at import time. `registry/discover.ts` imports every
 
 - `registerPage({ id, path, label, icon, group, component, nav? })` for a routed page;
 - `registerEntityFragment({ id, entity, title, section?, order?, component })` for a section on
-  host or service detail pages (drift findings, owned configs; see "Entity sections" below);
+  host or service detail pages (drift findings; see "Entity sections" below; a module on the
+  contract declares its sections as `entity-section` extensions in its manifest instead, as
+  sources does for owned configs);
 - `registerSummaryFragment(HealthHeaderSlot, { id, component })` for a health pill in the top
   bar (a module on the contract declares its pills as `pill` extensions in its manifest
   instead, as monitoring and llm-usage do);
@@ -129,7 +131,7 @@ config can address an extension by id.
 | `app/topbar.status` (pill) | a manifest `pill` extension (`registerWebModule`), or `registerSummaryFragment(HealthHeaderSlot, …)` | the health-header region |
 | `app/topbar.actions` (action) | `registerExtension` | the top bar's controls (the theme menu) |
 | `portal/summary` (widget) | the portal's `contributes.slots`; cards via `contributes.extensions` | the portal page (manifest-placed) |
-| `entity:host/sections`, `entity:service/sections` (entity-section) | `registerEntityFragment` | host and service detail pages |
+| `entity:host/sections`, `entity:service/sections` (entity-section) | a manifest `entity-section` extension (`registerWebModule`), or `registerEntityFragment` | host and service detail pages |
 
 ### A module's web half
 

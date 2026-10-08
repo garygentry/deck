@@ -189,3 +189,11 @@ export function isSafeHref(href: string): boolean {
   if (/^https?:\/\/[^/]/i.test(href)) return true;
   return href.startsWith("/") && !href.startsWith("//") && !href.startsWith("/\\");
 }
+
+/** The page `/` renders when the `ui` config names no home page: the portal's overview. */
+export const DEFAULT_HOME_PAGE = "page:portal/overview";
+
+/** Why a page path cannot be the home page's, or `null`: `/` renders it with no parameters. */
+export function homePathProblem(path: string): string | null {
+  return /[:*]/.test(path) ? `its path "${path}" has parameters, which "/" cannot supply` : null;
+}

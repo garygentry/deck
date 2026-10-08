@@ -27,6 +27,7 @@ import { SOURCES_ENV } from "../src/sources/runtime.js";
 import type { SourceKind } from "../src/sources/tree.js";
 import { createFakeGitSpawner, type FakeGitSpawner } from "./util/fake-git-spawner.js";
 import { makeCacheDir } from "./util/make-cache-dir.js";
+import { serverOnlyFields } from "./util/shared-ui.js";
 import { sourcesApp } from "./util/sources-module.js";
 import { makeConfigDir } from "./util/tmp-config.js";
 
@@ -82,10 +83,9 @@ describe("the source modules' manifests", () => {
     const { id, version, deckApi, contributes } = SOURCES_MANIFEST;
     expect({ id, version, deckApi }).toEqual({ id: SOURCES_UI.id, version: SOURCES_UI.version, deckApi: SOURCES_UI.deckApi });
     // The shared copy holds the UI; the browsing routes stay server-side.
-    expect(Object.keys(SOURCES_UI.contributes!).sort()).toEqual(["extensions", "nav", "pages"]);
+    expect(serverOnlyFields(SOURCES_UI)).toEqual([]);
     expect(Object.keys(contributes!).sort()).toEqual(["extensions", "nav", "pages", "routes"]);
     for (const key of ["pages", "nav", "extensions"] as const) expect(contributes![key]).toBe(SOURCES_UI.contributes![key]);
-    expect(Object.keys(SOURCES_UI).sort()).toEqual(["contributes", "deckApi", "id", "version"]);
   });
 
   it.each(["entity:host/sections", "entity:service/sections"])("place the owned configs after drift's findings on %s", (slot) => {

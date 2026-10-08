@@ -152,6 +152,9 @@ export function createUiReloader(options: UiReloaderOptions): UiReloader {
     }
     let ui: UiManifest;
     try {
+      // Building the manifest also replaces the providers' projections with its config pages'
+      // selects (see buildUiManifest); the swap below follows in the same synchronous step, so no
+      // request sees one without the other. The paths above never build: the last good selects stay.
       ui = options.build(candidate);
     } catch {
       return invalid("the UI manifest could not be resolved from it");

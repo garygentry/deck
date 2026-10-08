@@ -83,6 +83,13 @@ describe("the served index.html", () => {
     expect(deckBootOf(undefined, { ui: { theme: { mode: "neon" } } }).theme).toEqual({});
   });
 
+  it("carries the operator's preset, density and radius, and drops a value the schema does not accept", () => {
+    const theme = { mode: "light", preset: "violet", density: "compact", radius: "lg" };
+    expect(deckBootOf(undefined, { ui: { theme } }).theme).toEqual(theme);
+    expect(bootIn(renderIndexHtml(TEMPLATE, deckBootOf(manifest("Lab"), { ui: { theme } }))).theme).toEqual(theme);
+    expect(deckBootOf(undefined, { ui: { theme: { preset: "#00ff00", density: "cosy", radius: 4 } } }).theme).toEqual({});
+  });
+
   it("serves a template without the boot element as it is, but titled", () => {
     expect(renderIndexHtml("<title>Deck</title><body></body>", deckBootOf(manifest("Lab"), {}))).toBe("<title>Lab</title><body></body>");
   });

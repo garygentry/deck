@@ -31,6 +31,10 @@ describe("the ui section", () => {
     expect(validate(withUi({ brand: { logoUrl: "/assets/logo.png" } })).classification).toBe(0);
   });
 
+  it.each(["teal", "slate", "amber", "violet", "high-contrast"])("accepts the %s preset", (preset) => {
+    expect(validate(withUi({ theme: { preset } }))).toMatchObject({ classification: 0, findings: [] });
+  });
+
   it.each([
     ["an unknown key", { pages: [] }, "/ui/pages"],
     ["an unknown brand key", { brand: { colour: "red" } }, "/ui/brand/colour"],
@@ -43,6 +47,8 @@ describe("the ui section", () => {
     ["a colour in the theme", { theme: { primary: "#00ff00" } }, "/ui/theme/primary"],
     ["an unknown mode", { theme: { mode: "dim" } }, "/ui/theme/mode"],
     ["an unknown preset", { theme: { preset: "#00ff00" } }, "/ui/theme/preset"],
+    ["an unknown density", { theme: { density: "cosy" } }, "/ui/theme/density"],
+    ["a radius that is a length", { theme: { radius: "4px" } }, "/ui/theme/radius"],
     ["a home that is not a page id", { home: "/hosts" }, "/ui/home"],
     ["a nav link to a non-http URL", { nav: { items: [{ id: "nav:ui/x", group: "lab", label: "X", href: "javascript:alert(1)" }] } }, "/ui/nav/items/0"],
     ["a nav group without an id", { nav: { groups: [{ label: "Lab" }] } }, "/ui/nav/groups/0/id"],

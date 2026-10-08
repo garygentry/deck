@@ -1,3 +1,5 @@
+import type { UiTheme } from "@deck/schema";
+
 /**
  * The boot channel: what the server writes into `index.html` for the shell to read before it
  * can fetch anything (the pre-paint theme script runs before any request). It is one JSON
@@ -14,8 +16,8 @@ export interface DeckBoot {
   bootApi: 1;
   /** The brand title, which also fills the page's `<title>`. */
   brand: { title: string };
-  /** The operator's theme defaults (`ui.theme`); a viewer's stored choice still wins. */
-  theme: { mode?: ThemeMode };
+  /** The operator's theme defaults (`ui.theme`); a viewer's stored choice still wins for `mode`. */
+  theme: DeckBootTheme;
   /**
    * The id of the page `/` renders (the UI manifest's `home.page`), or `null` when no page can
    * be home; the shell routes `/` by it while `/api/ui` loads, so a configured home page never
@@ -24,12 +26,41 @@ export interface DeckBoot {
   home?: string | null;
 }
 
-export type ThemeMode = "light" | "dark" | "system";
+/**
+ * The operator's theme settings, each absent when not configured. The pre-paint script sets the
+ * three appearance settings on `<html>` as `data-theme-preset`, `data-theme-density` and
+ * `data-theme-radius`; `theme.css` and the `density-compact:` variant key off those attributes.
+ */
+export interface DeckBootTheme {
+  mode?: ThemeMode;
+  preset?: ThemePreset;
+  density?: ThemeDensity;
+  radius?: ThemeRadius;
+}
+
+export type ThemeMode = NonNullable<UiTheme["mode"]>;
+export type ThemePreset = NonNullable<UiTheme["preset"]>;
+export type ThemeDensity = NonNullable<UiTheme["density"]>;
+export type ThemeRadius = NonNullable<UiTheme["radius"]>;
+
+/** Every value the `ui.theme` schema accepts, in the schema's order; the first is the default. */
+export const THEME_MODES = ["system", "light", "dark"] as const satisfies readonly ThemeMode[];
+export const THEME_PRESETS = ["teal", "slate", "amber", "violet", "high-contrast"] as const satisfies readonly ThemePreset[];
+export const THEME_DENSITIES = ["comfortable", "compact"] as const satisfies readonly ThemeDensity[];
+export const THEME_RADII = ["md", "none", "sm", "lg"] as const satisfies readonly ThemeRadius[];
+
+// Each list names every schema value: a value the schema gains and a list lacks fails here.
+type Missing<All, Listed> = Exclude<All, Listed> extends never ? true : Exclude<All, Listed>;
+const listsAreComplete: [
+  Missing<ThemeMode, (typeof THEME_MODES)[number]>,
+  Missing<ThemePreset, (typeof THEME_PRESETS)[number]>,
+  Missing<ThemeDensity, (typeof THEME_DENSITIES)[number]>,
+  Missing<ThemeRadius, (typeof THEME_RADII)[number]>,
+] = [true, true, true, true];
+void listsAreComplete;
 
 /** The id of the `<script type="application/json">` element carrying the boot object. */
 export const BOOT_ELEMENT_ID = "deck-boot";
-
-const THEME_MODES: readonly string[] = ["light", "dark", "system"];
 
 /**
  * The boot object in a document, read leniently: a missing or empty element (the dev server),
@@ -37,7 +68,7 @@ const THEME_MODES: readonly string[] = ["light", "dark", "system"];
  */
 export function readDeckBoot(doc: { getElementById(id: string): { textContent: string | null } | null }): {
   brand?: { title: string };
-  theme: { mode?: ThemeMode };
+  theme: DeckBootTheme;
   /** Absent when the page carries no boot object (the dev server) or no valid `home`. */
   home?: string | null;
 } {
@@ -47,14 +78,33 @@ export function readDeckBoot(doc: { getElementById(id: string): { textContent: s
   } catch {
     value = undefined;
   }
-  const boot = (typeof value === "object" && value !== null ? value : {}) as { brand?: { title?: unknown }; theme?: { mode?: unknown }; home?: unknown };
+  const boot = (typeof value === "object" && value !== null ? value : {}) as { brand?: { title?: unknown }; theme?: unknown; home?: unknown };
   const title = boot.brand?.title;
-  const mode = boot.theme?.mode;
   const home = boot.home;
   return {
     ...(typeof title === "string" && title.trim() !== "" ? { brand: { title } } : {}),
-    theme: typeof mode === "string" && THEME_MODES.includes(mode) ? { mode: mode as ThemeMode } : {},
+    theme: deckBootTheme(boot.theme),
     ...(home === null || (typeof home === "string" && home !== "") ? { home } : {}),
+  };
+}
+
+/**
+ * The known theme settings of a `ui.theme`-shaped value: each of `mode`, `preset`, `density`
+ * and `radius` that holds a value the schema accepts, and nothing else.
+ */
+export function deckBootTheme(theme: unknown): DeckBootTheme {
+  const source = (typeof theme === "object" && theme !== null ? theme : {}) as Record<string, unknown>;
+  const pick = <T extends string>(values: readonly T[], value: unknown): T | undefined =>
+    values.find((known) => known === value);
+  const mode = pick(THEME_MODES, source.mode);
+  const preset = pick(THEME_PRESETS, source.preset);
+  const density = pick(THEME_DENSITIES, source.density);
+  const radius = pick(THEME_RADII, source.radius);
+  return {
+    ...(mode !== undefined ? { mode } : {}),
+    ...(preset !== undefined ? { preset } : {}),
+    ...(density !== undefined ? { density } : {}),
+    ...(radius !== undefined ? { radius } : {}),
   };
 }
 

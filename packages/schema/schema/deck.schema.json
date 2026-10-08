@@ -13,10 +13,102 @@
     "services": { "type": "array", "items": { "$ref": "#/$defs/Service" }, "description": "Declared services; absent is equivalent to an empty array." },
     "sources": { "type": "array", "items": { "$ref": "#/$defs/Source" }, "description": "Document and configuration source declarations; absent is equivalent to an empty array." },
     "integrations": { "type": "array", "items": { "$ref": "#/$defs/Integration" }, "description": "External tool integrations; absent is equivalent to an empty array." },
-    "ui": { "type": "object", "additionalProperties": false, "properties": {}, "description": "Reserved for presentation settings; no keys are defined yet." },
+    "ui": { "$ref": "#/$defs/Ui", "description": "Presentation settings: brand, theme, home page, navigation and extension overrides." },
     "modules": { "type": "object", "additionalProperties": false, "properties": {}, "description": "Module settings keyed by module id; each module contributes its own section schema." }
   },
   "$defs": {
+    "Ui": {
+      "title": "Ui", "type": "object", "additionalProperties": false,
+      "properties": {
+        "brand": { "$ref": "#/$defs/UiBrand", "description": "The product name and mark the shell shows." },
+        "theme": { "$ref": "#/$defs/UiTheme", "description": "The operator's theme defaults; a viewer's own choice of mode still wins." },
+        "home": { "type": "string", "pattern": "^page:[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$", "description": "The id of the page rendered at /, such as page:inventory/hosts; default the built-in home page." },
+        "nav": { "$ref": "#/$defs/UiNav", "description": "Sidebar group order, labels and icons, and extra nav entries." },
+        "extensions": {
+          "type": "object", "description": "Overrides by extension, page or nav entry id. They replace, never merge: false disables, an object replaces attachTo and/or config.",
+          "propertyNames": { "minLength": 1 },
+          "additionalProperties": { "$ref": "#/$defs/UiOverride" }
+        }
+      }
+    },
+    "UiBrand": {
+      "title": "UiBrand", "type": "object", "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "\\S", "description": "The product name in the sidebar and the document title; default estate.name, then Deck." },
+        "icon": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "description": "An icon name from the shell's icon set, shown in place of the title's initial." },
+        "logoUrl": { "type": "string", "maxLength": 2048, "pattern": "^(?:https?://|/(?!/))[^\\s\"'<>]*$", "description": "An http(s) URL or a root-relative path to a logo image, shown in place of the icon." }
+      }
+    },
+    "UiTheme": {
+      "title": "UiTheme", "type": "object", "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["light", "dark", "system"], "description": "The colour mode a viewer who has not chosen one sees; default system." },
+        "preset": { "enum": ["teal"], "description": "The named token preset; default teal." },
+        "density": { "enum": ["compact", "comfortable"], "description": "Spacing of tables, lists and sections; default comfortable." },
+        "radius": { "enum": ["none", "sm", "md", "lg"], "description": "Corner radius scale; default md." }
+      }
+    },
+    "UiNav": {
+      "title": "UiNav", "type": "object", "additionalProperties": false,
+      "properties": {
+        "groups": { "type": "array", "items": { "$ref": "#/$defs/UiNavGroup" }, "description": "Groups in sidebar order; groups not listed follow by id." },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/UiNavItem" }, "description": "Extra nav entries: external links and separators." }
+      }
+    },
+    "UiNavGroup": {
+      "title": "UiNavGroup", "type": "object", "additionalProperties": false, "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The group id, a built-in group or a new one." },
+        "label": { "type": "string", "minLength": 1, "description": "The group heading; default the built-in heading, else the id." },
+        "icon": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "description": "An icon name from the shell's icon set." }
+      }
+    },
+    "UiNavItem": {
+      "title": "UiNavItem",
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["id", "group", "label", "href"],
+          "properties": {
+            "id": { "type": "string", "pattern": "^nav:[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$", "description": "The entry id, such as nav:ui/grafana." },
+            "group": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The group the entry belongs to." },
+            "label": { "type": "string", "minLength": 1, "description": "The entry's label." },
+            "href": { "type": "string", "pattern": "^https?://\\S+$", "description": "An external http(s) URL." },
+            "icon": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "description": "An icon name from the shell's icon set." },
+            "order": { "type": "number", "description": "Order within the group; default 100." }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["id", "group", "separator"],
+          "properties": {
+            "id": { "type": "string", "pattern": "^nav:[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$", "description": "The separator's id." },
+            "group": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The group the separator belongs to." },
+            "separator": { "const": true, "description": "Marks the entry as a separator." },
+            "order": { "type": "number", "description": "Order within the group; default 100." }
+          }
+        }
+      ]
+    },
+    "UiOverride": {
+      "title": "UiOverride",
+      "anyOf": [
+        { "type": "boolean" },
+        {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "description": "Whether it renders." },
+            "attachTo": {
+              "type": "object", "additionalProperties": false, "description": "Where it attaches, replacing its default; an omitted slot keeps the slot, an omitted order is 100.",
+              "properties": {
+                "slot": { "type": "string", "minLength": 1, "description": "The slot id." },
+                "order": { "type": "number", "description": "Order within the slot." },
+                "group": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "For a nav entry, the group it moves to." }
+              }
+            },
+            "config": { "type": "object", "additionalProperties": { "$ref": "#/$defs/JsonValue" }, "description": "Replaces the extension's config wholesale." }
+          }
+        }
+      ]
+    },
     "Estate": {
       "title": "Estate", "type": "object", "additionalProperties": false, "required": ["name"],
       "properties": {

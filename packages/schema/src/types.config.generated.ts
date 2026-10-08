@@ -20,6 +20,84 @@ export type ServiceKind = ("docker-compose" | "systemd" | "appliance" | "contain
  * Declared lifecycle status rather than observed state.
  */
 export type ServiceStatus = ("active" | "planned" | "retired")
+export type UiNavItem = ({
+/**
+ * The entry id, such as nav:ui/grafana.
+ */
+id: string
+/**
+ * The group the entry belongs to.
+ */
+group: string
+/**
+ * The entry's label.
+ */
+label: string
+/**
+ * An external http(s) URL.
+ */
+href: string
+/**
+ * An icon name from the shell's icon set.
+ */
+icon?: string
+/**
+ * Order within the group; default 100.
+ */
+order?: number
+} | {
+/**
+ * The separator's id.
+ */
+id: string
+/**
+ * The group the separator belongs to.
+ */
+group: string
+/**
+ * Marks the entry as a separator.
+ */
+separator: true
+/**
+ * Order within the group; default 100.
+ */
+order?: number
+})
+export type UiOverride = (boolean | {
+/**
+ * Whether it renders.
+ */
+enabled?: boolean
+/**
+ * Where it attaches, replacing its default; an omitted slot keeps the slot, an omitted order is 100.
+ */
+attachTo?: {
+/**
+ * The slot id.
+ */
+slot?: string
+/**
+ * Order within the slot.
+ */
+order?: number
+/**
+ * For a nav entry, the group it moves to.
+ */
+group?: string
+}
+/**
+ * Replaces the extension's config wholesale.
+ */
+config?: {
+[k: string]: JsonValue | undefined
+}
+})
+/**
+ * Any value representable in JSON.
+ */
+export type JsonValue = (string | number | boolean | null | JsonValue[] | {
+[k: string]: JsonValue | undefined
+})
 
 /**
  * A merged deck config document containing projected estate inventory and presentation data.
@@ -46,12 +124,7 @@ sources?: Source[]
  * External tool integrations; absent is equivalent to an empty array.
  */
 integrations?: Integration[]
-/**
- * Reserved for presentation settings; no keys are defined yet.
- */
-ui?: {
-
-}
+ui?: Ui
 /**
  * Module settings keyed by module id; each module contributes its own section schema.
  */
@@ -383,4 +456,87 @@ card?: {
  * Environment variable name holding a credential, never its value.
  */
 credentialEnv?: string
+}
+/**
+ * Presentation settings: brand, theme, home page, navigation and extension overrides.
+ */
+export interface Ui {
+brand?: UiBrand
+theme?: UiTheme
+/**
+ * The id of the page rendered at /, such as page:inventory/hosts; default the built-in home page.
+ */
+home?: string
+nav?: UiNav
+/**
+ * Overrides by extension, page or nav entry id. They replace, never merge: false disables, an object replaces attachTo and/or config.
+ */
+extensions?: {
+[k: string]: UiOverride | undefined
+}
+}
+/**
+ * The product name and mark the shell shows.
+ */
+export interface UiBrand {
+/**
+ * The product name in the sidebar and the document title; default estate.name, then Deck.
+ */
+title?: string
+/**
+ * An icon name from the shell's icon set, shown in place of the title's initial.
+ */
+icon?: string
+/**
+ * An http(s) URL or a root-relative path to a logo image, shown in place of the icon.
+ */
+logoUrl?: string
+}
+/**
+ * The operator's theme defaults; a viewer's own choice of mode still wins.
+ */
+export interface UiTheme {
+/**
+ * The colour mode a viewer who has not chosen one sees; default system.
+ */
+mode?: ("light" | "dark" | "system")
+/**
+ * The named token preset; default teal.
+ */
+preset?: "teal"
+/**
+ * Spacing of tables, lists and sections; default comfortable.
+ */
+density?: ("compact" | "comfortable")
+/**
+ * Corner radius scale; default md.
+ */
+radius?: ("none" | "sm" | "md" | "lg")
+}
+/**
+ * Sidebar group order, labels and icons, and extra nav entries.
+ */
+export interface UiNav {
+/**
+ * Groups in sidebar order; groups not listed follow by id.
+ */
+groups?: UiNavGroup[]
+/**
+ * Extra nav entries: external links and separators.
+ */
+items?: UiNavItem[]
+}
+export interface UiNavGroup {
+/**
+ * The group id, a built-in group or a new one.
+ */
+id: string
+/**
+ * The group heading; default the built-in heading, else the id.
+ */
+label?: string
+/**
+ * An icon name from the shell's icon set.
+ */
+icon?: string
 }

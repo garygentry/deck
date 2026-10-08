@@ -44,6 +44,8 @@ const openObjects = new Set([
   "deck:#/$defs/Bindings",
   "deck:#/$defs/Integration/properties/card",
   "deck:#/$defs/JsonValue/anyOf/5",
+  "deck:#/$defs/Ui/properties/extensions",
+  "deck:#/$defs/UiOverride/anyOf/1/properties/config",
   "snapshot:#/$defs/ObservedHost/properties/facts",
   "snapshot:#/$defs/ObservedService/properties/facts",
   "snapshot:#/$defs/JsonValue/anyOf/5",

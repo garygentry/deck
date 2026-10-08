@@ -6,7 +6,7 @@ This is the human-facing contract for deck config documents (schema version 2) a
 
 The stable schema files are `schema/deck.schema.json` (exported as `@deck/schema/deck.schema.json`) and `schema/snapshot.schema.json` (exported as `@deck/schema/snapshot.schema.json`). Both are standalone JSON Schema draft 2020-12 documents. A projector can vendor a pinned checkout and validate its output with a conforming JSON Schema implementation in any language.
 
-`deck.schema.json` holds the kernel keys only: `schemaVersion`, `estate`, `hosts`, `services`, `sources`, `integrations`, `ui` (reserved) and `modules`. Module settings live under `modules.<id>`, and each module contributes the schema of its own section. This library carries no module sections: each module (deck's `portal`, `llm-usage` and `actions` server modules among them) contributes its section, ownership rows, identity rows, id namespaces, host/service references, rules and finding codes through `composeConfig`, so they are not listed here. The config deck validates is the kernel schema composed with every module's section: `composeConfig(contributions)` builds it, and `composeDefault()` is the composition with the built-in contributions alone (the provider kinds of the built-in data sources), which has no module sections. Both the root and `modules` are closed, so a key or module id deck does not know is rejected. The generated `DeckConfigDocument` types `modules` as an open map; each module types its own section.
+`deck.schema.json` holds the kernel keys only: `schemaVersion`, `estate`, `hosts`, `services`, `sources`, `integrations`, `ui` and `modules`. Module settings live under `modules.<id>`, and each module contributes the schema of its own section. This library carries no module sections: each module (deck's `portal`, `llm-usage` and `actions` server modules among them) contributes its section, ownership rows, identity rows, id namespaces, host/service references, rules and finding codes through `composeConfig`, so they are not listed here. The config deck validates is the kernel schema composed with every module's section: `composeConfig(contributions)` builds it, and `composeDefault()` is the composition with the built-in contributions alone (the provider kinds of the built-in data sources), which has no module sections. Both the root and `modules` are closed, so a key or module id deck does not know is rejected. The generated `DeckConfigDocument` types `modules` as an open map; each module types its own section.
 
 The package's `.` and `./fixtures` entry points export TypeScript source. Bare `node` cannot import those library entry points without a transpiling toolchain. The JSON schema files do not have that restriction and are the interface intended for non-TypeScript consumers.
 
@@ -72,6 +72,8 @@ Identity-keyed arrays pair elements using these fields. Identity values must be 
 | `services[].links` | `["href"]` |
 | `sources` | `["id"]` |
 | `integrations` | `["id"]` |
+| `ui.nav.groups` | `["id"]` |
+| `ui.nav.items` | `["id"]` |
 
 ## Recommended loader call order
 

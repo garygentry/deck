@@ -13,6 +13,7 @@ export type {
   FreshnessStamp,
   FreshnessState,
   ProviderEnvelope,
+  ProviderProjection,
 } from "./freshness.js";
 export { POLL_DEFAULTS } from "./provider.js";
 export type {

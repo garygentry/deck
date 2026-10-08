@@ -1,0 +1,188 @@
+import type {
+  ExtensionId,
+  JsonObject,
+  UiFinding,
+  UiLayoutSection,
+  UiManifest,
+  UiPageLayout,
+  UiProvider,
+  UiWidgetInstance,
+  UiWidgetType,
+} from "@deck/module-sdk";
+
+import { UI_CONFIG_MODULE } from "@deck/module-sdk";
+
+import type { ProviderSelects } from "../providers/registry.js";
+import { isRecord } from "./validate.js";
+
+/** The component a config page renders with, in the core web module's table. */
+export const CONFIG_PAGE_COMPONENT = "ConfigPage";
+
+/** A config page as the `ui.pages` config declares it (validated; read leniently anyway). */
+export interface ConfigPage {
+  /** The page's name: its id is `page:ui/<id>`. */
+  id: string;
+  path: string;
+  title: string;
+  icon?: string;
+  nav?: { group: string; label?: string; order?: number };
+  sections: ConfigSection[];
+}
+
+export interface ConfigSection {
+  title: string;
+  columns?: number;
+  widgets: ConfigWidget[];
+}
+
+export interface ConfigWidget {
+  id?: string;
+  type: string;
+  title?: string;
+  source?: string | { kind: string };
+  select?: string;
+  options?: JsonObject;
+  span?: number;
+  rows?: number;
+}
+
+/** A config page's extension ids. */
+export function configPageIds(page: Pick<ConfigPage, "id">): { page: ExtensionId; nav: ExtensionId } {
+  return { page: `page:${UI_CONFIG_MODULE}/${page.id}`, nav: `nav:${UI_CONFIG_MODULE}/${page.id}` };
+}
+
+/**
+ * A widget's extension id: `widget:ui/<page>.<id>` from its `id`; without one, positional
+ * (`widget:ui/<page>.s<N>w<M>`, 1-based), which changes when sections or widgets move.
+ */
+export function configWidgetId(page: string, widget: Pick<ConfigWidget, "id">, section: number, index: number): { id: ExtensionId; positional: boolean } {
+  return widget.id === undefined
+    ? { id: `widget:${UI_CONFIG_MODULE}/${page}.s${section + 1}w${index + 1}`, positional: true }
+    : { id: `widget:${UI_CONFIG_MODULE}/${page}.${widget.id}`, positional: false };
+}
+
+/** Every widget id on a config page, with whether it is positional. */
+export function configWidgetIds(page: ConfigPage): Array<{ id: ExtensionId; positional: boolean }> {
+  return page.sections.flatMap((section, sectionIndex) =>
+    section.widgets.map((widget, index) => configWidgetId(page.id, widget, sectionIndex, index)),
+  );
+}
+
+/**
+ * A config page's layout: its sections in order, each widget with its source resolved
+ * against the registered providers and its span clamped to the section's columns. Widgets an
+ * override switches off (`enabled(id) === false`) are left out, and a section left with none
+ * is dropped. Problems are findings; none stops the page from rendering.
+ */
+export function buildLayout(
+  page: ConfigPage,
+  context: {
+    providers: readonly UiProvider[];
+    widgetTypes: readonly UiWidgetType[];
+    enabled: (id: ExtensionId) => boolean;
+    findings: UiFinding[];
+  },
+): UiPageLayout {
+  const sections: UiLayoutSection[] = [];
+  page.sections.forEach((section, sectionIndex) => {
+    const columns = clamp(section.columns ?? 1, 1, 4) as UiLayoutSection["columns"];
+    const widgets: UiWidgetInstance[] = [];
+    section.widgets.forEach((widget, index) => {
+      const { id } = configWidgetId(page.id, widget, sectionIndex, index);
+      if (!context.enabled(id)) return;
+      const span = clamp(widget.span ?? 1, 1, 4);
+      if (span > columns) {
+        context.findings.push({ code: "UI_WIDGET_SPAN", severity: "warning", message: `widget "${id}" spans ${span} columns; its section has ${columns}, so it spans ${columns}`, id });
+      }
+      const source = resolveSource(id, widget, context);
+      widgets.push({
+        id,
+        type: widget.type,
+        ...(widget.title === undefined ? {} : { title: widget.title }),
+        source,
+        ...(widget.select === undefined ? {} : { select: widget.select, projection: id }),
+        options: widget.options ?? {},
+        span: Math.min(span, columns) as UiWidgetInstance["span"],
+        rows: clamp(widget.rows ?? 1, 1, 6),
+      });
+    });
+    if (widgets.length > 0) sections.push({ title: section.title, columns, widgets });
+  });
+  return { sections };
+}
+
+/**
+ * The provider a widget reads: its `source` id, or the first provider of its `source` kind
+ * by id (as the web's `useProvider({ kind })` picks); `null` with a finding when that names
+ * no registered provider, or one of a kind the widget type cannot render.
+ */
+function resolveSource(
+  id: ExtensionId,
+  widget: ConfigWidget,
+  context: { providers: readonly UiProvider[]; widgetTypes: readonly UiWidgetType[]; findings: UiFinding[] },
+): UiProvider | null {
+  if (widget.source === undefined) return null;
+  const wanted = widget.source;
+  const provider =
+    typeof wanted === "string"
+      ? context.providers.find((candidate) => candidate.id === wanted)
+      : [...context.providers].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).find((candidate) => candidate.kind === wanted.kind);
+  if (provider === undefined) {
+    const named = typeof wanted === "string" ? `provider "${wanted}"` : `a provider of kind "${wanted.kind}"`;
+    context.findings.push({ code: "UI_WIDGET_SOURCE_UNKNOWN", severity: "warning", message: `widget "${id}" reads ${named}, which is not registered`, id });
+    return null;
+  }
+  const sources = context.widgetTypes.find((type) => type.type === widget.type)?.sources;
+  if (sources !== undefined && !sources.includes(provider.kind)) {
+    context.findings.push({
+      code: "UI_WIDGET_SOURCE_KIND",
+      severity: "warning",
+      message: `widget "${id}" reads provider "${provider.id}" of kind "${provider.kind}", which widget type "${widget.type}" cannot render (it renders ${sources.join(", ")})`,
+      id,
+    });
+    return null;
+  }
+  return { id: provider.id, kind: provider.kind };
+}
+
+/**
+ * The selects a UI manifest's config pages need, by provider id: what the provider registry
+ * evaluates into each envelope's `projections` ({@link setProjections}). Pure: rebuilt with
+ * every manifest, so a swapped manifest swaps its selects too.
+ */
+export function deriveProjections(manifest: Pick<UiManifest, "pages">): Map<string, ProviderSelects> {
+  const selects = new Map<string, Map<string, string>>();
+  for (const page of manifest.pages) {
+    for (const section of page.layout?.sections ?? []) {
+      for (const widget of section.widgets) {
+        if (widget.source === null || widget.select === undefined || widget.projection === undefined) continue;
+        const forProvider = selects.get(widget.source.id) ?? new Map<string, string>();
+        forProvider.set(widget.projection, widget.select);
+        selects.set(widget.source.id, forProvider);
+      }
+    }
+  }
+  return selects;
+}
+
+/**
+ * The config pages of a config document (`ui.pages`). The config has been validated, so a
+ * malformed entry cannot occur; one is dropped anyway rather than trusted.
+ */
+export function configPagesOf(config: unknown): ConfigPage[] {
+  const pages = (config as { ui?: { pages?: unknown } } | null)?.ui?.pages;
+  if (!Array.isArray(pages)) return [];
+  return pages.filter((page): page is ConfigPage =>
+    isRecord(page)
+    && typeof page.id === "string"
+    && typeof page.path === "string"
+    && typeof page.title === "string"
+    && Array.isArray(page.sections)
+    && page.sections.every((section) => isRecord(section) && typeof section.title === "string" && Array.isArray(section.widgets)
+      && section.widgets.every((widget) => isRecord(widget) && typeof widget.type === "string")),
+  );
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Number.isInteger(value) ? Math.min(Math.max(value, min), max) : min;
+}

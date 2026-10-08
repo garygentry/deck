@@ -18,10 +18,12 @@ import {
   listProviders,
   providerCount,
   read,
+  setProjections,
   startScheduler,
   stopScheduler,
 } from "../providers/registry.js";
 import { BUILTIN_MODULES } from "../modules/builtin.js";
+import { deriveProjections } from "../ui/config-pages.js";
 import { buildUiManifest } from "../ui/manifest.js";
 import { createUiReloader, type UiReloader } from "../ui/live.js";
 import { createModuleHost, startModules, type ModuleHost } from "../modules/host.js";
@@ -196,6 +198,8 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
       ...(options.uiReload?.debounceMs === undefined ? {} : { debounceMs: options.uiReload.debounceMs }),
     });
   }
+  // Config pages' widgets select from provider data: each envelope carries their projections.
+  setProjections(deriveProjections(ui));
 
   // Mounting re-checks module routes against the live kernel table (a backstop).
   let app: ReturnType<typeof createApp>;

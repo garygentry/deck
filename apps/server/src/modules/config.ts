@@ -9,10 +9,13 @@ import {
   type JsonObject,
   MODULE_HOST_FINDING_CATALOG,
 } from "@deck/schema";
-import { MODULE_ID_PATTERN, type ModuleManifest, type ServerModule } from "@deck/module-sdk";
+import { selectProblem } from "@deck/schema/select";
+import { CORE_WIDGET_TYPES } from "@deck/contract/modules/core";
+import { MODULE_ID_PATTERN, type ModuleManifest, type ServerModule, type WidgetTypeDecl } from "@deck/module-sdk";
 
 import { BUILTIN_MODULES } from "./builtin.js";
 import { credentialEnvRefusal, declaredCredentialEnv } from "./context.js";
+import { RESERVED_MODULE_IDS } from "../ui/validate.js";
 import { moduleKindsProblem, planModules, type PlanOptions } from "./host.js";
 
 const BUILTIN_SET: ReadonlySet<ServerModule<any>> = new Set(BUILTIN_MODULES);
@@ -119,9 +122,18 @@ export function moduleContribution(module: ServerModule<any>): ConfigContributio
             };
           }),
         }),
+    ...(manifest.contributes?.widgetTypes === undefined ? {} : { widgetTypes: widgetTypeContributions(manifest.contributes.widgetTypes) }),
     ...(module.configRules === undefined ? {} : { rules: module.configRules }),
   };
 }
+
+/** Widget types' option schemas, as composition takes them. */
+function widgetTypeContributions(types: readonly WidgetTypeDecl[]): ConfigContribution["widgetTypes"] {
+  return types.map(({ type, optionsSchema }) => ({ type, ...(optionsSchema === undefined ? {} : { optionsSchema: optionsSchema as JsonObject }) }));
+}
+
+/** The kernel's own widget types (`core/…`), composed like a module's. */
+export const CORE_CONTRIBUTION: ConfigContribution = { id: "core", widgetTypes: widgetTypeContributions(CORE_WIDGET_TYPES) };
 
 /**
  * Compose the kernel, the built-in contributions not yet carried by a module, and the
@@ -184,6 +196,8 @@ export function composeModules(
   const composedModules: ConfigContribution[] = [];
   for (const entry of plan) {
     if (!MODULE_ID_PATTERN.test(entry.id)) continue;
+    // A module may not take a kernel id (the host refuses it); the kernel's `core` contributes.
+    if (RESERVED_MODULE_IDS.has(entry.id)) continue;
     const contribution = contributions.get(entry.id);
     if (entry.enabled && contribution !== undefined) composedModules.push(contribution);
     // Off, but with a contribution that composes: its section is still checked, at info.
@@ -192,7 +206,7 @@ export function composeModules(
   const key = JSON.stringify(composedModules.map(({ id, disabled }) => [id, disabled ?? null]));
   let composed = cache?.get(key);
   if (composed === undefined) {
-    composed = composeConfig([...BUILTIN_CONTRIBUTIONS, ...composedModules]);
+    composed = composeConfig([...BUILTIN_CONTRIBUTIONS, CORE_CONTRIBUTION, ...composedModules], { selectProblem });
     cache?.set(key, composed);
   }
   return { composed, invalid, credentials: { kinds, envOwners } };

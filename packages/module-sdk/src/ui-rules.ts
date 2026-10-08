@@ -18,12 +18,17 @@ export const EXTENSION_KINDS: readonly string[] = ["pill", "widget", "entity-sec
 export const RESERVED_EXTENSION_PREFIXES: readonly string[] = ["page", "nav"];
 
 /**
- * Module ids the kernel keeps: `core` hosts the shell's slots, and `ui` owns the ui config's own
- * nav entries (`nav:ui/…`), so no module may take either.
+ * Module ids the kernel keeps: `core` hosts the shell's slots and widget types, and `ui` owns the
+ * ui config's own nav entries, pages and widgets (`nav:ui/…`, `page:ui/…`, `widget:ui/…`), so no
+ * module may take either.
  */
 export const RESERVED_MODULE_IDS: readonly string[] = ["core", "ui"];
 
-/** The module the ui config's own nav entries (`ui.nav.items`) are listed under in the UI manifest. */
+/**
+ * The module the ui config's own contributions are listed under in the UI manifest: its nav
+ * entries (`ui.nav.items`), its pages (`ui.pages`, `page:ui/<id>`, with `nav:ui/<id>`) and
+ * their widgets (`widget:ui/<page>.<name>`).
+ */
 export const UI_CONFIG_MODULE = "ui";
 
 /** A `ui.nav.items` entry's id: always in the reserved `ui` namespace, `nav:ui/<name>`. */

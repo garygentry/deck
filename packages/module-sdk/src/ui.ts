@@ -40,6 +40,11 @@ export interface UiManifest {
   extensions: UiExtension[];
   /** Registered provider instances, by id. */
   providers: UiProvider[];
+  /**
+   * The widget types of enabled modules (and the kernel's `core/…`), by type: what a config
+   * page's widget may name. An older server does not send it.
+   */
+  widgetTypes?: UiWidgetType[];
   /** Problems found while resolving; none of them stops the UI from rendering. */
   findings: UiFinding[];
 }
@@ -109,8 +114,60 @@ export interface UiPage {
   path: string;
   title: string;
   icon?: string;
-  /** Export name in the module's web component table. */
+  /** Export name in the module's web component table (`ConfigPage` for a config page). */
   component: string;
+  /** A config page's sections and widgets (`ui.pages`); only pages of module `ui` have one. */
+  layout?: UiPageLayout;
+}
+
+/** A config page's body: its sections, in reading order. */
+export interface UiPageLayout {
+  sections: UiLayoutSection[];
+}
+
+/** One section of a config page: a heading over a grid of widgets, one column below `md`. */
+export interface UiLayoutSection {
+  title: string;
+  /** Grid columns from the `md` breakpoint up. */
+  columns: 1 | 2 | 3 | 4;
+  /** Its widgets, in reading order (DOM order). */
+  widgets: UiWidgetInstance[];
+}
+
+/** A widget placed on a config page: a widget descriptor with its source resolved. */
+export interface UiWidgetInstance {
+  /**
+   * `widget:ui/<page>.<id>` from the widget's `id`, else positional (`widget:ui/<page>.s<N>w<M>`,
+   * 1-based), which changes when sections or widgets move.
+   */
+  id: ExtensionId;
+  /** The widget type, `<module>/<name>`. */
+  type: string;
+  title?: string;
+  /**
+   * The provider it reads, resolved from its `source` (an id, or the first provider of a
+   * kind); `null` when it names none, or one that is not registered (a finding).
+   */
+  source: UiProvider | null;
+  /** Its JMESPath `select`, which the server evaluates over the provider's data at each poll. */
+  select?: string;
+  /**
+   * The key of its `select` result in the provider envelope's `projections` (its id); absent
+   * when it has no `select`, and it reads the envelope's `data` whole.
+   */
+  projection?: string;
+  options: JsonObject;
+  /** Columns spanned, at most the section's. */
+  span: 1 | 2 | 3 | 4;
+  rows: number;
+}
+
+/** A widget type a module provides. */
+export interface UiWidgetType {
+  type: string;
+  module: string;
+  /** Provider kinds it can render; absent means any. */
+  sources?: string[];
 }
 
 /**
@@ -165,11 +222,16 @@ export type UiFindingCode =
   /** The config directory changed and no longer loads: the last good config is still served. */
   | "UI_CONFIG_INVALID"
   /** The config directory changed outside `ui`: that change takes effect when deck restarts. */
-  | "UI_RESTART_REQUIRED";
+  | "UI_RESTART_REQUIRED"
+  | "UI_WIDGET_SOURCE_UNKNOWN"
+  | "UI_WIDGET_SOURCE_KIND"
+  | "UI_WIDGET_SPAN"
+  | "UI_OVERRIDE_POSITIONAL";
 
 export interface UiFinding {
   code: UiFindingCode;
-  severity: "warning";
+  /** `info` only for what works as configured but is fragile (UI_OVERRIDE_POSITIONAL). */
+  severity: "warning" | "info";
   message: string;
   /** The extension, page, nav or nav group id the finding is about. */
   id?: string;
@@ -182,8 +244,8 @@ export interface UiFinding {
  * it, `true` enables it, and an object replaces its `attachTo` and/or `config` wholesale (no
  * deep merge). In a replacement `attachTo`, an omitted `slot` keeps the current slot, an
  * omitted `group` (a nav entry's) keeps the current group, and an omitted `order` is the
- * default (100). A page takes only `enabled`, a nav entry `enabled` and `attachTo`. A
- * malformed entry is ignored with a finding.
+ * default (100). A page and a config page's widget take only `enabled`, a nav entry `enabled`
+ * and `attachTo`. A malformed entry is ignored with a finding.
  */
 export type UiOverride =
   | boolean

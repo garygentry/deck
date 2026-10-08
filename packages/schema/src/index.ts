@@ -10,7 +10,7 @@ export type { DisabledSections } from "./compose/compose.js";
 export { BUILTIN_CONTRIBUTIONS, composeDefault } from "./compose/builtin.js";
 export { SECRET_REF_PATTERN, SECRET_REF_MAX_LENGTH, CREDENTIAL_KEY_NAMES } from "./secrets.js";
 export { merge, MergeError } from "./merge.js";
-export { OWNERSHIP, IDENTITY, resolveOwner } from "./ownership.js";
+export { OWNERSHIP, IDENTITY, REPLACED, resolveOwner } from "./ownership.js";
 export { estateBindings, estateProviderIds } from "./provider-ids.js";
 export type { EstateBinding, EstateProviderId } from "./provider-ids.js";
 export { validate } from "./validate/validate.js";

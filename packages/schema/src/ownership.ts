@@ -25,6 +25,15 @@ export const IDENTITY = {
 } as const satisfies Record<string, IdentitySpec>;
 
 /**
+ * Maps whose entries merge key by key across layers, except that the listed fields of an
+ * entry are replaced whole: a later layer's value wins outright, so a field it omits does not
+ * survive from an earlier layer. Different keys of the map still merge.
+ */
+export const REPLACED = {
+  "ui.extensions": ["attachTo", "config"],
+} as const satisfies Record<string, readonly string[]>;
+
+/**
  * Kernel per-key ownership. Deeper keys inherit their nearest listed ancestor. Modules add
  * rows under `modules.<id>`; see `composeConfig`.
  */

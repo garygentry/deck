@@ -45,6 +45,7 @@ describe("the ui section", () => {
     ["an unknown preset", { theme: { preset: "#00ff00" } }, "/ui/theme/preset"],
     ["a home that is not a page id", { home: "/hosts" }, "/ui/home"],
     ["a nav link to a non-http URL", { nav: { items: [{ id: "nav:ui/x", group: "lab", label: "X", href: "javascript:alert(1)" }] } }, "/ui/nav/items/0"],
+    ["a nav item outside the ui namespace", { nav: { items: [{ id: "nav:drift/x", group: "lab", label: "X", href: "https://x.example" }] } }, "/ui/nav/items/0"],
     ["a nav group without an id", { nav: { groups: [{ label: "Lab" }] } }, "/ui/nav/groups/0/id"],
     ["an override that is neither a boolean nor an object", { extensions: { "pill:drift/summary": "off" } }, "/ui/extensions/pill:drift~1summary"],
     ["an override with an unknown key", { extensions: { "pill:drift/summary": { hidden: true } } }, "/ui/extensions/pill:drift~1summary"],
@@ -72,6 +73,25 @@ describe("the ui section", () => {
     const merged = merge(merge(base, first), second) as unknown as { ui: { nav: { groups: unknown[]; items: { id: string }[] } } };
     expect(merged.ui.nav.groups).toEqual([{ id: "lab", label: "Lab", icon: "flask-conical" }]);
     expect(merged.ui.nav.items.map(({ id }) => id)).toEqual(["nav:ui/a", "nav:ui/b"]);
+  });
+
+  it("replaces an override's attachTo and config whole across overlays; different ids still merge", () => {
+    const first = { schemaVersion: 2, ui: { extensions: {
+      "nav:actions/overview": { attachTo: { group: "lab", order: 3 } },
+      "card:x/y": { enabled: true, config: { title: "Old", limit: 3 } },
+      "pill:drift/summary": false,
+    } } };
+    const second = { schemaVersion: 2, ui: { extensions: {
+      "nav:actions/overview": { attachTo: { slot: "app/nav" } },
+      "card:x/y": { config: { title: "New" } },
+    } } };
+    const merged = merge(merge(base, first), second);
+    expect(validate(merged).classification).toBe(0);
+    expect((merged as unknown as { ui: { extensions: unknown } }).ui.extensions).toEqual({
+      "nav:actions/overview": { attachTo: { slot: "app/nav" } },
+      "card:x/y": { enabled: true, config: { title: "New" } },
+      "pill:drift/summary": false,
+    });
   });
 
   it("refuses a nav id twice in one layer", () => {

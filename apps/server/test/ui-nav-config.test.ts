@@ -39,9 +39,8 @@ const resolveWith = (ui: unknown, overrides: Record<string, unknown> = {}): UiMa
   } satisfies ResolveUiInput);
 const groupIds = (manifest: UiManifest) => manifest.navGroups.map((group) => group.id);
 const navOf = (manifest: UiManifest, id: string) => manifest.nav.find((item) => item.id === id);
-const codes = (manifest: UiManifest) => manifest.findings.map((finding) => `${finding.code} ${finding.id ?? finding.slot}`);
 
-const GRAFANA = { id: "nav:lab/grafana", group: "lab", label: "Grafana", href: "https://grafana.example.net", icon: "gauge" };
+const GRAFANA = { id: "nav:ui/grafana", group: "lab", label: "Grafana", href: "https://grafana.example.net", icon: "gauge" };
 
 describe("ui.nav groups", () => {
   it("with no nav config, the built-in groups in their default order", () => {
@@ -71,10 +70,10 @@ describe("ui.nav groups", () => {
 
 describe("ui.nav items", () => {
   it("adds external links under module ui, in their group by order", () => {
-    const ui = resolveWith({ nav: { items: [GRAFANA, { ...GRAFANA, id: "nav:lab/alpha", label: "Alpha", order: 1 }] } });
+    const ui = resolveWith({ nav: { items: [GRAFANA, { ...GRAFANA, id: "nav:ui/alpha", label: "Alpha", order: 1 }] } });
     expect(ui.nav.filter((item) => item.group === "lab")).toEqual([
-      { id: "nav:lab/alpha", module: "ui", slot: "app/nav", href: "https://grafana.example.net", group: "lab", label: "Alpha", icon: "gauge", order: 1 },
-      { id: "nav:lab/grafana", module: "ui", slot: "app/nav", href: "https://grafana.example.net", group: "lab", label: "Grafana", icon: "gauge", order: 100 },
+      { id: "nav:ui/alpha", module: "ui", slot: "app/nav", href: "https://grafana.example.net", group: "lab", label: "Alpha", icon: "gauge", order: 1 },
+      { id: "nav:ui/grafana", module: "ui", slot: "app/nav", href: "https://grafana.example.net", group: "lab", label: "Grafana", icon: "gauge", order: 100 },
     ]);
     // An unconfigured group follows the built-ins, headed by its id.
     expect(ui.navGroups.at(-1)).toEqual({ id: "lab", label: "lab" });
@@ -82,29 +81,30 @@ describe("ui.nav items", () => {
 
   it("adds separators, with no label; a group of separators alone is not listed", () => {
     const ui = resolveWith({
-      nav: { items: [{ id: "nav:lab/rule", group: "health", separator: true, order: 150 }, { id: "nav:lab/lonely", group: "empty", separator: true }] },
+      nav: { items: [{ id: "nav:ui/rule", group: "health", separator: true, order: 150 }, { id: "nav:ui/lonely", group: "empty", separator: true }] },
     });
-    expect(navOf(ui, "nav:lab/rule")).toEqual({ id: "nav:lab/rule", module: "ui", slot: "app/nav", group: "health", label: "", order: 150, separator: true });
+    expect(navOf(ui, "nav:ui/rule")).toEqual({ id: "nav:ui/rule", module: "ui", slot: "app/nav", group: "health", label: "", order: 150, separator: true });
     expect(groupIds(ui)).not.toContain("empty");
   });
 
-  it("an item reusing a module's nav id is ignored, with a finding", () => {
-    const ui = resolveWith({ nav: { items: [{ ...GRAFANA, id: "nav:drift/overview" }] } });
+  it("refuses an item outside the nav:ui/ namespace: a module's nav id stays the module's", () => {
+    const ui = resolveWith({ nav: { items: [{ ...GRAFANA, id: "nav:drift/x" }, { ...GRAFANA, id: "nav:drift/overview" }] } });
+    expect(navOf(ui, "nav:drift/x")).toBeUndefined();
     expect(navOf(ui, "nav:drift/overview")).toMatchObject({ module: "drift", page: "page:drift/overview" });
-    expect(codes(ui)).toEqual(["UI_DUPLICATE_ID nav:drift/overview"]);
+    expect(ui.findings).toEqual([]);
   });
 
   it("drops entries missing what they need, and links that are not http(s)", () => {
     const config = uiConfigOf({
-      ui: { nav: { items: [{ id: "nav:lab/x", group: "lab", label: "X", href: "javascript:alert(1)" }, { id: "nav:lab/y", label: "Y" }, "nope", GRAFANA] } },
+      ui: { nav: { items: [{ id: "nav:ui/x", group: "lab", label: "X", href: "javascript:alert(1)" }, { id: "nav:ui/y", label: "Y" }, "nope", GRAFANA] } },
     });
     expect(config.nav.items).toEqual([GRAFANA]);
   });
 
   it("take overrides like any nav entry", () => {
-    const ui = resolveWith({ nav: { items: [GRAFANA] } }, { "nav:lab/grafana": { attachTo: { group: "overview", order: 0 } } });
-    expect(navOf(ui, "nav:lab/grafana")).toMatchObject({ group: "overview", order: 0 });
-    expect(resolveWith({ nav: { items: [GRAFANA] } }, { "nav:lab/grafana": false }).nav.map((item) => item.id)).not.toContain("nav:lab/grafana");
+    const ui = resolveWith({ nav: { items: [GRAFANA] } }, { "nav:ui/grafana": { attachTo: { group: "overview", order: 0 } } });
+    expect(navOf(ui, "nav:ui/grafana")).toMatchObject({ group: "overview", order: 0 });
+    expect(resolveWith({ nav: { items: [GRAFANA] } }, { "nav:ui/grafana": false }).nav.map((item) => item.id)).not.toContain("nav:ui/grafana");
   });
 });
 
@@ -172,7 +172,44 @@ describe("ui.nav and ui.extensions through GET /api/ui", () => {
       layers.cleanup();
     }
     expect(body.navGroups[0]).toEqual({ id: "lab", label: "Lab", icon: "boxes" });
-    expect(body.nav.filter((item) => item.group === "lab").map((item) => item.id)).toEqual(["nav:inventory/services", "nav:lab/grafana"]);
+    expect(body.nav.filter((item) => item.group === "lab").map((item) => item.id)).toEqual(["nav:inventory/services", "nav:ui/grafana"]);
+    expect(body.extensions.map((extension) => extension.id)).not.toContain("pill:drift/summary");
+    expect(body.findings).toEqual([]);
+  });
+
+  it("a later overlay's override replaces an earlier one's attachTo and config whole", async () => {
+    const layers = layersDir({
+      "00-base.yaml": { schemaVersion: 2, estate: { name: "ui-estate" } },
+      "10-overlay.yaml": {
+        schemaVersion: 2,
+        ui: {
+          nav: { groups: [{ id: "lab", label: "Lab" }], items: [GRAFANA] },
+          extensions: {
+            "nav:inventory/services": { attachTo: { group: "lab", order: 3 } },
+            "nav:ui/grafana": { attachTo: { group: "overview", order: 0 } },
+            "pill:drift/summary": false,
+          },
+        },
+      },
+      "20-overlay.yaml": {
+        schemaVersion: 2,
+        ui: { extensions: { "nav:inventory/services": { attachTo: { order: 9 } }, "nav:ui/grafana": { attachTo: { group: "health" } } } },
+      },
+    });
+    let body = {} as UiManifest;
+    try {
+      await capture({ id: "ui-nav-layers", dir: layers.dir }, {
+        onApp: async (app) => {
+          body = (await (await app.request("/api/ui")).json()) as UiManifest;
+        },
+      });
+    } finally {
+      layers.cleanup();
+    }
+    // The first overlay's group (and order) do not survive the second's attachTo.
+    expect(navOf(body, "nav:inventory/services")).toMatchObject({ group: "inventory", order: 9 });
+    expect(navOf(body, "nav:ui/grafana")).toMatchObject({ group: "health", order: 100 });
+    // A different id from the first overlay still applies.
     expect(body.extensions.map((extension) => extension.id)).not.toContain("pill:drift/summary");
     expect(body.findings).toEqual([]);
   });

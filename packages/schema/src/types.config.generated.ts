@@ -22,7 +22,7 @@ export type ServiceKind = ("docker-compose" | "systemd" | "appliance" | "contain
 export type ServiceStatus = ("active" | "planned" | "retired")
 export type UiNavItem = ({
 /**
- * The entry id, such as nav:ui/grafana.
+ * The entry id, in the reserved ui namespace: nav:ui/<name>, such as nav:ui/grafana.
  */
 id: string
 /**
@@ -47,7 +47,7 @@ icon?: string
 order?: number
 } | {
 /**
- * The separator's id.
+ * The separator's id, nav:ui/<name>.
  */
 id: string
 /**
@@ -69,7 +69,7 @@ export type UiOverride = (boolean | {
  */
 enabled?: boolean
 /**
- * Where it attaches, replacing its default; an omitted slot keeps the slot, an omitted order is 100.
+ * Where it attaches, replacing its default (and an earlier layer's attachTo) whole; an omitted slot keeps the slot, an omitted order is 100, and group (nav entries only) when omitted keeps the entry's own.
  */
 attachTo?: {
 /**
@@ -86,7 +86,7 @@ order?: number
 group?: string
 }
 /**
- * Replaces the extension's config wholesale.
+ * Replaces the extension's config (and an earlier layer's) wholesale.
  */
 config?: {
 [k: string]: JsonValue | undefined
@@ -469,7 +469,7 @@ theme?: UiTheme
 home?: string
 nav?: UiNav
 /**
- * Overrides by extension, page or nav entry id. They replace, never merge: false disables, an object replaces attachTo and/or config.
+ * Overrides by extension, page or nav entry id. They replace, never merge: false disables, an object replaces attachTo and/or config, and a later layer's attachTo or config replaces an earlier layer's whole.
  */
 extensions?: {
 [k: string]: UiOverride | undefined
@@ -518,7 +518,7 @@ radius?: ("none" | "sm" | "md" | "lg")
  */
 export interface UiNav {
 /**
- * Groups in sidebar order; groups not listed follow by id.
+ * Groups in sidebar order; the built-in groups not listed follow in their default order, then any other group by id. Across layers groups merge by id: a group keeps its first layer's position and a new id is appended.
  */
 groups?: UiNavGroup[]
 /**

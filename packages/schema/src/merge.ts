@@ -1,7 +1,7 @@
 import type { JsonObject, JsonValue } from "./types.js";
 import { composeDefault } from "./compose/builtin.js";
 import type { ComposedConfig } from "./compose/compose.js";
-import { resolveOwner, type IdentitySpec, type Owner } from "./ownership.js";
+import { REPLACED, resolveOwner, type IdentitySpec, type Owner } from "./ownership.js";
 
 /**
  * Thrown by `merge` on a precondition failure (REQ-LAYER-07), before any output is
@@ -127,14 +127,34 @@ function throwIdentity(layer: InputLayer, pointer: string): never {
   );
 }
 
-function mergeObject(tables: Tables, base: JsonObject, overlay: JsonObject, ownerPath: string): JsonObject {
+/**
+ * `replaced` names the fields of this object an overlay value replaces whole (an entry of a
+ * `REPLACED` map).
+ */
+function mergeObject(
+  tables: Tables,
+  base: JsonObject,
+  overlay: JsonObject,
+  ownerPath: string,
+  replaced: readonly string[] = [],
+): JsonObject {
   const output: JsonObject = {};
+  const entryFields = replacedFields(ownerPath);
   for (const key of Object.keys(base)) {
     if (isForbiddenKey(key)) continue;
     const childPath = ownerPath === "" ? key : `${ownerPath}.${key}`;
-    output[key] = hasOwn(overlay, key)
-      ? combine(tables, base[key], overlay[key], resolveOwner(childPath, tables.ownership), childPath)
-      : clone(base[key]);
+    if (!hasOwn(overlay, key)) {
+      output[key] = clone(base[key]);
+      continue;
+    }
+    const owner = resolveOwner(childPath, tables.ownership);
+    if (owner === "overlay" && replaced.includes(key)) {
+      output[key] = clone(overlay[key]);
+    } else if (owner === "overlay" && entryFields !== undefined && isPlainObject(base[key]) && isPlainObject(overlay[key])) {
+      output[key] = mergeObject(tables, base[key], overlay[key], childPath, entryFields);
+    } else {
+      output[key] = combine(tables, base[key], overlay[key], owner, childPath);
+    }
   }
   for (const key of Object.keys(overlay)) {
     if (isForbiddenKey(key) || hasOwn(base, key)) continue;
@@ -217,6 +237,11 @@ function selectedIdentityKeys(
 
 function isFixedIdentitySpec(spec: IdentitySpec): spec is readonly string[] {
   return Array.isArray(spec);
+}
+
+/** The fields replaced whole in each entry of the map at `path`, if it is a `REPLACED` map. */
+function replacedFields(path: string): readonly string[] | undefined {
+  return Object.prototype.hasOwnProperty.call(REPLACED, path) ? REPLACED[path as keyof typeof REPLACED] : undefined;
 }
 
 function identitySpec(tables: Tables, path: string): IdentitySpec | undefined {

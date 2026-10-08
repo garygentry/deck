@@ -71,6 +71,18 @@ describe("ExternalLink", () => {
     const link = screen.getByRole("link", { name: "Docs (opens in new tab)" });
     expect(link.querySelector("svg")).toBeNull();
   });
+
+  it("plain drops the text-link look and keeps the new-tab semantics", () => {
+    render(
+      <ExternalLink href="https://example.com" plain className="host-styled">
+        Docs
+      </ExternalLink>,
+    );
+    const link = screen.getByRole("link", { name: "Docs (opens in new tab)" });
+    expect(link).toHaveAttribute("class", "host-styled");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
 });
 
 describe("VisuallyHidden", () => {

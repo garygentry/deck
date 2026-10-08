@@ -25,7 +25,7 @@
         "home": { "type": "string", "pattern": "^page:[a-z][a-z0-9-]*/[a-z0-9][a-z0-9.-]*$", "description": "The id of the page rendered at /, such as page:inventory/hosts; default the built-in home page." },
         "nav": { "$ref": "#/$defs/UiNav", "description": "Sidebar group order, labels and icons, and extra nav entries." },
         "extensions": {
-          "type": "object", "description": "Overrides by extension, page or nav entry id. They replace, never merge: false disables, an object replaces attachTo and/or config.",
+          "type": "object", "description": "Overrides by extension, page or nav entry id. They replace, never merge: false disables, an object replaces attachTo and/or config, and a later layer's attachTo or config replaces an earlier layer's whole.",
           "propertyNames": { "minLength": 1 },
           "additionalProperties": { "$ref": "#/$defs/UiOverride" }
         }
@@ -51,7 +51,7 @@
     "UiNav": {
       "title": "UiNav", "type": "object", "additionalProperties": false,
       "properties": {
-        "groups": { "type": "array", "items": { "$ref": "#/$defs/UiNavGroup" }, "description": "Groups in sidebar order; groups not listed follow by id." },
+        "groups": { "type": "array", "items": { "$ref": "#/$defs/UiNavGroup" }, "description": "Groups in sidebar order; the built-in groups not listed follow in their default order, then any other group by id. Across layers groups merge by id: a group keeps its first layer's position and a new id is appended." },
         "items": { "type": "array", "items": { "$ref": "#/$defs/UiNavItem" }, "description": "Extra nav entries: external links and separators." }
       }
     },
@@ -69,10 +69,10 @@
         {
           "type": "object", "additionalProperties": false, "required": ["id", "group", "label", "href"],
           "properties": {
-            "id": { "type": "string", "pattern": "^nav:[a-z][a-z0-9-]*/[a-z0-9][a-z0-9.-]*$", "description": "The entry id, such as nav:ui/grafana." },
+            "id": { "type": "string", "pattern": "^nav:ui/[a-z0-9][a-z0-9.-]*$", "description": "The entry id, in the reserved ui namespace: nav:ui/<name>, such as nav:ui/grafana." },
             "group": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The group the entry belongs to." },
             "label": { "type": "string", "minLength": 1, "description": "The entry's label." },
-            "href": { "type": "string", "pattern": "^https?://\\S+$", "description": "An external http(s) URL." },
+            "href": { "type": "string", "pattern": "^https?://[^/\\s]\\S*$", "description": "An external http(s) URL." },
             "icon": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "description": "An icon name from the shell's icon set." },
             "order": { "type": "number", "description": "Order within the group; default 100." }
           }
@@ -80,7 +80,7 @@
         {
           "type": "object", "additionalProperties": false, "required": ["id", "group", "separator"],
           "properties": {
-            "id": { "type": "string", "pattern": "^nav:[a-z][a-z0-9-]*/[a-z0-9][a-z0-9.-]*$", "description": "The separator's id." },
+            "id": { "type": "string", "pattern": "^nav:ui/[a-z0-9][a-z0-9.-]*$", "description": "The separator's id, nav:ui/<name>." },
             "group": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The group the separator belongs to." },
             "separator": { "const": true, "description": "Marks the entry as a separator." },
             "order": { "type": "number", "description": "Order within the group; default 100." }
@@ -97,14 +97,14 @@
           "properties": {
             "enabled": { "type": "boolean", "description": "Whether it renders." },
             "attachTo": {
-              "type": "object", "additionalProperties": false, "description": "Where it attaches, replacing its default; an omitted slot keeps the slot, an omitted order is 100.",
+              "type": "object", "additionalProperties": false, "description": "Where it attaches, replacing its default (and an earlier layer's attachTo) whole; an omitted slot keeps the slot, an omitted order is 100, and group (nav entries only) when omitted keeps the entry's own.",
               "properties": {
                 "slot": { "type": "string", "minLength": 1, "description": "The slot id." },
                 "order": { "type": "number", "description": "Order within the slot." },
                 "group": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "For a nav entry, the group it moves to." }
               }
             },
-            "config": { "type": "object", "additionalProperties": { "$ref": "#/$defs/JsonValue" }, "description": "Replaces the extension's config wholesale." }
+            "config": { "type": "object", "additionalProperties": { "$ref": "#/$defs/JsonValue" }, "description": "Replaces the extension's config (and an earlier layer's) wholesale." }
           }
         }
       ]

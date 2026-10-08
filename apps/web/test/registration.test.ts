@@ -71,11 +71,11 @@ describe("registration contract", () => {
     expect(pages.map(({ id }) => id)).toEqual(["page:t/hidden", "page:t/visible"]);
   });
 
-  it("throws UNKNOWN_SLOT for an undeclared summary slot", async () => {
+  it("throws UNKNOWN_SLOT for an undeclared summary slot, pointing at summarySlot(id)", async () => {
     const registry = await import("../src/registry/registry.js");
     expect(() =>
       registry.registerSummaryFragment({ slotId: "missing" }, { id: "pill:t/fragment", component: Component }),
-    ).toThrowError(expect.objectContaining({ code: "UNKNOWN_SLOT" }));
+    ).toThrowError(expect.objectContaining({ code: "UNKNOWN_SLOT", message: expect.stringContaining("summarySlot(id)") }));
   });
 
   it("throws MISSING_FIELD for malformed registrations", async () => {

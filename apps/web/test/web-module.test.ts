@@ -230,7 +230,7 @@ describe("registerWebModule", () => {
     // The manifest cannot be read: the sidebar falls back to the registered pages.
     const fallback = resolveNav({ status: "error", message: "HTTP 502" }, registry.getPages());
     expect(fallback).toEqual(groupNavPages(registry.getPages()));
-    expect(fallback.map(({ id, links }) => `${id}: ${links.map(({ label }) => label).join(",")}`)).toEqual(["health: B,A"]);
+    expect(groupNavPages(registry.getPages()).map(({ id, links }) => `${id}: ${links.map(({ label }) => label).join(",")}`)).toEqual(["health: B,A"]);
     // Route precedence keeps the default order (then id).
     expect(registry.getPages().map(({ id }) => id)).toEqual(["page:demo/a", "page:demo/b"]);
     expect(registry.getExtensions("app/routes").map(({ attachTo }) => attachTo.order)).toEqual([100, 100]);

@@ -390,23 +390,61 @@ that is off or switched off by an override, or a page with parameters leaves the
 and is reported in `GET /api/ui` as `UI_HOME_UNKNOWN`, `UI_HOME_DISABLED` or
 `UI_HOME_NOT_ROUTABLE`; it never stops deck from starting.
 
-`nav` (accepted and validated; the shell does not apply it yet):
+`nav` arranges the sidebar:
+
+```yaml
+ui:
+  nav:
+    groups:
+      - { id: overview }
+      - { id: health, label: Monitoring }
+      - { id: lab, label: Lab, icon: boxes }   # a new group
+    items:
+      - { id: nav:ui/grafana, group: lab, label: Grafana, href: "https://grafana.example.net", icon: gauge, order: 10 }
+      - { id: nav:ui/divider, group: lab, separator: true, order: 20 }
+      - { id: nav:ui/prometheus, group: lab, label: Prometheus, href: "https://prometheus.example.net", order: 30 }
+```
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `groups` | array of `{id, label?, icon?}` | Groups in sidebar order; groups not listed follow by id. |
-| `items` | array | Extra entries: a link `{id, group, label, href, icon?, order?}`, where `id` is `nav:<module>/<name>` and `href` is an `http(s)://` URL, or a separator `{id, group, separator: true, order?}`. |
+| `groups` | array of `{id, label?, icon?}` | Groups in sidebar order (across layers, see below). The built-in groups (`overview`, `inventory`, `health`, `operate`, `knowledge`) that are not listed follow in that order, then any other group an entry names, by id. `label` replaces the heading (default: the built-in heading, else the id); `icon` is shown beside it. An id that is not built in is a new group. |
+| `items` | array | Extra entries: a link `{id, group, label, href, icon?, order?}`, where `id` is `nav:ui/<name>` and `href` is an `http(s)://` URL, or a separator `{id, group, separator: true, order?}`. `order` places the entry among the group's others (built-in entries are 100; the portal is -1); default 100. |
 
 Both arrays merge across overlays by `id`, and an id repeated in one layer is `ID_DUPLICATE`.
+A later layer that lists a group again merges into it (its `label` or `icon` wins) but does not
+move it: the merged `groups` keep the first layer's positions and append the ids a later layer
+adds, so set the order in the first layer that lists groups.
+
+A group is shown only when an entry is in it. A link opens in a new tab, with an external-link
+mark and "(opens in new tab)" in its accessible name. A separator draws a rule between two
+entries, so it needs an entry on each side within its group (by `order`): one at either end of
+a group, or next to another separator, is dropped. Item ids are always `nav:ui/<name>`, a
+namespace no module can use, and in `GET /api/ui` these entries are listed with module `ui`.
+They take `extensions` overrides like any other nav entry.
 
 `extensions` maps an extension, page or nav entry id (as `GET /api/ui` lists them) to an
 override that replaces its default, never merges into it:
 
 - `false` hides it (a page's nav entry goes with the page), and `true` shows it.
-- An object takes `enabled`, `attachTo` (`slot`, `order`) and `config`. A page takes only
-  `enabled`; a nav entry `enabled` and `attachTo`. An omitted `attachTo.slot` keeps the slot,
-  and an omitted `attachTo.order` is 100. `config` replaces the extension's config wholesale.
-- `attachTo.group` (moving a nav entry to another group) is accepted but not applied yet.
+- An object takes `enabled`, `attachTo` (`slot`, `order`, and for a nav entry `group`) and
+  `config`. A page takes only `enabled`; a nav entry `enabled` and `attachTo`. `attachTo`
+  replaces the default as a whole: an omitted `slot` or `group` keeps the current one, and an
+  omitted `order` is 100. `config` replaces the extension's config wholesale.
+
+Across layers, entries for different ids merge, and a later layer's entry for the same id
+replaces the earlier one's `attachTo` and `config` whole: with
+`nav:actions/overview: { attachTo: { group: lab } }` in one overlay and
+`nav:actions/overview: { attachTo: { order: 9 } }` in a later one, the entry stays in its own
+group at order 9.
+
+```yaml
+ui:
+  extensions:
+    pill:drift/summary: false                                   # hide a header pill
+    pill:llm-usage/summary: { attachTo: { order: 5 } }          # put a pill first
+    nav:actions/overview: { attachTo: { group: lab, order: 10 } } # move a nav entry to another group
+    page:llm-usage/overview: false                              # hide a page and its nav entry
+```
 
 An override for an id deck does not know, or one that does not fit its target, is reported in
 `GET /api/ui` (`UI_UNKNOWN_EXTENSION`, `UI_INVALID_OVERRIDE`) and otherwise ignored.

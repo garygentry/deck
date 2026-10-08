@@ -213,7 +213,7 @@ describe("resolveUiManifest", () => {
 });
 
 describe("shell: brand and nav groups", () => {
-  const groups = (navGroups: { id: string; label: string; icon?: string }[]) => ({ nav: { groups: navGroups } });
+  const groups = (configured: { id: string; label?: string; icon?: string }[]) => ({ nav: { groups: DEFAULT_UI.nav.groups, configured } });
   const nav = (id: string, group: string, extra: Partial<{ order: number; label: string; icon: string }> = {}) => ({
     id: `nav:shelf/${id}` as const,
     href: `/${id}`,
@@ -247,7 +247,7 @@ describe("shell: brand and nav groups", () => {
     expect(ui.nav[0]).toMatchObject({ icon: "house" });
   });
 
-  it("takes group order, labels and icons from the given ui config", () => {
+  it("takes group order, labels and icons from the ui config, then the unlisted built-ins in their order, then others by id", () => {
     const ui = resolve({
       modules: [{ manifest: shelf, enabled: true }],
       ui: groups([{ id: "zeta", label: "Last", icon: "flask-conical" }, { id: "health", label: "Monitoring" }]),
@@ -255,10 +255,18 @@ describe("shell: brand and nav groups", () => {
     expect(ui.navGroups).toEqual([
       { id: "zeta", label: "Last", icon: "flask-conical" },
       { id: "health", label: "Monitoring" },
+      { id: "overview", label: "Overview" },
       { id: "alpha", label: "alpha" },
-      { id: "overview", label: "overview" },
     ]);
-    expect(ids(ui.nav)).toEqual(["nav:shelf/a", "nav:shelf/e", "nav:shelf/b", "nav:shelf/d", "nav:shelf/c"]);
+    expect(ids(ui.nav)).toEqual(["nav:shelf/a", "nav:shelf/e", "nav:shelf/b", "nav:shelf/c", "nav:shelf/d"]);
+  });
+
+  it("a configured group without a label keeps the built-in heading, else its id", () => {
+    const ui = resolve({ modules: [{ manifest: shelf, enabled: true }], ui: groups([{ id: "health", icon: "activity" }, { id: "alpha" }]) });
+    expect(ui.navGroups.slice(0, 2)).toEqual([
+      { id: "health", label: "Health", icon: "activity" },
+      { id: "alpha", label: "alpha" },
+    ]);
   });
 
   it("a group configured twice keeps its first entry, with a finding", () => {
@@ -266,7 +274,7 @@ describe("shell: brand and nav groups", () => {
       modules: [{ manifest: shelf, enabled: true }],
       ui: groups([{ id: "health", label: "First" }, { id: "zeta", label: "Zeta" }, { id: "health", label: "Again" }]),
     });
-    expect(ui.navGroups.map(({ id, label }) => `${id}:${label}`)).toEqual(["health:First", "zeta:Zeta", "alpha:alpha", "overview:overview"]);
+    expect(ui.navGroups.map(({ id, label }) => `${id}:${label}`)).toEqual(["health:First", "zeta:Zeta", "overview:Overview", "alpha:alpha"]);
     expect(ui.findings).toEqual([
       { code: "UI_DUPLICATE_ID", severity: "warning", message: 'nav group "health" is configured more than once; its first entry is used', id: "health" },
     ]);

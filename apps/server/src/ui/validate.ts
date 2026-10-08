@@ -3,6 +3,7 @@ import {
   extensionIdProblem,
   EXTENSION_KINDS as KINDS,
   isSafeHref,
+  NAV_GROUP_ID_PATTERN,
   orderProblem,
   BUILTIN_ROOT_PATHS,
   pagePathProblem,
@@ -16,7 +17,7 @@ import {
 
 import { RESERVED_ROOT_PATHS } from "../server/reserved-paths.js";
 
-/** Module ids the kernel keeps for itself (`core`, which hosts the shell's slots). */
+/** Module ids the kernel keeps for itself (`core`, which hosts the shell's slots, and `ui`, the ui config's). */
 export const RESERVED_MODULE_IDS: ReadonlySet<string> = new Set(RESERVED_IDS);
 
 /** What a slot accepts. */
@@ -47,7 +48,7 @@ export interface UiContributionOptions {
  * - an extension's kind is one a slot can accept, and its id does not use a page or nav prefix;
  * - a slot id is namespaced to its module (`<module>/…`); `app/…` and `entity:…` are the kernel's;
  * - a page path is not under `/api` or on a root path the kernel or a built-in module serves;
- * - a nav `href` is an `http(s):` URL or an absolute path;
+ * - a nav `href` is an `http(s):` URL or an absolute path, and its `group` a nav group id;
  * - an entity section's config has a `title` and, optionally, a `section` name to share (lowercase, no `.`);
  * - every field the resolver reads has the declared type.
  * Cross-module conflicts (an id or a path used twice) are left to the resolver, which reports
@@ -105,6 +106,7 @@ function navProblem(moduleId: string, nav: Record<string, unknown>): Problem {
     optionalString(nav.href, `${label} href`) ??
     (typeof nav.href === "string" && !isSafeHref(nav.href) ? `${label} href must be an http(s) URL or an absolute path` : null) ??
     (nonEmpty(nav.group) ? null : `${label} needs a group`) ??
+    (NAV_GROUP_ID_PATTERN.test(nav.group as string) ? null : `${label} group must be a nav group id (lower-case letters, digits and hyphens)`) ??
     optionalString(nav.label, `${label} label`) ??
     optionalString(nav.icon, `${label} icon`) ??
     orderProblem(nav.order, `${label} order`)

@@ -20,9 +20,18 @@ import type {
   UiSlot,
 } from "@deck/module-sdk";
 
-import { DEFAULT_HOME_PAGE, entitySectionProblem, homePathProblem, pagePathProblem } from "@deck/module-sdk";
+import {
+  DEFAULT_HOME_PAGE,
+  entitySectionProblem,
+  homePathProblem,
+  isExternalHref,
+  NAV_GROUP_ID_PATTERN,
+  pagePathProblem,
+  UI_CONFIG_MODULE,
+  UI_CONFIG_NAV_ID_PATTERN,
+} from "@deck/module-sdk";
 
-import { DEFAULT_BRAND_TITLE, DEFAULT_UI, type UiDefaults } from "./defaults.js";
+import { DEFAULT_BRAND_TITLE, DEFAULT_UI, type UiDefaults, type UiNavGroupConfig, type UiNavItemConfig } from "./defaults.js";
 import type { KernelFeature } from "./kernel-features.js";
 import { isRecord, RESERVED_MODULE_IDS } from "./validate.js";
 
@@ -77,6 +86,8 @@ interface Unit {
 
 type Owned<T> = T & { module: string };
 type Override = Exclude<UiOverride, boolean>;
+/** A nav entry as declared: a module's, or the ui config's (which may be a separator). */
+type NavEntryDecl = NavDecl & { separator?: true };
 
 /**
  * Resolve the UI manifest: module contributions with config overrides applied. Pure and
@@ -86,9 +97,10 @@ type Override = Exclude<UiOverride, boolean>;
  *    Where two claim the same id, slot or page path, the incumbent keeps it: `core` first,
  *    then the kernel-wired features and built-in modules, then other modules, each by id.
  *    The newcomer gets a finding.
+ *    The ui config's own nav entries (`ui.nav.items`) follow, listed under module `ui`.
  * 2. Apply overrides by id. They replace: `false` disables, an object replaces the
- *    `attachTo` (an omitted slot keeps the slot, an omitted order is the default) and the
- *    `config` wholesale. Disabling a page also drops the nav entries to it. A malformed
+ *    `attachTo` (an omitted slot or nav group keeps it, an omitted order is the default) and
+ *    the `config` wholesale. Disabling a page also drops the nav entries to it. A malformed
  *    override is ignored with a finding.
  * 3. Drop contributions of disabled modules, and anything attached to a slot whose host is
  *    disabled.
@@ -99,13 +111,16 @@ type Override = Exclude<UiOverride, boolean>;
  *    Their pages are listed as disabled pages, unless an enabled page or a root path serves
  *    the path or the path is not a usable page path (a finding), so the shell can say the module is off rather than that nothing is there.
  * 5. Sort pages by id, nav by group/order/id, extensions by slot/order/id. Nav groups follow
- *    the ui config's group order, then any other group by id.
+ *    the ui config's group order, then the built-in groups it does not list, then any other
+ *    group by id.
  */
 export function resolveUiManifest(input: ResolveUiInput): UiManifest {
   const findings: UiFinding[] = [];
   const units = collectUnits(input);
   const byPrecedence = [...units].sort(comparePrecedence);
   const enabledUnits = byPrecedence.filter((unit) => unit.enabled);
+  const ui = input.ui ?? DEFAULT_UI;
+  const configNav = (ui.nav.items ?? []).map(configNavDecl);
 
   // Everything any module declares, enabled or not: an override naming one is never unknown,
   // and an attachment to a declared slot whose host is off is dropped without a finding.
@@ -124,6 +139,11 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
     }
     for (const slot of contributes.slots ?? []) knownSlots.add(slot.id);
   }
+  // The ui config's nav entries take overrides like a module's.
+  for (const item of configNav) {
+    declaredNav.add(item.id);
+    knownIds.add(item.id);
+  }
 
   const seen = new Map<string, string>();
   const claim = (id: string, module: string): boolean => {
@@ -138,7 +158,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
 
   const slots = new Map<string, UiSlot>();
   const pageDecls: Owned<PageDecl>[] = [];
-  const navDecls: Owned<NavDecl>[] = [];
+  const navDecls: Owned<NavEntryDecl>[] = [];
   const extensionDecls: Owned<ExtensionDecl>[] = [];
   for (const { manifest } of enabledUnits) {
     const module = manifest.id;
@@ -155,6 +175,8 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
     for (const nav of contributes.nav ?? []) if (claim(nav.id, module)) navDecls.push({ ...nav, module });
     for (const extension of contributes.extensions ?? []) if (claim(extension.id, module)) extensionDecls.push({ ...extension, module });
   }
+  // The config's entries are `nav:ui/…`, a namespace no module may use (`ui` is reserved).
+  for (const item of configNav) if (claim(item.id, UI_CONFIG_MODULE)) navDecls.push({ ...item, module: UI_CONFIG_MODULE });
 
   const overrides = new Map<string, UiOverride>();
   for (const [id, value] of Object.entries(input.overrides ?? {}).sort(([a], [b]) => compareIds(a, b))) {
@@ -254,7 +276,6 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
     });
   }
   const routedPages = new Set<string>(pages.map((page) => page.id));
-  const ui = input.ui ?? DEFAULT_UI;
   const home = resolveHome(ui.home, pages, (id) => unroutedReason(id, units, overrides), findings);
 
   // Pages of disabled modules, on paths nothing routed or root-served claims. The first by
@@ -297,7 +318,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
     }
     const attachTo = attach(decl.id, "nav", { slot: NAV_SLOT, order: decl.order ?? DEFAULT_ORDER }, override);
     if (attachTo === null) continue;
-    // An entry without its own label or icon shows its page's.
+    // An entry without its own label or icon shows its page's; a separator has neither.
     const page = decl.page === undefined ? undefined : pages.find((candidate) => candidate.id === decl.page);
     const icon = decl.icon ?? page?.icon;
     nav.push({
@@ -306,10 +327,12 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
       slot: attachTo.slot,
       ...(decl.page === undefined ? {} : { page: decl.page }),
       ...(decl.href === undefined ? {} : { href: decl.href }),
-      group: decl.group,
-      label: decl.label ?? page?.title ?? decl.href ?? decl.id,
+      // A re-attachment moves the entry to its group, or keeps the entry's own.
+      group: replacement(override)?.attachTo?.group ?? decl.group,
+      label: decl.separator === true ? "" : (decl.label ?? page?.title ?? decl.href ?? decl.id),
       ...(icon === undefined ? {} : { icon }),
       order: attachTo.order,
+      ...(decl.separator === true ? { separator: true as const } : {}),
     });
   }
   const navGroups = resolveNavGroups(nav, ui, findings);
@@ -409,27 +432,52 @@ function resolveHome(
 }
 
 /**
- * The groups of the `app/nav` entries, in sidebar order: the configured groups that have an
- * entry, in config order, then the other groups entries name, by id, headed by their id. A
- * group configured twice keeps its first entry; the repeat is a finding.
+ * The groups of the `app/nav` entries, in sidebar order: the configured groups (`ui.nav.groups`)
+ * in config order, then the built-in groups the config does not list in their default order,
+ * then the other groups entries name, by id. A group's heading and icon are the configured
+ * ones, else the built-in group's, else its id and none. Only a group with a link (not just a
+ * separator) is listed. A group configured twice keeps its first entry; the repeat is a finding.
  */
 function resolveNavGroups(nav: readonly UiNavItem[], ui: UiDefaults, findings: UiFinding[]): UiNavGroup[] {
-  const used = new Set(nav.filter((item) => item.slot === NAV_SLOT).map((item) => item.group));
-  const known = new Set<string>();
-  const configured: UiNavGroup[] = [];
-  for (const group of ui.nav.groups) {
-    if (known.has(group.id)) {
+  const used = new Set(nav.filter((item) => item.slot === NAV_SLOT && item.separator !== true).map((item) => item.group));
+  const builtin = new Map(ui.nav.groups.map((group) => [group.id, group]));
+  const ordered: UiNavGroupConfig[] = [];
+  const listed = new Set<string>();
+  for (const group of ui.nav.configured ?? []) {
+    if (listed.has(group.id)) {
       findings.push({ code: "UI_DUPLICATE_ID", severity: "warning", message: `nav group "${group.id}" is configured more than once; its first entry is used`, id: group.id });
       continue;
     }
-    known.add(group.id);
-    if (used.has(group.id)) configured.push(group);
+    listed.add(group.id);
+    ordered.push(group);
   }
-  const others = [...used].filter((id) => !known.has(id)).sort(compareIds).map((id) => ({ id, label: id }));
-  return [
-    ...configured.map(({ id, label, icon }) => ({ id, label, ...(icon === undefined ? {} : { icon }) })),
-    ...others,
-  ];
+  for (const group of ui.nav.groups) {
+    if (listed.has(group.id)) continue;
+    listed.add(group.id);
+    ordered.push(group);
+  }
+  ordered.push(...[...used].filter((id) => !listed.has(id)).sort(compareIds).map((id) => ({ id })));
+  return ordered
+    .filter(({ id }) => used.has(id))
+    .map(({ id, label, icon }) => {
+      const fallback = builtin.get(id);
+      const heading = icon ?? fallback?.icon;
+      return { id, label: label ?? fallback?.label ?? id, ...(heading === undefined ? {} : { icon: heading }) };
+    });
+}
+
+/** A `ui.nav.items` entry as a nav declaration: a link, or a separator. */
+function configNavDecl(item: UiNavItemConfig): NavEntryDecl {
+  const order = item.order === undefined ? {} : { order: item.order };
+  if ("separator" in item) return { id: item.id as ExtensionId, group: item.group, separator: true, ...order };
+  return {
+    id: item.id as ExtensionId,
+    group: item.group,
+    label: item.label,
+    href: item.href,
+    ...(item.icon === undefined ? {} : { icon: item.icon }),
+    ...order,
+  };
 }
 
 /**
@@ -509,8 +557,14 @@ function overrideProblem(value: unknown, target: OverrideTarget): string | null 
   const attachTo = value.attachTo;
   if (attachTo !== undefined) {
     if (!isRecord(attachTo)) return "attachTo must be an object";
-    const extra = Object.keys(attachTo).filter((key) => key !== "slot" && key !== "order");
+    const extra = Object.keys(attachTo).filter((key) => key !== "slot" && key !== "order" && key !== "group");
     if (extra.length > 0) return `unknown attachTo key ${extra.map((key) => `"${key}"`).join(", ")}`;
+    if (attachTo.group !== undefined) {
+      if (target !== "nav") return `attachTo.group applies only to a nav entry`;
+      if (typeof attachTo.group !== "string" || !NAV_GROUP_ID_PATTERN.test(attachTo.group)) {
+        return "attachTo.group must be a nav group id (lower-case letters, digits and hyphens)";
+      }
+    }
     if (attachTo.slot !== undefined && (typeof attachTo.slot !== "string" || attachTo.slot.length === 0)) {
       return "attachTo.slot must be a non-empty string";
     }
@@ -547,21 +601,61 @@ export function estateNameOf(config: unknown): string | undefined {
 }
 
 /**
- * The `ui` config the resolver reads: the built-in defaults with the config's brand and home.
- * The config has been validated, so fields of the wrong type cannot occur; they are dropped
- * anyway rather than trusted.
+ * The `ui` config the resolver reads: the built-in defaults with the config's brand, home and
+ * nav. The config has been validated, so fields of the wrong type cannot occur; they are
+ * dropped anyway rather than trusted (an entry missing what it needs is dropped whole).
  */
 export function uiConfigOf(config: unknown): UiDefaults {
-  const ui = (config as { ui?: { brand?: unknown; home?: unknown } } | null)?.ui;
+  const ui = (config as { ui?: { brand?: unknown; home?: unknown; nav?: unknown } } | null)?.ui;
   const brand = isRecord(ui?.brand) ? ui.brand : {};
-  const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
   const picked = { title: text(brand.title), icon: text(brand.icon), logoUrl: text(brand.logoUrl) };
   const home = text(ui?.home);
+  const nav = isRecord(ui?.nav) ? ui.nav : {};
+  const groups = records(nav.groups).flatMap((group): UiNavGroupConfig[] => {
+    const id = text(group.id);
+    return id === undefined ? [] : [defined({ id, label: text(group.label), icon: text(group.icon) })];
+  });
+  const items = records(nav.items).flatMap((item): UiNavItemConfig[] => {
+    const id = text(item.id);
+    const group = text(item.group);
+    // Always in the reserved `ui` namespace, so an entry never takes a module's id.
+    if (id === undefined || !UI_CONFIG_NAV_ID_PATTERN.test(id) || group === undefined) return [];
+    const order = typeof item.order === "number" && Number.isFinite(item.order) ? item.order : undefined;
+    if (item.separator === true) return [defined({ id, group, separator: true as const, order })];
+    const label = text(item.label);
+    const href = text(item.href);
+    // Only an external http(s) link: config entries do not route in-app.
+    if (label === undefined || href === undefined || !isExternalHref(href)) return [];
+    return [defined({ id, group, label, href, icon: text(item.icon), order })];
+  });
   return {
     ...DEFAULT_UI,
-    brand: Object.fromEntries(Object.entries(picked).filter(([, value]) => value !== undefined)),
+    brand: defined(picked),
     ...(home === undefined ? {} : { home }),
+    nav: {
+      ...DEFAULT_UI.nav,
+      ...(groups.length === 0 ? {} : { configured: groups }),
+      ...(items.length === 0 ? {} : { items }),
+    },
   };
+}
+
+function text(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function records(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+/** An object's fields that may be undefined become optional ones, left out when undefined. */
+type Defined<T> = { [K in keyof T as undefined extends T[K] ? never : K]: T[K] } & {
+  [K in keyof T as undefined extends T[K] ? K : never]?: Exclude<T[K], undefined>;
+};
+
+/** The object without its undefined fields. */
+function defined<T extends object>(value: T): Defined<T> {
+  return Object.fromEntries(Object.entries(value).filter(([, field]) => field !== undefined)) as Defined<T>;
 }
 
 /** The `ui.extensions` override map of a config document, or none. Entries are checked on resolution. */

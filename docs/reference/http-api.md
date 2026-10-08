@@ -56,12 +56,15 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
   it names a routed page without path parameters, else the portal. It is `null` when neither
   can be home, and then `/` is not found. No page is routed at `/` itself: `/` always renders
   the home page.
-- `navGroups` lists the sidebar's groups in order, each with its `label`. The built-in order is
-  Overview, Inventory, Health, Operate, Knowledge; a group a module uses that is not among them
-  follows, by id, headed by its id. Only groups with a nav entry are listed.
+- `navGroups` lists the sidebar's groups in order, each with its `label` and, when one is set,
+  its `icon`. The groups the merged `ui.nav.groups` lists come first, in its order; then the built-in groups
+  it does not list, in their order (Overview, Inventory, Health, Operate, Knowledge); then any
+  other group an entry names, by id, headed by its id. Only groups with a link entry are listed.
 - `nav` is sorted by group (in `navGroups` order), then order, then id: `order` applies within a
   group. Each entry has a `label` and, usually, an `icon`; an entry to a page that declares none
-  of its own takes the page's title and icon.
+  of its own takes the page's title and icon. The `ui.nav.items` entries (`nav:ui/…`) are listed with
+  module `ui`: a link has an `http(s)` `href`, and a separator has `separator: true` and an empty
+  `label`. An override's `attachTo.group` moves a nav entry to that group.
 - `providers` lists the registered provider instances (id and kind), so the web polls only
   providers that exist.
 - `findings` holds problems that never stop the UI from rendering:
@@ -77,7 +80,8 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
   - `UI_DUPLICATE_ID`: an id or slot contributed twice (the incumbent keeps it: the kernel's
     shell first, then the kernel-wired features and built-in modules, then other modules), or
     a nav group configured twice (its first entry is used);
-  - `UI_INVALID_OVERRIDE`: a malformed override.
+  - `UI_INVALID_OVERRIDE`: a malformed override (including an `attachTo.group` on anything but
+    a nav entry);
   - `UI_INVALID_PAGE`: a disabled module's page whose path is not a usable page path, so it is
     not listed in `disabledPages`.
 

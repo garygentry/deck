@@ -54,18 +54,31 @@ export const OUTCOME_UI = defineStatusMap<ActionOutcome>({
 // Rendered with <StatusBadge {...OUTCOME_UI[outcome]} /> or StatusBadge.fromMap(OUTCOME_UI, outcome).
 ```
 
-`ui.theme` picks a **preset** (`teal`, the default, `slate`, `amber`, `violet`,
+`ui.theme` picks a **preset** (`teal`, the default, `slate`, `copper`, `rose`,
 `high-contrast`), a **density** and a **radius** by name; config never carries a colour. Each
 non-default preset is a pair of `[data-theme-preset="…"]` blocks in `theme.css` (a light one and
 a `.dark` one over the same tokens) that re-point tokens without touching the defaults, so the
-default theme renders exactly as before. `[data-theme-radius]` rescales `--radius`. Density is the
-`density-compact:` Tailwind variant (in `app.css`), keyed on `data-theme-density="compact"`:
-`DataTable`, `List` and `Section` add `density-compact:` classes that tighten their spacing, and
-a new spacing-sensitive pattern should do the same. Screens never read these settings.
+default theme renders exactly as before. An accent preset's primary stays clearly apart from
+every status tone (CIEDE2000 ≥ 15, or ≥ 30° of hue), so an accent never reads as a status.
 
-Contrast is tested, not assumed. `test/tokens-contrast.test.ts` holds every text token to WCAG AA
-on every surface in both themes and every preset (AAA, 7:1, for `high-contrast`), and each
-feature's contrast test checks its maps only use those tokens.
+Shape and spacing are layout tokens in `theme.css` too:
+
+- **Radius:** `rounded-xs` … `rounded-xl` read the `--corner-*` scale, which
+  `[data-theme-radius]` rescales (`none` is square). Round corners only from that scale (or
+  `rounded-full`, `rounded-none`); a bare `rounded` or `rounded-[4px]` ignores the setting, and
+  `test/ui-guardrails.test.ts` rejects it.
+- **Density:** `DataTable`, `List`, `ListGroup`, `Section` and `EmptyState` take their spacing
+  from tokens (`py-(--list-item-py)`, `p-(--section-card-p)`, …), which
+  `[data-theme-density="compact"]` tightens. A spacing class a screen passes replaces the token
+  class, so it stays as written. A new spacing-sensitive pattern should add its own tokens the
+  same way.
+
+Screens never read these settings.
+
+Contrast is tested, not assumed. `test/tokens-contrast.test.ts` runs every preset in both
+themes. It holds every text token to WCAG AA on every surface (7:1 for `high-contrast`, which
+also holds controls to 4.5:1 and edges to 3:1), checks the destructive Button/Badge as rendered
+(its alpha composited), and each feature's contrast test checks its maps only use those tokens.
 
 The theme starts from one chain, `initialThemeMode` in `shell/theme-chain.ts`: the viewer's
 choice from the theme menu (stored under `deck-theme-choice`), else an older shell's stored

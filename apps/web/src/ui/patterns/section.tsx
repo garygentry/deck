@@ -45,10 +45,10 @@ export function Section({
       id={id}
       aria-labelledby={resolvedHeadingId}
       className={cn(
-        // `density-compact:` is the operator's compact density (`ui.theme.density`).
-        "flex flex-col gap-3 density-compact:gap-2",
+        // Spacing tokens (theme.css), which the operator's compact density tightens.
+        "flex flex-col gap-(--section-gap)",
         variant === "card" &&
-          "rounded-xl border bg-card p-4 text-card-foreground shadow-sm md:p-6 density-compact:p-3 density-compact:md:p-4",
+          "rounded-xl border bg-card p-(--section-card-p) text-card-foreground shadow-sm md:p-(--section-card-p-md)",
         className,
       )}
       {...props}

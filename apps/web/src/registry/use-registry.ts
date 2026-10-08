@@ -2,9 +2,10 @@ import { useMemo, useSyncExternalStore } from "react";
 import { getExtensions, getRegistryVersion, subscribeRegistry, type Extension } from "./registry.js";
 
 /**
- * The registry's version, re-rendering the caller whenever an extension is registered. Slot
- * hosts read their blueprint view (`getPages`, `getCards`, …) after calling it, so a late
- * registration (a lazily loaded module) shows up without a reload.
+ * The registry's version, re-rendering the caller whenever an extension is registered. Callers
+ * read the registry (`getPages`, …) after calling it, so a late registration (a lazily loaded
+ * module) shows up without a reload. A slot host renders what the UI manifest places there
+ * through `useManifestSlot` (shell/manifest-slot.ts), which subscribes here itself.
  */
 export function useRegistryVersion(): number {
   return useSyncExternalStore(subscribeRegistry, getRegistryVersion, getRegistryVersion);

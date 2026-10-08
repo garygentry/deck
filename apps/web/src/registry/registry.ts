@@ -413,6 +413,12 @@ export function getPages(): readonly PageRegistration[] {
   });
 }
 
+/**
+ * The widget cards registered to `slot`, from the registry alone. A slot host renders what
+ * the UI manifest places instead (`useManifestSlot` / `placeExtensions`, which fall back to the
+ * registry when the manifest cannot be read); this registry-only view serves only that
+ * fallback and older callers.
+ */
 export function getCards(slot: string): readonly CardRegistration<unknown>[] {
   return getExtensions(slot)
     .filter((extension) => extension.kind === "widget")

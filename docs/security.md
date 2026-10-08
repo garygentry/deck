@@ -35,11 +35,13 @@ can't escalate:
   the clone process only — never placed in the clone URL, the process arg list, or the on-disk
   `.git/config`. `hosts[].secrets` / `services[].secrets` are opaque reference ids, not values.
 - **`http-json` polls only what config names, and keeps its credential to that origin.** An
-  `http-json` integration's URL must be `http(s)` without `user:password@`. Literal headers
-  may not take credential-like names, so the only credential is the `credentialEnv` variable.
-  It is dropped as soon as a redirect leaves the configured origin, response bodies are capped
-  (1 MiB by default), and poll errors name the failure class only, never the credential, body or
-  runtime error text. The URL is reached from the deck server, so whoever edits the estate
+  `http-json` integration's URL must be `http(s)` without `user:password@`. Literal headers,
+  URL query parameters and body keys may not take credential-like names, so the only credential
+  is the `credentialEnv` variable, sent as a header or (`auth.scheme: query`) a query parameter
+  filled in at request time. An authenticated request never follows a redirect off the
+  configured origin. A response that contains the credential, nests deeper than 64 levels or
+  exceeds the size cap (1 MiB by default) is refused, not published, and poll errors name the
+  failure class only, never the credential, body or runtime error text. The URL is reached from the deck server, so whoever edits the estate
   config chooses what deck fetches on its network.
 - **Source paths are confined.** Every file a source exposes is resolved through a single
   choke point that rejects `..`, absolute paths, NUL bytes, and symlink escapes, and proves the

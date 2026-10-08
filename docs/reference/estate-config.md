@@ -317,15 +317,15 @@ additional properties.
 
 | Key | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | string | yes | Integration id; also the provider id. |
+| `id` | string | yes | Integration id; also the provider id. Not a built-in fixed provider id (`alertmanager`, `docker`, `gatus`, `prometheus`, `snapshot`). |
 | `kind` | `http-json` | yes | |
 | `title` | string | yes | Human-readable integration title. |
-| `url` | string | yes | `http://` or `https://` URL, at most 2048 characters, without `user:password@`. |
+| `url` | string | yes | `http://` or `https://` URL the runtime's parser accepts, at most 2048 characters, without `user:password@`, and with no query parameter whose name looks like a credential. |
 | `method` | `GET` \| `POST` | no | Default `GET`. |
-| `body` | any JSON | no | Request body, sent with `POST` only. |
-| `headers` | object of string | no | Literal, non-secret request headers. Names are HTTP tokens; a name containing `auth`, `cookie`, `token`, `secret`, `key`, `pass`, `session` or `credential` (any case) is refused. Values are at most 1024 characters with no line break. |
+| `body` | any JSON | no | Request body, sent with `POST` only. No key in it may look like a credential. |
+| `headers` | object of string | no | Literal, non-secret request headers. Names are HTTP tokens; a name containing `auth`, `cookie`, `token`, `secret`, `key`, `pass`, `session` or `credential` (any case) is refused. Values are at most 1024 characters of printable ASCII or tab. |
 | `credentialEnv` | string | no | Environment variable **name** holding the credential. |
-| `auth` | object | no | `{ scheme: bearer \| basic \| header, header? }`; requires `credentialEnv`. `header` names the header for scheme `header`, and is allowed only there. |
+| `auth` | object | no | `{ scheme: bearer \| basic \| header \| query, header?, param? }`; requires `credentialEnv`. `header` names the header for scheme `header`, and `param` the query parameter for scheme `query`; each is allowed only with its scheme. |
 | `pollIntervalMs` | integer | no | 1000–86400000; default 30000. |
 | `ttlMs` | integer | no | 1000–86400000; default the poll interval. |
 | `timeoutMs` | integer | no | 100–60000; default 5000. |
@@ -333,7 +333,9 @@ additional properties.
 | `deepLink` | string | no | Link to the API's own UI. |
 
 The credential only ever comes from the variable `credentialEnv` names, under the rule above;
-config holds no secret. See the [provider kinds reference](provider-kinds.md#http-json) for how
+config holds no secret. Beyond the schema, `deck validate` reports `HTTP_JSON_URL_INVALID` (a URL
+the runtime parser rejects), `HTTP_JSON_LITERAL_CREDENTIAL` (a credential-like query parameter
+or body key) and `HTTP_JSON_ID_RESERVED` (a built-in fixed provider id), all errors. See the [provider kinds reference](provider-kinds.md#http-json) for how
 it is sent, how redirects and failures are handled, and an example.
 
 ### Action

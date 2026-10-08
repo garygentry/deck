@@ -128,12 +128,12 @@ Backed by an integration; each instance is its own provider, registered under it
 
 | Key | Required | Notes |
 | --- | --- | --- |
-| `id` | yes | Integration id, and the provider id (`GET /api/providers/<id>`). |
+| `id` | yes | Integration id, and the provider id (`GET /api/providers/<id>`). It may not be a built-in fixed provider id (`alertmanager`, `docker`, `gatus`, `prometheus`, `snapshot`): `HTTP_JSON_ID_RESERVED`. |
 | `title` | yes | Display title. |
-| `url` | yes | The `http://` or `https://` URL polled. Any other scheme, and a URL carrying `user:password@`, is refused. |
+| `url` | yes | The `http://` or `https://` URL polled, as the runtime's URL parser reads it. Any other scheme, a URL carrying `user:password@`, or one it cannot parse (a bad IPv6 host, a port over 65535) is `HTTP_JSON_URL_INVALID`. A query parameter whose name looks like a credential (see `headers`) is `HTTP_JSON_LITERAL_CREDENTIAL`: use `auth.scheme: query`. |
 | `method` | no | `GET` (default) or `POST`. |
-| `body` | no | A JSON request body, sent with `POST` only (as `application/json`). |
-| `headers` | no | Literal request headers. They are config, so never secret: a header whose name contains `auth`, `cookie`, `token`, `secret`, `key`, `pass`, `session` or `credential` is refused. |
+| `body` | no | A JSON request body, sent with `POST` only (as `application/json` unless `headers` sets `Content-Type`). A key anywhere in it whose name looks like a credential is `HTTP_JSON_LITERAL_CREDENTIAL`. |
+| `headers` | no | Literal request headers. They are config, so never secret: a header whose name contains `auth`, `cookie`, `token`, `secret`, `key`, `pass`, `session` or `credential` (any case) is refused. Values are printable ASCII (and tab). |
 | `credentialEnv` | no | Environment-variable **name** holding the credential, read at every poll. |
 | `auth` | no | How the credential is sent (needs `credentialEnv`); see below. |
 | `pollIntervalMs` | no | Milliseconds between polls, 1000–86400000; default 30000. |
@@ -150,28 +150,42 @@ Backed by an integration; each instance is its own provider, registered under it
 | `bearer` | `Authorization: Bearer <value>`. |
 | `basic` | `Authorization: Basic <base64 of value>`; the value is `user:password`. |
 | `header` | `<auth.header>: <value>`, for an API key header such as `X-Api-Key`. |
+| `query` | The `<auth.param>` query parameter set to the value, for an API that takes its key in the URL. The URL in config never holds it. |
 
-An unset or empty credential variable fails the poll ("credential variable `<NAME>` is not
-set") without sending a request.
+An unset or empty credential variable, or one the module may not read
+(`MODULE_CREDENTIAL_ENV_REFUSED`), fails the poll without sending a request. So does a value a
+header cannot carry (a line break, a control character, a character outside Latin-1) under the
+`bearer`, `header` or default scheme; `basic` and `query` encode any value.
 
-Redirects (301, 302, 303, 307, 308) are followed up to five times. As soon as one leaves the
-configured URL's origin (scheme, host and port), the credential is dropped for the rest of the
-chain, even when a later hop comes back. A redirect to a non-http(s) URL or to a URL with
-`user:password@` is refused. A 303, or a 301 or 302 answering a `POST`, is followed with a
-`GET` and no body.
+Redirects (301, 302, 303, 307, 308) are followed up to five times. An authenticated request
+follows only redirects within the configured URL's origin (scheme, host and port), and sends the
+credential on each hop; a redirect elsewhere is refused, since its `Location` could itself carry
+the credential. A request without a credential follows redirects to any http(s) origin. A
+redirect to a non-http(s) URL or to a URL with `user:password@` is refused. A 303, or a 301 or
+302 answering a `POST`, is followed with a `GET` and no body.
+
+A response is refused, never published, when it nests arrays and objects more than 64 levels
+deep (checked before parsing), or when any string or key in it contains the credential, raw or
+as sent (the `Bearer` value, the base64 `Basic` pair, the URL-encoded value). A form shorter
+than 6 characters counts only when it is a whole string or key, so a short credential does not
+flag every body that happens to contain it.
 
 A failed poll keeps the last good data and publishes one of these errors. None ever contains
 the credential, the response body or the runtime's own error text:
 
 | Failure | Error message |
 | --- | --- |
-| Credential variable unset | `credential variable <NAME> is not set` |
+| Credential variable unset or unreadable | `credential variable <NAME> is not set or not readable by this module (see MODULE_CREDENTIAL_ENV_REFUSED)` |
+| Credential a header cannot carry | `credential variable <NAME> holds a character a header cannot carry` |
+| A literal credential in the URL query or body | `url query parameter <name> looks like a credential; …` |
 | Connection refused, DNS failure | `upstream unreachable (<code>)` |
-| No complete response in time | `timed out after <n>ms` |
+| No complete response in time | `timed out after <n>ms`, or `timed out (<code>)` for the runtime's own connect, header or body timeout |
 | A status other than 2xx (or an unfollowed redirect) | `upstream answered HTTP <status>` |
 | Body over `maxBytes` | `upstream response exceeds <n> bytes` |
+| Body nested past 64 levels | `upstream response nests deeper than 64 levels` |
 | Body not JSON | `upstream response is not JSON` |
-| Redirect refused | `redirect to a non-http(s) URL refused`, `more than 5 redirects`, … |
+| Body contains the credential | `upstream response contains the credential; not published` |
+| Redirect refused | `cross-origin redirect refused for an authenticated request`, `redirect to a non-http(s) URL refused`, `more than 5 redirects`, … |
 
 ```yaml
 integrations:

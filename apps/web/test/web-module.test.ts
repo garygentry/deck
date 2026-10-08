@@ -23,9 +23,11 @@ const DEMO = manifest({
   ],
 });
 
-async function fresh() {
+// A fresh registry, with the shell's top-bar status slot declared unless `shell` is false.
+async function fresh({ shell = true } = {}) {
   vi.resetModules();
   const registry = await import("../src/registry/registry.js");
+  if (shell) await import("../src/shell/health-header/slot.js");
   const { registerWebModule } = await import("../src/registry/web-module.js");
   return { registry, registerWebModule };
 }
@@ -157,6 +159,26 @@ describe("registerWebModule", () => {
       expect(registry.getPages().filter(({ id }) => id.startsWith("page:demo/"))).toEqual([]);
       expect(registry.getSlot("demo/cards")).toBeUndefined();
     }
+  });
+
+  it("refuses an extension on a core slot that is not declared yet, registering nothing", async () => {
+    const { registry, registerWebModule } = await fresh({ shell: false });
+    expect(() => registerWebModule(defineWebModule(DEMO, { components: { Page, Pill, Card } }))).toThrowError(
+      expect.objectContaining({
+        code: "UNKNOWN_SLOT",
+        message: 'registerWebModule(demo): extension "pill:demo/summary" attaches to core slot "app/topbar.status", which is not declared yet',
+      }),
+    );
+    expect(registry.getAllExtensions().filter(({ module }) => module === "demo")).toEqual([]);
+    expect(registry.getSlot("demo/cards")).toBeUndefined();
+  });
+
+  it("accepts an extension on another module's slot that is declared later", async () => {
+    const { registry, registerWebModule } = await fresh({ shell: false });
+    const early = manifest({ extensions: [{ id: "card:demo/early", kind: "widget", attachTo: { slot: "host/cards" }, component: "Card" }] });
+    registerWebModule(defineWebModule(early, { components: { Card } }));
+    registry.defineSlot({ id: "host/cards", accepts: "widget", module: "host" });
+    expect(registry.getExtensions("host/cards").map(({ id }) => id)).toEqual(["card:demo/early"]);
   });
 
   it("orders the fallback nav by the nav entries' order, and leaves the routes' order alone", async () => {

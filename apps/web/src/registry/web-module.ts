@@ -2,6 +2,7 @@ import {
   entitySectionProblem,
   EXTENSION_KINDS,
   extensionIdProblem,
+  isKernelSlot,
   orderProblem,
   pagePathProblem,
   slotAcceptsProblem,
@@ -30,8 +31,10 @@ import type { ExtensionId } from "./registry-types.js";
  * lacks, or holds as something other than a component; a table entry nothing names; an
  * extension that is neither rendered by a component nor a widget descriptor; nav entries the
  * registry cannot express (an `href` entry, one not named after its page, a second one for a
- * page); and anything the registry itself would refuse (ids, paths, orders, slot kinds,
- * entity-section config, duplicates).
+ * page); an extension attaching to a core slot (`app/…`, `entity:…`) that is not declared yet,
+ * which would otherwise sit orphaned (a feature imports the shell module declaring it); and
+ * anything the registry itself would refuse (ids, paths, orders, slot kinds, entity-section
+ * config, duplicates).
  */
 export function registerWebModule(module: WebModule): void {
   const { id, contributes = {} } = module.manifest;
@@ -107,6 +110,10 @@ export function registerWebModule(module: WebModule): void {
     if (typeof extension.attachTo?.slot !== "string" || extension.attachTo.slot === "") fail("MISSING_FIELD", `extension "${extension.id}" attaches to no slot`);
     problem(orderProblem(extension.attachTo.order, `extension "${extension.id}" order`));
     const slotAccepts = accepts.get(extension.attachTo.slot) ?? getSlot(extension.attachTo.slot)?.accepts;
+    // A module's slot may be declared after its extensions attach; core's are declared up front.
+    if (slotAccepts === undefined && isKernelSlot(extension.attachTo.slot)) {
+      fail("UNKNOWN_SLOT", `extension "${extension.id}" attaches to core slot "${extension.attachTo.slot}", which is not declared yet`);
+    }
     if (slotAccepts !== undefined && slotAccepts !== extension.kind) {
       fail("SLOT_KIND_MISMATCH", `extension "${extension.id}" (${extension.kind}) attaches to slot "${extension.attachTo.slot}", which accepts ${slotAccepts}`);
     }

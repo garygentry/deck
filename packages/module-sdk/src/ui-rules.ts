@@ -36,6 +36,11 @@ export const RESERVED_PAGE_PATHS: readonly string[] = [...KERNEL_ROOT_PATHS, ...
 /** Slot namespaces reserved for the kernel: the shell's `app/…` and the entity pages' `entity:…`. */
 const RESERVED_SLOT_NAMESPACE = /^(app\/|entity:)/;
 
+/** Whether a slot id is in a kernel-reserved namespace (`app/…`, `entity:…`), which only core declares. */
+export function isKernelSlot(id: string): boolean {
+  return RESERVED_SLOT_NAMESPACE.test(id);
+}
+
 /** A slot id's tail after its `<module>/` namespace: one or more `/`-separated names. */
 const SLOT_NAME = /^[a-z0-9][a-z0-9.-]*(?:\/[a-z0-9][a-z0-9.-]*)*$/;
 
@@ -70,7 +75,7 @@ export function extensionIdProblem(id: unknown, options: { module?: string; kind
  */
 export function slotIdProblem(id: unknown, module: string, options: { kernel?: boolean } = {}): Problem {
   if (typeof id !== "string" || id.length === 0) return "slot id must be a non-empty string";
-  if (RESERVED_SLOT_NAMESPACE.test(id)) {
+  if (isKernelSlot(id)) {
     return options.kernel === true ? null : `slot "${id}" is in a kernel-reserved namespace (app/, entity:)`;
   }
   if (!id.startsWith(`${module}/`) || !SLOT_NAME.test(id.slice(module.length + 1))) {

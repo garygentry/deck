@@ -2,6 +2,8 @@ import { PORTAL_UI } from "@deck/contract/modules/portal";
 import { defineWebModule } from "@deck/module-sdk";
 
 import { registerWebModule } from "../../registry/web-module.js";
+// Declares `app/topbar.status` before the pill attaches to it, whatever imports this first.
+import "../../shell/health-header/slot.js";
 import { EndpointStatusSummary } from "./EndpointStatusSummary.js";
 import { PortalPage } from "./PortalPage.js";
 

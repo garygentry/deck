@@ -151,6 +151,11 @@ export interface UiWidgetInstance {
   source: UiProvider | null;
   /** Why its `source` resolved to no provider (it renders an error state); absent otherwise. */
   sourceProblem?: string;
+  /**
+   * Why it cannot render: no enabled module provides its type. It then reads no source and has
+   * no projection, and renders as unavailable. Absent otherwise.
+   */
+  typeProblem?: string;
   /** Its JMESPath `select`, which the server evaluates over the provider's data at each poll. */
   select?: string;
   /**

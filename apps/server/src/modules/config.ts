@@ -10,7 +10,6 @@ import {
   MODULE_HOST_FINDING_CATALOG,
 } from "@deck/schema";
 import { selectProblem } from "@deck/schema/select";
-import { CORE_WIDGET_TYPES } from "@deck/contract/modules/core";
 import { MODULE_ID_PATTERN, type ModuleManifest, type ServerModule, type WidgetTypeDecl } from "@deck/module-sdk";
 
 import { BUILTIN_MODULES } from "./builtin.js";
@@ -132,9 +131,6 @@ function widgetTypeContributions(types: readonly WidgetTypeDecl[]): ConfigContri
   return types.map(({ type, optionsSchema }) => ({ type, ...(optionsSchema === undefined ? {} : { optionsSchema: optionsSchema as JsonObject }) }));
 }
 
-/** The kernel's own widget types (`core/…`), composed like a module's. */
-export const CORE_CONTRIBUTION: ConfigContribution = { id: "core", widgetTypes: widgetTypeContributions(CORE_WIDGET_TYPES) };
-
 /**
  * Compose the kernel, the built-in contributions not yet carried by a module, and the
  * modules the host would enable. Planning reads manifests only (as the host does, without
@@ -206,7 +202,7 @@ export function composeModules(
   const key = JSON.stringify(composedModules.map(({ id, disabled }) => [id, disabled ?? null]));
   let composed = cache?.get(key);
   if (composed === undefined) {
-    composed = composeConfig([...BUILTIN_CONTRIBUTIONS, CORE_CONTRIBUTION, ...composedModules], { selectProblem });
+    composed = composeConfig([...BUILTIN_CONTRIBUTIONS, ...composedModules], { selectProblem });
     cache?.set(key, composed);
   }
   return { composed, invalid, credentials: { kinds, envOwners } };

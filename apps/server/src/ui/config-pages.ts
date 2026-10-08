@@ -12,6 +12,8 @@ import type {
 
 import { UI_CONFIG_MODULE } from "@deck/module-sdk";
 
+import { compileSelect, type CompiledSelect } from "@deck/schema/select";
+
 import type { ProviderSelects } from "../providers/registry.js";
 import { isRecord } from "./validate.js";
 
@@ -94,14 +96,19 @@ export function buildLayout(
       if (span > columns) {
         context.findings.push({ code: "UI_WIDGET_SPAN", severity: "warning", message: `widget "${id}" spans ${span} columns; its section has ${columns}, so it spans ${columns}`, id });
       }
-      const { source, problem } = resolveSource(id, widget, context);
+      // A type no enabled module provides renders as unavailable: no data is read or projected for it.
+      const typeProblem = context.widgetTypes.some((type) => type.type === widget.type)
+        ? undefined
+        : `No enabled module provides the widget type "${widget.type}".`;
+      const { source, problem } = typeProblem === undefined ? resolveSource(id, widget, context) : { source: null, problem: undefined };
       widgets.push({
         id,
         type: widget.type,
         ...(widget.title === undefined ? {} : { title: widget.title }),
         source,
         ...(problem === undefined ? {} : { sourceProblem: problem }),
-        ...(widget.select === undefined ? {} : { select: widget.select, projection: id }),
+        ...(typeProblem === undefined ? {} : { typeProblem }),
+        ...(widget.select === undefined || typeProblem !== undefined ? {} : { select: widget.select, projection: id }),
         options: widget.options ?? {},
         span: Math.min(span, columns) as UiWidgetInstance["span"],
         rows: clamp(widget.rows ?? 1, 1, 6),
@@ -148,18 +155,26 @@ function resolveSource(
 }
 
 /**
- * The selects a UI manifest's config pages need, by provider id: what the provider registry
- * evaluates into each envelope's `projections` ({@link setProjections}). Pure: rebuilt with
- * every manifest, so a swapped manifest swaps its selects too.
+ * The selects a UI manifest's config pages need, by provider id, compiled: what the provider
+ * registry evaluates into each envelope's `projections` (`setProjections`). Pure: rebuilt with
+ * every manifest, so a swapped manifest swaps its selects too. A widget whose type is
+ * unavailable has no projection, so nothing is selected for it.
  */
 export function deriveProjections(manifest: Pick<UiManifest, "pages">): Map<string, ProviderSelects> {
-  const selects = new Map<string, Map<string, string>>();
+  const selects = new Map<string, Map<string, CompiledSelect>>();
+  // Each expression is parsed once, however many widgets share it.
+  const compiled = new Map<string, CompiledSelect>();
   for (const page of manifest.pages) {
     for (const section of page.layout?.sections ?? []) {
       for (const widget of section.widgets) {
         if (widget.source === null || widget.select === undefined || widget.projection === undefined) continue;
-        const forProvider = selects.get(widget.source.id) ?? new Map<string, string>();
-        forProvider.set(widget.projection, widget.select);
+        const forProvider = selects.get(widget.source.id) ?? new Map<string, CompiledSelect>();
+        let select = compiled.get(widget.select);
+        if (select === undefined) {
+          select = compileSelect(widget.select);
+          compiled.set(widget.select, select);
+        }
+        forProvider.set(widget.projection, select);
         selects.set(widget.source.id, forProvider);
       }
     }

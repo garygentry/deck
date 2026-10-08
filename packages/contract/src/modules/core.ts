@@ -18,8 +18,9 @@ export const SHELL_SLOTS: readonly SlotDecl[] = [
 
 /**
  * The kernel's own widget types, hosted by `core`, which config pages (`ui.pages`) may use
- * like any module's: the server composes their option schemas into config validation and
- * lists them in the UI manifest, and the web registers a component for each. Data only.
+ * like any module's: the server lists them in the UI manifest and the web registers a component
+ * for each. Their option schemas are the ones config validation composes (the schema library's
+ * own copy, kept equal to these by deck's tests). Data only.
  * - `core/json`: the widget's selected value, as formatted JSON (`wrap` soft-wraps long lines).
  */
 export const CORE_WIDGET_TYPES: readonly WidgetTypeDecl[] = [

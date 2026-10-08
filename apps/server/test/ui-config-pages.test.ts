@@ -9,7 +9,9 @@ import type { UiManifest } from "@deck/module-sdk";
 import type { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { validate } from "@deck/schema";
+import { BUILTIN_CONTRIBUTIONS, composeDefault, validate } from "@deck/schema";
+import { CORE_WIDGET_TYPES } from "@deck/contract/modules/core";
+import { compileSelect } from "@deck/schema/select";
 
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { composeModules } from "../src/modules/config.js";
@@ -18,8 +20,9 @@ import { configPagesOf, deriveProjections } from "../src/ui/config-pages.js";
 import { KERNEL_FEATURES } from "../src/ui/kernel-features.js";
 import { resolveUiManifest, uiConfigOf, type ResolveUiInput } from "../src/ui/resolve.js";
 import { uiContributionProblem } from "../src/ui/validate.js";
-import { testModule } from "./util/modules.js";
-import { capture, createdApps, layersDir, SETTLE_TIMEOUT_MS } from "./parity/harness.js";
+import { testHost, testModule } from "./util/modules.js";
+import { buildUiManifest } from "../src/ui/manifest.js";
+import { capture, captureValidate, createdApps, layersDir, SETTLE_TIMEOUT_MS } from "./parity/harness.js";
 import { makeConfigDir } from "./util/tmp-config.js";
 
 vi.setConfig({ testTimeout: SETTLE_TIMEOUT_MS * 3 });
@@ -128,6 +131,13 @@ describe("config pages in the UI manifest", () => {
     expect(quiet.nav.some((item) => item.page === "page:ui/lab")).toBe(false);
   });
 
+  it("declares the kernel's widget types once for the UI and once for validation, kept equal", () => {
+    const composed = composeDefault();
+    expect([...composed.widgetTypes]).toEqual(CORE_WIDGET_TYPES.map(({ type }) => type));
+    const core = BUILTIN_CONTRIBUTIONS.find((contribution) => contribution.id === "core");
+    expect(core?.widgetTypes).toEqual(CORE_WIDGET_TYPES.map(({ type, optionsSchema }) => ({ type, optionsSchema })));
+  });
+
   it("lists the kernel's widget types, and those of enabled modules", () => {
     expect(resolveWith({}).widgetTypes).toEqual([{ type: "core/json", module: "core" }]);
   });
@@ -185,9 +195,35 @@ describe("config pages in the UI manifest", () => {
     }
   });
 
-  it("derives the selects the registry projects, by provider and widget id", () => {
+  it("derives the selects the registry projects, compiled, by provider and widget id", () => {
     const selects = deriveProjections(resolveWith({ pages: [LAB] }));
-    expect([...selects].map(([id, map]) => [id, [...map]])).toEqual([["ups", [["widget:ui/lab.load", "load_pct"]]]]);
+    expect([...selects].map(([id, map]) => [id, [...map].map(([name, select]) => [name, select.expression, select.problem])])).toEqual([
+      ["ups", [["widget:ui/lab.load", "load_pct", undefined]]],
+    ]);
+  });
+
+  it("marks a widget of a type no enabled module provides as unavailable, reading and projecting nothing", () => {
+    const manifest = resolveWith({ pages: [{ ...LAB, sections: [{ title: "S", widgets: [{ id: "off", type: "gauges/dial", source: "ups", select: "load" }, { id: "on", type: "core/json", source: "ups", select: "load" }] }] }] });
+    const [off, on] = pageOf(manifest, "page:ui/lab")?.layout?.sections[0]?.widgets ?? [];
+    expect(off).toEqual({
+      id: "widget:ui/lab.off",
+      type: "gauges/dial",
+      source: null,
+      typeProblem: 'No enabled module provides the widget type "gauges/dial".',
+      options: {},
+      span: 1,
+      rows: 1,
+    });
+    expect(on).toMatchObject({ source: { id: "ups" }, projection: "widget:ui/lab.on" });
+    expect([...deriveProjections(manifest).get("ups")!.keys()]).toEqual(["widget:ui/lab.on"]);
+  });
+
+  it("keeps explicit and positional widgets apart: their own projections and overrides", () => {
+    const ui = { pages: [{ ...LAB, sections: [{ title: "S", widgets: [{ id: "w2", type: "core/json", source: "ups", select: "a" }, { type: "core/json", source: "ups", select: "b" }] }] }] };
+    const manifest = resolveWith({ ...ui, extensions: { "widget:ui/lab.s1w2": false } });
+    expect(pageOf(manifest, "page:ui/lab")?.layout?.sections[0]?.widgets.map((widget) => widget.id)).toEqual(["widget:ui/lab.w2"]);
+    const both = deriveProjections(resolveWith(ui)).get("ups")!;
+    expect([...both].map(([name, select]) => [name, select.expression])).toEqual([["widget:ui/lab.w2", "a"], ["widget:ui/lab.s1w2", "b"]]);
   });
 });
 
@@ -251,6 +287,18 @@ describe("a module's widget types", () => {
     expect(codes(manifest)).toContainEqual({ code: "UI_WIDGET_SOURCE_KIND", severity: "warning", id: "widget:ui/lab.a" });
   });
 
+  it("listed twice by one module disable that module, never boot", () => {
+    const twice = testModule({
+      id: "gauges",
+      contributes: { widgetTypes: [{ type: "gauges/dial", optionsSchema: {} }, { type: "gauges/dial", optionsSchema: {} }] },
+    });
+    const { composed, invalid } = composeModules([...BUILTIN_MODULES, twice], context);
+    expect(invalid.get("gauges")).toMatch(/declared twice/);
+    expect(composed.widgetTypes.has("gauges/dial")).toBe(false);
+    const { host } = testHost([twice]);
+    expect(host.plan).toContainEqual(expect.objectContaining({ id: "gauges", enabled: false, reason: expect.stringContaining("listed twice") }));
+  });
+
   it("from a module that takes a kernel id do not break composition", () => {
     const impostor = testModule({ id: "core", contributes: { widgetTypes: [{ type: "core/json", optionsSchema: {} }] } });
     const { composed } = composeModules([...BUILTIN_MODULES, impostor], context);
@@ -268,10 +316,14 @@ describe("provider envelope projections", () => {
     fetch: async () => data,
   });
 
+  /** Compiled selects by provider id, then projection name. */
+  const selects = (byProvider: Record<string, Record<string, string>>) =>
+    new Map(Object.entries(byProvider).map(([id, named]) => [id, new Map(Object.entries(named).map(([name, expression]) => [name, compileSelect(expression)]))]));
+
   it("evaluates each select over the data, isolating a failing one, and keeps a provider without selects bare", async () => {
     const handle = register(feed({ load: 42, outlets: [{ name: "nas", on: true }] }));
     expect(read("feed")?.projections).toBeUndefined();
-    setProjections(new Map([["feed", new Map([["w:ok", "outlets[?on].name"], ["w:bad", "abs(load, load)"]])]]));
+    setProjections(selects({ feed: { "w:ok": "outlets[?on].name", "w:bad": "abs(outlets)" } }));
     // No data yet: nothing to project.
     expect(read("feed")?.projections).toEqual({});
     await handle.runNow();
@@ -281,9 +333,39 @@ describe("provider envelope projections", () => {
     // Read again: evaluated once per data, the same frozen object.
     expect(read("feed")!.projections).toBe(envelope.projections);
     // A new set re-evaluates over the retained data.
-    setProjections(new Map([["feed", new Map([["w:load", "load"]])]]));
+    setProjections(selects({ feed: { "w:load": "load" } }));
     expect(read("feed")?.projections).toEqual({ "w:load": { value: 42 } });
     setProjections(new Map());
+    expect(read("feed")?.projections).toBeUndefined();
+  });
+
+  it("bounds each projection: one past its limits is an error, its siblings and the provider are unaffected", async () => {
+    const items = Array.from({ length: 20_000 }, (_, index) => ({ index, name: `item-${index}` }));
+    const handle = register(feed({ items }));
+    setProjections(selects({ feed: { "w:all": "@", "w:count": "length(items)", "w:first": "items[0].name" } }));
+    await handle.runNow();
+    const envelope = read("feed")!;
+    expect(envelope.projections).toEqual({
+      "w:all": { error: "the result has more than 10000 values" },
+      "w:count": { value: 20_000 },
+      "w:first": { value: "item-0" },
+    });
+    expect(envelope.error).toBeNull();
+    expect(envelope.freshness.state).toBe("fresh");
+    // The envelope stays small: the oversized projection carries no value.
+    expect(JSON.stringify(envelope.projections).length).toBeLessThan(1000);
+  });
+
+  it("is wired by every manifest build: a rebuilt manifest replaces the selects", async () => {
+    const handle = register(feed({ load: 7 }));
+    await handle.runNow();
+    const providers = { listProviders: () => [{ id: "feed", kind: "test-feed" }], setProjections };
+    const page = (select: string) => ({ ui: { pages: [{ ...LAB, sections: [{ title: "S", widgets: [{ id: "w", type: "core/json", source: "feed", select }] }] }] } });
+    buildUiManifest({ config: page("load"), providers, capabilities: {} });
+    expect(read("feed")?.projections).toEqual({ "widget:ui/lab.w": { value: 7 } });
+    buildUiManifest({ config: page("to_string(load)"), providers, capabilities: {} });
+    expect(read("feed")?.projections).toEqual({ "widget:ui/lab.w": { value: "7" } });
+    buildUiManifest({ config: {}, providers, capabilities: {} });
     expect(read("feed")?.projections).toBeUndefined();
   });
 });
@@ -340,6 +422,18 @@ describe("config pages through a booted deck", () => {
       expect(printed).toContain("/ui/pages/0/sections/0/widgets/0/options/wrap");
     } finally {
       vi.restoreAllMocks();
+      dir.cleanup();
+    }
+  });
+
+  it("deck validate reports a select with an unknown function or a wrong argument count", () => {
+    const dir = makeConfigDir(estate({ type: "core/json", source: "nas-wiki", select: "lenght(href)" }));
+    try {
+      const result = captureValidate(dir.dir);
+      expect(result.exitClass).toBe(1);
+      expect(result.stdout + result.stderr).toContain("UI_WIDGET_SELECT_INVALID");
+      expect(result.stdout + result.stderr).toContain("unknown function lenght()");
+    } finally {
       dir.cleanup();
     }
   });

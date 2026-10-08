@@ -10,7 +10,7 @@ import {
   type ProviderProjection,
 } from "../contract/index.js";
 import type { Cadence, ProviderStats, TaskHandle } from "@deck/module-sdk";
-import { evaluateSelect } from "@deck/schema/select";
+import { evaluateSelect, type CompiledSelect } from "@deck/schema/select";
 
 import { logger, type ProviderPollEvent } from "../log/logger.js";
 import { createAdaptiveTask, isWithinRun, withinRun, type AdaptiveTask } from "../modules/scheduler.js";
@@ -58,11 +58,11 @@ interface Slot<T = unknown> {
   /** Completed polls that failed (threw, rejected, or timed out). */
   failureCount: number;
   /** The projections last evaluated, and the data and projection set they were evaluated over. */
-  projected?: { data: unknown; selects: ReadonlyMap<string, string> | undefined; result: ProviderEnvelope["projections"] };
+  projected?: { data: unknown; selects: ProviderSelects | undefined; result: ProviderEnvelope["projections"] };
 }
 
-/** One widget's `select` over a provider: the projection's name (the widget id) → expression. */
-export type ProviderSelects = ReadonlyMap<string, string>;
+/** The selects over one provider: the projection's name (the widget id) → its compiled select. */
+export type ProviderSelects = ReadonlyMap<string, CompiledSelect>;
 
 /** Per-provider poll counters and last-poll latency, retained on the slot by tick(). */
 export interface ProviderPollMetrics {
@@ -80,10 +80,11 @@ let selectsByProvider: ReadonlyMap<string, ProviderSelects> = new Map();
 
 /**
  * Replace the selects every provider's envelope carries as `projections` (by provider id, then
- * projection name → JMESPath expression). Each is evaluated over the provider's data when that
- * data changes and when the set changes, never per read; a provider registered later picks its
- * selects up. A select that fails on the data yields `{ error }` in its projection; the poll
- * and the provider's health are unaffected.
+ * projection name → compiled select). Each is evaluated over the provider's data when that
+ * data changes and when the set changes, never per read, and never re-parsed; a provider
+ * registered later picks its selects up. A select that fails on the data, or exceeds its
+ * limits, yields `{ error }` in its projection; the other projections, the poll and the
+ * provider's health are unaffected.
  */
 export function setProjections(selects: ReadonlyMap<string, ProviderSelects>): void {
   selectsByProvider = selects;
@@ -411,8 +412,8 @@ function projectionsOf<T>(slot: Slot<T>): Pick<ProviderEnvelope, "projections"> 
       result = {};
       // No data yet (or none retained): nothing to project.
       if (slot.retainedData !== null) {
-        for (const [name, expression] of [...selects].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
-          result[name] = evaluateSelect(expression, slot.retainedData);
+        for (const [name, select] of [...selects].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+          result[name] = evaluateSelect(select, slot.retainedData);
         }
       }
     }

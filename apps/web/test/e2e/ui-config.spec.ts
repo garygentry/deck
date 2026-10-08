@@ -13,8 +13,8 @@ const UI = {
   nav: {
     groups: [{ id: "overview" }, { id: "lab", label: "Lab", icon: "boxes" }],
     items: [
-      { id: "nav:lab/grafana", group: "lab", label: "Grafana", href: "https://grafana.example.net", icon: "gauge", order: 1 },
-      { id: "nav:lab/rule", group: "lab", separator: true, order: 50 },
+      { id: "nav:ui/grafana", group: "lab", label: "Grafana", href: "https://grafana.example.net", icon: "gauge", order: 1 },
+      { id: "nav:ui/rule", group: "lab", separator: true, order: 50 },
     ],
   },
   extensions: {

@@ -24,9 +24,11 @@ import {
   DEFAULT_HOME_PAGE,
   entitySectionProblem,
   homePathProblem,
+  isExternalHref,
   NAV_GROUP_ID_PATTERN,
   pagePathProblem,
   UI_CONFIG_MODULE,
+  UI_CONFIG_NAV_ID_PATTERN,
 } from "@deck/module-sdk";
 
 import { DEFAULT_BRAND_TITLE, DEFAULT_UI, type UiDefaults, type UiNavGroupConfig, type UiNavItemConfig } from "./defaults.js";
@@ -173,7 +175,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
     for (const nav of contributes.nav ?? []) if (claim(nav.id, module)) navDecls.push({ ...nav, module });
     for (const extension of contributes.extensions ?? []) if (claim(extension.id, module)) extensionDecls.push({ ...extension, module });
   }
-  // A module's entry keeps an id the config reuses.
+  // The config's entries are `nav:ui/…`, a namespace no module may use (`ui` is reserved).
   for (const item of configNav) if (claim(item.id, UI_CONFIG_MODULE)) navDecls.push({ ...item, module: UI_CONFIG_MODULE });
 
   const overrides = new Map<string, UiOverride>();
@@ -616,13 +618,14 @@ export function uiConfigOf(config: unknown): UiDefaults {
   const items = records(nav.items).flatMap((item): UiNavItemConfig[] => {
     const id = text(item.id);
     const group = text(item.group);
-    if (id === undefined || group === undefined) return [];
+    // Always in the reserved `ui` namespace, so an entry never takes a module's id.
+    if (id === undefined || !UI_CONFIG_NAV_ID_PATTERN.test(id) || group === undefined) return [];
     const order = typeof item.order === "number" && Number.isFinite(item.order) ? item.order : undefined;
     if (item.separator === true) return [defined({ id, group, separator: true as const, order })];
     const label = text(item.label);
     const href = text(item.href);
     // Only an external http(s) link: config entries do not route in-app.
-    if (label === undefined || href === undefined || !/^https?:\/\/\S+$/.test(href)) return [];
+    if (label === undefined || href === undefined || !isExternalHref(href)) return [];
     return [defined({ id, group, label, href, icon: text(item.icon), order })];
   });
   return {

@@ -98,6 +98,7 @@ describe("module host planning", () => {
   it.each<[string, Parameters<typeof testModule>[0], string]>([
     ["a bad id", { id: "Bad_Id" }, "id must be lowercase kebab-case"],
     ["the reserved id core", { id: "core" }, 'id "core" is reserved for the kernel'],
+    ["the reserved id ui", { id: "ui" }, 'id "ui" is reserved for the kernel'],
     ["a non-JSON value", { id: "x", env: [undefined as unknown as string] }, "manifest/env/0"],
     ["a non-string version", { id: "x", version: 1 as unknown as string }, "version must be a string"],
     ["a malformed dependsOn", { id: "x", dependsOn: "core" as unknown as string[] }, "dependsOn must be a list"],
@@ -122,6 +123,7 @@ describe("module host planning", () => {
     ["a page without a component", { id: "x", contributes: { pages: [{ id: "page:x/p", path: "/p", title: "P", component: "" }] } }, "needs a component"],
     ["a nav entry with page and href", { id: "x", contributes: { nav: [{ id: "nav:x/n", page: "page:x/p", href: "/p", group: "g" }] } }, "exactly one of page or href"],
     ["a nav entry without a group", { id: "x", contributes: { nav: [{ id: "nav:x/n", href: "/p", group: "" }] } }, "needs a group"],
+    ["a nav entry with a malformed group", { id: "x", contributes: { nav: [{ id: "nav:x/n", href: "/p", group: "My Lab" }] } }, "group must be a nav group id"],
     ["a non-finite nav order", { id: "x", contributes: { nav: [{ id: "nav:x/n", href: "/p", group: "g", order: "1" as never }] } }, "order must be a finite number"],
     ["an unknown slot type", { id: "x", contributes: { slots: [{ id: "x/s", accepts: "tile" as never }] } }, "accepts must be one of"],
     ["an extension without attachTo.slot", { id: "x", contributes: { extensions: [{ id: "pill:x/e", kind: "pill", attachTo: {} as never }] } }, "needs attachTo.slot"],

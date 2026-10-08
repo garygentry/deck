@@ -1,4 +1,4 @@
-import type { UiManifest } from "@deck/module-sdk";
+import { isExternalHref, isSafeHref, type UiManifest } from "@deck/module-sdk";
 import type { UiManifestState } from "../data/index.js";
 import type { PageRegistration } from "../registry/registry-types.js";
 import { NAV_SLOT } from "../registry/registry.js";
@@ -56,11 +56,6 @@ export function isSeparator(entry: NavEntry): entry is NavSeparator {
   return "separator" in entry;
 }
 
-/** An external link the sidebar opens in a new tab. */
-const EXTERNAL_HREF = /^https?:\/\//i;
-/** An in-app path: absolute, never protocol-relative. */
-const APP_PATH = /^\/(?!\/)/;
-
 /**
  * The sidebar navigation. The UI manifest decides it: its groups in order with their labels,
  * and in each its entries with their labels and icons. An entry to a page the web does not
@@ -109,15 +104,15 @@ function navFromManifest(manifest: UiManifest, pages: readonly PageRegistration[
     }
     const page = item.page === undefined ? undefined : routed.get(item.page);
     const href = item.page === undefined ? item.href : page?.path;
-    // Only an in-app path or an http(s) URL is a link (never `javascript:` and the like).
-    if (href === undefined || !(APP_PATH.test(href) || EXTERNAL_HREF.test(href))) continue;
+    // Only an in-app path or an http(s) URL is a link (never `javascript:`, `//host` or `/\host`).
+    if (href === undefined || !isSafeHref(href)) continue;
     // A server that sends no label (version skew): the routed page's label, else the id.
     list.push({
       id: item.id,
       label: item.label ?? page?.label ?? item.id,
       icon: item.icon ?? page?.icon,
       href,
-      ...(EXTERNAL_HREF.test(href) ? { external: true as const } : {}),
+      ...(isExternalHref(href) ? { external: true as const } : {}),
     });
   }
   // A manifest without groups (an older server) heads each group by its id, in entry order.

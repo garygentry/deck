@@ -17,11 +17,17 @@ export const EXTENSION_KINDS: readonly string[] = ["pill", "widget", "entity-sec
 /** Id prefixes an extension may not use: pages and nav entries have their own declarations. */
 export const RESERVED_EXTENSION_PREFIXES: readonly string[] = ["page", "nav"];
 
-/** Module ids the kernel keeps: `core` hosts the shell's slots, so no module may replace it. */
-export const RESERVED_MODULE_IDS: readonly string[] = ["core"];
+/**
+ * Module ids the kernel keeps: `core` hosts the shell's slots, and `ui` owns the ui config's own
+ * nav entries (`nav:ui/…`), so no module may take either.
+ */
+export const RESERVED_MODULE_IDS: readonly string[] = ["core", "ui"];
 
 /** The module the ui config's own nav entries (`ui.nav.items`) are listed under in the UI manifest. */
 export const UI_CONFIG_MODULE = "ui";
+
+/** A `ui.nav.items` entry's id: always in the reserved `ui` namespace, `nav:ui/<name>`. */
+export const UI_CONFIG_NAV_ID_PATTERN = /^nav:ui\/[a-z0-9][a-z0-9.-]*$/;
 
 /** A nav group id: kebab-case, as `ui.nav.groups` and a nav entry's `group` override take it. */
 export const NAV_GROUP_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
@@ -190,9 +196,14 @@ export function entitySectionName(id: unknown, config: unknown): string | null {
   return parts === null ? null : `${parts.module}.${parts.name}`;
 }
 
+/** Whether a link leaves the app: an `http(s):` URL with a host. */
+export function isExternalHref(href: string): boolean {
+  return /^https?:\/\/[^/]/i.test(href);
+}
+
 /** Whether a nav link is safe: an `http(s):` URL, or an absolute path on this origin (not `//…`). */
 export function isSafeHref(href: string): boolean {
-  if (/^https?:\/\/[^/]/i.test(href)) return true;
+  if (isExternalHref(href)) return true;
   return href.startsWith("/") && !href.startsWith("//") && !href.startsWith("/\\");
 }
 

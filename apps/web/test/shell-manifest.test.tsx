@@ -141,6 +141,8 @@ describe("resolveNav: config entries", () => {
     const groups = shaped([
       entry("nav:ui/bad", { href: "javascript:alert(1)", label: "Bad" }),
       entry("nav:ui/proto", { href: "//evil.example", label: "Proto" }),
+      entry("nav:ui/backslash", { href: "/\\evil.example", label: "Backslash" }),
+      entry("nav:ui/hostless", { href: "https:///path", label: "Hostless" }),
       entry("nav:a/one", { page: "page:a/one", label: "One" }),
     ]);
     expect(groups[0]!.links.map((link) => link.id)).toEqual(["nav:a/one"]);
@@ -335,8 +337,8 @@ describe("the shell, rendered from the served manifest", () => {
       ...golden,
       navGroups: [{ id: "lab", label: "Lab", icon: "boxes" }, ...golden.navGroups],
       nav: [
-        { id: "nav:lab/grafana", module: "ui", slot: "app/nav", href: "https://grafana.example.net", group: "lab", label: "Grafana", icon: "gauge", order: 1 },
-        { id: "nav:lab/rule", module: "ui", slot: "app/nav", group: "lab", label: "", order: 2, separator: true },
+        { id: "nav:ui/grafana", module: "ui", slot: "app/nav", href: "https://grafana.example.net", group: "lab", label: "Grafana", icon: "gauge", order: 1 },
+        { id: "nav:ui/rule", module: "ui", slot: "app/nav", group: "lab", label: "", order: 2, separator: true },
         { ...golden.nav.find((item) => item.id === "nav:inventory/services")!, group: "lab", order: 3 },
         ...golden.nav.filter((item) => item.id !== "nav:inventory/services"),
       ],

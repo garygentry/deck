@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveComponent } from "./support/lazy.js";
 
 // Import a fresh feature entrypoint against a fresh registry singleton, then inspect the public
-// registry accessors. The feature declares the health-header slot its pills attach to.
+// registry accessors. The registry declares the health-header slot its pills attach to, so the
+// feature imports nothing from the shell.
 async function loadFreshFeature() {
   vi.resetModules();
   await import("../src/features/alerts-and-health/index.js");

@@ -518,7 +518,7 @@ radius?: ("none" | "sm" | "md" | "lg")
  */
 export interface UiNav {
 /**
- * Groups in sidebar order; groups not listed follow by id.
+ * Groups in sidebar order; the built-in groups not listed follow in their default order, then any other group by id.
  */
 groups?: UiNavGroup[]
 /**

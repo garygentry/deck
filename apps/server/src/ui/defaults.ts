@@ -10,10 +10,29 @@ export interface UiDefaults {
   /** `ui.home`: the id of the page `/` renders; the built-in default (`DEFAULT_HOME_PAGE`) when unset. */
   home?: string;
   nav: {
-    /** Nav groups in sidebar order, with their headings; groups not listed follow by id. */
+    /** The built-in nav groups in their default sidebar order, with their headings. */
     groups: readonly UiNavGroup[];
+    /**
+     * `ui.nav.groups`: groups in sidebar order, ahead of the built-in ones it does not list. A
+     * label or icon it sets replaces the built-in one; a group that is not built in is new.
+     */
+    configured?: readonly UiNavGroupConfig[];
+    /** `ui.nav.items`: the link entries and separators the config adds. */
+    items?: readonly UiNavItemConfig[];
   };
 }
+
+/** One `ui.nav.groups` entry. */
+export interface UiNavGroupConfig {
+  id: string;
+  label?: string;
+  icon?: string;
+}
+
+/** One `ui.nav.items` entry: a link to an external URL, or a separator. */
+export type UiNavItemConfig =
+  | { id: string; group: string; label: string; href: string; icon?: string; order?: number }
+  | { id: string; group: string; separator: true; order?: number };
 
 /**
  * The built-in ui config: what an estate renders when its config sets nothing. The nav

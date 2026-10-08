@@ -51,7 +51,7 @@
     "UiNav": {
       "title": "UiNav", "type": "object", "additionalProperties": false,
       "properties": {
-        "groups": { "type": "array", "items": { "$ref": "#/$defs/UiNavGroup" }, "description": "Groups in sidebar order; groups not listed follow by id." },
+        "groups": { "type": "array", "items": { "$ref": "#/$defs/UiNavGroup" }, "description": "Groups in sidebar order; the built-in groups not listed follow in their default order, then any other group by id." },
         "items": { "type": "array", "items": { "$ref": "#/$defs/UiNavItem" }, "description": "Extra nav entries: external links and separators." }
       }
     },

@@ -113,19 +113,26 @@ export interface UiPage {
   component: string;
 }
 
+/**
+ * A nav entry: a module's, or one the ui config adds (`ui.nav.items`, listed with module
+ * `ui`, `UI_CONFIG_MODULE`): a link to a page, an href, or a separator.
+ */
 export interface UiNavItem {
   id: ExtensionId;
   module: string;
   /** The nav slot the entry attaches to (`app/nav` unless an override re-attaches it). */
   slot: string;
   page?: ExtensionId;
+  /** An in-app path, or an external `http(s)` URL the shell opens in a new tab. */
   href?: string;
   group: string;
-  /** The entry's label, defaulting to its page's title. */
+  /** The entry's label, defaulting to its page's title; empty for a separator. */
   label: string;
   /** The entry's icon, defaulting to its page's icon. */
   icon?: string;
   order: number;
+  /** A divider between the group's entries, with no page or href. */
+  separator?: true;
 }
 
 export interface UiExtension {
@@ -169,10 +176,11 @@ export interface UiFinding {
  * A config override for one extension, page or nav entry, by id (the `ui.extensions` map of
  * the `ui` config section). Overrides replace: `false` disables
  * it, `true` enables it, and an object replaces its `attachTo` and/or `config` wholesale (no
- * deep merge). In a replacement `attachTo`, an omitted `slot` keeps the current slot and an
- * omitted `order` is the default (100). A page takes only `enabled`, a nav entry `enabled` and
- * `attachTo`. A malformed entry is ignored with a finding.
+ * deep merge). In a replacement `attachTo`, an omitted `slot` keeps the current slot, an
+ * omitted `group` (a nav entry's) keeps the current group, and an omitted `order` is the
+ * default (100). A page takes only `enabled`, a nav entry `enabled` and `attachTo`. A
+ * malformed entry is ignored with a finding.
  */
 export type UiOverride =
   | boolean
-  | { enabled?: boolean; attachTo?: { slot?: string; order?: number }; config?: JsonObject };
+  | { enabled?: boolean; attachTo?: { slot?: string; order?: number; group?: string }; config?: JsonObject };

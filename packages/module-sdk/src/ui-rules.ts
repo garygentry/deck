@@ -20,6 +20,12 @@ export const RESERVED_EXTENSION_PREFIXES: readonly string[] = ["page", "nav"];
 /** Module ids the kernel keeps: `core` hosts the shell's slots, so no module may replace it. */
 export const RESERVED_MODULE_IDS: readonly string[] = ["core"];
 
+/** The module the ui config's own nav entries (`ui.nav.items`) are listed under in the UI manifest. */
+export const UI_CONFIG_MODULE = "ui";
+
+/** A nav group id: kebab-case, as `ui.nav.groups` and a nav entry's `group` override take it. */
+export const NAV_GROUP_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
 /** Root paths outside `/api` the kernel serves, which no page may use. None today. */
 export const KERNEL_ROOT_PATHS: readonly string[] = [];
 

@@ -1,5 +1,6 @@
 import type { ModuleLogger, ProviderTiming } from "@deck/module-sdk";
 import {
+  isRfc3339DateTime,
   supportedSnapshotVersions,
   validateSnapshot,
   type DeckConfigDocument,
@@ -166,6 +167,12 @@ export class SnapshotProvider implements Provider<SnapshotProviderResult> {
 
     try {
       const read = await this.source.read(signal);
+      // The registry rejected this poll when the signal aborted (its timeout): a read that
+      // completes later must not become the retained snapshot the registry never served. The
+      // rest of the attempt is synchronous, so the registry accepts exactly what this accepts.
+      if (signal.aborted) {
+        throw new SnapshotReadFailure("POLL_TIMEOUT", SNAPSHOT_READ_MESSAGES.POLL_TIMEOUT);
+      }
 
       if (!read.changed) {
         const result = this.completeUnchanged(readAt);
@@ -304,9 +311,13 @@ function buildResult(
   return Object.freeze(result);
 }
 
-/** A snapshot's `generatedAt` as epoch ms, or null when it is not a parseable timestamp. */
+/**
+ * A snapshot's `generatedAt` as epoch ms, or null unless it is the RFC 3339 date-time (with an
+ * explicit offset and a real calendar date) the schema asks for: `Date.parse` alone would read
+ * an offset-less value in host-local time and invent dates the schema rejects.
+ */
 function parseGeneratedAt(value: unknown): number | null {
-  if (typeof value !== "string") return null;
+  if (typeof value !== "string" || !isRfc3339DateTime(value)) return null;
   const ms = Date.parse(value);
   return Number.isFinite(ms) ? ms : null;
 }

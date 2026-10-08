@@ -408,11 +408,23 @@ describe("SnapshotProvider.generatedAtMs — the retained snapshot's content tim
   });
 
   // Validation accepts these with a finding (classification 1), so the snapshot is served.
+  it("reads an explicit offset", async () => {
+    const provider = providerOver([changed(generatedAtJson("2030-01-01T02:00:00.250+02:00"))]);
+    await provider.fetch(context());
+    expect(provider.generatedAtMs()).toBe(Date.parse("2030-01-01T00:00:00.250Z"));
+  });
+
+  // Validation accepts these with a finding (classification 1), so the snapshot is served; each
+  // is one `Date.parse` alone would turn into a number.
   it.each([
     ["missing", undefined],
     ["unparseable", "not-a-date"],
     ["out of range", "2030-13-45T00:00:00Z"],
     ["not a string", 1_700_000_000],
+    ["without an offset (host-local time)", "2030-01-01T00:00:00"],
+    ["a date only", "2030-01-01"],
+    ["a bare number", "1"],
+    ["a day the calendar lacks", "2025-02-29T00:00:00Z"],
   ])("is null when the accepted snapshot's generatedAt is %s, without failing the read", async (_label, value) => {
     const provider = providerOver([changed(cleanSnapshotJson()), changed(generatedAtJson(value))]);
     await provider.fetch(context());
@@ -420,6 +432,26 @@ describe("SnapshotProvider.generatedAtMs — the retained snapshot's content tim
     const result = await provider.fetch(context());
     expect(result.readError).toBeNull();
     expect(provider.generatedAtMs()).toBeNull();
+  });
+});
+
+describe("SnapshotProvider.fetch — a read that outlives the poll's signal", () => {
+  it("is refused as POLL_TIMEOUT and leaves the retained snapshot, generatedAt and revision alone", async () => {
+    const later = cleanSnapshotJson().replace(COLLECTED_AT, "2030-01-02T00:00:00.000Z");
+    const source = new FakeSource([changed(cleanSnapshotJson())]);
+    const provider = new SnapshotProvider("snapshot", { source, config, now: clock([COLLECTED_AT]) });
+    await provider.fetch(context());
+    const acceptedBefore = [...source.accepted];
+
+    const controller = new AbortController();
+    let settle!: (result: SnapshotSourceResult) => void;
+    vi.spyOn(source, "read").mockImplementationOnce(() => new Promise((resolve) => (settle = resolve)));
+    const attempt = provider.fetch({ signal: controller.signal });
+    controller.abort();
+    settle(changed(later));
+    await expectRefusal(attempt, "POLL_TIMEOUT");
+    expect(provider.generatedAtMs()).toBe(Date.parse(COLLECTED_AT));
+    expect(source.accepted).toEqual(acceptedBefore);
   });
 });
 

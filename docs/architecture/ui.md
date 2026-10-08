@@ -109,8 +109,8 @@ module's `contributes`, never with a direct registry call.
 The registry's blueprint calls (`registerPage`, `registerEntityFragment`,
 `registerSummaryFragment`, `registerCard`, `registerExtension`) are the primitives
 `registerWebModule` and core build on. Core uses them for its own controls (it registers the
-theme menu, an `action` extension), tests use them for fixtures, and a feature not yet moved onto its
-module's manifest still calls them until it is.
+theme menu, an `action` extension, and the dev-only `/_ui` workbench page, which no module
+manifest lists), and tests use them for fixtures. No module's feature calls them.
 
 Each registration is a blueprint over one model, the **extension**: a component with a stable id, attached
 to a slot at an order. Ids have the form `<kind>:<module>/<name>`, and the kind matches the
@@ -260,9 +260,7 @@ Until the manifest loads, the sidebar and those slots are empty, and every regis
 routed. If it cannot be read, they fall back to the registry: the sidebar lists the registered
 pages by their `group` (and `nav: false`), every registered page is routed, the slots render what
 is registered there, and the brand is "Deck". So a page's registered `group` (its nav entry's
-manifest group id, such as `health`) only matters in that fallback. A feature not yet moved onto
-its manifest registers a built-in group's heading instead (`Health`), which the fallback still
-matches until the last one moves.
+manifest group id, such as `health`) only matters in that fallback.
 
 The registry is reactive. The shell's slot hosts call `useRegistryVersion()` and render what
 the UI manifest places (`useManifestSlot(slot)`), reading the registry for the components.

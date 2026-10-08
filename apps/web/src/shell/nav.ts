@@ -15,14 +15,9 @@ const FALLBACK_GROUPS: readonly { id: string; label: string }[] = [
   { id: "knowledge", label: "Knowledge" },
 ];
 
-/**
- * The built-in group a page's `group` names: by id (a page registered through
- * `registerWebModule` carries its manifest group id), or by label. The label match serves
- * pages still registered with `registerPage` and a group heading; it is removed once every
- * built-in feature registers through `registerWebModule`.
- */
+/** The built-in group a page's `group` names, by its manifest group id. */
 function fallbackGroup(group: string): { id: string; label: string } | undefined {
-  return FALLBACK_GROUPS.find(({ id }) => id === group) ?? FALLBACK_GROUPS.find(({ label }) => label === group);
+  return FALLBACK_GROUPS.find(({ id }) => id === group);
 }
 
 /** One sidebar link. */

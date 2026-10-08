@@ -53,7 +53,7 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
   `ui.brand.title`, else the estate's `estate.name`, else `Deck`. `brand.icon` and
   `brand.logoUrl` are present when `ui.brand` sets them.
 - `home` names the page `/` renders (`page`) and that page's own path (`path`): `ui.home` when
-  it names a routed page without path parameters, else the portal. It is absent when neither
+  it names a routed page without path parameters, else the portal. It is `null` when neither
   can be home, and then `/` is not found. No page is routed at `/` itself: `/` always renders
   the home page.
 - `navGroups` lists the sidebar's groups in order, each with its `label`. The built-in order is
@@ -93,11 +93,13 @@ The server writes two things into it: the brand title as its `<title>`, and a bo
 request:
 
 ```json
-{ "bootApi": 1, "brand": { "title": "Gentry Lab" }, "theme": { "mode": "dark" } }
+{ "bootApi": 1, "brand": { "title": "Gentry Lab" }, "theme": { "mode": "dark" }, "home": "page:inventory/hosts" }
 ```
 
 `theme.mode` is `ui.theme.mode`, absent when unset; the pre-paint script applies it unless the
-viewer has chosen a mode. The shape is `DeckBoot` in `@deck/contract`; a new boot-time setting is
+viewer has chosen a mode. `home` is the UI manifest's `home.page` (`null` when no page can be
+home), so the shell routes `/` correctly before `/api/ui` answers. The server re-reads
+`index.html` when the file's modification time changes. The shape is `DeckBoot` in `@deck/contract`; a new boot-time setting is
 an optional field there.
 
 ## Metrics

@@ -85,7 +85,8 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
   - `UI_INVALID_PAGE`: a disabled module's page whose path is not a usable page path, so it is
     not listed in `disabledPages`.
   - `UI_CONFIG_INVALID`: the config directory changed and no longer loads, so the last good
-    config is still served; the message names the problem;
+    config is still served; the message names the problem by finding code and JSON pointer
+    only (`deck validate` gives the details);
   - `UI_RESTART_REQUIRED`: the config directory changed outside `ui`, which applies only after
     a restart; the message names the changed keys.
 

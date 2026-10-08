@@ -27,10 +27,11 @@ import type { ExtensionId } from "./registry-types.js";
  *
  * Everything is checked before anything registers, so a refused module leaves no part of
  * itself behind. Refused, naming the module: a component the manifest names that the table
- * lacks or holds something other than a component under, a table entry nothing names, an extension that is neither rendered by a component
- * nor a widget descriptor, nav entries the registry cannot express (an `href` entry, one not
- * named after its page, a second one for a page), and anything the registry itself would
- * refuse (ids, paths, orders, slot kinds, entity-section config, duplicates).
+ * lacks, or holds as something other than a component; a table entry nothing names; an
+ * extension that is neither rendered by a component nor a widget descriptor; nav entries the
+ * registry cannot express (an `href` entry, one not named after its page, a second one for a
+ * page); and anything the registry itself would refuse (ids, paths, orders, slot kinds,
+ * entity-section config, duplicates).
  */
 export function registerWebModule(module: WebModule): void {
   const { id, contributes = {} } = module.manifest;

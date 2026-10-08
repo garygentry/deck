@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   APP_TITLE,
+  ExternalLink,
   Icon,
   Sidebar,
   SidebarContent,
@@ -12,12 +13,13 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  SidebarSeparator,
   useSidebar,
 } from "@/ui";
 import { useUiManifest } from "../data/index.js";
 import type { PageRegistration } from "../registry/registry-types.js";
 import { brandInitial, brandMark, brandTitle, type BrandMark } from "./manifest-slot.js";
-import { isLinkActive, resolveNav } from "./nav.js";
+import { isLinkActive, isSeparator, resolveNav, type NavLink } from "./nav.js";
 
 /**
  * The brand and the primary navigation, both from the UI manifest: grouped, with icons, and
@@ -60,24 +62,25 @@ export function AppSidebar({
       </SidebarHeader>
       <SidebarContent>
         <nav aria-label="Primary">
-          {resolveNav(manifest, pages, home).map(({ id, label, links }) => (
+          {resolveNav(manifest, pages, home).map(({ id, label, icon, links }) => (
             <SidebarGroup key={id ?? "_ungrouped"}>
-              {label && <SidebarGroupLabel>{label}</SidebarGroupLabel>}
+              {label && (
+                <SidebarGroupLabel className="gap-2">
+                  {icon !== undefined && <Icon name={icon} />}
+                  <span>{label}</span>
+                </SidebarGroupLabel>
+              )}
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {links.map((link) => {
-                    const active = isLinkActive(link, path);
-                    return (
-                      <SidebarMenuItem key={link.id}>
-                        <SidebarMenuButton asChild isActive={active} tooltip={link.label}>
-                          <a href={link.href} aria-current={active ? "page" : undefined}>
-                            <Icon name={link.icon ?? "circle"} />
-                            <span>{link.label}</span>
-                          </a>
-                        </SidebarMenuButton>
+                  {links.map((link) =>
+                    isSeparator(link) ? (
+                      <SidebarMenuItem key={link.id} aria-hidden="true" data-nav-separator="">
+                        <SidebarSeparator className="my-1" />
                       </SidebarMenuItem>
-                    );
-                  })}
+                    ) : (
+                      <NavLinkItem key={link.id} link={link} path={path} />
+                    ),
+                  )}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
@@ -86,6 +89,34 @@ export function AppSidebar({
       </SidebarContent>
       <SidebarRail />
     </Sidebar>
+  );
+}
+
+/** One sidebar link: in-app (current when its section is), or external in a new tab. */
+function NavLinkItem({ link, path }: { link: NavLink; path: string }) {
+  if (link.external === true) {
+    return (
+      <SidebarMenuItem>
+        <SidebarMenuButton asChild tooltip={link.label}>
+          <ExternalLink href={link.href} plain showIcon={false}>
+            <Icon name={link.icon ?? "circle"} />
+            <span className="truncate">{link.label}</span>
+            <Icon name="external-link" className="ml-auto text-muted-foreground" />
+          </ExternalLink>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    );
+  }
+  const active = isLinkActive(link, path);
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild isActive={active} tooltip={link.label}>
+        <a href={link.href} aria-current={active ? "page" : undefined}>
+          <Icon name={link.icon ?? "circle"} />
+          <span>{link.label}</span>
+        </a>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   );
 }
 

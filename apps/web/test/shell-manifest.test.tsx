@@ -12,7 +12,7 @@ import { uiManifestProblem, type UiManifestState } from "../src/data/index.js";
 import { resetQueryClient } from "../src/data/query-client.js";
 import type { Extension, PageRegistration } from "../src/registry/registry.js";
 import { brandInitial, brandMark, brandTitle, placeExtensions } from "../src/shell/manifest-slot.js";
-import { groupNavPages, resolveNav } from "../src/shell/nav.js";
+import { groupNavPages, isLinkActive, resolveNav, type NavLink } from "../src/shell/nav.js";
 
 /**
  * The shell renders from the UI manifest: the brand, the nav (groups, order, labels, icons)
@@ -76,9 +76,10 @@ describe("resolveNav", () => {
       {
         id: "first",
         label: "First",
+        icon: "flask-conical",
         links: [
           { id: "nav:a/one", label: "One", icon: undefined, href: "/one" },
-          { id: "nav:x/link", label: "Grafana", icon: "chart-line", href: "https://grafana.lab" },
+          { id: "nav:x/link", label: "Grafana", icon: "chart-line", href: "https://grafana.lab", external: true },
         ],
       },
     ]);
@@ -92,7 +93,7 @@ describe("resolveNav", () => {
         { id: "nav:x/link", module: "x", slot: "app/nav", href: "/x", group: "g", order: 2 },
       ] as unknown as UiManifest["nav"],
     });
-    expect(resolveNav(ready(unlabelled), pages)[0]!.links.map((link) => link.label)).toEqual(["One (web)", "nav:x/link"]);
+    expect(resolveNav(ready(unlabelled), pages)[0]!.links.map((link) => ("label" in link ? link.label : "-"))).toEqual(["One (web)", "nav:x/link"]);
   });
 
   it("lists nothing until the manifest loads", () => {
@@ -121,6 +122,44 @@ describe("resolveNav", () => {
   it("heads groups by id for a manifest without navGroups", () => {
     const old = { ...served, navGroups: undefined } as unknown as UiManifest;
     expect(resolveNav(ready(old), pages).map(({ id, label }) => `${id}:${label}`)).toEqual(["second:second", "first:first"]);
+  });
+});
+
+describe("resolveNav: config entries", () => {
+  const pages = [page("page:a/one", "/one", "One"), page("page:a/two", "/two", "Two")];
+  const entry = (id: string, extra: Record<string, unknown>) => ({ id, module: "ui", slot: "app/nav", group: "g", order: 100, ...extra });
+  const shaped = (nav: unknown[], navGroups = [{ id: "g", label: "G", icon: "boxes" }]) =>
+    resolveNav(ready(manifest({ navGroups, nav: nav as UiManifest["nav"] })), pages);
+
+  it("marks an http(s) link external, and never current", () => {
+    const [group] = shaped([entry("nav:ui/grafana", { href: "https://grafana.example.net", label: "Grafana" })]);
+    expect(group).toEqual({ id: "g", label: "G", icon: "boxes", links: [{ id: "nav:ui/grafana", label: "Grafana", icon: undefined, href: "https://grafana.example.net", external: true }] });
+    expect(isLinkActive(group!.links[0] as NavLink, "/")).toBe(false);
+  });
+
+  it("drops an href that is neither an in-app path nor http(s)", () => {
+    const groups = shaped([
+      entry("nav:ui/bad", { href: "javascript:alert(1)", label: "Bad" }),
+      entry("nav:ui/proto", { href: "//evil.example", label: "Proto" }),
+      entry("nav:a/one", { page: "page:a/one", label: "One" }),
+    ]);
+    expect(groups[0]!.links.map((link) => link.id)).toEqual(["nav:a/one"]);
+  });
+
+  it("keeps a separator between links only: none at either end, none twice", () => {
+    const groups = shaped([
+      entry("nav:ui/s1", { separator: true, label: "" }),
+      entry("nav:a/one", { page: "page:a/one", label: "One" }),
+      entry("nav:ui/s2", { separator: true, label: "" }),
+      entry("nav:ui/s3", { separator: true, label: "" }),
+      entry("nav:a/two", { page: "page:a/two", label: "Two" }),
+      entry("nav:ui/s4", { separator: true, label: "" }),
+    ]);
+    expect(groups[0]!.links.map((link) => link.id)).toEqual(["nav:a/one", "nav:ui/s2", "nav:a/two"]);
+  });
+
+  it("leaves out a group with only separators (or links the web cannot route)", () => {
+    expect(shaped([entry("nav:ui/s1", { separator: true, label: "" }), entry("nav:x/gone", { page: "page:x/gone", label: "Gone" })])).toEqual([]);
   });
 });
 
@@ -289,6 +328,29 @@ describe("the shell, rendered from the served manifest", () => {
     await waitFor(() => expect(links(nav).length).toBeGreaterThan(0));
     expect(links(nav).slice(0, 3)).toEqual(["Configs /configs", "Runbooks /docs", "Portal /"]);
     expect(within(nav).getByText("Library")).toBeInTheDocument();
+  });
+
+  it("renders config links in a new tab with ExternalLink semantics, separators, and group icons", async () => {
+    const configured: UiManifest = {
+      ...golden,
+      navGroups: [{ id: "lab", label: "Lab", icon: "boxes" }, ...golden.navGroups],
+      nav: [
+        { id: "nav:lab/grafana", module: "ui", slot: "app/nav", href: "https://grafana.example.net", group: "lab", label: "Grafana", icon: "gauge", order: 1 },
+        { id: "nav:lab/rule", module: "ui", slot: "app/nav", group: "lab", label: "", order: 2, separator: true },
+        { ...golden.nav.find((item) => item.id === "nav:inventory/services")!, group: "lab", order: 3 },
+        ...golden.nav.filter((item) => item.id !== "nav:inventory/services"),
+      ],
+    };
+    const nav = await renderApp(() => Response.json(configured));
+    const grafana = await within(nav).findByRole("link", { name: "Grafana (opens in new tab)" });
+    expect(grafana).toHaveAttribute("href", "https://grafana.example.net");
+    expect(grafana).toHaveAttribute("target", "_blank");
+    expect(grafana).toHaveAttribute("rel", "noopener noreferrer");
+    expect(grafana).not.toHaveAttribute("aria-current");
+    expect(links(nav).slice(0, 2)).toEqual(["Grafana (opens in new tab) https://grafana.example.net", "Services /services"]);
+    expect(nav.querySelectorAll("[data-nav-separator]")).toHaveLength(1);
+    const heading = within(nav).getByText("Lab").parentElement!;
+    expect(heading.querySelector('[data-slot="icon"]')).not.toBeNull();
   });
 
   it("brands the sidebar and the document title with the estate's name", async () => {

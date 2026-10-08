@@ -27,17 +27,39 @@ export interface NavLink {
   icon: string | undefined;
   /** An in-app path, or an external `http(s):` URL. */
   href: string;
+  /** An external `http(s):` URL: it opens in a new tab and is never the current section. */
+  external?: true;
   /** The home page's own path, which also marks its link (to `/`) current. */
   alsoActiveOn?: string;
 }
 
-export interface NavGroup {
+/** A rule between a group's links. */
+export interface NavSeparator {
+  id: string;
+  separator: true;
+}
+
+export type NavEntry = NavLink | NavSeparator;
+
+export interface NavGroup<E extends NavEntry = NavEntry> {
   /** The group id; `undefined` for pages registered without a group. */
   id: string | undefined;
   /** The group heading; `undefined` for the ungrouped links. */
   label: string | undefined;
-  links: NavLink[];
+  /** An icon shown beside the heading. */
+  icon?: string;
+  links: E[];
 }
+
+/** Whether a nav entry is a separator rather than a link. */
+export function isSeparator(entry: NavEntry): entry is NavSeparator {
+  return "separator" in entry;
+}
+
+/** An external link the sidebar opens in a new tab. */
+const EXTERNAL_HREF = /^https?:\/\//i;
+/** An in-app path: absolute, never protocol-relative. */
+const APP_PATH = /^\/(?!\/)/;
 
 /**
  * The sidebar navigation. The UI manifest decides it: its groups in order with their labels,
@@ -57,30 +79,56 @@ export function resolveNav(
 }
 
 /** The home page's link goes to `/`, and stays current on its own path (and below it). */
-function linkHome(link: NavLink, home: PageRegistration): NavLink {
-  return link.href === home.path && home.path !== "/" ? { ...link, href: "/", alsoActiveOn: home.path } : link;
+function linkHome(link: NavEntry, home: PageRegistration): NavEntry {
+  return !isSeparator(link) && link.external !== true && link.href === home.path && home.path !== "/"
+    ? { ...link, href: "/", alsoActiveOn: home.path }
+    : link;
+}
+
+/** A group's entries without a separator at either end or next to another. */
+function trimSeparators(entries: readonly NavEntry[]): NavEntry[] {
+  const kept: NavEntry[] = [];
+  for (const entry of entries) {
+    if (isSeparator(entry) && (kept.length === 0 || isSeparator(kept[kept.length - 1]!))) continue;
+    kept.push(entry);
+  }
+  while (kept.length > 0 && isSeparator(kept[kept.length - 1]!)) kept.pop();
+  return kept;
 }
 
 function navFromManifest(manifest: UiManifest, pages: readonly PageRegistration[]): NavGroup[] {
   const routed = new Map(pages.map((page) => [page.id as string, page]));
-  const links = new Map<string, NavLink[]>();
+  const links = new Map<string, NavEntry[]>();
   for (const item of manifest.nav) {
     if (item.slot !== NAV_SLOT) continue;
+    const list = links.get(item.group) ?? [];
+    links.set(item.group, list);
+    if (item.separator === true) {
+      list.push({ id: item.id, separator: true });
+      continue;
+    }
     const page = item.page === undefined ? undefined : routed.get(item.page);
     const href = item.page === undefined ? item.href : page?.path;
-    if (href === undefined) continue;
-    const list = links.get(item.group) ?? [];
+    // Only an in-app path or an http(s) URL is a link (never `javascript:` and the like).
+    if (href === undefined || !(APP_PATH.test(href) || EXTERNAL_HREF.test(href))) continue;
     // A server that sends no label (version skew): the routed page's label, else the id.
-    list.push({ id: item.id, label: item.label ?? page?.label ?? item.id, icon: item.icon ?? page?.icon, href });
-    links.set(item.group, list);
+    list.push({
+      id: item.id,
+      label: item.label ?? page?.label ?? item.id,
+      icon: item.icon ?? page?.icon,
+      href,
+      ...(EXTERNAL_HREF.test(href) ? { external: true as const } : {}),
+    });
   }
   // A manifest without groups (an older server) heads each group by its id, in entry order.
-  const groups = Array.isArray(manifest.navGroups)
+  const groups: readonly { id: string; label: string; icon?: string }[] = Array.isArray(manifest.navGroups)
     ? manifest.navGroups
     : [...links.keys()].map((id) => ({ id, label: id }));
-  return groups.flatMap(({ id, label }) => {
-    const list = links.get(id);
-    return list === undefined ? [] : [{ id, label, links: list }];
+  return groups.flatMap(({ id, label, icon }) => {
+    const list = trimSeparators(links.get(id) ?? []);
+    // A group of separators alone has nothing to show.
+    if (!list.some((entry) => !isSeparator(entry))) return [];
+    return [{ id, label, ...(typeof icon === "string" ? { icon } : {}), links: list }];
   });
 }
 
@@ -90,7 +138,7 @@ function navFromManifest(manifest: UiManifest, pages: readonly PageRegistration[
  * order). The built-in groups come first, in their default order, then any other group
  * alphabetically; ungrouped pages come last, under no heading.
  */
-export function groupNavPages(pages: readonly PageRegistration[]): NavGroup[] {
+export function groupNavPages(pages: readonly PageRegistration[]): NavGroup<NavLink>[] {
   const groups = new Map<string | undefined, { label: string | undefined; links: NavLink[] }>();
   // By each page's nav order (stable, so equal orders keep registry order); routes keep theirs.
   const navOrder = (page: PageRegistration) => page.navOrder ?? page.order ?? 100;
@@ -117,7 +165,8 @@ export function groupNavPages(pages: readonly PageRegistration[]): NavGroup[] {
 }
 
 /** Whether a nav link is the current section: by its path, or by the home page's own path. */
-export function isLinkActive(link: Pick<NavLink, "href" | "alsoActiveOn">, currentPath: string): boolean {
+export function isLinkActive(link: Pick<NavLink, "href" | "alsoActiveOn" | "external">, currentPath: string): boolean {
+  if (link.external === true) return false;
   return isNavActive(link.href, currentPath) || (link.alsoActiveOn !== undefined && isNavActive(link.alsoActiveOn, currentPath));
 }
 

@@ -2,9 +2,8 @@ import type { ModuleManifest, UiManifest } from "@deck/module-sdk";
 
 import type { ModuleHost } from "../modules/host.js";
 import type { ProviderReader } from "../server/app.js";
-import { DEFAULT_UI } from "./defaults.js";
 import { KERNEL_FEATURES } from "./kernel-features.js";
-import { estateNameOf, resolveUiManifest, uiOverridesOf, type UiModuleInput } from "./resolve.js";
+import { estateNameOf, resolveUiManifest, uiConfigOf, uiOverridesOf, type UiModuleInput } from "./resolve.js";
 
 export interface UiManifestDeps {
   config: unknown;
@@ -40,7 +39,7 @@ export function buildUiManifest(deps: UiManifestDeps): UiManifest {
     providers: deps.providers.listProviders(),
     overrides: uiOverridesOf(deps.config),
     ...(estateName === undefined ? {} : { estateName }),
-    ui: DEFAULT_UI,
+    ui: uiConfigOf(deps.config),
   });
 }
 

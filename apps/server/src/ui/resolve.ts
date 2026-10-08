@@ -9,6 +9,7 @@ import type {
   UiManifest,
   UiBrand,
   UiDisabledPage,
+  UiHome,
   UiModule,
   UiModuleSwitch,
   UiNavGroup,
@@ -19,7 +20,7 @@ import type {
   UiSlot,
 } from "@deck/module-sdk";
 
-import { entitySectionProblem, pagePathProblem } from "@deck/module-sdk";
+import { DEFAULT_HOME_PAGE, entitySectionProblem, homePathProblem, pagePathProblem } from "@deck/module-sdk";
 
 import { DEFAULT_BRAND_TITLE, DEFAULT_UI, type UiDefaults } from "./defaults.js";
 import type { KernelFeature } from "./kernel-features.js";
@@ -30,6 +31,9 @@ export const DEFAULT_ORDER = 100;
 
 /** The slot nav entries attach to unless an override re-attaches them. */
 export const NAV_SLOT = "app/nav";
+
+/** The path that renders the home page. */
+const HOME_PATH = "/";
 
 /** The module hosting the shell's own slots; its contributions are always the incumbent. */
 const CORE_MODULE = "core";
@@ -224,6 +228,11 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
   }
   for (const decl of pageDecls) {
     if (!isEnabled(overrides.get(decl.id), true)) continue;
+    // `/` is the home route: it renders the home page, which every page can be from its own path.
+    if (decl.path === HOME_PATH) {
+      findings.push({ code: "UI_PAGE_PATH_COLLISION", severity: "warning", message: `page "${decl.id}" uses path "/", which renders the home page (\`ui.home\`); it is not routed`, id: decl.id });
+      continue;
+    }
     const rootOwner = rootPathOwner.get(decl.path);
     if (rootOwner !== undefined) {
       findings.push({ code: "UI_PAGE_PATH_COLLISION", severity: "warning", message: `page "${decl.id}" uses path "${decl.path}", a root path module "${rootOwner.manifest.id}" serves; it is not routed`, id: decl.id });
@@ -245,6 +254,8 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
     });
   }
   const routedPages = new Set<string>(pages.map((page) => page.id));
+  const ui = input.ui ?? DEFAULT_UI;
+  const home = resolveHome(ui.home, pages, declaredPages, findings);
 
   // Pages of disabled modules, on paths nothing routed or root-served claims. The first by
   // precedence keeps a path two disabled modules declare.
@@ -253,7 +264,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
   for (const unit of byPrecedence) {
     if (unit.enabled) continue;
     for (const page of unit.manifest.contributes?.pages ?? []) {
-      if (pathOwner.has(page.path) || rootPathOwner.has(page.path) || seen.has(page.id) || disabledIds.has(page.id)) continue;
+      if (page.path === HOME_PATH || pathOwner.has(page.path) || rootPathOwner.has(page.path) || seen.has(page.id) || disabledIds.has(page.id)) continue;
       // The web routes this path to its not-enabled page: it must be one the router compiles.
       const problem = pagePathProblem(page.path, `page "${page.id}"`, []);
       if (problem !== null) {
@@ -301,7 +312,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
       order: attachTo.order,
     });
   }
-  const navGroups = resolveNavGroups(nav, input.ui ?? DEFAULT_UI, findings);
+  const navGroups = resolveNavGroups(nav, ui, findings);
   const groupRank = new Map(navGroups.map((group, index) => [group.id, index]));
   // A group only entries outside `app/nav` use is not listed; it sorts after the listed ones.
   const rankOf = (group: string): number => groupRank.get(group) ?? navGroups.length;
@@ -328,7 +339,8 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
 
   return {
     uiApi: 1,
-    brand: resolveBrand(input.estateName),
+    brand: resolveBrand(input.estateName, ui.brand),
+    ...(home === undefined ? {} : { home }),
     modules: units.map(({ manifest, origin, enabled, reason, enabledBy }) => ({
       id: manifest.id,
       version: manifest.version,
@@ -350,10 +362,49 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
   };
 }
 
-/** The brand title: the estate's name, or deck's when the estate has none. */
-function resolveBrand(estateName: string | undefined): UiBrand {
-  const title = estateName?.trim() ?? "";
-  return { title: title === "" ? DEFAULT_BRAND_TITLE : title };
+/**
+ * The brand: the configured title, else the estate's name, else deck's; the configured icon
+ * and logo as given (config validation has checked their form).
+ */
+function resolveBrand(estateName: string | undefined, brand: UiDefaults["brand"]): UiBrand {
+  const title = [brand?.title, estateName].map((candidate) => candidate?.trim() ?? "").find((candidate) => candidate !== "");
+  return {
+    title: title ?? DEFAULT_BRAND_TITLE,
+    ...(brand?.icon === undefined ? {} : { icon: brand.icon }),
+    ...(brand?.logoUrl === undefined ? {} : { logoUrl: brand.logoUrl }),
+  };
+}
+
+/**
+ * The page `/` renders: the configured one when it is a routed page with no path parameters,
+ * else the default (`DEFAULT_HOME_PAGE`) on the same terms, else none. A configured page
+ * that cannot be home is a finding, and the default stands in.
+ */
+function resolveHome(
+  configured: string | undefined,
+  pages: readonly UiPage[],
+  declaredPages: ReadonlySet<string>,
+  findings: UiFinding[],
+): UiHome | undefined {
+  const usable = (id: string): UiPage | undefined => {
+    const page = pages.find((candidate) => candidate.id === id);
+    return page !== undefined && homePathProblem(page.path) === null ? page : undefined;
+  };
+  if (configured !== undefined) {
+    const page = pages.find((candidate) => candidate.id === configured);
+    const problem = page === undefined ? null : homePathProblem(page.path);
+    if (page !== undefined && problem === null) return { page: page.id, path: page.path };
+    const fallback = `; "/" renders "${DEFAULT_HOME_PAGE}" instead`;
+    if (page !== undefined) {
+      findings.push({ code: "UI_HOME_NOT_ROUTABLE", severity: "warning", message: `home page "${configured}" cannot render at "/": ${problem}${fallback}`, id: configured });
+    } else if (declaredPages.has(configured)) {
+      findings.push({ code: "UI_HOME_DISABLED", severity: "warning", message: `home page "${configured}" is not routed (its module is off, an override disables it, or its path is taken)${fallback}`, id: configured });
+    } else {
+      findings.push({ code: "UI_HOME_UNKNOWN", severity: "warning", message: `home page "${configured}" names no known page${fallback}`, id: configured });
+    }
+  }
+  const page = usable(DEFAULT_HOME_PAGE);
+  return page === undefined ? undefined : { page: page.id, path: page.path };
 }
 
 /**
@@ -479,6 +530,24 @@ function compareIds(a: string, b: string): number {
 export function estateNameOf(config: unknown): string | undefined {
   const name = (config as { estate?: { name?: unknown } } | null)?.estate?.name;
   return typeof name === "string" ? name : undefined;
+}
+
+/**
+ * The `ui` config the resolver reads: the built-in defaults with the config's brand and home.
+ * The config has been validated, so fields of the wrong type cannot occur; they are dropped
+ * anyway rather than trusted.
+ */
+export function uiConfigOf(config: unknown): UiDefaults {
+  const ui = (config as { ui?: { brand?: unknown; home?: unknown } } | null)?.ui;
+  const brand = isRecord(ui?.brand) ? ui.brand : {};
+  const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
+  const picked = { title: text(brand.title), icon: text(brand.icon), logoUrl: text(brand.logoUrl) };
+  const home = text(ui?.home);
+  return {
+    ...DEFAULT_UI,
+    brand: Object.fromEntries(Object.entries(picked).filter(([, value]) => value !== undefined)),
+    ...(home === undefined ? {} : { home }),
+  };
 }
 
 /** The `ui.extensions` override map of a config document, or none. Entries are checked on resolution. */

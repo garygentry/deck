@@ -438,10 +438,10 @@ describe("review round 1 regressions", () => {
   });
 
   describe("L2: the incumbent keeps contested routes and slots; slots are namespaced", () => {
-    // The reviewer's probe: a module "alerts" claiming "/" and the shell's status slot. Validation
+    // The reviewer's probe: a module "alerts" claiming the portal's path and the shell's status slot. Validation
     // rejects the slot (the host would disable the module); resolution alone still keeps the incumbents.
     const alerts = manifest("alerts", {
-      pages: [{ id: "page:alerts/home", path: "/", title: "Alerts", component: "AlertsHome" }],
+      pages: [{ id: "page:alerts/home", path: "/portal", title: "Alerts", component: "AlertsHome" }],
       slots: [{ id: "app/topbar.status", accepts: "widget" }],
     });
 
@@ -454,10 +454,10 @@ describe("review round 1 regressions", () => {
       expect(uiContributionProblem(manifest("app", { slots: [{ id: "app/topbar.status", accepts: "pill" }] }))).toMatch(/kernel-reserved/);
     });
 
-    it("core keeps its slot and the built-in portal keeps /, whatever the newcomer's id sorts as", () => {
+    it("core keeps its slot and the built-in portal keeps /portal, whatever the newcomer's id sorts as", () => {
       const input = kernel();
       const ui = resolveUiManifest({ ...input, modules: [...input.modules, { manifest: alerts, enabled: true }] });
-      expect(ui.pages.find((page) => page.path === "/")?.id).toBe("page:portal/overview");
+      expect(ui.pages.find((page) => page.path === "/portal")?.id).toBe("page:portal/overview");
       expect(ui.slots.find((slot) => slot.id === "app/topbar.status")).toEqual({ id: "app/topbar.status", accepts: "pill", module: "core" });
       expect(ui.extensions.filter((e) => e.slot === "app/topbar.status")).toHaveLength(5);
       expect(finding(ui)).toEqual(["UI_DUPLICATE_ID app/topbar.status", "UI_PAGE_PATH_COLLISION page:alerts/home"]);
@@ -488,7 +488,7 @@ describe("review round 1 regressions", () => {
         id: "aaa",
         contributes: {
           pages: [
-            { id: "page:aaa/home", path: "/", title: "Squat", component: "S" },
+            { id: "page:aaa/home", path: "/portal", title: "Squat", component: "S" },
             { id: "page:aaa/drift", path: "/drift", title: "Squat", component: "S" },
             { id: "page:aaa/hosts", path: "/hosts", title: "Squat", component: "S" },
           ],
@@ -503,7 +503,7 @@ describe("review round 1 regressions", () => {
       expect(host.manifests.get("portal")).not.toBe(BUILTIN_MODULES.find(({ manifest: m }) => m.id === "portal")!.manifest);
       expect([...host.builtinIds].sort()).toEqual(BUILTIN_MODULES.map(({ manifest: m }) => m.id).sort());
       const ui = buildUiManifest({ config: {}, providers: { listProviders: () => [] }, modules: host, capabilities: { actions: true } });
-      expect(ui.pages.find((page) => page.path === "/")?.id).toBe("page:portal/overview");
+      expect(ui.pages.find((page) => page.path === "/portal")?.id).toBe("page:portal/overview");
       expect(ui.pages.find((page) => page.path === "/drift")?.id).toBe("page:drift/overview");
       expect(ui.pages.find((page) => page.path === "/hosts")?.id).toBe("page:inventory/hosts");
       expect(ui.findings.map((f) => `${f.code} ${f.id ?? f.slot}`).sort()).toEqual([
@@ -515,11 +515,11 @@ describe("review round 1 regressions", () => {
 
     it("a module the host does not count as built in gets no incumbency", async () => {
       const { buildUiManifest } = await import("../src/ui/manifest.js");
-      const squatter = testModule({ id: "aaa", contributes: { pages: [{ id: "page:aaa/home", path: "/", title: "Squat", component: "S" }] } });
+      const squatter = testModule({ id: "aaa", contributes: { pages: [{ id: "page:aaa/home", path: "/portal", title: "Squat", component: "S" }] } });
       const { host } = testHost([...BUILTIN_MODULES, squatter], { builtins: new Set(), kernelRoutes: planningRouteTable(), reservedRootPaths: RESERVED_ROOT_PATHS });
       expect(host.builtinIds.size).toBe(0);
       const ui = buildUiManifest({ config: {}, providers: { listProviders: () => [] }, modules: host, capabilities: {} });
-      expect(ui.pages.find((page) => page.path === "/")?.id).toBe("page:aaa/home");
+      expect(ui.pages.find((page) => page.path === "/portal")?.id).toBe("page:aaa/home");
     });
   });
 

@@ -2,10 +2,14 @@
  * Module routes and health through the real app: `/api/m/<id>`, declared legacy aliases,
  * declared root paths vs the SPA fallback, and `/api/health.modules`.
  */
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import type { DisabledRouteDecl, RoutesDecl } from "@deck/module-sdk";
 import { Hono, type Context, type Next } from "hono";
 import type { Logger } from "pino";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import type { DeckConfig, HealthResponse } from "../src/contract/index.js";
 import { ModuleInitError, type ModuleHost } from "../src/modules/host.js";
@@ -14,10 +18,13 @@ import { testHost, testModule } from "./util/modules.js";
 
 // The static/SPA fallback is Bun-only; stand in a fake that serves "index" for rewrites.
 vi.mock("hono/bun", () => ({
-  serveStatic: (options: { rewriteRequestPath?: (path: string) => string }) =>
-    async (context: Context, next: Next) =>
-      options.rewriteRequestPath ? context.html("<!doctype html>index") : next(),
+  serveStatic: () => async (_context: Context, next: Next) => next(),
 }));
+
+/** A web dist directory whose \`index.html\` the SPA fallback serves. */
+const webDist = mkdtempSync(join(tmpdir(), "deck-web-dist-"));
+writeFileSync(join(webDist, "index.html"), "<!doctype html>index");
+afterAll(() => rmSync(webDist, { recursive: true, force: true }));
 
 const config = { schemaVersion: 2, estate: { name: "x" } } as DeckConfig;
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger;
@@ -173,7 +180,7 @@ describe("module routes", () => {
     })]);
     await host.start();
     expect(host.rootPaths()).toEqual(["/feed.txt"]);
-    const app = appWith(host, "/web-dist");
+    const app = appWith(host, webDist);
     expect((await app.request("/feed.txt")).status).toBe(404);
     expect(await (await app.request("/hosts/gov")).text()).toBe("<!doctype html>index");
   });
@@ -236,7 +243,7 @@ describe("module routes", () => {
   it("serves declared root paths ahead of the SPA fallback, which still serves other paths", async () => {
     const host = await startedHost();
     expect(host.rootPaths()).toEqual(["/usage.txt"]);
-    const app = appWith(host, "/web-dist");
+    const app = appWith(host, webDist);
     const root = await app.request("/usage.txt");
     expect(root.status).toBe(200);
     expect(await root.text()).toBe("usage 1\n");

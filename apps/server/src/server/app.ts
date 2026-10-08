@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import { apiErrorBody, type UiManifest } from "@deck/module-sdk";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import type { Logger } from "pino";
@@ -13,6 +16,7 @@ import type {
 } from "../contract/index.js";
 import type { ModuleHost } from "../modules/host.js";
 import { requestLogger } from "../log/logger.js";
+import { deckBootOf, renderIndexHtml } from "./index-html.js";
 import { RESERVED_ROOT_PATHS } from "./reserved-paths.js";
 
 export interface ProviderReader {
@@ -49,6 +53,15 @@ function lazyServeStatic(options: StaticOptions): MiddlewareHandler {
   return async (context, next) => {
     middleware ??= (await import("hono/bun")).serveStatic(options);
     return middleware(context, next);
+  };
+}
+
+/** A file's text, read on first use and kept; `undefined` while it does not exist (asked again next time). */
+function lazyText(path: string): () => Promise<string | undefined> {
+  let text: string | undefined;
+  return async () => {
+    text ??= await readFile(path, "utf8").catch(() => undefined);
+    return text;
   };
 }
 
@@ -156,15 +169,20 @@ export function createApp(deps: AppDeps): Hono {
     // Root paths outside /api that are never rewritten to the SPA shell, so a disabled
     // module's root path 404s instead of serving index.html.
     const reserved = new Set([...RESERVED_ROOT_PATHS, ...(deps.modules?.rootPaths() ?? [])]);
-    app.use("/*", lazyServeStatic({ root: deps.webDistDir }));
-    const serveIndex = lazyServeStatic({
-      root: deps.webDistDir,
-      rewriteRequestPath: () => "/index.html",
-    });
+    const serveStatic = lazyServeStatic({ root: deps.webDistDir });
+    // The page itself is never served as a file: the fallback below writes the boot object in.
+    app.use("/*", async (context, next) =>
+      context.req.path === "/" || context.req.path === "/index.html" ? next() : serveStatic(context, next),
+    );
+    const indexTemplate = lazyText(join(deps.webDistDir, "index.html"));
     app.get("/*", async (context, next) => {
       // Reserved root paths (a disabled module's, say) must 404, not serve the SPA shell.
       if (context.req.path.startsWith("/api/") || reserved.has(context.req.path)) return next();
-      return serveIndex(context, next);
+      const template = await indexTemplate();
+      if (template === undefined) return next();
+      // Rendered per request from the current manifest and config: it carries their brand.
+      context.header("Cache-Control", "no-cache");
+      return context.html(renderIndexHtml(template, deckBootOf(deps.ui, deps.config)));
     });
   }
 

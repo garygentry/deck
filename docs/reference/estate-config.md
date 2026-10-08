@@ -309,6 +309,33 @@ may not read it. Boot logs a `provider.credential-env-refused` warning (the name
 value) and carries on without that variable, and `deck validate` reports
 `MODULE_CREDENTIAL_ENV_REFUSED` (a warning).
 
+#### http-json integrations
+
+An integration of kind `http-json` has its own shape in place of the one above: it polls a URL
+and serves the parsed JSON response as provider data. It has no `baseUrl` or `card`. It has no
+additional properties.
+
+| Key | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | string | yes | Integration id; also the provider id. |
+| `kind` | `http-json` | yes | |
+| `title` | string | yes | Human-readable integration title. |
+| `url` | string | yes | `http://` or `https://` URL, at most 2048 characters, without `user:password@`. |
+| `method` | `GET` \| `POST` | no | Default `GET`. |
+| `body` | any JSON | no | Request body, sent with `POST` only. |
+| `headers` | object of string | no | Literal, non-secret request headers. Names are HTTP tokens; a name containing `auth`, `cookie`, `token`, `secret`, `key`, `pass`, `session` or `credential` (any case) is refused. Values are at most 1024 characters with no line break. |
+| `credentialEnv` | string | no | Environment variable **name** holding the credential. |
+| `auth` | object | no | `{ scheme: bearer \| basic \| header, header? }`; requires `credentialEnv`. `header` names the header for scheme `header`, and is allowed only there. |
+| `pollIntervalMs` | integer | no | 1000–86400000; default 30000. |
+| `ttlMs` | integer | no | 1000–86400000; default the poll interval. |
+| `timeoutMs` | integer | no | 100–60000; default 5000. |
+| `maxBytes` | integer | no | 1–16777216; default 1048576. |
+| `deepLink` | string | no | Link to the API's own UI. |
+
+The credential only ever comes from the variable `credentialEnv` names, under the rule above;
+config holds no secret. See the [provider kinds reference](provider-kinds.md#http-json) for how
+it is sent, how redirects and failures are handled, and an example.
+
 ### Action
 
 Actions live under `modules.actions.actions`. An Action object has no additional properties.

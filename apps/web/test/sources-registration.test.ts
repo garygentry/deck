@@ -12,12 +12,16 @@ async function loadFreshFeature() {
   return { feature, registry, SOURCES_UI };
 }
 
-// The components behind the lazy registrations. The pages pull in markdown-it and highlight.js,
-// so only the tests that resolve a component load them.
-async function loadComponents() {
-  const { DocsPage, ConfigsPage } = await import("../src/features/sources-docs-and-configs/SourceBrowserPage.js");
+// The components behind the lazy registrations, loaded only by the tests that resolve them. The
+// pages pull in markdown-it, DOMPurify and highlight.js, so only the page test loads them.
+async function loadFragment() {
   const { OwnedConfigsFragment } = await import("../src/features/sources-docs-and-configs/OwnedConfigsFragment.js");
-  return { DocsPage, ConfigsPage, OwnedConfigsFragment };
+  return OwnedConfigsFragment;
+}
+
+async function loadPages() {
+  const { DocsPage, ConfigsPage } = await import("../src/features/sources-docs-and-configs/SourceBrowserPage.js");
+  return { DocsPage, ConfigsPage };
 }
 
 describe("the sources-docs-and-configs web half", () => {
@@ -27,7 +31,7 @@ describe("the sources-docs-and-configs web half", () => {
 
   it("registers exactly the sources module's contributions, with no placement of its own", async () => {
     const { feature, registry, SOURCES_UI } = await loadFreshFeature();
-    const { OwnedConfigsFragment } = await loadComponents();
+    const OwnedConfigsFragment = await loadFragment();
     expect(feature.sourcesWebModule.manifest).toBe(SOURCES_UI);
     const ours = registry.getAllExtensions().filter(({ module }) => module === "sources");
     const declared = SOURCES_UI.contributes!;
@@ -51,21 +55,21 @@ describe("the sources-docs-and-configs web half", () => {
     ["page:sources/configs", "/configs", "Configs", "file-cog", "ConfigsPage"],
   ] as const)("registers exactly one %s page at %s, listed in the knowledge group", async (id, path, label, icon, component) => {
     const { registry } = await loadFreshFeature();
-    const components = await loadComponents();
-    const pages = registry.getPages().filter((page) => page.id === id);
-    expect(pages).toHaveLength(1);
-    const [page] = pages;
+    const pages = await loadPages();
+    const registered = registry.getPages().filter((page) => page.id === id);
+    expect(registered).toHaveLength(1);
+    const [page] = registered;
     expect(page).toMatchObject({ path, label, icon, group: "knowledge" });
     expect(page!.nav).not.toBe(false);
     // The nav entries set no order of their own, so the fallback nav orders them like the routes.
     expect(page!.navOrder).toBeUndefined();
-    expect(await resolveComponent(page!.component)).toBe(components[component]);
+    expect(await resolveComponent(page!.component)).toBe(pages[component]);
     expect(registry.getPages().filter((p) => p.path === path)).toHaveLength(1);
   });
 
   it.each(["host", "service"] as const)("attaches the owned-configs section to %s detail pages, after drift's findings", async (entity) => {
     const { registry } = await loadFreshFeature();
-    const { OwnedConfigsFragment } = await loadComponents();
+    const OwnedConfigsFragment = await loadFragment();
     // A findings section at drift's order, registered here so the test stands alone.
     registry.registerEntityFragment({ id: `section:fixture/${entity}-findings`, entity, section: "findings", title: "Findings", order: 10, component: () => null });
     const owned = registry.getEntityFragments(entity, "configs");

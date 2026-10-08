@@ -23,4 +23,5 @@ export const driftWebModule = defineWebModule(DRIFT_UI, {
   },
 });
 
+// Registration errors are deliberately uncaught: eager discovery fails loudly rather than drop a surface.
 registerWebModule(driftWebModule);

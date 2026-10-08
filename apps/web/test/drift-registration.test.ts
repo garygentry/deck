@@ -96,17 +96,22 @@ describe("the drift-and-coverage web half", () => {
     expect(await resolveComponent(summaries[0]!.component!)).toBe(DriftHealthSummary);
   });
 
-  it("fails loudly when a registration is invalid", async () => {
-    // Eager discovery must not swallow RegistrationError; a duplicate id throws.
-    const { registry } = await loadFreshFeature();
-    expect(() =>
-      registry.registerPage({
-        id: "page:drift/overview",
-        path: "/drift-again",
-        label: "Drift Again",
-        component: () => null,
-      }),
-    ).toThrowError(expect.objectContaining({ code: "DUPLICATE_ID" }));
+  it("declares the health-header slot its pill attaches to, whatever imports it first", async () => {
+    vi.resetModules();
+    // Only the feature: nothing here imports the slot module before it.
+    await import("../src/features/drift-and-coverage/index.js");
+    const registry = await import("../src/registry/registry.js");
+    expect(registry.getSlot("app/topbar.status")).toBeDefined();
+    expect(registry.getOrphanAttachments()).toEqual([]);
+  });
+
+  it("fails loudly when its own registration is refused", async () => {
+    vi.resetModules();
+    const registry = await import("../src/registry/registry.js");
+    // Another registration already holds one of drift's ids.
+    registry.registerPage({ id: "page:drift/overview", path: "/drift-elsewhere", label: "Elsewhere", component: () => null });
+    // Eager discovery must not swallow the RegistrationError.
+    await expect(import("../src/features/drift-and-coverage/index.js")).rejects.toMatchObject({ code: "DUPLICATE_ID" });
   });
 
   it("all registered surfaces share the drift store rather than polling or deriving", () => {

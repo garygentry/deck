@@ -43,7 +43,7 @@
       "title": "UiTheme", "type": "object", "additionalProperties": false,
       "properties": {
         "mode": { "enum": ["light", "dark", "system"], "description": "The colour mode a viewer who has not chosen one sees; default system." },
-        "preset": { "enum": ["teal", "slate", "amber", "violet", "high-contrast"], "description": "The named colour preset, a contrast-tested token set; default teal." },
+        "preset": { "enum": ["teal", "slate", "copper", "rose", "high-contrast"], "description": "The named colour preset, a contrast-tested token set; default teal." },
         "density": { "enum": ["compact", "comfortable"], "description": "Spacing of tables, lists and sections; default comfortable." },
         "radius": { "enum": ["none", "sm", "md", "lg"], "description": "Corner radius scale; default md." }
       }

@@ -503,7 +503,7 @@ mode?: ("light" | "dark" | "system")
 /**
  * The named colour preset, a contrast-tested token set; default teal.
  */
-preset?: ("teal" | "slate" | "amber" | "violet" | "high-contrast")
+preset?: ("teal" | "slate" | "copper" | "rose" | "high-contrast")
 /**
  * Spacing of tables, lists and sections; default comfortable.
  */

@@ -165,10 +165,10 @@ describe("the pre-paint script: preset, density and radius", () => {
   it("applies them whatever mode the viewer chose, and the mode still follows the viewer", () => {
     localStorage.setItem(THEME_CHOICE_KEY, "light");
     systemPrefersDark(false);
-    bootTheme({ mode: "dark", preset: "violet", density: "compact", radius: "lg" });
+    bootTheme({ mode: "dark", preset: "rose", density: "compact", radius: "lg" });
     prePaint();
     expect(isDark()).toBe(false);
-    expect([attribute("preset"), attribute("density"), attribute("radius")]).toEqual(["violet", "compact", "lg"]);
+    expect([attribute("preset"), attribute("density"), attribute("radius")]).toEqual(["rose", "compact", "lg"]);
   });
 });
 

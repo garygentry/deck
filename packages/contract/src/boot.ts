@@ -43,9 +43,9 @@ export type ThemePreset = NonNullable<UiTheme["preset"]>;
 export type ThemeDensity = NonNullable<UiTheme["density"]>;
 export type ThemeRadius = NonNullable<UiTheme["radius"]>;
 
-/** Every value the `ui.theme` schema accepts, in the schema's order; the first is the default. */
+/** Every value the `ui.theme` schema accepts, default first. */
 export const THEME_MODES = ["system", "light", "dark"] as const satisfies readonly ThemeMode[];
-export const THEME_PRESETS = ["teal", "slate", "amber", "violet", "high-contrast"] as const satisfies readonly ThemePreset[];
+export const THEME_PRESETS = ["teal", "slate", "copper", "rose", "high-contrast"] as const satisfies readonly ThemePreset[];
 export const THEME_DENSITIES = ["comfortable", "compact"] as const satisfies readonly ThemeDensity[];
 export const THEME_RADII = ["md", "none", "sm", "lg"] as const satisfies readonly ThemeRadius[];
 

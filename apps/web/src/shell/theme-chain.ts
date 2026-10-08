@@ -1,3 +1,5 @@
+import type { ThemeMode } from "@deck/contract";
+
 /**
  * The theme mode a page starts in, in one implementation shared by the pre-paint script in
  * `index.html` (inlined from this file's source by the Vite plugin in `vite.config.ts`) and by
@@ -17,7 +19,8 @@ export const THEME_CHOICE_KEY = "deck-theme-choice";
 /** Where an older shell stored the mode on every load (read for migration only). */
 export const LEGACY_THEME_KEY = "deck-theme";
 
-export type ThemeMode = "system" | "light" | "dark";
+/** The mode values are the contract's (`THEME_MODES`). */
+export type { ThemeMode };
 
 /**
  * The start mode from storage and the boot element's text. It is inlined into `index.html`
@@ -51,7 +54,7 @@ export function initialThemeMode(getItem: (key: string) => string | null, bootTe
 
 /**
  * The operator's appearance settings from the boot element's text, as the `<html>` attributes
- * that `theme.css` keys off: `[["data-theme-preset", "violet"], …]` for each of `preset`,
+ * that `theme.css` keys off: `[["data-theme-preset", "rose"], …]` for each of `preset`,
  * `density` and `radius` that holds a value the schema accepts (the lists mirror the contract's
  * `THEME_PRESETS`, `THEME_DENSITIES` and `THEME_RADII`; a test pins them). The viewer chooses
  * only the mode, so storage plays no part. Self-contained and ES5, like {@link initialThemeMode}.
@@ -64,7 +67,7 @@ export function initialThemeAttributes(bootText: string | null | undefined): [st
     // No boot object (the Vite dev server) or a malformed one.
   }
   var known: Record<string, string[]> = {
-    preset: ["teal", "slate", "amber", "violet", "high-contrast"],
+    preset: ["teal", "slate", "copper", "rose", "high-contrast"],
     density: ["comfortable", "compact"],
     radius: ["md", "none", "sm", "lg"],
   };

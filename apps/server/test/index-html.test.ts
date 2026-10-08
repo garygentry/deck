@@ -84,7 +84,7 @@ describe("the served index.html", () => {
   });
 
   it("carries the operator's preset, density and radius, and drops a value the schema does not accept", () => {
-    const theme = { mode: "light", preset: "violet", density: "compact", radius: "lg" };
+    const theme = { mode: "light", preset: "rose", density: "compact", radius: "lg" };
     expect(deckBootOf(undefined, { ui: { theme } }).theme).toEqual(theme);
     expect(bootIn(renderIndexHtml(TEMPLATE, deckBootOf(manifest("Lab"), { ui: { theme } }))).theme).toEqual(theme);
     expect(deckBootOf(undefined, { ui: { theme: { preset: "#00ff00", density: "cosy", radius: 4 } } }).theme).toEqual({});

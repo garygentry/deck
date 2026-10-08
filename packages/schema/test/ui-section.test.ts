@@ -31,7 +31,7 @@ describe("the ui section", () => {
     expect(validate(withUi({ brand: { logoUrl: "/assets/logo.png" } })).classification).toBe(0);
   });
 
-  it.each(["teal", "slate", "amber", "violet", "high-contrast"])("accepts the %s preset", (preset) => {
+  it.each(["teal", "slate", "copper", "rose", "high-contrast"])("accepts the %s preset", (preset) => {
     expect(validate(withUi({ theme: { preset } }))).toMatchObject({ classification: 0, findings: [] });
   });
 

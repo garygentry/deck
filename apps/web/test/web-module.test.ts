@@ -212,3 +212,29 @@ describe("the llm-usage web half", () => {
     expect(await resolveComponent(ours.find(({ id }) => id === "card:llm-usage/portal")!.component!)).toBe(LlmUsagePortalCard);
   });
 });
+
+describe("the inventory web half", () => {
+  it("registers exactly its module's contributions, with no placement of its own", async () => {
+    vi.resetModules();
+    await import("../src/features/hosts-and-services/index.js");
+    const registry = await import("../src/registry/registry.js");
+    const { INVENTORY_UI } = await import("@deck/contract/modules/inventory");
+    const pages = await import("../src/features/hosts-and-services/pages.js");
+
+    const ours = registry.getAllExtensions().filter(({ module }) => module === "inventory");
+    const declared = INVENTORY_UI.contributes!;
+    expect(ours.map(({ id }) => id).sort()).toEqual([...declared.pages!, ...declared.nav!].map(({ id }) => id).sort());
+    expect(declared.extensions ?? []).toEqual([]);
+    expect(declared.slots ?? []).toEqual([]);
+
+    const registered = registry.getPages().filter(({ id }) => id.startsWith("page:inventory/"));
+    for (const page of declared.pages!) {
+      const nav = declared.nav!.find((entry) => entry.page === page.id);
+      const match = registered.find(({ id }) => id === page.id)!;
+      expect({ path: match.path, label: match.label, icon: match.icon }).toEqual({ path: page.path, label: page.title, icon: page.icon });
+      expect(match.nav === false ? undefined : match.group).toBe(nav?.group);
+      expect(match.nav !== false).toBe(nav !== undefined);
+      expect(match.component).toBe(pages[page.component as keyof typeof pages]);
+    }
+  });
+});

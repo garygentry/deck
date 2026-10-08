@@ -11,6 +11,12 @@ export interface UiManifest {
   uiApi: 1;
   /** The shell's brand: the estate's name unless config sets one. */
   brand: UiBrand;
+  /**
+   * The page rendered at `/`: `ui.home` when it names a routed page with no path parameters,
+   * else the portal's overview. `null` when neither is routed (then `/` is not found). Absent
+   * only from an older server.
+   */
+  home?: UiHome | null;
   /** Every known module (enabled or not), by id. */
   modules: UiModule[];
   /** Slots that enabled modules host, by id. */
@@ -41,6 +47,17 @@ export interface UiManifest {
 export interface UiBrand {
   /** The product name the shell shows (sidebar header, document title). */
   title: string;
+  /** An icon name for the sidebar mark, in place of the title's initial (`ui.brand.icon`). */
+  icon?: string;
+  /** An http(s) URL or root-relative path of a logo image for the sidebar mark (`ui.brand.logoUrl`). */
+  logoUrl?: string;
+}
+
+/** The home page: the page `/` renders, which also stays routed at its own path. */
+export interface UiHome {
+  page: ExtensionId;
+  /** The page's own path. */
+  path: string;
 }
 
 export interface UiNavGroup {
@@ -134,7 +151,10 @@ export type UiFindingCode =
   | "UI_DUPLICATE_ID"
   | "UI_SLOT_KIND_MISMATCH"
   | "UI_INVALID_OVERRIDE"
-  | "UI_INVALID_PAGE";
+  | "UI_INVALID_PAGE"
+  | "UI_HOME_UNKNOWN"
+  | "UI_HOME_DISABLED"
+  | "UI_HOME_NOT_ROUTABLE";
 
 export interface UiFinding {
   code: UiFindingCode;
@@ -147,7 +167,7 @@ export interface UiFinding {
 
 /**
  * A config override for one extension, page or nav entry, by id (the `ui.extensions` map of
- * the `ui` config section, which config cannot set yet). Overrides replace: `false` disables
+ * the `ui` config section). Overrides replace: `false` disables
  * it, `true` enables it, and an object replaces its `attachTo` and/or `config` wholesale (no
  * deep merge). In a replacement `attachTo`, an omitted `slot` keeps the current slot and an
  * omitted `order` is the default (100). A page takes only `enabled`, a nav entry `enabled` and

@@ -15,7 +15,7 @@ export const PORTAL_UI: WebModuleManifest = {
   version: "0.1.0",
   deckApi: "^0.1",
   contributes: {
-    pages: [{ id: "page:portal/overview", path: "/", title: "Portal", icon: "layout-grid", component: "PortalPage" }],
+    pages: [{ id: "page:portal/overview", path: "/portal", title: "Portal", icon: "layout-grid", component: "PortalPage" }],
     nav: [{ id: "nav:portal/overview", page: "page:portal/overview", group: "overview", order: -1 }],
     slots: [{ id: PORTAL_SUMMARY_SLOT, accepts: "widget" }],
     extensions: [

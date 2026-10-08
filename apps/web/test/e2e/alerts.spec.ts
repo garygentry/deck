@@ -46,7 +46,7 @@ const healthHeader = (page: Page) => page.locator('[data-slot="health-header"]')
 const alertSegment = (page: Page) => healthHeader(page).locator('a[href="/monitoring#alerts"]');
 const metricsSegment = (page: Page) => healthHeader(page).locator('a[href="/monitoring#metrics"]');
 const driftSegment = (page: Page) => healthHeader(page).locator('a[href="/drift"]');
-const endpointSegment = (page: Page) => healthHeader(page).locator('a[href="/"]');
+const endpointSegment = (page: Page) => healthHeader(page).locator('a[href="/portal"]');
 
 /**
  * Navigate to a fresh app route, retrying the load if the Vite dev server serves
@@ -261,18 +261,18 @@ test.describe("header navigation and primary nav", () => {
     await expect(alerts).toBeInViewport();
   });
 
-  test("the drift count reaches /drift and the endpoint count reaches /", async ({ page }) => {
+  test("the drift count reaches /drift and the endpoint count reaches /portal", async ({ page }) => {
     await gotoApp(page, "/monitoring");
     // The sibling drift segment (real snapshot provider) owns /drift.
     await expect(driftSegment(page)).toBeVisible();
     await driftSegment(page).click();
     await expect(page).toHaveURL(/\/drift$/);
 
-    // The sibling endpoint segment (portal) owns the root href.
+    // The sibling endpoint segment links to the portal's own path (/ renders the home page).
     await gotoApp(page, "/monitoring");
     await expect(endpointSegment(page)).toBeVisible();
     await endpointSegment(page).click();
-    await expect(page).toHaveURL(new RegExp(`^${WEB_ORIGIN.replace(/\./g, "\\.")}/$`));
+    await expect(page).toHaveURL(new RegExp(`^${WEB_ORIGIN.replace(/\./g, "\\.")}/portal$`));
   });
 
   test("/monitoring is in the primary nav and #metrics scrolls into view on entry", async ({

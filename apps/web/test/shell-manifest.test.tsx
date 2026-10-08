@@ -5,13 +5,13 @@ import { fileURLToPath } from "node:url";
 import type { UiManifest } from "@deck/module-sdk";
 import { POLL_DEFAULTS } from "@deck/contract";
 import { primary } from "@deck/schema/fixtures";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { uiManifestProblem, type UiManifestState } from "../src/data/index.js";
 import { resetQueryClient } from "../src/data/query-client.js";
 import type { Extension, PageRegistration } from "../src/registry/registry.js";
-import { brandInitial, brandTitle, placeExtensions } from "../src/shell/manifest-slot.js";
+import { brandInitial, brandMark, brandTitle, placeExtensions } from "../src/shell/manifest-slot.js";
 import { groupNavPages, resolveNav } from "../src/shell/nav.js";
 
 /**
@@ -176,6 +176,24 @@ describe("brandTitle", () => {
   });
 });
 
+describe("brandMark", () => {
+  it("is the logo, else a bundled icon, else the initial", () => {
+    expect(brandMark(ready(manifest({ brand: { title: "Lab", icon: "server", logoUrl: "/logo.svg" } })))).toEqual({ kind: "logo", url: "/logo.svg" });
+    expect(brandMark(ready(manifest({ brand: { title: "Lab", logoUrl: "https://lab.example/l.png" } })))).toEqual({ kind: "logo", url: "https://lab.example/l.png" });
+    expect(brandMark(ready(manifest({ brand: { title: "Lab", icon: "server" } })))).toEqual({ kind: "icon", name: "server" });
+    expect(brandMark(ready(manifest({ brand: { title: "Lab", icon: "not-an-icon" } })))).toEqual({ kind: "initial" });
+    expect(brandMark(ready(manifest({ brand: { title: "Lab" } })))).toEqual({ kind: "initial" });
+  });
+
+  it("ignores a logo URL the server would not send, and reads leniently", () => {
+    for (const logoUrl of ["javascript:alert(1)", "//evil.example/x.png", "data:image/png;base64,AA", 3]) {
+      expect(brandMark(ready(manifest({ brand: { title: "Lab", logoUrl } as never })))).toEqual({ kind: "initial" });
+    }
+    expect(brandMark(LOADING)).toEqual({ kind: "initial" });
+    expect(brandMark(FAILED)).toEqual({ kind: "initial" });
+  });
+});
+
 describe("brandInitial", () => {
   it("is the first whole character, upper-cased", () => {
     expect(brandInitial("example-estate")).toBe("E");
@@ -200,8 +218,13 @@ describe("uiManifestProblem", () => {
     ["an extension without an order", { extensions: [{ id: "pill:a/b", kind: "pill", slot: "s" }] }, "extensions[0] is malformed"],
     ["nav that is not a list", { nav: {} }, "nav is not a list"],
     ["a brand without a title", { brand: {} }, "brand is malformed"],
+    ["a home without a path", { home: { page: "page:a/b" } }, "home is malformed"],
     ["a module without enabled", { modules: [{ id: "a" }] }, "modules[0] is malformed"],
     ["a disabled page without a path", { disabledPages: [{ id: "page:a/b", module: "a", title: "B" }] }, "disabledPages[0] is malformed"],
+    ["pages: [null]", { pages: [null] }, "pages[0] is malformed"],
+    ["pages that is not a list", { pages: {} }, "pages is not a list"],
+    ["a page without an id", { pages: [{ module: "a", path: "/a", title: "A" }] }, "pages[0] is malformed"],
+    ["a home that is not an object", { home: "page:a/b" }, "home is malformed"],
   ])("rejects %s", (_label, patch, problem) => {
     expect(uiManifestProblem({ ...golden, ...patch })).toBe(problem);
   });
@@ -275,6 +298,75 @@ describe("the shell, rendered from the served manifest", () => {
     await waitFor(() => expect(document.title).toBe("Portal · example-estate"));
   });
 
+  it("renders the brand's icon or logo as the sidebar mark; a logo that fails to load falls back to the initial", async () => {
+    await renderApp(() => Response.json({ ...golden, brand: { title: "Lab", icon: "server" } }));
+    const link = await screen.findByRole("link", { name: "Lab" });
+    await waitFor(() => expect(link.querySelector("[data-brand-mark]")).toHaveAttribute("data-brand-mark", "icon"));
+    expect(link.querySelector('[data-brand-mark="icon"] svg')).not.toBeNull();
+
+    cleanup();
+    resetQueryClient();
+    await renderApp(() => Response.json({ ...golden, brand: { title: "Lab", icon: "server", logoUrl: "/logo.svg" } }));
+    const withLogo = await screen.findByRole("link", { name: "Lab" });
+    await waitFor(() => expect(withLogo.querySelector("img")).toHaveAttribute("src", "/logo.svg"));
+    // Decorative: the link's name is the brand title alone.
+    expect(withLogo.querySelector("img")).toHaveAttribute("alt", "");
+    fireEvent.error(withLogo.querySelector("img")!);
+    expect(withLogo.querySelector("img")).toBeNull();
+    expect(withLogo.querySelector('[data-brand-mark="initial"]')).toHaveTextContent("L");
+  });
+
+  it("renders the manifest's home page at /, links its nav entry to /, and keeps the portal at /portal", async () => {
+    const hostsHome = { ...golden, home: { page: "page:inventory/hosts", path: "/hosts" } } as UiManifest;
+    const nav = await renderApp(() => Response.json(hostsHome));
+    await waitFor(() => expect(links(nav)).toContain("Hosts /"));
+    expect(links(nav).slice(0, 2)).toEqual(["Portal /portal", "Hosts /"]);
+    await waitFor(() => expect(document.title).toBe("Hosts · example-estate"));
+    expect(within(nav).getByRole("link", { name: "Hosts" })).toHaveAttribute("aria-current", "page");
+    expect(await screen.findByRole("heading", { level: 1, name: "Hosts" })).toBeInTheDocument();
+
+    // Its own path still renders it, and keeps its entry current.
+    cleanup();
+    resetQueryClient();
+    const again = await renderApp(() => Response.json(hostsHome), "/hosts");
+    await waitFor(() => expect(within(again).getByRole("link", { name: "Hosts" })).toHaveAttribute("aria-current", "page"));
+  });
+
+  it("routes neither / nor /portal when an override switches the portal off and no page is home", async () => {
+    const off = {
+      ...golden,
+      pages: golden.pages.filter((p) => p.id !== "page:portal/overview"),
+      nav: golden.nav.filter((n) => n.page !== "page:portal/overview"),
+      home: null,
+    } as UiManifest;
+    for (const path of ["/", "/portal"]) {
+      cleanup();
+      resetQueryClient();
+      const nav = await renderApp(() => Response.json(off), path);
+      await waitFor(() => expect(links(nav).length).toBeGreaterThan(0));
+      expect(await screen.findByText("Page not found")).toBeInTheDocument();
+      // No page is home, so the dead end offers no way "home".
+      expect(screen.queryByRole("link", { name: "Go to the home page" })).toBeNull();
+      expect(links(nav)).not.toContain("Portal /portal");
+    }
+  });
+
+  it("offers the home page (not the portal) from a dead end when another page is home", async () => {
+    const hostsHome = { ...golden, home: { page: "page:inventory/hosts", path: "/hosts" } } as UiManifest;
+    await renderApp(() => Response.json(hostsHome), "/nope");
+    expect(await screen.findByText("Page not found")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("link", { name: "Go to the home page" })).toHaveAttribute("href", "/"));
+    expect(within(screen.getByRole("main")).queryByText(/portal/i)).toBeNull();
+  });
+
+  it("renders the portal at / and at /portal by default", async () => {
+    await renderApp(() => Response.json(golden), "/portal");
+    await waitFor(() => expect(document.title).toBe("Portal · example-estate"));
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    await waitFor(() => expect(within(nav).getByRole("link", { name: "Portal" })).toHaveAttribute("aria-current", "page"));
+    expect(within(nav).getByRole("link", { name: "Portal" })).toHaveAttribute("href", "/");
+  });
+
   it("renders the top bar's actions slot from the manifest: the theme menu, unless the manifest drops it", async () => {
     await renderApp(() => Response.json(golden));
     expect(await screen.findByRole("button", { name: /^Theme: / })).toBeInTheDocument();
@@ -309,6 +401,15 @@ describe("the shell, rendered from the served manifest", () => {
     const { HealthHeaderRegion } = await import("../src/shell/health-header/HealthHeaderRegion.js");
     render(<HealthHeaderRegion />);
     expect(screen.getAllByTestId("pill").map((pill) => pill.textContent)).toEqual(statusIds.slice(1).reverse());
+  });
+
+  it("takes the unavailable path for a malformed pages list: the shell still renders, from the registry", async () => {
+    const nav = await renderApp(() => Response.json({ ...golden, pages: [null] }));
+    await waitFor(() => expect(links(nav).length).toBeGreaterThan(0));
+    // The registry fallback: every registered page, Actions included, and the portal at /.
+    expect(links(nav)).toContain("Actions /actions");
+    expect(screen.getByRole("link", { name: "Deck" })).toHaveAttribute("href", "/");
+    expect(await screen.findByRole("heading", { level: 1, name: "Portal" })).toBeInTheDocument();
   });
 
   it("stays navigable when the manifest cannot be read: the registered pages, deck's brand, the theme menu", async () => {

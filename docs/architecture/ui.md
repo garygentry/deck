@@ -58,8 +58,14 @@ Contrast is tested, not assumed. `test/tokens-contrast.test.ts` holds every text
 on every surface in both themes, and each feature's contrast test checks its maps only use those
 tokens.
 
-The theme follows the stored preference (light, dark or system). An inline script in
-`index.html` applies it before first paint, so the page never flashes the wrong theme.
+The theme starts from one chain, `initialThemeMode` in `shell/theme-chain.ts`: the viewer's
+choice from the theme menu (stored under `deck-theme-choice`), else an older shell's stored
+`light` or `dark` (`deck-theme`, which it wrote on every load, so its `system` is ignored), else
+the operator's default (`ui.theme.mode`), else system. A Vite plugin inlines that function into
+`index.html` as the pre-paint script, so the page never flashes the wrong theme, and
+`useThemeMode` calls the same function. The operator's default reaches the page in the boot
+object the server writes into `index.html` (`DeckBoot` in `@deck/contract`, read with
+`readDeckBoot`); only a choice made in the theme menu is stored.
 
 ## Data
 
@@ -244,17 +250,26 @@ components:
   extension of the same id and kind and the entry's resolved `config` in place of the
   registered one (`placeExtensions`, `useManifestSlot(slot)`).
 - The brand in the sidebar header and the document title (`"{page} · {brand}"`) is the
-  manifest's `brand.title`.
-- Routing follows the manifest too (`resolveRoutes`): no registered page of a module the
-  manifest lists as disabled is routed, so none can shadow an enabled page on its path. Each of
+  manifest's `brand.title`. The sidebar mark beside it is `brand.logoUrl` as an image, else the
+  `brand.icon`, else the title's initial (`brandMark`); a logo that fails to load shows the
+  initial.
+- `/` renders the home page, chosen by id (`resolveHome`): the manifest's `home` (`null`: no
+  page is home, and `/` is not found); before the manifest is read, the boot object's `home`
+  (so a configured home never flashes the portal first); without either, the portal's
+  overview. It is the first route, so no page on `/` can take it, and it also stays routed at
+  its own path. Its nav entry links to `/` and is current on either path, and the top bar and
+  document title name it at `/`. No built-in page declares `/`. The not-found and
+  module-not-enabled pages offer "Go to the home page" while some page is home.
+- Routing follows the manifest too (`resolveRoutes`): a registered page of a module the
+  manifest lists is routed only if the manifest routes it (lists it in `pages`), so no page of
+  a disabled module, no page an override switches off and no page that lost its path is routed,
+  and none can shadow another on its path. Each of
   the manifest's `disabledPages` renders `ModuleNotEnabledPage` at its path, naming every env var
   and config key that turns the module on (`modules[].enabledBy`, read leniently), or else the
   module's `reason`. Pages of modules the manifest does not list (the `_ui` workbench) are
   routed, and a manifest without `disabledPages` (an older server) routes every page. A
   disabled page whose path the router could not compile is dropped before the manifest is
   cached.
-  A page switched off by a `ui.extensions` override is left out of the nav, but the web still
-  routes it.
 
 Until the manifest loads, the sidebar and those slots are empty, and every registered page is
 routed. If it cannot be read, they fall back to the registry: the sidebar lists the registered

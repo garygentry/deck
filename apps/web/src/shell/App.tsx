@@ -4,11 +4,11 @@ import { Route, Router, Switch, useLocation } from "./router.js";
 import { getPages } from "../registry/registry.js";
 import { useRegistryVersion } from "../registry/use-registry.js";
 import { AppShell } from "./AppShell.js";
+import { bootHome } from "./boot.js";
 import { useBrandTitle } from "./manifest-slot.js";
 import { ModuleNotEnabledPage } from "./ModuleNotEnabledPage.js";
-import { matchPage } from "./nav.js";
 import { NotFoundPage } from "./NotFoundPage.js";
-import { resolveRoutes, type ResolvedRoutes } from "./routes.js";
+import { HOME_PATH, resolveRoutes, routeForPath, type ResolvedRoutes } from "./routes.js";
 import { useConfig, useUiManifest } from "../data/index.js";
 
 export function App({ url }: { url?: string } = {}) {
@@ -24,14 +24,14 @@ export function App({ url }: { url?: string } = {}) {
 function Shell() {
   // Re-render when an extension registers late (a lazily loaded module).
   useRegistryVersion();
-  const routes = resolveRoutes(useUiManifest(), getPages());
+  const routes = resolveRoutes(useUiManifest(), getPages(), bootHome());
   const { path } = useLocation();
   const config = useConfig();
-  const title = (matchPage(routes.routed, path) ?? matchPage(routes.notEnabled, path))?.label;
+  const title = routeForPath(routes, path)?.label;
   useDocumentTitle(title ?? "Not found", useBrandTitle());
 
   return (
-    <AppShell pages={routes.routed} path={path} title={title}>
+    <AppShell pages={routes.routed} home={routes.home} path={path} title={title}>
       {config.status === "error" && (
         <Callout tone="danger" title="Failed to load config" className="mb-4">
           {config.message}
@@ -91,6 +91,8 @@ function RoutedContent({ routes }: { routes: ResolvedRoutes }) {
       {/* Heavy pages register lazy components; this covers their first load. */}
       <Suspense fallback={<LoadingState label="Loading page…" />}>
         <Switch>
+          {/* The home page, chosen by id: first, so no page sharing the path can take it. */}
+          {routes.home !== undefined && <Route key="home" path={HOME_PATH} component={routes.home.component} />}
           {routes.routed.map((page) => (
             <Route key={page.id} path={page.path} component={page.component} />
           ))}

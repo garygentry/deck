@@ -27,6 +27,8 @@ export interface NavLink {
   icon: string | undefined;
   /** An in-app path, or an external `http(s):` URL. */
   href: string;
+  /** The home page's own path, which also marks its link (to `/`) current. */
+  alsoActiveOn?: string;
 }
 
 export interface NavGroup {
@@ -43,10 +45,20 @@ export interface NavGroup {
  * route is left out. Until the manifest loads there is none; if it cannot be read, the
  * registered pages are listed instead ({@link groupNavPages}), so the app stays navigable.
  */
-export function resolveNav(manifest: UiManifestState, pages: readonly PageRegistration[]): NavGroup[] {
+export function resolveNav(
+  manifest: UiManifestState,
+  pages: readonly PageRegistration[],
+  home?: PageRegistration,
+): NavGroup[] {
   if (manifest.status === "loading") return [];
-  if (manifest.status === "error" || !Array.isArray(manifest.manifest.nav)) return groupNavPages(pages);
-  return navFromManifest(manifest.manifest, pages);
+  const groups =
+    manifest.status === "error" || !Array.isArray(manifest.manifest.nav) ? groupNavPages(pages) : navFromManifest(manifest.manifest, pages);
+  return home === undefined ? groups : groups.map((group) => ({ ...group, links: group.links.map((link) => linkHome(link, home)) }));
+}
+
+/** The home page's link goes to `/`, and stays current on its own path (and below it). */
+function linkHome(link: NavLink, home: PageRegistration): NavLink {
+  return link.href === home.path && home.path !== "/" ? { ...link, href: "/", alsoActiveOn: home.path } : link;
 }
 
 function navFromManifest(manifest: UiManifest, pages: readonly PageRegistration[]): NavGroup[] {
@@ -102,6 +114,11 @@ export function groupNavPages(pages: readonly PageRegistration[]): NavGroup[] {
       return ra - rb || (ka < kb ? -1 : ka > kb ? 1 : 0);
     })
     .map(([id, { label, links }]) => ({ id, label, links }));
+}
+
+/** Whether a nav link is the current section: by its path, or by the home page's own path. */
+export function isLinkActive(link: Pick<NavLink, "href" | "alsoActiveOn">, currentPath: string): boolean {
+  return isNavActive(link.href, currentPath) || (link.alsoActiveOn !== undefined && isNavActive(link.alsoActiveOn, currentPath));
 }
 
 /**

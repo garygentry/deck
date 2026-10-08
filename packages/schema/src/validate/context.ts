@@ -17,6 +17,8 @@ export interface Context {
   idOccurrences: {
     sources: readonly Located[];
     integrations: readonly Located[];
+    "ui.nav.groups": readonly Located[];
+    "ui.nav.items": readonly Located[];
   };
 }
 
@@ -59,6 +61,8 @@ export function buildContext(doc: DeckConfigDocument): Context {
     idOccurrences: {
       sources: collectIds(doc.sources, "/sources"),
       integrations: collectIds(doc.integrations, "/integrations"),
+      "ui.nav.groups": collectIds(doc.ui?.nav?.groups, "/ui/nav/groups"),
+      "ui.nav.items": collectIds(doc.ui?.nav?.items, "/ui/nav/items"),
     },
   };
 }

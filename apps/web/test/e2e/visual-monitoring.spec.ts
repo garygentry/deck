@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockUiManifest } from "./ui-manifest.js";
+import { seedTheme } from "./theme-seed.js";
 
 /**
  * Visual baselines for `/monitoring` in its main states, independent of the `/_ui`
@@ -138,7 +139,7 @@ test.describe("monitoring visual baselines", () => {
       for (const width of WIDTHS) {
         test(`${name} ${width}px ${theme}`, async ({ page }) => {
           await page.clock.setFixedTime(FROZEN_NOW);
-          await page.addInitScript((mode) => localStorage.setItem("deck-theme", mode), theme);
+          await seedTheme(page, theme);
           await page.setViewportSize({ width, height: 900 });
           await routeScenario(page, scenario);
           const monitoring = page.getByTestId("monitoring");

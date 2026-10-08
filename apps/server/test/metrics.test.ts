@@ -13,7 +13,7 @@ import { BUILTIN_ROOT_PATHS, defineServerModule, pagePathProblem, type ModuleMan
 import { primary } from "@deck/schema/fixtures";
 import type { Context, Next } from "hono";
 import type { Logger } from "pino";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { METRICS_MANIFEST, metricsModule } from "../src/metrics/module.js";
 import { metricsResponse } from "../src/metrics/route.js";
@@ -30,12 +30,15 @@ import { buildUiManifest } from "../src/ui/manifest.js";
 import { uiContributionProblem } from "../src/ui/validate.js";
 import { testHost, testModule } from "./util/modules.js";
 
-// The SPA fallback: the index rewrite answers the shell, plain static serving passes through.
+// Static files pass through; the SPA fallback answers the shell from the dist index.html.
 vi.mock("hono/bun", () => ({
-  serveStatic: (options: { rewriteRequestPath?: (path: string) => string }) =>
-    async (context: Context, next: Next) =>
-      options.rewriteRequestPath ? context.html("<!doctype html>index") : next(),
+  serveStatic: () => async (_context: Context, next: Next) => next(),
 }));
+
+/** A web dist directory whose \`index.html\` the SPA fallback serves. */
+const webDist = mkdtempSync(join(tmpdir(), "deck-web-dist-"));
+writeFileSync(join(webDist, "index.html"), "<!doctype html>index");
+afterAll(() => rmSync(webDist, { recursive: true, force: true }));
 
 const stats: ProviderStats[] = [
   { id: "docker", kind: "docker", successTotal: 7, failureTotal: 2, lastLatencyMs: 42, ageMs: 3_000 },
@@ -139,7 +142,7 @@ describe("GET /metrics", () => {
   });
 
   it("matches the metrics route, not the SPA index rewrite, when a web dist is configured", async () => {
-    const { app } = await harness("true", stats, "/web-dist");
+    const { app } = await harness("true", stats, webDist);
     const response = await app.request("/metrics");
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("text/plain; version=0.0.4");
@@ -170,7 +173,7 @@ describe("GET /metrics", () => {
   });
 
   it("is never rewritten to the SPA shell while switched off", async () => {
-    const { app, host } = await harness(undefined, stats, "/web-dist");
+    const { app, host } = await harness(undefined, stats, webDist);
     expect(host.rootPaths()).toEqual(["/metrics"]);
     const response = await app.request("/metrics");
     expect(response.status).toBe(404);
@@ -565,7 +568,7 @@ describe("root paths against built-in and kernel pages", () => {
     const ui = buildUiManifest({ config: primary.merged, providers, modules: host, capabilities: {} });
     expect(ui.pages.map((page) => page.id)).not.toContain("page:aaa/x");
     expect(ui.findings).toEqual([expect.objectContaining({ code: "UI_PAGE_PATH_COLLISION", id: "page:aaa/x" })]);
-    const app = createApp({ config: primary.merged, providers, logger, modules: host, webDistDir: "/web-dist" });
+    const app = createApp({ config: primary.merged, providers, logger, modules: host, webDistDir: webDist });
     const response = await app.request("/x");
     expect(response.status).toBe(enabled ? 200 : 404);
     expect(await response.text()).toBe(enabled ? "claimant" : "404 Not Found");

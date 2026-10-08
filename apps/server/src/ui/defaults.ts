@@ -5,6 +5,10 @@ export const DEFAULT_BRAND_TITLE = "Deck";
 
 /** The parts of the `ui` config the resolver reads. */
 export interface UiDefaults {
+  /** `ui.brand`: each field set replaces the default (the title defaults to the estate's name). */
+  brand?: { title?: string; icon?: string; logoUrl?: string };
+  /** `ui.home`: the id of the page `/` renders; the built-in default (`DEFAULT_HOME_PAGE`) when unset. */
+  home?: string;
   nav: {
     /** Nav groups in sidebar order, with their headings; groups not listed follow by id. */
     groups: readonly UiNavGroup[];

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { PORTAL_NOW, routePortalFixture } from "./portal-fixture.js";
+import { seedTheme } from "./theme-seed.js";
 
 /**
  * The portal (`/`) on fixed data. The behaviour checks run everywhere. The
@@ -72,7 +73,7 @@ test.describe("visual baselines", () => {
   for (const theme of THEMES) {
     for (const width of WIDTHS) {
       test(`${width}px ${theme}`, async ({ page }) => {
-        await page.addInitScript((mode) => localStorage.setItem("deck-theme", mode), theme);
+        await seedTheme(page, theme);
         await page.setViewportSize({ width, height: 900 });
         await openPortal(page);
         await page.addStyleTag({ content: HIDE_SHELL });

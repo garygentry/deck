@@ -1,6 +1,7 @@
-import { parseExtensionId, type UiManifest, type UiModuleSwitch } from "@deck/module-sdk";
+import { DEFAULT_HOME_PAGE, homePathProblem, parseExtensionId, type UiManifest, type UiModuleSwitch } from "@deck/module-sdk";
 import type { UiManifestState } from "../data/index.js";
 import type { PageRegistration } from "../registry/registry-types.js";
+import { matchPage } from "./nav.js";
 
 /** A path that belongs to a page of a disabled module: the shell says the module is off. */
 export interface NotEnabledRoute {
@@ -17,6 +18,8 @@ export interface NotEnabledRoute {
 }
 
 export interface ResolvedRoutes {
+  /** The page `/` renders (it also stays routed at its own path); none when no page can be home. */
+  home: PageRegistration | undefined;
   /** The registered pages the router renders. */
   routed: readonly PageRegistration[];
   /** Paths of disabled modules' pages, matched after the routed pages. */
@@ -24,27 +27,82 @@ export interface ResolvedRoutes {
 }
 
 /**
- * Which pages the router renders. With a current UI manifest (one listing `disabledPages`), no
- * registered page of a module it lists as disabled is routed, so none can shadow an enabled
- * page on the same path; each disabled page it lists answers its path with the not-enabled
- * page. Until the manifest loads, if it cannot be read, or if it is an older server's (no
- * `disabledPages`), every registered page is routed, as the fallback nav lists them all.
+ * Which pages the router renders. With a current UI manifest (one listing `disabledPages`), a
+ * registered page of a module it lists is routed only if the manifest routes it (lists it in
+ * `pages`): so a page of a disabled module, a page an override switches off and a page that
+ * lost its path are not, and none can shadow another on its path. Each disabled page it lists
+ * answers its path with the not-enabled page. Pages of modules it does not list (the `_ui`
+ * workbench) are routed. Until the manifest loads, if it cannot be read, or if it is an older
+ * server's (no `disabledPages`), every registered page is routed, as the fallback nav lists
+ * them all. `bootHome` is the home page id the server wrote into the page (see
+ * {@link resolveHome}).
  */
-export function resolveRoutes(manifest: UiManifestState, pages: readonly PageRegistration[]): ResolvedRoutes {
-  if (manifest.status !== "ready" || !Array.isArray(manifest.manifest.disabledPages)) return { routed: pages, notEnabled: [] };
-  return routesFromManifest(manifest.manifest, manifest.manifest.disabledPages, pages);
+export function resolveRoutes(
+  manifest: UiManifestState,
+  pages: readonly PageRegistration[],
+  bootHome?: string | null,
+): ResolvedRoutes {
+  const routes =
+    manifest.status !== "ready" || !Array.isArray(manifest.manifest.disabledPages)
+      ? { routed: pages, notEnabled: [] }
+      : routesFromManifest(manifest.manifest, manifest.manifest.disabledPages, pages);
+  return { home: resolveHome(manifest, routes.routed, bootHome), ...routes };
 }
+
+/**
+ * The page `/` renders, chosen by id, never by which page happens to share a path:
+ * - with a manifest that names it, its `home` (`null`: no page can be home), when the web
+ *   routes it;
+ * - otherwise (no manifest yet, none readable, or an older server's), the home page id the
+ *   server wrote into the page's boot object, so a configured home never flashes the portal
+ *   first (`null` there also means none);
+ * - otherwise (no boot object, as under the dev server), the default home page, the portal's
+ *   overview.
+ * A page whose path has parameters cannot be home.
+ */
+export function resolveHome(
+  manifest: UiManifestState,
+  routed: readonly PageRegistration[],
+  bootHome?: string | null,
+): PageRegistration | undefined {
+  const usable = (id: unknown): PageRegistration | undefined => {
+    const page = routed.find((candidate) => candidate.id === id);
+    return page !== undefined && homePathProblem(page.path) === null ? page : undefined;
+  };
+  if (manifest.status === "ready" && manifest.manifest.home !== undefined) {
+    return manifest.manifest.home === null ? undefined : usable(manifest.manifest.home.page);
+  }
+  if (bootHome === null) return undefined;
+  return (bootHome === undefined ? undefined : usable(bootHome)) ?? usable(DEFAULT_HOME_PAGE);
+}
+
+/**
+ * The page the router renders for `path`, for the title and the current nav entry: the home
+ * page at `/`, else the first routed page whose pattern matches, else a disabled module's page.
+ */
+export function routeForPath(routes: ResolvedRoutes, path: string): { label: string } | undefined {
+  if (path === HOME_PATH) return routes.home;
+  return matchPage(routes.routed, path) ?? matchPage(routes.notEnabled, path);
+}
+
+/** The path that renders the home page. */
+export const HOME_PATH = "/";
 
 function routesFromManifest(
   manifest: UiManifest,
   disabledPages: NonNullable<UiManifest["disabledPages"]>,
   pages: readonly PageRegistration[],
-): ResolvedRoutes {
+): Omit<ResolvedRoutes, "home"> {
   const modules = new Map((Array.isArray(manifest.modules) ? manifest.modules : []).map((module) => [module.id, module]));
   const disabledIds = new Set<string>(disabledPages.map((page) => page.id));
+  // Absent (a manifest without `pages`): no narrowing beyond the disabled modules.
+  const routedIds = Array.isArray(manifest.pages) ? new Set<string>(manifest.pages.map((page) => page.id)) : undefined;
   const isOff = (page: PageRegistration): boolean => {
     const module = parseExtensionId(page.id)?.module;
-    return disabledIds.has(page.id) || (module !== undefined && modules.get(module)?.enabled === false);
+    if (disabledIds.has(page.id)) return true;
+    if (module === undefined || !modules.has(module)) return false;
+    // A page of a module the manifest lists is routed only where the manifest routes it.
+    return modules.get(module)?.enabled === false || (routedIds !== undefined && !routedIds.has(page.id));
   };
   return {
     routed: pages.filter((page) => !isOff(page)),

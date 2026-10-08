@@ -49,3 +49,13 @@ sources:
     kind: file-tree
     title: Host configs
     location: { path: examples/estate/configs }
+# Presentation settings. The overlay owns `ui`, and every key is optional.
+ui:
+  brand:
+    # The sidebar mark: an icon in place of the title's initial. `logoUrl` (an
+    # http(s) URL or a root-relative path) shows an image instead; `title`
+    # replaces the estate name in the sidebar and the browser tab.
+    icon: server
+  # The page "/" renders. The portal is the default; any page without path
+  # parameters can be home (`page:inventory/hosts`, say), and stays at its own path.
+  home: page:portal/overview

@@ -1,7 +1,12 @@
 {
   "uiApi": 1,
   "brand": {
-    "title": "example-estate"
+    "title": "example-estate",
+    "icon": "server"
+  },
+  "home": {
+    "page": "page:portal/overview",
+    "path": "/portal"
   },
   "modules": [
     {
@@ -216,7 +221,7 @@
     {
       "id": "page:portal/overview",
       "module": "portal",
-      "path": "/",
+      "path": "/portal",
       "title": "Portal",
       "icon": "layout-grid",
       "component": "PortalPage"

@@ -1,10 +1,23 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
+import type { Plugin } from "vite";
 import { configDefaults, defineConfig } from "vitest/config";
+import { PRE_PAINT_MARKER, prePaintScript } from "./src/shell/theme-chain";
+
+/** Inline the pre-paint theme script into index.html, from the one implementation the app uses. */
+function prePaintTheme(): Plugin {
+  return {
+    name: "deck-pre-paint-theme",
+    transformIndexHtml(html) {
+      if (!html.includes(PRE_PAINT_MARKER)) throw new Error(`index.html lacks ${PRE_PAINT_MARKER}`);
+      return html.replace(PRE_PAINT_MARKER, () => prePaintScript());
+    },
+  };
+}
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), prePaintTheme()],
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },

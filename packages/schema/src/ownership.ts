@@ -20,6 +20,8 @@ export const IDENTITY = {
   "services[].links": ["href"],
   sources: ["id"],
   integrations: ["id"],
+  "ui.nav.groups": ["id"],
+  "ui.nav.items": ["id"],
 } as const satisfies Record<string, IdentitySpec>;
 
 /**

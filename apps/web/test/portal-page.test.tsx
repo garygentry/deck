@@ -204,7 +204,7 @@ describe("portal registration and assembled page", () => {
     const pill = ours.find(({ id }) => id === "pill:portal/endpoints")!;
     expect(pill.attachTo).toEqual({ slot: "app/topbar.status", order: 100 });
     expect(await resolveComponent(pill.component!)).toBe(EndpointStatusSummary);
-    expect(getPages()[0]).toMatchObject({ label: "Portal", icon: "layout-grid", group: "overview" });
+    expect(getPages()[0]).toMatchObject({ label: "Portal", icon: "layout-grid", group: "overview", navOrder: -1 });
     // The portal hosts the summary slot, declared from its manifest.
     expect(PORTAL_SUMMARY_SLOT).toBe("portal/summary");
     expect(getSlot(PORTAL_SUMMARY_SLOT)).toMatchObject({ accepts: "widget", module: "portal" });

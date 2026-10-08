@@ -57,13 +57,13 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
   can be home, and then `/` is not found. No page is routed at `/` itself: `/` always renders
   the home page.
 - `navGroups` lists the sidebar's groups in order, each with its `label` and, when one is set,
-  its `icon`. The groups `ui.nav.groups` lists come first, in its order; then the built-in groups
+  its `icon`. The groups the merged `ui.nav.groups` lists come first, in its order; then the built-in groups
   it does not list, in their order (Overview, Inventory, Health, Operate, Knowledge); then any
   other group an entry names, by id, headed by its id. Only groups with a link entry are listed.
 - `nav` is sorted by group (in `navGroups` order), then order, then id: `order` applies within a
   group. Each entry has a `label` and, usually, an `icon`; an entry to a page that declares none
-  of its own takes the page's title and icon. The `ui.nav.items` entries are listed with module
-  `ui`: a link has an `http(s)` `href`, and a separator has `separator: true` and an empty
+  of its own takes the page's title and icon. The `ui.nav.items` entries (`nav:ui/…`) are listed with
+  module `ui`: a link has an `http(s)` `href`, and a separator has `separator: true` and an empty
   `label`. An override's `attachTo.group` moves a nav entry to that group.
 - `providers` lists the registered provider instances (id and kind), so the web polls only
   providers that exist.

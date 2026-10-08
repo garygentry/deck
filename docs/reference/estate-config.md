@@ -396,22 +396,27 @@ ui:
       - { id: health, label: Monitoring }
       - { id: lab, label: Lab, icon: boxes }   # a new group
     items:
-      - { id: nav:lab/grafana, group: lab, label: Grafana, href: "https://grafana.example.net", icon: gauge }
-      - { id: nav:lab/divider, group: health, separator: true, order: 150 }
+      - { id: nav:ui/grafana, group: lab, label: Grafana, href: "https://grafana.example.net", icon: gauge, order: 10 }
+      - { id: nav:ui/divider, group: lab, separator: true, order: 20 }
+      - { id: nav:ui/prometheus, group: lab, label: Prometheus, href: "https://prometheus.example.net", order: 30 }
 ```
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `groups` | array of `{id, label?, icon?}` | Groups in sidebar order. The built-in groups (`overview`, `inventory`, `health`, `operate`, `knowledge`) that are not listed follow in that order, then any other group an entry names, by id. `label` replaces the heading (default: the built-in heading, else the id); `icon` is shown beside it. An id that is not built in is a new group. |
-| `items` | array | Extra entries: a link `{id, group, label, href, icon?, order?}`, where `id` is `nav:<module>/<name>` and `href` is an `http(s)://` URL, or a separator `{id, group, separator: true, order?}`. `order` places the entry among the group's others (built-in entries are 100; the portal is -1); default 100. |
+| `groups` | array of `{id, label?, icon?}` | Groups in sidebar order (across layers, see below). The built-in groups (`overview`, `inventory`, `health`, `operate`, `knowledge`) that are not listed follow in that order, then any other group an entry names, by id. `label` replaces the heading (default: the built-in heading, else the id); `icon` is shown beside it. An id that is not built in is a new group. |
+| `items` | array | Extra entries: a link `{id, group, label, href, icon?, order?}`, where `id` is `nav:ui/<name>` and `href` is an `http(s)://` URL, or a separator `{id, group, separator: true, order?}`. `order` places the entry among the group's others (built-in entries are 100; the portal is -1); default 100. |
 
 Both arrays merge across overlays by `id`, and an id repeated in one layer is `ID_DUPLICATE`.
+A later layer that lists a group again merges into it (its `label` or `icon` wins) but does not
+move it: the merged `groups` keep the first layer's positions and append the ids a later layer
+adds, so set the order in the first layer that lists groups.
+
 A group is shown only when an entry is in it. A link opens in a new tab, with an external-link
-mark and "(opens in new tab)" in its accessible name. A separator draws a rule between the
-entries before and after it, and is dropped at either end of a group. In `GET /api/ui` these
-entries are listed with module `ui`; an item reusing an id a module already contributes is
-ignored and reported as `UI_DUPLICATE_ID`. They take `extensions` overrides like any other nav
-entry.
+mark and "(opens in new tab)" in its accessible name. A separator draws a rule between two
+entries, so it needs an entry on each side within its group (by `order`): one at either end of
+a group, or next to another separator, is dropped. Item ids are always `nav:ui/<name>`, a
+namespace no module can use, and in `GET /api/ui` these entries are listed with module `ui`.
+They take `extensions` overrides like any other nav entry.
 
 `extensions` maps an extension, page or nav entry id (as `GET /api/ui` lists them) to an
 override that replaces its default, never merges into it:
@@ -421,6 +426,12 @@ override that replaces its default, never merges into it:
   `config`. A page takes only `enabled`; a nav entry `enabled` and `attachTo`. `attachTo`
   replaces the default as a whole: an omitted `slot` or `group` keeps the current one, and an
   omitted `order` is 100. `config` replaces the extension's config wholesale.
+
+Across layers, entries for different ids merge, and a later layer's entry for the same id
+replaces the earlier one's `attachTo` and `config` whole: with
+`nav:actions/overview: { attachTo: { group: lab } }` in one overlay and
+`nav:actions/overview: { attachTo: { order: 9 } }` in a later one, the entry stays in its own
+group at order 9.
 
 ```yaml
 ui:

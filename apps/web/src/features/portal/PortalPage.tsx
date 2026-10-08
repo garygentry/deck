@@ -40,7 +40,6 @@ import {
   type IndexedCard,
   type PortalFacet,
 } from "./search-filter.js";
-import type { CardRegistration } from "../../registry/registry-types.js";
 import { useSlotResetKey } from "../../shell/use-slot-reset-key.js";
 import { useManifestSlot } from "../../shell/manifest-slot.js";
 import { PortalDataContext, usePortalData } from "./usePortalData.js";
@@ -251,7 +250,7 @@ export const PortalPage: FunctionComponent = () => {
   const data = usePortalData();
   // The UI manifest places the summary cards, as it does every shell slot: its order wins, and
   // a card of a module that is off is not listed.
-  const summaryCards = useManifestSlot(PORTAL_SUMMARY_SLOT).filter(({ kind }) => kind === "widget");
+  const summaryCards = useManifestSlot(PORTAL_SUMMARY_SLOT);
   const summaryResetKey = useSlotResetKey();
   const headingId = usePageHeadingId("Portal");
   const rootRef = useRef<HTMLElement>(null);
@@ -310,14 +309,13 @@ export const PortalPage: FunctionComponent = () => {
       >
         <PageHeader title="Portal" />
         {/* Summary cards other features contribute (e.g. LLM usage); each renders nothing when it has nothing to say. */}
-        {summaryCards.map(({ id, component }) => {
-          const Card = component as CardRegistration["component"];
-          return (
+        {summaryCards.map(({ id, component: Card }) =>
+          Card === undefined ? null : (
             <FragmentBoundary key={id} label="Summary card" resetKey={summaryResetKey}>
               <Card data={null} freshness={STATIC_STAMP} />
             </FragmentBoundary>
-          );
-        })}
+          ),
+        )}
         <FilterBar
           label="Portal filters"
           search={(

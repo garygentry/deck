@@ -47,6 +47,8 @@ describe("the alerts-and-health web half", () => {
     expect(page).toMatchObject({ path: "/monitoring", label: "Monitoring", icon: "activity", group: "health" });
     expect(await resolveComponent(page!.component)).toBe(MonitoringPage);
     expect(page!.nav).not.toBe(false);
+    // The nav entry sets no order of its own, so the fallback nav orders it like the route.
+    expect(page!.navOrder).toBeUndefined();
     expect(registry.getPages().filter((p) => p.path === "/monitoring")).toHaveLength(1);
   });
 

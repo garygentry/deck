@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { SOURCES_UI } from "@deck/contract/modules/sources";
 import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
 
 import { load } from "../src/config/load.js";
@@ -73,6 +74,22 @@ describe("the source modules' manifests", () => {
     // Sources stay top-level instances (`sources[]`); the module owns no config section.
     expect(SOURCES_MANIFEST.config).toBeUndefined();
     expect(SOURCES_MANIFEST.enabledBy).toBeUndefined();
+  });
+
+  it("take the sources module's identity and UI contributions from the copy the web half registers against", () => {
+    const { id, version, deckApi, contributes } = SOURCES_MANIFEST;
+    expect({ id, version, deckApi }).toEqual({ id: SOURCES_UI.id, version: SOURCES_UI.version, deckApi: SOURCES_UI.deckApi });
+    // The shared copy holds the UI; the browsing routes stay server-side.
+    expect(Object.keys(SOURCES_UI.contributes!).sort()).toEqual(["extensions", "nav", "pages"]);
+    expect(Object.keys(contributes!).sort()).toEqual(["extensions", "nav", "pages", "routes"]);
+    for (const key of ["pages", "nav", "extensions"] as const) expect(contributes![key]).toBe(SOURCES_UI.contributes![key]);
+    expect(Object.keys(SOURCES_UI).sort()).toEqual(["contributes", "deckApi", "id", "version"]);
+  });
+
+  it("leave the data-source modules without UI: the sources web half serves the sources module alone", () => {
+    const kinds = BUILTIN_MODULES.filter(({ manifest }) => (manifest.providerKinds ?? []).some((decl) => decl.instanceList === "sources"));
+    expect(kinds.map(({ manifest }) => manifest.id).sort()).toEqual([FILE_TREE_KIND, MARKDOWN_TREE_KIND].sort());
+    for (const { manifest } of kinds) expect(manifest.contributes, manifest.id).toBeUndefined();
   });
 });
 

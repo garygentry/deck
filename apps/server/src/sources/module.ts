@@ -1,3 +1,4 @@
+import { SOURCES_UI } from "@deck/contract/modules/sources";
 import { defineServerModule, type DisabledRouteDecl, type ModuleManifest, type ServiceOffer } from "@deck/module-sdk";
 
 import { SOURCE_MESSAGES } from "./errors.js";
@@ -27,37 +28,13 @@ const NOT_RUNNING: DisabledRouteDecl[] = ["tree", "file", "raw", "search"].map((
  * as every route is while this module is not running.
  */
 export const SOURCES_MANIFEST: ModuleManifest = {
-  id: "sources",
-  version: "0.1.0",
-  deckApi: "^0.1",
+  // Identity and UI contributions are shared with the web half; the routes are server-only.
+  ...SOURCES_UI,
   sharedEnv: [SOURCES_ENV.CACHE_DIR],
   services: { uses: [SOURCE_READER.name] },
   contributes: {
     routes: { legacyAliases: ["/api/sources"], whenDisabled: NOT_RUNNING },
-    pages: [
-      { id: "page:sources/docs", path: "/docs", title: "Docs", icon: "book-open", component: "DocsPage" },
-      { id: "page:sources/configs", path: "/configs", title: "Configs", icon: "file-cog", component: "ConfigsPage" },
-    ],
-    nav: [
-      { id: "nav:sources/docs", page: "page:sources/docs", group: "knowledge" },
-      { id: "nav:sources/configs", page: "page:sources/configs", group: "knowledge" },
-    ],
-    extensions: [
-      {
-        id: "section:sources/host-configs",
-        kind: "entity-section",
-        attachTo: { slot: "entity:host/sections", order: 20 },
-        component: "OwnedConfigsFragment",
-        config: { section: "configs", title: "Configs" },
-      },
-      {
-        id: "section:sources/service-configs",
-        kind: "entity-section",
-        attachTo: { slot: "entity:service/sections", order: 20 },
-        component: "OwnedConfigsFragment",
-        config: { section: "configs", title: "Configs" },
-      },
-    ],
+    ...SOURCES_UI.contributes,
   },
 };
 

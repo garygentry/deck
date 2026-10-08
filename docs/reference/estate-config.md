@@ -390,7 +390,8 @@ ui:
 | `theme` | object | The operator's theme defaults. |
 | `home` | string | The id of the page `/` renders, such as `page:inventory/hosts`. Default: the portal (`page:portal/overview`). |
 | `nav` | object | Sidebar group order, labels and icons, and extra nav entries. |
-| `extensions` | object | Overrides by extension, page or nav entry id. |
+| `extensions` | object | Overrides by extension, page, nav entry or widget id. |
+| `pages` | array | Config-defined pages (dashboards): sections of widgets. |
 
 `brand`:
 
@@ -478,6 +479,67 @@ ui:
 
 An override for an id deck does not know, or one that does not fit its target, is reported in
 `GET /api/ui` (`UI_UNKNOWN_EXTENSION`, `UI_INVALID_OVERRIDE`) and otherwise ignored.
+
+`pages` defines pages of your own, built from widgets over the data deck already collects:
+
+```yaml
+ui:
+  pages:
+    - id: lab
+      path: /lab
+      title: Lab overview
+      icon: flask-conical
+      nav: { group: lab, order: 0 }
+      sections:
+        - title: Inventory
+          columns: 3
+          widgets:
+            - { id: hosts, type: core/json, title: Host names, source: snapshot, select: "snapshot.hosts[].name", span: 2 }
+            - { id: count, type: core/json, title: Host count, source: { kind: snapshot }, select: "length(snapshot.hosts)" }
+```
+
+A page:
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `id` | string, lowercase letters, digits and `-` | The page's name. Its id is `page:ui/<id>`, which `home` and `extensions` take. Unique (`ID_DUPLICATE`); pages merge across overlays by `id`. |
+| `path` | string | The page's path, such as `/lab`: literal segments only. A path under `/api`, a path the server answers (`/metrics`), or one a module's page already has, leaves the page unrouted and is reported in `GET /api/ui` (`UI_INVALID_PAGE`, `UI_PAGE_PATH_COLLISION`). |
+| `title` | string, 1–80 characters | The page's heading (its one `h1`), its nav label and the document title. |
+| `icon` | icon name | Shown beside its nav entry. |
+| `nav` | `{group, label?, order?}` | Its sidebar entry, `nav:ui/<id>`, in `group` (built in or new) at `order` (default 100), labelled `label` (default `title`). Without `nav` the page is routed but not listed. |
+| `sections` | array, at least one | The page's sections, in reading order. |
+
+A section is a heading over a grid of widgets: `title` (required), `columns` (1–4, default 1)
+and `widgets` (at least one). Below the `md` breakpoint every section is one column. Widgets
+flow left to right, then down, in the order listed, which is also the order a screen reader
+reads them.
+
+A widget:
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `type` | `<module>/<name>` | The widget type, provided by a module or by deck itself (`core/json`: the value as formatted JSON; option `wrap: true` soft-wraps long lines). A type no module provides is `UI_WIDGET_TYPE_UNKNOWN`, and one whose module is off `UI_WIDGET_TYPE_DISABLED`; the widget then shows as unavailable. |
+| `id` | string, lowercase letters, digits and `-` | A stable name, unique on its page (`ID_DUPLICATE`). The widget's id is `widget:ui/<page>.<id>`. Without one it is positional, `widget:ui/<page>.s<N>w<M>` (section N, widget M, from 1), which **changes when sections or widgets move**: give a widget an `id` before you override it. |
+| `title` | string | The widget's heading; default its type. |
+| `source` | provider id, or `{kind}` | The provider it reads, as `GET /api/providers` lists them; `{kind: snapshot}` takes the first provider of that kind by id. A source that names no provider, or one of a kind the widget type cannot render, is reported in `GET /api/ui` (`UI_WIDGET_SOURCE_UNKNOWN`, `UI_WIDGET_SOURCE_KIND`) and the widget shows the problem. |
+| `select` | [JMESPath](https://jmespath.org) expression | What the widget shows of the provider's data. Deck evaluates it on the server each time the provider's data changes and sends the result with the provider's envelope; without `select` the widget gets the data whole. An expression that does not parse is `UI_WIDGET_SELECT_INVALID`. |
+| `options` | object | The widget type's options. Each type declares their schema. |
+| `span` | 1–4 | Columns the widget spans from `md` up; default 1. More than its section's columns is clamped, with `UI_WIDGET_SPAN`. |
+| `rows` | 1–6 | Rows the widget spans from `md` up; default 1. |
+
+A widget option its type does not accept (an unknown option, or a value of the wrong type) is a
+schema error at its path, like any other invalid config: `deck validate` reports it, and deck
+refuses to start with it. Check a dashboard with `deck validate` before deploying it.
+
+A widget shows a loading state until its provider's first data, an error when the provider
+has no data because it failed or the `select` failed on its data, "No data to show" when the
+value is null or an empty list or object, and a freshness badge when the data is not fresh.
+A widget that fails to render shows an inline error; the rest of the page keeps working.
+
+Overrides take a page or widget by id: `page:ui/lab: false` hides the page and its nav entry,
+and `widget:ui/lab.hosts: false` hides one widget (a section left without widgets is not shown).
+Overriding a positional widget id works, but `GET /api/ui` reports it as
+`UI_OVERRIDE_POSITIONAL` (info).
 
 ### Hot reload
 

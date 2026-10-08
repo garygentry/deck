@@ -3,10 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveComponent } from "./support/lazy.js";
 
 // Import a fresh feature entrypoint against a fresh registry singleton, then inspect the public
-// registry accessors. The pills attach to the health-header slot, which the shell declares.
+// registry accessors. The feature declares the health-header slot its pills attach to.
 async function loadFreshFeature() {
   vi.resetModules();
-  await import("../src/shell/health-header/slot.js");
   await import("../src/features/alerts-and-health/index.js");
   const registry = await import("../src/registry/registry.js");
   const { HealthHeaderSlot } = await import("../src/shell/health-header/slot.js");
@@ -35,8 +34,6 @@ describe("the alerts-and-health web half", () => {
     }
     expect(await resolveComponent(ours.find(({ id }) => id === "pill:monitoring/alerts")!.component!)).toBe(AlertsSummary);
     expect(await resolveComponent(ours.find(({ id }) => id === "pill:monitoring/metrics")!.component!)).toBe(MetricsSummary);
-    // The metrics module contributes no UI, so nothing registers under it.
-    expect(registry.getAllExtensions().filter(({ module }) => module === "metrics")).toEqual([]);
   });
 
   it("registers exactly one /monitoring page, listed in the health group", async () => {

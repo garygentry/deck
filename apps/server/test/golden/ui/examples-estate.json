@@ -478,5 +478,11 @@
       "kind": "markdown-tree"
     }
   ],
+  "widgetTypes": [
+    {
+      "type": "core/json",
+      "module": "core"
+    }
+  ],
   "findings": []
 }

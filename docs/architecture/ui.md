@@ -241,9 +241,13 @@ since it would never render.
 
 The shell renders from the UI manifest (`useUiManifest()`); the registry supplies the
 components:
-- The sidebar lists the manifest's `navGroups` in order, and in each its `nav` entries, with
-  their labels and icons. An entry to a page the web does not route is left out, and so is the
-  page of a module that is off.
+- The sidebar lists the manifest's `navGroups` in order, each heading with its icon, and in each
+  its `nav` entries, with their labels and icons. An entry to a page the web does not route is
+  left out, and so is the page of a module that is off; so is an `href` that is neither an
+  absolute in-app path nor `http(s)`. An `http(s)` entry (a `ui.nav.items` link) opens in a new
+  tab with `ExternalLink` semantics (`ExternalLink plain` inside the menu button) and is never
+  current. A `separator` entry is a `SidebarSeparator`, dropped at either end of a group or next
+  to another, and a group left with no link is not shown.
 - The top bar's slots (`app/topbar.status`, `app/topbar.actions`), the portal's summary cards
   (`portal/summary`, declared by the portal module's manifest) and the entity pages' sections
   render the manifest's entries for the slot, in its order, each with the web

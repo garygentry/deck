@@ -370,7 +370,11 @@ export function summarySlot<P>(slotId: string): SummarySlot<P> {
   return { slotId };
 }
 
-/** Declare a pill slot whose pills render with payload `P` (hosted by `core` unless `module` is given). */
+/**
+ * Declare a pill slot whose pills render with payload `P` (hosted by `core` unless `module` is
+ * given). A primitive for tests: core's pill slot is declared with the shell's slots, so
+ * modules take a handle to it with {@link summarySlot}.
+ */
 export function defineSummarySlot<P>(options: { slotId: string; module?: string }): SummarySlot<P> {
   requireString(options.slotId, "slotId", "defineSummarySlot");
   defineSlot({ id: options.slotId, accepts: "pill", module: options.module ?? "core" });
@@ -385,7 +389,7 @@ export function registerSummaryFragment<P>(
   if (!slot || slots.get(slot.slotId)?.accepts !== "pill") {
     throw new RegistrationError(
       "UNKNOWN_SLOT",
-      `registerSummaryFragment: slot "${slot?.slotId}" was never declared via defineSummarySlot`,
+      `registerSummaryFragment: slot "${slot?.slotId}" is not a declared pill slot; take a handle to one with summarySlot(id)`,
     );
   }
   parseId(registration.id, "registerSummaryFragment", "pill");

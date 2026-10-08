@@ -328,6 +328,33 @@ describe("the shell, rendered from the served manifest", () => {
     await waitFor(() => expect(within(again).getByRole("link", { name: "Hosts" })).toHaveAttribute("aria-current", "page"));
   });
 
+  it("routes neither / nor /portal when an override switches the portal off and no page is home", async () => {
+    const off = {
+      ...golden,
+      pages: golden.pages.filter((p) => p.id !== "page:portal/overview"),
+      nav: golden.nav.filter((n) => n.page !== "page:portal/overview"),
+      home: null,
+    } as UiManifest;
+    for (const path of ["/", "/portal"]) {
+      cleanup();
+      resetQueryClient();
+      const nav = await renderApp(() => Response.json(off), path);
+      await waitFor(() => expect(links(nav).length).toBeGreaterThan(0));
+      expect(await screen.findByText("Page not found")).toBeInTheDocument();
+      // No page is home, so the dead end offers no way "home".
+      expect(screen.queryByRole("link", { name: "Go to the home page" })).toBeNull();
+      expect(links(nav)).not.toContain("Portal /portal");
+    }
+  });
+
+  it("offers the home page (not the portal) from a dead end when another page is home", async () => {
+    const hostsHome = { ...golden, home: { page: "page:inventory/hosts", path: "/hosts" } } as UiManifest;
+    await renderApp(() => Response.json(hostsHome), "/nope");
+    expect(await screen.findByText("Page not found")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("link", { name: "Go to the home page" })).toHaveAttribute("href", "/"));
+    expect(within(screen.getByRole("main")).queryByText(/portal/i)).toBeNull();
+  });
+
   it("renders the portal at / and at /portal by default", async () => {
     await renderApp(() => Response.json(golden), "/portal");
     await waitFor(() => expect(document.title).toBe("Portal · example-estate"));

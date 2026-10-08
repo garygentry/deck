@@ -1,6 +1,7 @@
 import type { UiModuleSwitch } from "@deck/module-sdk";
 import { Fragment, type ReactNode } from "react";
-import { Button, EmptyState, PageHeader } from "@/ui";
+import { EmptyState, PageHeader } from "@/ui";
+import { useHomeAction } from "./home-action.js";
 import type { NotEnabledRoute } from "./routes.js";
 
 /**
@@ -8,6 +9,7 @@ import type { NotEnabledRoute } from "./routes.js";
  * turns the module on (env vars and config keys), or why else it is off.
  */
 export function ModuleNotEnabledPage({ route }: { route: NotEnabledRoute }) {
+  const action = useHomeAction();
   return (
     <div data-slot="module-not-enabled-page" className="flex flex-col gap-6">
       <PageHeader title={route.label} />
@@ -15,11 +17,7 @@ export function ModuleNotEnabledPage({ route }: { route: NotEnabledRoute }) {
         icon="power-off"
         title={`The ${route.module} module is not enabled`}
         description={howToEnable(route)}
-        action={
-          <Button asChild variant="outline">
-            <a href="/">Go to the portal</a>
-          </Button>
-        }
+        action={action}
       />
     </div>
   );

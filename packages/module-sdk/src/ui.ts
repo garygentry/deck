@@ -13,10 +13,10 @@ export interface UiManifest {
   brand: UiBrand;
   /**
    * The page rendered at `/`: `ui.home` when it names a routed page with no path parameters,
-   * else the portal's overview. Absent when neither is routed (then `/` is not found) and from
-   * an older server.
+   * else the portal's overview. `null` when neither is routed (then `/` is not found). Absent
+   * only from an older server.
    */
-  home?: UiHome;
+  home?: UiHome | null;
   /** Every known module (enabled or not), by id. */
   modules: UiModule[];
   /** Slots that enabled modules host, by id. */

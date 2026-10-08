@@ -80,19 +80,25 @@ describe("home", () => {
     expect(findings(ui)).toEqual([`${code} ${home}`]);
   });
 
+  it("says why a configured home page is not routed", () => {
+    const off = resolveUiManifest(kernel(withUi({ home: "page:inventory/hosts" }), { overrides: { "page:inventory/hosts": false } }));
+    expect(off.findings[0]?.message).toBe('home page "page:inventory/hosts" is not routed: a ui.extensions override switches it off; "/" renders "page:portal/overview" instead');
+  });
+
   it("falls back for a page of a module that is off", () => {
     const input = kernel(withUi({ home: "page:actions/overview" }));
     const modules = input.modules.map((module) => (module.manifest.id === "actions" ? { ...module, enabled: false } : module));
     const ui = resolveUiManifest({ ...input, modules });
     expect(ui.home?.page).toBe("page:portal/overview");
     expect(findings(ui)).toEqual(["UI_HOME_DISABLED page:actions/overview"]);
+    expect(ui.findings[0]?.message).toContain('is not routed: its module "actions" is off');
   });
 
-  it("is absent when no page can be home", () => {
+  it("is null (not absent, which means an older server) when no page can be home", () => {
     const ui = resolveUiManifest(kernel(DEFAULT_UI, { overrides: { "page:portal/overview": false } }));
-    expect(ui.home).toBeUndefined();
+    expect(ui.home).toBeNull();
     const configured = resolveUiManifest(kernel(withUi({ home: "page:nope/overview" }), { overrides: { "page:portal/overview": false } }));
-    expect(configured.home).toBeUndefined();
+    expect(configured.home).toBeNull();
     expect(configured.findings.map((f) => f.message)).toEqual(['home page "page:nope/overview" names no known page; nothing renders at "/"']);
   });
 

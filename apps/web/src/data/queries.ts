@@ -112,7 +112,7 @@ export function uiManifestProblem(body: unknown): string | null {
   if (!isRecord(body)) return "not an object";
   if (!Array.isArray(body.providers)) return "providers is not a list";
   if (body.brand !== undefined && !(isRecord(body.brand) && isString(body.brand.title))) return "brand is malformed";
-  if (body.home !== undefined && !(isRecord(body.home) && isString(body.home.page) && isString(body.home.path))) return "home is malformed";
+  if (body.home !== undefined && body.home !== null && !(isRecord(body.home) && isString(body.home.page) && isString(body.home.path))) return "home is malformed";
   return (
     listProblem(body.providers, "providers", (p) => !isString(p.id) || !isString(p.kind)) ??
     listProblem(body.navGroups, "navGroups", (g) => !isString(g.id) || !isString(g.label) || !isOptionalString(g.icon)) ??

@@ -16,6 +16,12 @@ export interface DeckBoot {
   brand: { title: string };
   /** The operator's theme defaults (`ui.theme`); a viewer's stored choice still wins. */
   theme: { mode?: ThemeMode };
+  /**
+   * The id of the page `/` renders (the UI manifest's `home.page`), or `null` when no page can
+   * be home; the shell routes `/` by it while `/api/ui` loads, so a configured home page never
+   * flashes the portal first. Absent when the server resolved no UI manifest.
+   */
+  home?: string | null;
 }
 
 export type ThemeMode = "light" | "dark" | "system";
@@ -29,19 +35,26 @@ const THEME_MODES: readonly string[] = ["light", "dark", "system"];
  * The boot object in a document, read leniently: a missing or empty element (the dev server),
  * unparsable JSON or a malformed field gives the field's default (absent).
  */
-export function readDeckBoot(doc: { getElementById(id: string): { textContent: string | null } | null }): { brand?: { title: string }; theme: { mode?: ThemeMode } } {
+export function readDeckBoot(doc: { getElementById(id: string): { textContent: string | null } | null }): {
+  brand?: { title: string };
+  theme: { mode?: ThemeMode };
+  /** Absent when the page carries no boot object (the dev server) or no valid `home`. */
+  home?: string | null;
+} {
   let value: unknown;
   try {
     value = JSON.parse(doc.getElementById(BOOT_ELEMENT_ID)?.textContent ?? "");
   } catch {
     value = undefined;
   }
-  const boot = (typeof value === "object" && value !== null ? value : {}) as { brand?: { title?: unknown }; theme?: { mode?: unknown } };
+  const boot = (typeof value === "object" && value !== null ? value : {}) as { brand?: { title?: unknown }; theme?: { mode?: unknown }; home?: unknown };
   const title = boot.brand?.title;
   const mode = boot.theme?.mode;
+  const home = boot.home;
   return {
     ...(typeof title === "string" && title.trim() !== "" ? { brand: { title } } : {}),
     theme: typeof mode === "string" && THEME_MODES.includes(mode) ? { mode: mode as ThemeMode } : {},
+    ...(home === null || (typeof home === "string" && home !== "") ? { home } : {}),
   };
 }
 

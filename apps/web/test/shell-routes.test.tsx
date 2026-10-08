@@ -24,6 +24,10 @@ const golden = JSON.parse(
 ) as UiManifest;
 
 const Component = () => null;
+
+// The not-enabled page's way home follows the router's home page (mocked: no manifest here).
+let mockHome: PageRegistration | undefined;
+vi.mock("../src/shell/use-home.js", () => ({ useHomePage: () => mockHome }));
 const page = (id: string, path: string, label: string): PageRegistration => ({ id: id as PageRegistration["id"], path, label, component: Component });
 const ready = (manifest: UiManifest): UiManifestState => ({ status: "ready", manifest });
 const ids = (list: readonly { id: string }[]) => list.map((entry) => entry.id);
@@ -105,12 +109,40 @@ describe("the home page", () => {
     expect(resolveHome({ status: "loading" }, [squatter, hosts])).toBeUndefined();
   });
 
+  it("is none when the manifest says no page can be home (home: null), the portal notwithstanding", () => {
+    expect(resolveHome(withHome(null), routed)).toBeUndefined();
+    expect(routeForPath(resolveRoutes(withHome(null), routed), "/")).toBeUndefined();
+  });
+
+  it("follows the boot object's home id until the manifest is read", () => {
+    for (const state of [{ status: "loading" }, { status: "error", message: "down" }] as UiManifestState[]) {
+      expect(resolveHome(state, routed, "page:inventory/hosts")).toBe(hosts);
+      expect(resolveHome(state, routed, null)).toBeUndefined();
+      // An id the web does not route: the default.
+      expect(resolveHome(state, routed, "page:nope/overview")).toBe(portal);
+    }
+    // The manifest, once read, decides.
+    expect(resolveHome(withHome({ page: "page:portal/overview", path: "/portal" }), routed, "page:inventory/hosts")).toBe(portal);
+  });
+
   it("is none when the manifest's home is not routed here or has path parameters", () => {
     expect(resolveHome(withHome({ page: "page:nope/overview", path: "/nope" }), routed)).toBeUndefined();
     expect(resolveHome(withHome({ page: "page:inventory/host-detail", path: "/hosts/:name" }), routed)).toBeUndefined();
     // No home in the manifest, and the default is not routed here.
     expect(resolveHome(withHome(undefined), [hosts])).toBeUndefined();
     expect(routeForPath(resolveRoutes(withHome({ page: "page:nope/overview", path: "/nope" }), routed), "/")).toBeUndefined();
+  });
+});
+
+describe("routing follows the manifest's pages", () => {
+  it("does not route a page the manifest does not route (an override switched it off), nor make it home", () => {
+    const pages = [page("page:portal/overview", "/portal", "Portal"), page("page:inventory/hosts", "/hosts", "Hosts"), page("page:_ui/workbench", "/_ui", "UI workbench")];
+    const manifest: UiManifest = { ...golden, pages: golden.pages.filter((p) => p.id !== "page:portal/overview"), home: null };
+    const routes = resolveRoutes(ready(manifest), pages);
+    expect(ids(routes.routed)).toEqual(["page:inventory/hosts", "page:_ui/workbench"]);
+    expect(routes.home).toBeUndefined();
+    expect(routeForPath(routes, "/")).toBeUndefined();
+    expect(routeForPath(routes, "/portal")).toBeUndefined();
   });
 });
 
@@ -136,7 +168,17 @@ describe("ModuleNotEnabledPage", () => {
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent("The tools module is not enabled");
     expect(status).toHaveTextContent("Set TOOLS_ENABLED=true in deck's environment and restart deck.");
-    expect(screen.getByRole("link", { name: "Go to the portal" })).toHaveAttribute("href", "/");
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("links to the home page while some page is home, and offers no link when none is", () => {
+    mockHome = page("page:inventory/hosts", "/hosts", "Hosts");
+    render(<ModuleNotEnabledPage route={route({})} />);
+    expect(screen.getByRole("link", { name: "Go to the home page" })).toHaveAttribute("href", "/");
+    cleanup();
+    mockHome = undefined;
+    render(<ModuleNotEnabledPage route={route({})} />);
+    expect(screen.queryByRole("link", { name: "Go to the home page" })).toBeNull();
   });
 
   it("names the config key when a config section enables the module", () => {
@@ -188,7 +230,8 @@ describe("the shell at a disabled module's path", () => {
         { id: "tools", version: "1.0.0", enabled: false, reason: "not enabled: TOOLS_ENABLED is not true", origin: "module", enabledBy: [{ env: "TOOLS_ENABLED" }] },
         { id: "ops", version: "1.0.0", enabled: true, origin: "module" },
       ],
-      // The server lists no disabled page for tools: ops owns /ops.
+      // The server routes ops's page and lists no disabled page for tools: ops owns /ops.
+      pages: [...golden.pages, { id: "page:ops/overview", module: "ops", path: "/ops", title: "Ops", component: "OpsPage" }],
       disabledPages: golden.disabledPages ?? [],
     };
     await renderApp(() => Response.json(manifest), "/ops", (registry) => {

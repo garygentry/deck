@@ -255,7 +255,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
   }
   const routedPages = new Set<string>(pages.map((page) => page.id));
   const ui = input.ui ?? DEFAULT_UI;
-  const home = resolveHome(ui.home, pages, declaredPages, findings);
+  const home = resolveHome(ui.home, pages, (id) => unroutedReason(id, units, overrides), findings);
 
   // Pages of disabled modules, on paths nothing routed or root-served claims. The first by
   // precedence keeps a path two disabled modules declare.
@@ -340,7 +340,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
   return {
     uiApi: 1,
     brand: resolveBrand(input.estateName, ui.brand),
-    ...(home === undefined ? {} : { home }),
+    home: home ?? null,
     modules: units.map(({ manifest, origin, enabled, reason, enabledBy }) => ({
       id: manifest.id,
       version: manifest.version,
@@ -383,7 +383,7 @@ function resolveBrand(estateName: string | undefined, brand: UiDefaults["brand"]
 function resolveHome(
   configured: string | undefined,
   pages: readonly UiPage[],
-  declaredPages: ReadonlySet<string>,
+  unrouted: (id: string) => string | null,
   findings: UiFinding[],
 ): UiHome | undefined {
   const usable = (id: string): UiPage | undefined => {
@@ -399,8 +399,8 @@ function resolveHome(
     const fallback = fallbackHome === undefined ? `; nothing renders at "/"` : `; "/" renders "${fallbackHome.page}" instead`;
     if (page !== undefined) {
       findings.push({ code: "UI_HOME_NOT_ROUTABLE", severity: "warning", message: `home page "${configured}" cannot render at "/": ${problem}${fallback}`, id: configured });
-    } else if (declaredPages.has(configured)) {
-      findings.push({ code: "UI_HOME_DISABLED", severity: "warning", message: `home page "${configured}" is not routed (its module is off, an override disables it, or its path is taken)${fallback}`, id: configured });
+    } else if (unrouted(configured) !== null) {
+      findings.push({ code: "UI_HOME_DISABLED", severity: "warning", message: `home page "${configured}" is not routed: ${unrouted(configured)}${fallback}`, id: configured });
     } else {
       findings.push({ code: "UI_HOME_UNKNOWN", severity: "warning", message: `home page "${configured}" names no known page${fallback}`, id: configured });
     }
@@ -430,6 +430,19 @@ function resolveNavGroups(nav: readonly UiNavItem[], ui: UiDefaults, findings: U
     ...configured.map(({ id, label, icon }) => ({ id, label, ...(icon === undefined ? {} : { icon }) })),
     ...others,
   ];
+}
+
+/**
+ * Why a declared page is not among the routed pages, or null for a page no module declares:
+ * its module is off, an override switches it off, or another page or a root path has its path.
+ */
+function unroutedReason(id: string, units: readonly Unit[], overrides: ReadonlyMap<string, UiOverride>): string | null {
+  const unit = units.find(({ manifest }) => manifest.contributes?.pages?.some((page) => page.id === id));
+  if (unit === undefined) return null;
+  if (!unit.enabled) return `its module "${unit.manifest.id}" is off`;
+  if (!isEnabled(overrides.get(id), true)) return "a ui.extensions override switches it off";
+  if (unit.manifest.contributes?.pages?.find((page) => page.id === id)?.path === HOME_PATH) return 'it declares "/", which renders the home page';
+  return "another contribution has its id, or another page or a module's root path has its path";
 }
 
 /** Modules, then the kernel features no module replaces, by id (a reserved id is listed twice, by origin). */

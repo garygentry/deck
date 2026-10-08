@@ -98,6 +98,7 @@ config?: {
 export type JsonValue = (string | number | boolean | null | JsonValue[] | {
 [k: string]: JsonValue | undefined
 })
+export type UiWidget = UiWidget1
 
 /**
  * A merged deck config document containing projected estate inventory and presentation data.
@@ -602,9 +603,9 @@ columns?: number
  */
 widgets: [UiWidget, ...(UiWidget)[]]
 }
-export interface UiWidget {
+export interface UiWidget1 {
 /**
- * A stable name, unique on the page; its id is widget:ui/<page>.<id>. Without one, the id is positional and changes when widgets move.
+ * A stable name, unique on the page; its id is widget:ui/<page>.<id>. Without one, the id is positional (s<N>w<M>, a form an id may not take) and changes when widgets move.
  */
 id?: string
 /**
@@ -625,7 +626,7 @@ source?: (string | {
 kind: string
 })
 /**
- * A JMESPath expression over the provider's data, evaluated on the server at each poll.
+ * A JMESPath expression over the provider's data, evaluated on the server when the data changes, within fixed size and work limits.
  */
 select?: string
 /**

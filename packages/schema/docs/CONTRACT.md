@@ -134,7 +134,7 @@ Each code has a fixed severity. Trigger describes when it is emitted; Fix gives 
 | `PROVIDER_KIND_UNKNOWN` | `warning` | A provider kind is not declared by any composed contribution. | Use a known provider kind or register the additional kind for validation. |
 | `UI_WIDGET_TYPE_UNKNOWN` | `warning` | A config page's widget names a type no composed contribution declares; it renders as unavailable. | Use a widget type a module provides, or install the module that provides it. |
 | `UI_WIDGET_TYPE_DISABLED` | `warning` | A widget's type is declared only by a module that is not running; it renders as unavailable. Reported at `info` unless validation is strict. | Enable or fix the module that provides the widget type, or remove the widget. |
-| `UI_WIDGET_SELECT_INVALID` | `error` | A widget's `select` is not a JMESPath expression. Checked only when composition is given the select check (`composeConfig(contributions, { selectProblem })`, with `selectProblem` from `@deck/schema/select`), as deck's is. | Correct the expression at the reported path; see jmespath.org for the syntax. |
+| `UI_WIDGET_SELECT_INVALID` | `error` | A widget's `select` is not a usable JMESPath expression: it does not parse, calls an unknown function or one with the wrong number of arguments, or exceeds the static limits (1024 characters, 256 parts, 8 multi-selects). Checked when composition is given the select check (`composeConfig(contributions, { selectProblem })`, with `selectProblem` from `@deck/schema/select`), as deck's always is. | Correct the expression at the reported path; see jmespath.org for the syntax. |
 | `SECRET_VALUE_SUSPECTED` | `info` | A credential-related value resembles secret material. | Replace the value with a valid secret reference and keep secret material outside the document. |
 | `SNAPSHOT_HOST_DUPLICATE` | `error` | A snapshot repeats an observed host. | Keep one observation for each host in the snapshot. |
 | `SNAPSHOT_SERVICE_DUPLICATE` | `error` | A snapshot repeats an observed service identity. | Keep one observation for each service on a host. |
@@ -172,7 +172,9 @@ Provider `kind` remains an open string in the schema. An unregistered kind produ
 
 Widget types are declared by contributions too (`widgetTypes`: `{ type: "<id>/<name>", optionsSchema? }`, where `<id>` is the contribution's own id; two contributions declaring one type is `MODULE_MANIFEST_CONFLICT`). A widget of a declared type (`ui.pages[].sections[].widgets[]`) must have `options` its type's schema accepts, so a bad option is a schema error at its path, which fails validation like any other. A widget's `type` stays an open string: an undeclared type is `UI_WIDGET_TYPE_UNKNOWN`, not a schema error. An explicit widget `id` is unique on its page (`ID_DUPLICATE`).
 
-The JMESPath engine that checks a widget's `select` is not part of the main entry: import `selectProblem` (and `evaluateSelect`) from `@deck/schema/select` and pass it to `composeConfig`.
+The library's default composition includes deck's own widget types (`core/json`).
+
+The JMESPath engine that checks and evaluates a widget's `select` (a vendored copy of the jmespath.js reference implementation, Apache-2.0, whose field lookups read own properties only) is not part of the main entry: import `selectProblem`, `compileSelect`, `evaluateSelect` and `SELECT_LIMITS` from `@deck/schema/select`, and pass `selectProblem` to `composeConfig`.
 
 A kind declared `bindable` may appear as a key of `hosts[].bindings` and `services[].bindings`. A binding of a declared kind that is not bindable is ignored, as before, and reported with the info finding `PROVIDER_BINDING_UNSUPPORTED` so the dead binding is visible without failing validation.
 

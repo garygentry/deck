@@ -9,8 +9,9 @@ import type { DeckConfigDocument } from "../../types.js";
  *   module never fails boot); either widget renders as unavailable;
  * - a `select` that is not a JMESPath expression (UI_WIDGET_SELECT_INVALID), when composition
  *   was given the check;
- * - an explicit widget `id` used twice on one page (ID_DUPLICATE): it names the widget's
- *   extension id, `widget:ui/<page>.<id>`.
+ * - a widget id used twice on one page (ID_DUPLICATE), over every widget's resolved id: its
+ *   `id`, else its positional `s<N>w<M>` (which the schema keeps an explicit id from taking).
+ *   It names the widget's extension id, `widget:ui/<page>.<id>`.
  * A widget's options are checked by the composed schema, against its type's options schema.
  */
 export function uiWidgets(
@@ -24,12 +25,12 @@ export function uiWidgets(
     for (const [sectionIndex, section] of (page.sections ?? []).entries()) {
       for (const [widgetIndex, widget] of (section.widgets ?? []).entries()) {
         const path = `/ui/pages/${pageIndex}/sections/${sectionIndex}/widgets/${widgetIndex}`;
-        if (widget.id !== undefined) {
-          if (ids.has(widget.id)) {
-            findings.push(finding("ID_DUPLICATE", path, `Widget id ${JSON.stringify(widget.id)} is used more than once on page ${JSON.stringify(page.id)}.`));
-          }
-          ids.add(widget.id);
+        // Its id as resolved: the explicit one, else positional (a form an explicit id may not take).
+        const id = widget.id ?? `s${sectionIndex + 1}w${widgetIndex + 1}`;
+        if (ids.has(id)) {
+          findings.push(finding("ID_DUPLICATE", path, `Widget id ${JSON.stringify(id)} is used more than once on page ${JSON.stringify(page.id)}.`));
         }
+        ids.add(id);
         if (!composed.widgetTypes.has(widget.type)) {
           const owner = composed.disabledWidgetTypes.get(widget.type);
           if (owner === undefined) {

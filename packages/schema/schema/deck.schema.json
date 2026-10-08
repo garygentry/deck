@@ -140,7 +140,7 @@
     "UiWidget": {
       "title": "UiWidget", "type": "object", "additionalProperties": false, "required": ["type"],
       "properties": {
-        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "A stable name, unique on the page; its id is widget:ui/<page>.<id>. Without one, the id is positional and changes when widgets move." },
+        "id": { "type": "string", "pattern": "^(?!s[0-9]+w[0-9]+$)[a-z0-9][a-z0-9-]*$", "description": "A stable name, unique on the page; its id is widget:ui/<page>.<id>. Without one, the id is positional (s<N>w<M>, a form an id may not take) and changes when widgets move." },
         "type": { "type": "string", "pattern": "^[a-z][a-z0-9-]*/[a-z0-9][a-z0-9-]*$", "description": "The widget type, <module>/<name>, such as core/json." },
         "title": { "type": "string", "minLength": 1, "maxLength": 80, "description": "The widget's heading." },
         "source": {
@@ -150,7 +150,7 @@
             { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "type": "string", "minLength": 1, "description": "A provider kind." } } }
           ]
         },
-        "select": { "type": "string", "minLength": 1, "maxLength": 1024, "description": "A JMESPath expression over the provider's data, evaluated on the server at each poll." },
+        "select": { "type": "string", "minLength": 1, "maxLength": 1024, "description": "A JMESPath expression over the provider's data, evaluated on the server when the data changes, within fixed size and work limits." },
         "options": { "type": "object", "additionalProperties": { "$ref": "#/$defs/JsonValue" }, "description": "Options of the widget type, checked against its schema." },
         "span": { "type": "integer", "minimum": 1, "maximum": 4, "description": "Columns the widget spans; default 1, at most the section's columns." },
         "rows": { "type": "integer", "minimum": 1, "maximum": 6, "description": "Rows the widget spans; default 1." }

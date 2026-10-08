@@ -240,7 +240,7 @@ export function composeConfig(contributions: readonly ConfigContribution[], opti
   const disabledKinds = new Map<string, string>();
   const widgetOwners = new Map<string, string>();
   const disabledWidgetTypes = new Map<string, string>();
-  const widgetSchemas: Array<{ type: string; schema: JsonObject; required: boolean }> = [];
+  const widgetSchemas: Array<{ type: string; schema: JsonObject }> = [];
   const instanceSchemas: Record<"integrations" | "sources", Array<{ kind: string; schema: JsonObject }>> = {
     integrations: [],
     sources: [],
@@ -361,13 +361,13 @@ export function composeConfig(contributions: readonly ConfigContribution[], opti
         if (!disabledWidgetTypes.has(type)) disabledWidgetTypes.set(type, id);
         continue;
       }
-      if (widgetOwners.has(type)) {
-        throw new ComposeError("MODULE_MANIFEST_CONFLICT", id, `widget type "${type}" is already declared by "${widgetOwners.get(type)}"`);
-      }
+      const owner = widgetOwners.get(type);
+      // Twice in one contribution is that module's own defect (it is disabled); across two, a conflict.
+      if (owner === id) throw new ComposeError("MODULE_MANIFEST_INVALID", id, `widget type "${type}" is declared twice`);
+      if (owner !== undefined) throw new ComposeError("MODULE_MANIFEST_CONFLICT", id, `widget type "${type}" is already declared by "${owner}"`);
       widgetOwners.set(type, id);
       if (declared.optionsSchema !== undefined) {
-        const required = Array.isArray(declared.optionsSchema.required) && declared.optionsSchema.required.length > 0;
-        widgetSchemas.push({ type, schema: hoist(declared.optionsSchema, `widget__${type.replace("/", "__")}`, schema.$defs, id), required });
+        widgetSchemas.push({ type, schema: hoist(declared.optionsSchema, `widget__${type.replace("/", "__")}`, schema.$defs, id) });
       }
     }
 
@@ -393,16 +393,27 @@ export function composeConfig(contributions: readonly ConfigContribution[], opti
     );
   }
 
-  // A widget of a declared type must have options its type accepts; one that requires options
-  // must have them. Any other type keeps the generic shape (UI_WIDGET_TYPE_UNKNOWN reports it).
+  // A widget of a declared type must have options its type accepts. Omitted options are `{}`:
+  // when the type's schema (whole, through any allOf, $ref or minProperties) refuses `{}`, the
+  // widget must set them. Any other type keeps the generic shape (UI_WIDGET_TYPE_UNKNOWN reports it).
   if (widgetSchemas.length > 0) {
+    const required = new Map<string, boolean>();
+    for (const { type, schema: options } of widgetSchemas) {
+      let accepts: ValidateFunction;
+      try {
+        accepts = createAjv().compile({ $defs: schema.$defs, ...options });
+      } catch (cause) {
+        throw new ComposeError("MODULE_MANIFEST_INVALID", type.slice(0, type.indexOf("/")), `widget type "${type}" options schema does not compile: ${(cause as Error).message}`);
+      }
+      required.set(type, !accepts({}));
+    }
     schema.$defs.UiWidget = {
       allOf: [
         schema.$defs.UiWidget!,
         widgetSchemas.reduceRight<JsonObject>(
-          (otherwise, { type, schema: options, required }) => ({
+          (otherwise, { type, schema: options }) => ({
             if: { type: "object", properties: { type: { const: type } }, required: ["type"] },
-            then: { type: "object", properties: { options }, ...(required ? { required: ["options"] } : {}) },
+            then: { type: "object", properties: { options }, ...(required.get(type) === true ? { required: ["options"] } : {}) },
             else: otherwise,
           }),
           true as unknown as JsonObject,

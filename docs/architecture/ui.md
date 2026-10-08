@@ -348,8 +348,10 @@ never `style={}`, and the grid never reorders, so DOM order is reading order.
 
 Each widget renders in a `WidgetHost`: a card `Section` (`h3`, the widget's title, else its
 type) whose body is chosen by `widgetView` from the widget, its type and its provider
-(`useProvider(source.id)`): an `ErrorState` for a type the web has not registered, a source the
-server could not resolve (`sourceProblem`), a provider without data because it failed, or a
+(`useProvider(source.id)`): an `ErrorState` ("Widget unavailable") for a type the server says
+no enabled module provides (`typeProblem`), that the manifest's `widgetTypes` does not list, or
+that the web has not registered (it then reads no data), a source the server could not resolve
+(`sourceProblem`), a provider without data because it failed, or a
 `select` that failed on the data; a `LoadingState` until the first data; an `EmptyState` for a
 null or empty value; else the type's component. A non-fresh provider adds a `FreshnessBadge`.
 The body sits in a `FragmentBoundary` keyed on the envelope, so a widget that throws shows an
@@ -363,8 +365,13 @@ the placed `widget`. A module declares its types in `contributes.widgetTypes` (`
 components in its table; `registerWebModule` registers them (`registerWidgetType`). Deck's own
 types are `CORE_WIDGET_TYPES` in `@deck/contract/modules/core`, registered by
 `features/core-widgets`. The browser never evaluates a `select`: the JMESPath engine is only in
-`@deck/schema/select`, which the server imports, and `test/no-select-engine.test.ts` keeps it
-out of the web.
+`@deck/schema/select`, which the server imports. `test/no-select-engine.test.ts` follows every
+runtime import from `src/` through the workspace packages to keep it out of the web, and CI
+greps the built bundle for it.
+
+Config pages exist only in the manifest, so while it loads the shell shows a loading state, not
+the portal or "not found", at `/` when the server's boot object names a config page as home,
+and at any path no registered page matches.
 
 ## Adding a page
 

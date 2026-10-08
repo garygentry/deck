@@ -518,18 +518,35 @@ A widget:
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `type` | `<module>/<name>` | The widget type, provided by a module or by deck itself (`core/json`: the value as formatted JSON; option `wrap: true` soft-wraps long lines). A type no module provides is `UI_WIDGET_TYPE_UNKNOWN`, and one whose module is off `UI_WIDGET_TYPE_DISABLED`; the widget then shows as unavailable. |
-| `id` | string, lowercase letters, digits and `-` | A stable name, unique on its page (`ID_DUPLICATE`). The widget's id is `widget:ui/<page>.<id>`. Without one it is positional, `widget:ui/<page>.s<N>w<M>` (section N, widget M, from 1), which **changes when sections or widgets move**: give a widget an `id` before you override it. |
+| `type` | `<module>/<name>` | The widget type, provided by a module or by deck itself (`core/json`: the value as formatted JSON; option `wrap: true` soft-wraps long lines). A type no module provides is `UI_WIDGET_TYPE_UNKNOWN`, and one whose module is off `UI_WIDGET_TYPE_DISABLED`; the widget then shows as unavailable and reads no data. |
+| `id` | string, lowercase letters, digits and `-` | A stable name, unique on its page (`ID_DUPLICATE`). The widget's id is `widget:ui/<page>.<id>`. Without one it is positional, `widget:ui/<page>.s<N>w<M>` (section N, widget M, from 1), which **changes when sections or widgets move**: give a widget an `id` before you override it. An `id` may not take the positional form (`s1w2`). |
 | `title` | string | The widget's heading; default its type. |
 | `source` | provider id, or `{kind}` | The provider it reads, as `GET /api/providers` lists them; `{kind: snapshot}` takes the first provider of that kind by id. A source that names no provider, or one of a kind the widget type cannot render, is reported in `GET /api/ui` (`UI_WIDGET_SOURCE_UNKNOWN`, `UI_WIDGET_SOURCE_KIND`) and the widget shows the problem. |
-| `select` | [JMESPath](https://jmespath.org) expression | What the widget shows of the provider's data. Deck evaluates it on the server each time the provider's data changes and sends the result with the provider's envelope; without `select` the widget gets the data whole. An expression that does not parse is `UI_WIDGET_SELECT_INVALID`. |
+| `select` | [JMESPath](https://jmespath.org) expression | What the widget shows of the provider's data. Deck evaluates it on the server each time the provider's data changes and sends the result with the provider's envelope; without `select` the widget gets the data whole. An expression that does not parse, calls a function JMESPath does not have or with the wrong number of arguments, or exceeds the size limits below is `UI_WIDGET_SELECT_INVALID`. |
 | `options` | object | The widget type's options. Each type declares their schema. |
 | `span` | 1–4 | Columns the widget spans from `md` up; default 1. More than its section's columns is clamped, with `UI_WIDGET_SPAN`. |
 | `rows` | 1–6 | Rows the widget spans from `md` up; default 1. |
 
 A widget option its type does not accept (an unknown option, or a value of the wrong type) is a
 schema error at its path, like any other invalid config: `deck validate` reports it, and deck
-refuses to start with it. Check a dashboard with `deck validate` before deploying it.
+refuses to start with it. Omitted `options` are checked as `{}`, so a type that needs an option
+needs `options`. Check a dashboard with `deck validate` before deploying it.
+
+A `select` is bounded so that no expression can stall deck:
+
+| Limit | Value | Past it |
+| --- | --- | --- |
+| Length of the expression | 1024 characters | `UI_WIDGET_SELECT_INVALID` |
+| Parts of the parsed expression | 256 | `UI_WIDGET_SELECT_INVALID` |
+| Multi-selects (`[a, b]`, `{a: a}`) | 8 | `UI_WIDGET_SELECT_INVALID` |
+| Work per evaluation (expression steps, plus each value a function is handed) | 200 000 steps | the widget shows "Select failed" |
+| Values in a result | 10 000 | the widget shows "Select failed" |
+| Nesting depth of a result | 64 | the widget shows "Select failed" |
+| Size of a result, as JSON | 256 KiB | the widget shows "Select failed" |
+
+A select that fails or exceeds a limit at run time affects only its own widget: the provider
+and the page's other widgets keep working. A select reads the data's own fields only (never
+`constructor` or other built-in members).
 
 A widget shows a loading state until its provider's first data, an error when the provider
 has no data because it failed or the `select` failed on its data, "No data to show" when the

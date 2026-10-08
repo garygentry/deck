@@ -25,9 +25,11 @@ follows the estate config schema.
 A provider envelope's `projections`, present when a config page widget reads the provider with
 a `select`, maps each such widget's id (`widget:ui/<page>.<name>`) to the expression's result
 over the envelope's `data`: `{"value": …}` (plain JSON; `null` where it selects nothing) or
-`{"error": "…"}` when the expression fails on this data. The server evaluates them each time the
-data changes, not per request; while there is no data the map is empty. A failing select never
-affects the provider's own `error` or health.
+`{"error": "…"}` when the expression fails on this data or exceeds its limits (10 000 values,
+depth 64, 256 KiB, 200 000 steps; see the estate configuration reference). The server compiles
+each select once and evaluates it each time the data changes, not per request; while there is
+no data the map is empty. A failing select never affects the provider's own `error` or health,
+or another projection.
 
 `HealthResponse.status` is `degraded` when any provider's latest health is not ok, otherwise `ok`.
 `HealthResponse.modules` lists every known module's state by id. A module with no health report
@@ -80,7 +82,8 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
   (`widget:ui/<page>.<name>`, positional `…s<N>w<M>` without a configured id), `type`, `title`,
   `options`, `span` (clamped to the section's columns), `rows`, and its `source` resolved to a
   registered provider (`{id, kind}`), or `null`, with a `sourceProblem` to show when the
-  configured one did not resolve. A widget with a `select` has it, and `projection`: the key of
+  configured one did not resolve. A widget whose type no enabled module provides has a
+  `typeProblem`, no source and no projection: it renders as unavailable and reads nothing. A widget with a `select` has it, and `projection`: the key of
   its result in that provider's envelope `projections`. Widgets an override switches off are
   left out, and a section without widgets with them.
 - `widgetTypes` lists the widget types a config page may use: deck's own (`core/json`) and those

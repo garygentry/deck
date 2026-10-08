@@ -16,16 +16,17 @@ export interface ListProps {
   children?: ReactNode;
 }
 
+// `density-compact:` is the operator's compact density (`ui.theme.density`).
 const LIST_CLASS: Record<ListVariant, string> = {
-  plain: "flex flex-col gap-1",
+  plain: "flex flex-col gap-1 density-compact:gap-0.5",
   divided: "flex flex-col divide-y rounded-md border",
-  card: "flex flex-col gap-2",
+  card: "flex flex-col gap-2 density-compact:gap-1",
 };
 
 const ITEM_CLASS: Record<ListVariant, string> = {
-  plain: "rounded-md px-2 py-1.5",
-  divided: "px-3 py-2",
-  card: "rounded-lg border bg-card px-4 py-3 text-card-foreground",
+  plain: "rounded-md px-2 py-1.5 density-compact:py-1",
+  divided: "px-3 py-2 density-compact:py-1",
+  card: "rounded-lg border bg-card px-4 py-3 text-card-foreground density-compact:px-3 density-compact:py-2",
 };
 
 /** A semantic list of {@link ListItem}s. */

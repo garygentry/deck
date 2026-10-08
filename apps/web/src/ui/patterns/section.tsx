@@ -45,8 +45,10 @@ export function Section({
       id={id}
       aria-labelledby={resolvedHeadingId}
       className={cn(
-        "flex flex-col gap-3",
-        variant === "card" && "rounded-xl border bg-card p-4 text-card-foreground shadow-sm md:p-6",
+        // `density-compact:` is the operator's compact density (`ui.theme.density`).
+        "flex flex-col gap-3 density-compact:gap-2",
+        variant === "card" &&
+          "rounded-xl border bg-card p-4 text-card-foreground shadow-sm md:p-6 density-compact:p-3 density-compact:md:p-4",
         className,
       )}
       {...props}

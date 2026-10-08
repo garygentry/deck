@@ -123,7 +123,11 @@ export function DataTable<T>({
     return { first, real };
   })();
 
-  const cellPad = density === "compact" ? "h-8 px-2 py-1" : "h-11 px-3 py-2.5";
+  // The operator's compact density (`density-compact:`) tightens either table density a step.
+  const cellPad =
+    density === "compact"
+      ? "h-8 px-2 py-1 density-compact:h-7 density-compact:py-0.5"
+      : "h-11 px-3 py-2.5 density-compact:h-8 density-compact:px-2 density-compact:py-1";
   const rows = table.getRowModel().rows;
   const emptyProps: Omit<EmptyStateProps, "compact"> = isEmptyStateProps(empty)
     ? empty

@@ -10,6 +10,12 @@
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:where(.dark, .dark *));
+/*
+ * The operator's `ui.theme.density: compact` (data-theme-density on <html>, set
+ * by the pre-paint script): DataTable, List and Section tighten their spacing
+ * under it. Comfortable, the default, is the unprefixed classes.
+ */
+@custom-variant density-compact (&:where([data-theme-density="compact"] *));
 
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";

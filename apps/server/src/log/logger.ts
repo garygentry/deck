@@ -49,6 +49,30 @@ export interface ConfigLoadEvent {
   configDir: string;
 }
 
+export interface ConfigReloadEvent {
+  /** The config directory changed and was read again (`ui` hot reload). */
+  event: "config.reload";
+  /**
+   * `applied`: only `ui` changed, and the new UI is served. `unchanged`: nothing to swap.
+   * `invalid`: the config does not load; the last good one is kept. `restart-required`: a
+   * key outside `ui` changed; the last good config is kept until deck restarts.
+   */
+  result: "applied" | "unchanged" | "invalid" | "restart-required";
+  configDir: string;
+  /** The top-level keys that differ from the config deck started with (`restart-required`). */
+  changedKeys?: string[];
+  /** Why the config does not load (`invalid`). */
+  reason?: string;
+}
+
+export interface ConfigWatchEvent {
+  /** The config directory watch: armed at boot, lost (directory gone or watch failed), re-armed. */
+  event: "config.watch";
+  state: "armed" | "lost" | "rearmed";
+  configDir: string;
+  error?: string;
+}
+
 export interface ProviderPollEvent {
   event: "provider.poll";
   id: string;

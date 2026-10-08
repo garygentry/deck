@@ -22,7 +22,7 @@
       "properties": {
         "brand": { "$ref": "#/$defs/UiBrand", "description": "The product name and mark the shell shows." },
         "theme": { "$ref": "#/$defs/UiTheme", "description": "The operator's theme defaults; a viewer's own choice of mode still wins." },
-        "home": { "type": "string", "pattern": "^page:[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$", "description": "The id of the page rendered at /, such as page:inventory/hosts; default the built-in home page." },
+        "home": { "type": "string", "pattern": "^page:[a-z][a-z0-9-]*/[a-z0-9][a-z0-9.-]*$", "description": "The id of the page rendered at /, such as page:inventory/hosts; default the built-in home page." },
         "nav": { "$ref": "#/$defs/UiNav", "description": "Sidebar group order, labels and icons, and extra nav entries." },
         "extensions": {
           "type": "object", "description": "Overrides by extension, page or nav entry id. They replace, never merge: false disables, an object replaces attachTo and/or config.",
@@ -69,7 +69,7 @@
         {
           "type": "object", "additionalProperties": false, "required": ["id", "group", "label", "href"],
           "properties": {
-            "id": { "type": "string", "pattern": "^nav:[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$", "description": "The entry id, such as nav:ui/grafana." },
+            "id": { "type": "string", "pattern": "^nav:[a-z][a-z0-9-]*/[a-z0-9][a-z0-9.-]*$", "description": "The entry id, such as nav:ui/grafana." },
             "group": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The group the entry belongs to." },
             "label": { "type": "string", "minLength": 1, "description": "The entry's label." },
             "href": { "type": "string", "pattern": "^https?://\\S+$", "description": "An external http(s) URL." },
@@ -80,7 +80,7 @@
         {
           "type": "object", "additionalProperties": false, "required": ["id", "group", "separator"],
           "properties": {
-            "id": { "type": "string", "pattern": "^nav:[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$", "description": "The separator's id." },
+            "id": { "type": "string", "pattern": "^nav:[a-z][a-z0-9-]*/[a-z0-9][a-z0-9.-]*$", "description": "The separator's id." },
             "group": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The group the separator belongs to." },
             "separator": { "const": true, "description": "Marks the entry as a separator." },
             "order": { "type": "number", "description": "Order within the group; default 100." }

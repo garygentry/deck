@@ -14,6 +14,16 @@
  * Accent is teal. `ok` is a true green at least 40° of hue away from `primary`,
  * and `info` is blue, so neither status reads as a link or an action.
  *
+ * Presets (`ui.theme.preset`) re-point tokens without touching the defaults
+ * above: `teal` is `:root`/`.dark` itself, and every other preset is a pair of
+ * blocks keyed on `data-theme-preset` on <html> (set by the pre-paint script in
+ * index.html), a light one and a `.dark` one defining the same tokens. Accent
+ * presets (`slate`, `amber`, `violet`) re-point primary, accent and ring;
+ * `high-contrast` also darkens (light) or lightens (dark) text, status
+ * foregrounds and edges, and is held to 7:1 for text. Status tones never move
+ * with a preset beyond that, so a tone means the same thing in every preset.
+ * `data-theme-radius` rescales `--radius` (`md` is the default above).
+ *
  * Fonts: Geist Sans / Geist Mono, self-hosted from @fontsource-variable (no
  * CDN: home labs are often offline or egress-restricted).
  *
@@ -136,6 +146,142 @@
   --status-neutral-fg: oklch(0.72 0 0);
   --status-neutral-bg: oklch(0.26 0 0);
   --status-neutral-border: oklch(0.4 0 0);
+}
+
+/* --- Presets: each a light block and a `.dark` block over the same tokens. -- */
+
+[data-theme-preset="slate"] {
+  --primary: oklch(0.48 0.045 257);
+  --accent: oklch(0.95 0.01 257);
+  --ring: oklch(0.48 0.045 257);
+  --sidebar-primary: oklch(0.48 0.045 257);
+  --sidebar-accent: oklch(0.93 0.012 257);
+  --sidebar-ring: oklch(0.48 0.045 257);
+}
+
+.dark[data-theme-preset="slate"] {
+  --primary: oklch(0.76 0.05 257);
+  --accent: oklch(0.3 0.02 257);
+  --ring: oklch(0.76 0.05 257);
+  --sidebar-primary: oklch(0.76 0.05 257);
+  --sidebar-accent: oklch(0.27 0.02 257);
+  --sidebar-ring: oklch(0.76 0.05 257);
+}
+
+[data-theme-preset="amber"] {
+  --primary: oklch(0.52 0.12 55);
+  --accent: oklch(0.96 0.03 75);
+  --ring: oklch(0.52 0.12 55);
+  --sidebar-primary: oklch(0.52 0.12 55);
+  --sidebar-accent: oklch(0.94 0.035 75);
+  --sidebar-ring: oklch(0.52 0.12 55);
+}
+
+.dark[data-theme-preset="amber"] {
+  --primary: oklch(0.78 0.13 70);
+  --accent: oklch(0.3 0.04 70);
+  --ring: oklch(0.78 0.13 70);
+  --sidebar-primary: oklch(0.78 0.13 70);
+  --sidebar-accent: oklch(0.27 0.04 70);
+  --sidebar-ring: oklch(0.78 0.13 70);
+}
+
+[data-theme-preset="violet"] {
+  --primary: oklch(0.52 0.17 290);
+  --accent: oklch(0.95 0.025 290);
+  --ring: oklch(0.52 0.17 290);
+  --sidebar-primary: oklch(0.52 0.17 290);
+  --sidebar-accent: oklch(0.93 0.03 290);
+  --sidebar-ring: oklch(0.52 0.17 290);
+}
+
+.dark[data-theme-preset="violet"] {
+  --primary: oklch(0.74 0.13 290);
+  --accent: oklch(0.3 0.05 290);
+  --ring: oklch(0.74 0.13 290);
+  --sidebar-primary: oklch(0.74 0.13 290);
+  --sidebar-accent: oklch(0.27 0.05 290);
+  --sidebar-ring: oklch(0.74 0.13 290);
+}
+
+[data-theme-preset="high-contrast"] {
+  --foreground: oklch(0.1 0 0);
+  --card-foreground: oklch(0.1 0 0);
+  --popover-foreground: oklch(0.1 0 0);
+  --primary: oklch(0.4 0.09 200);
+  --secondary-foreground: oklch(0.1 0 0);
+  --muted-foreground: oklch(0.36 0 0);
+  --accent: oklch(0.93 0.03 200);
+  --accent-foreground: oklch(0.1 0 0);
+  --destructive: oklch(0.44 0.18 27);
+  --border: oklch(0.58 0 0);
+  --input: oklch(0.42 0 0);
+  --ring: oklch(0.4 0.09 200);
+  --sidebar-foreground: oklch(0.1 0 0);
+  --sidebar-primary: oklch(0.4 0.09 200);
+  --sidebar-accent: oklch(0.91 0.035 200);
+  --sidebar-accent-foreground: oklch(0.1 0 0);
+  --sidebar-border: oklch(0.58 0 0);
+  --sidebar-ring: oklch(0.4 0.09 200);
+  --status-ok-fg: oklch(0.4 0.11 150);
+  --status-ok-border: oklch(0.58 0.12 150);
+  --status-warn-fg: oklch(0.41 0.09 65);
+  --status-warn-border: oklch(0.6 0.12 75);
+  --status-danger-fg: oklch(0.43 0.18 27);
+  --status-danger-border: oklch(0.58 0.15 25);
+  --status-info-fg: oklch(0.41 0.15 255);
+  --status-info-border: oklch(0.58 0.12 250);
+  --status-pending-fg: oklch(0.41 0.17 300);
+  --status-pending-border: oklch(0.58 0.13 300);
+  --status-neutral-fg: oklch(0.36 0 0);
+  --status-neutral-border: oklch(0.58 0 0);
+}
+
+.dark[data-theme-preset="high-contrast"] {
+  --foreground: oklch(0.99 0 0);
+  --card-foreground: oklch(0.99 0 0);
+  --popover-foreground: oklch(0.99 0 0);
+  --primary: oklch(0.84 0.1 195);
+  --secondary-foreground: oklch(0.99 0 0);
+  --muted-foreground: oklch(0.86 0 0);
+  --accent: oklch(0.32 0.04 195);
+  --accent-foreground: oklch(0.99 0 0);
+  --destructive: oklch(0.78 0.15 25);
+  --border: oklch(0.58 0 0);
+  --input: oklch(0.75 0 0);
+  --ring: oklch(0.84 0.1 195);
+  --sidebar-foreground: oklch(0.99 0 0);
+  --sidebar-primary: oklch(0.84 0.1 195);
+  --sidebar-accent: oklch(0.3 0.04 195);
+  --sidebar-accent-foreground: oklch(0.99 0 0);
+  --sidebar-border: oklch(0.58 0 0);
+  --sidebar-ring: oklch(0.84 0.1 195);
+  --status-ok-fg: oklch(0.86 0.14 150);
+  --status-ok-border: oklch(0.6 0.12 150);
+  --status-warn-fg: oklch(0.88 0.12 85);
+  --status-warn-border: oklch(0.62 0.11 80);
+  --status-danger-fg: oklch(0.84 0.11 25);
+  --status-danger-border: oklch(0.6 0.15 25);
+  --status-info-fg: oklch(0.85 0.09 250);
+  --status-info-border: oklch(0.6 0.12 250);
+  --status-pending-fg: oklch(0.85 0.1 300);
+  --status-pending-border: oklch(0.6 0.12 300);
+  --status-neutral-fg: oklch(0.86 0 0);
+  --status-neutral-border: oklch(0.58 0 0);
+}
+
+/* --- Radius scale (`md`, 0.5rem, is :root's). -------------------------------- */
+
+[data-theme-radius="none"] {
+  --radius: 0rem;
+}
+
+[data-theme-radius="sm"] {
+  --radius: 0.25rem;
+}
+
+[data-theme-radius="lg"] {
+  --radius: 0.75rem;
 }
 
 @theme inline {

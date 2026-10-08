@@ -470,14 +470,17 @@ started with:
 
 Fixing or reverting the edit clears the finding. Every change in the directory is noticed,
 including files swapped in through temporary names or a symlinked directory, as with a
-Kubernetes ConfigMap. deck also reads the directory once more right after it starts, so an
-edit made while it was starting counts. If the directory is removed or replaced, deck reports
+Kubernetes ConfigMap. Most changes are seen at once. Some raise no file-system event, such as a
+ConfigMap re-pointing its `..data` link under Bun, which deck runs on. deck also checks the
+config files every 5 seconds, so even those take effect within about 5 seconds, as do changes
+on mounts that report no file events at all (some network or Docker Desktop mounts). deck also
+reads the directory once more right after it starts, so an edit made while it was starting
+counts. If the directory is removed or replaced, deck reports
 it as missing, and within a few seconds of it coming back watches it again and reloads.
 
 `theme` (mode, preset, density and radius) and the home page used before the manifest arrives
 are written into the page when it loads. deck serves a changed value at once, but an open page
-applies it on its next load. Where the platform reports no file changes (some network or Docker
-Desktop mounts), nothing reloads, and a `ui` change needs a restart.
+applies it on its next load.
 
 ## modules.llm-usage
 

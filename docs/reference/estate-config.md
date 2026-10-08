@@ -375,9 +375,13 @@ ui:
 | Key | Type | Description |
 | --- | --- | --- |
 | `mode` | `light` \| `dark` \| `system` | The colour mode for a viewer who has not chosen one in the theme menu; default `system`. A viewer's own choice always wins. It is written into the page, so the first paint already uses it. |
-| `preset` | `teal` | The named colour preset; default `teal`. |
-| `density` | `compact` \| `comfortable` | Spacing of tables, lists and sections. Accepted; the shell does not apply it yet. |
-| `radius` | `none` \| `sm` \| `md` \| `lg` | Corner radius scale. Accepted; the shell does not apply it yet. |
+| `preset` | `teal` \| `slate` \| `amber` \| `violet` \| `high-contrast` | The named colour preset; default `teal`. `slate`, `amber` and `violet` change the accent (primary, links, focus ring, selection); `high-contrast` also strengthens text, status colours and edges to at least 7:1 contrast. Status colours keep their meaning in every preset. |
+| `density` | `compact` \| `comfortable` | Spacing of tables, lists and sections; default `comfortable`. `compact` tightens table cells, list rows and section gaps and padding. |
+| `radius` | `none` \| `sm` \| `md` \| `lg` | Corner radius scale; default `md`. |
+
+Every setting is written into the page with `mode`, so the first paint already uses it, and
+none of them takes a colour value: a preset is a named, contrast-tested token set in the shell.
+The viewer's theme menu chooses only the mode.
 
 `home`: `/` renders the home page, and the page also stays at its own path; its sidebar entry
 links to `/`. The portal is the default home and is also served at `/portal`. A page with path

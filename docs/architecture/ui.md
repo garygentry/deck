@@ -54,9 +54,18 @@ export const OUTCOME_UI = defineStatusMap<ActionOutcome>({
 // Rendered with <StatusBadge {...OUTCOME_UI[outcome]} /> or StatusBadge.fromMap(OUTCOME_UI, outcome).
 ```
 
+`ui.theme` picks a **preset** (`teal`, the default, `slate`, `amber`, `violet`,
+`high-contrast`), a **density** and a **radius** by name; config never carries a colour. Each
+non-default preset is a pair of `[data-theme-preset="…"]` blocks in `theme.css` (a light one and
+a `.dark` one over the same tokens) that re-point tokens without touching the defaults, so the
+default theme renders exactly as before. `[data-theme-radius]` rescales `--radius`. Density is the
+`density-compact:` Tailwind variant (in `app.css`), keyed on `data-theme-density="compact"`:
+`DataTable`, `List` and `Section` add `density-compact:` classes that tighten their spacing, and
+a new spacing-sensitive pattern should do the same. Screens never read these settings.
+
 Contrast is tested, not assumed. `test/tokens-contrast.test.ts` holds every text token to WCAG AA
-on every surface in both themes, and each feature's contrast test checks its maps only use those
-tokens.
+on every surface in both themes and every preset (AAA, 7:1, for `high-contrast`), and each
+feature's contrast test checks its maps only use those tokens.
 
 The theme starts from one chain, `initialThemeMode` in `shell/theme-chain.ts`: the viewer's
 choice from the theme menu (stored under `deck-theme-choice`), else an older shell's stored
@@ -65,7 +74,10 @@ the operator's default (`ui.theme.mode`), else system. A Vite plugin inlines tha
 `index.html` as the pre-paint script, so the page never flashes the wrong theme, and
 `useThemeMode` calls the same function. The operator's default reaches the page in the boot
 object the server writes into `index.html` (`DeckBoot` in `@deck/contract`, read with
-`readDeckBoot`); only a choice made in the theme menu is stored.
+`readDeckBoot`); only a choice made in the theme menu is stored. The pre-paint script also sets
+the operator's preset, density and radius on `<html>` as `data-theme-preset`,
+`data-theme-density` and `data-theme-radius` (`initialThemeAttributes`, in the same file); the
+viewer does not choose those.
 
 ## Data
 

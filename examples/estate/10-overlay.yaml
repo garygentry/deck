@@ -56,6 +56,14 @@ ui:
     # http(s) URL or a root-relative path) shows an image instead; `title`
     # replaces the estate name in the sidebar and the browser tab.
     icon: server
+  # Named, contrast-tested presets only; config never carries a colour. These
+  # are the defaults, spelled out: try `preset: violet` (or slate, amber,
+  # high-contrast) and `density: compact` for tighter tables, lists and
+  # sections. `mode` (light | dark | system) is the default a viewer's own
+  # theme-menu choice overrides; `radius` is none | sm | md | lg.
+  theme:
+    preset: teal
+    density: comfortable
   # The page "/" renders. The portal is the default; any page without path
   # parameters can be home (`page:inventory/hosts`, say), and stays at its own path.
   home: page:portal/overview

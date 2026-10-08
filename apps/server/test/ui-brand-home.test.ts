@@ -91,6 +91,9 @@ describe("home", () => {
   it("is absent when no page can be home", () => {
     const ui = resolveUiManifest(kernel(DEFAULT_UI, { overrides: { "page:portal/overview": false } }));
     expect(ui.home).toBeUndefined();
+    const configured = resolveUiManifest(kernel(withUi({ home: "page:nope/overview" }), { overrides: { "page:portal/overview": false } }));
+    expect(configured.home).toBeUndefined();
+    expect(configured.findings.map((f) => f.message)).toEqual(['home page "page:nope/overview" names no known page; nothing renders at "/"']);
   });
 
   it("owns /: a page declaring it is not routed, with a finding", () => {

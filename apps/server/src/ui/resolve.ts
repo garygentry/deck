@@ -390,11 +390,13 @@ function resolveHome(
     const page = pages.find((candidate) => candidate.id === id);
     return page !== undefined && homePathProblem(page.path) === null ? page : undefined;
   };
+  const fallbackPage = usable(DEFAULT_HOME_PAGE);
+  const fallbackHome = fallbackPage === undefined ? undefined : { page: fallbackPage.id, path: fallbackPage.path };
   if (configured !== undefined) {
     const page = pages.find((candidate) => candidate.id === configured);
     const problem = page === undefined ? null : homePathProblem(page.path);
     if (page !== undefined && problem === null) return { page: page.id, path: page.path };
-    const fallback = `; "/" renders "${DEFAULT_HOME_PAGE}" instead`;
+    const fallback = fallbackHome === undefined ? `; nothing renders at "/"` : `; "/" renders "${fallbackHome.page}" instead`;
     if (page !== undefined) {
       findings.push({ code: "UI_HOME_NOT_ROUTABLE", severity: "warning", message: `home page "${configured}" cannot render at "/": ${problem}${fallback}`, id: configured });
     } else if (declaredPages.has(configured)) {
@@ -403,8 +405,7 @@ function resolveHome(
       findings.push({ code: "UI_HOME_UNKNOWN", severity: "warning", message: `home page "${configured}" names no known page${fallback}`, id: configured });
     }
   }
-  const page = usable(DEFAULT_HOME_PAGE);
-  return page === undefined ? undefined : { page: page.id, path: page.path };
+  return fallbackHome;
 }
 
 /**

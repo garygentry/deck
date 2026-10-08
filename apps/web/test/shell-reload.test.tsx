@@ -35,7 +35,7 @@ afterEach(() => {
 });
 
 /** Render the app with `/api/ui` answered by `serve()` on each read; returns the read count. */
-async function renderApp(serve: () => UiManifest): Promise<() => number> {
+async function renderApp(serve: () => UiManifest | Response): Promise<() => number> {
   vi.resetModules();
   let reads = 0;
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
@@ -43,7 +43,8 @@ async function renderApp(serve: () => UiManifest): Promise<() => number> {
     if (url === "/api/config") return Response.json(primary.merged);
     if (url === "/api/ui") {
       reads += 1;
-      return Response.json(serve());
+      const answer = serve();
+      return answer instanceof Response ? answer : Response.json(answer);
     }
     return new Response(null, { status: 404 });
   }));
@@ -63,7 +64,10 @@ async function renderApp(serve: () => UiManifest): Promise<() => number> {
 const sidebarLinks = () => within(screen.getByRole("navigation", { name: "Primary" })).queryAllByRole("link").map((link) => link.textContent);
 
 describe("ui hot reload in the shell", () => {
-  it("re-reads the manifest when the window regains focus and shows the new nav", async () => {
+  it.each([
+    ["the window regains focus", () => window.dispatchEvent(new Event("focus"))],
+    ["the page becomes visible again", () => document.dispatchEvent(new Event("visibilitychange", { bubbles: true }))],
+  ])("re-reads the manifest when %s and shows the new nav", async (_name, signal) => {
     let served = golden;
     const reads = await renderApp(() => served);
     await waitFor(() => expect(sidebarLinks()).toContain("Services"));
@@ -71,26 +75,70 @@ describe("ui hot reload in the shell", () => {
 
     served = { ...golden, nav: golden.nav.filter((item) => item.id !== "nav:inventory/services") };
     await act(async () => {
-      window.dispatchEvent(new Event("visibilitychange"));
-      window.dispatchEvent(new Event("focus"));
+      signal();
     });
     await waitFor(() => expect(sidebarLinks()).not.toContain("Services"));
     expect(reads()).toBe(2);
     expect(sidebarLinks()).toContain("Hosts");
   });
 
-  it("re-reads the manifest every refresh interval", async () => {
+  it("reads once when focus and visibility arrive together, and not while the page is hidden", async () => {
+    const reads = await renderApp(() => golden);
+    await waitFor(() => expect(sidebarLinks()).toContain("Services"));
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange", { bubbles: true }));
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => expect(reads()).toBe(2));
+
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange", { bubbles: true }));
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(reads()).toBe(2);
+  });
+
+  it("re-reads the manifest exactly once per refresh interval", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let served = golden;
     const reads = await renderApp(() => served);
     await waitFor(() => expect(sidebarLinks()).toContain("Services"));
+    expect(reads()).toBe(1);
 
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(UI_MANIFEST_REFRESH_MS - 1_000);
+    });
+    expect(reads()).toBe(1);
     served = { ...golden, findings: [INVALID] };
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(UI_MANIFEST_REFRESH_MS);
+      await vi.advanceTimersByTimeAsync(1_000);
     });
     await waitFor(() => expect(reads()).toBe(2));
     await waitFor(() => expect(screen.getByText("Config change not applied")).toBeInTheDocument());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(UI_MANIFEST_REFRESH_MS);
+    });
+    expect(reads()).toBe(3);
+  });
+
+  it("keeps the last manifest when a re-read fails: nav and brand stay", async () => {
+    let fail = false;
+    const reads = await renderApp(() => (fail ? new Response(null, { status: 503 }) : golden));
+    await waitFor(() => expect(sidebarLinks()).toContain("Services"));
+    await waitFor(() => expect(document.title).toBe("Hosts · example-estate"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    fail = true;
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => expect(reads()).toBe(2));
+    await waitFor(() => expect(warn).toHaveBeenCalledWith(expect.stringContaining("keeping the last one"), expect.anything()));
+    expect(sidebarLinks()).toContain("Services");
+    expect(document.title).toBe("Hosts · example-estate");
+    // Not the fallback the shell uses while no manifest has ever been read.
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining("falling back"), expect.anything());
   });
 
   it("shows the reload findings in a Callout, and keeps the last good nav", async () => {

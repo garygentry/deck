@@ -131,10 +131,10 @@ describe("alerts-and-health data hooks", () => {
 
       await advance(POLL_DEFAULTS.pollIntervalMs);
       expect(providerCalls()).toBe(3);
-      // The manifest keeps its own cadence (one refresh per UI_MANIFEST_REFRESH_MS), not the poll's.
-      expect(fetchMock.mock.calls.filter((call) => call[0] === "/api/ui")).toHaveLength(
-        1 + Math.floor((2 * POLL_DEFAULTS.pollIntervalMs) / UI_MANIFEST_REFRESH_MS),
-      );
+      // The manifest keeps its own cadence, not the poll's: two 30 s polls reach its 60 s refresh,
+      // which reads it exactly once more.
+      expect(2 * POLL_DEFAULTS.pollIntervalMs).toBe(UI_MANIFEST_REFRESH_MS);
+      expect(fetchMock.mock.calls.filter((call) => call[0] === "/api/ui")).toHaveLength(2);
 
       // Interval cleanup: after unmount no further poll fires.
       probe.unmount();

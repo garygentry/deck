@@ -403,8 +403,11 @@ describe("review round 2 regressions", () => {
     // Healed, the manifest is no longer asked every poll interval, only every refresh interval.
     await tick(UI_MANIFEST_REFRESH_MS - 1);
     expect(calls("/api/ui")).toBe(2);
-    await tick(POLL_DEFAULTS.pollIntervalMs * 3);
+    await tick(1);
+    expect(calls("/api/ui")).toBe(3);
+    await tick(POLL_DEFAULTS.pollIntervalMs);
     expect(calls("/api/providers/gatus")).toBe(gatusAfterHeal);
+    expect(calls("/api/ui")).toBe(3);
     expect(screen.getByText("docker data")).toBeTruthy();
   });
 });

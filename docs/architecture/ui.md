@@ -54,9 +54,31 @@ export const OUTCOME_UI = defineStatusMap<ActionOutcome>({
 // Rendered with <StatusBadge {...OUTCOME_UI[outcome]} /> or StatusBadge.fromMap(OUTCOME_UI, outcome).
 ```
 
-Contrast is tested, not assumed. `test/tokens-contrast.test.ts` holds every text token to WCAG AA
-on every surface in both themes, and each feature's contrast test checks its maps only use those
-tokens.
+`ui.theme` picks a **preset** (`teal`, the default, `slate`, `copper`, `rose`,
+`high-contrast`), a **density** and a **radius** by name; config never carries a colour. Each
+non-default preset is a pair of `[data-theme-preset="…"]` blocks in `theme.css` (a light one and
+a `.dark` one over the same tokens) that re-point tokens without touching the defaults, so the
+default theme renders exactly as before. An accent preset's primary stays clearly apart from
+every status tone (CIEDE2000 ≥ 15, or ≥ 30° of hue), so an accent never reads as a status.
+
+Shape and spacing are layout tokens in `theme.css` too:
+
+- **Radius:** `rounded-xs` … `rounded-xl` read the `--corner-*` scale, which
+  `[data-theme-radius]` rescales (`none` is square). Round corners only from that scale (or
+  `rounded-full`, `rounded-none`); a bare `rounded` or `rounded-[4px]` ignores the setting, and
+  `test/ui-guardrails.test.ts` rejects it.
+- **Density:** `DataTable`, `List`, `ListGroup`, `Section` and `EmptyState` take their spacing
+  from tokens (`py-(--list-item-py)`, `p-(--section-card-p)`, …), which
+  `[data-theme-density="compact"]` tightens. A spacing class a screen passes replaces the token
+  class, so it stays as written. A new spacing-sensitive pattern should add its own tokens the
+  same way.
+
+Screens never read these settings.
+
+Contrast is tested, not assumed. `test/tokens-contrast.test.ts` runs every preset in both
+themes. It holds every text token to WCAG AA on every surface (7:1 for `high-contrast`, which
+also holds controls to 4.5:1 and edges to 3:1), checks the destructive Button/Badge as rendered
+(its alpha composited), and each feature's contrast test checks its maps only use those tokens.
 
 The theme starts from one chain, `initialThemeMode` in `shell/theme-chain.ts`: the viewer's
 choice from the theme menu (stored under `deck-theme-choice`), else an older shell's stored
@@ -65,7 +87,10 @@ the operator's default (`ui.theme.mode`), else system. A Vite plugin inlines tha
 `index.html` as the pre-paint script, so the page never flashes the wrong theme, and
 `useThemeMode` calls the same function. The operator's default reaches the page in the boot
 object the server writes into `index.html` (`DeckBoot` in `@deck/contract`, read with
-`readDeckBoot`); only a choice made in the theme menu is stored.
+`readDeckBoot`); only a choice made in the theme menu is stored. The pre-paint script also sets
+the operator's preset, density and radius on `<html>` as `data-theme-preset`,
+`data-theme-density` and `data-theme-radius` (`initialThemeAttributes`, in the same file); the
+viewer does not choose those.
 
 ## Data
 

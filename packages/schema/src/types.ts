@@ -67,7 +67,7 @@ export interface InvalidFixture {
 
 export type {
   DeckConfigDocument, Estate, Host, Service, Source, Integration, Bindings, Address, Access,
-  Backup, SecretRef, ManagedConfig, Link, HostKind, HostStatus, ServiceKind, ServiceStatus,
+  Backup, SecretRef, ManagedConfig, Link, HostKind, HostStatus, ServiceKind, ServiceStatus, UiTheme,
 } from "./types.config.generated.js";
 
 export type {

@@ -501,9 +501,9 @@ export interface UiTheme {
  */
 mode?: ("light" | "dark" | "system")
 /**
- * The named token preset; default teal.
+ * The named colour preset, a contrast-tested token set; default teal.
  */
-preset?: "teal"
+preset?: ("teal" | "slate" | "copper" | "rose" | "high-contrast")
 /**
  * Spacing of tables, lists and sections; default comfortable.
  */

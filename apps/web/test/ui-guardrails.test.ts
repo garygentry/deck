@@ -53,6 +53,17 @@ describe("styling: tokens, not literals", () => {
     expect(offenders, "use theme tokens (Tailwind classes) instead of colour literals").toEqual([]);
   });
 
+  it("rounds corners only from the theme's radius scale, so ui.theme.radius reaches every corner", () => {
+    // A bare `rounded` (Tailwind's fixed 0.25rem), `rounded-2xl`…`4xl` or a pixel
+    // `rounded-[4px]` ignores --corner-*; use rounded-xs…xl, rounded-full,
+    // rounded-none or rounded-[inherit].
+    const offScale = /(?<![\w-])rounded(?:-[trblse]{1,2})?(?:(?=["'`\s])|-\[\d|-[234]xl\b)/;
+    const offenders = tsx
+      .filter(({ text }) => code(text).split("\n").some((line) => offScale.test(line)))
+      .map(({ rel }) => rel);
+    expect(offenders, "use the radius scale (rounded-sm, rounded-md, …)").toEqual([]);
+  });
+
   // Inline styles allowed: dynamic geometry only.
   const STYLE_ALLOWLIST: Record<string, string> = {
     "src/ui/primitives/sidebar.tsx": "vendored shadcn: sidebar width CSS vars",

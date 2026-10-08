@@ -1,25 +1,22 @@
-import { BOOT_ELEMENT_ID, serializeDeckBoot, type DeckBoot, type ThemeMode } from "@deck/contract";
+import { BOOT_ELEMENT_ID, deckBootTheme, serializeDeckBoot, type DeckBoot } from "@deck/contract";
 import type { UiManifest } from "@deck/module-sdk";
 
 /** The brand title when no UI manifest was resolved. */
 const DEFAULT_TITLE = "Deck";
-
-const THEME_MODES: readonly string[] = ["light", "dark", "system"];
 
 /** The empty boot element the built `index.html` carries, which the server fills. */
 const BOOT_PLACEHOLDER = `<script type="application/json" id="${BOOT_ELEMENT_ID}"></script>`;
 
 /**
  * The boot object for the current UI manifest and config: the brand title, the operator's
- * default theme mode (`ui.theme.mode`) and the home page's id. See `DeckBoot` for the
- * channel's contract.
+ * theme defaults (`ui.theme`: mode, preset, density, radius) and the home page's id. See
+ * `DeckBoot` for the channel's contract.
  */
 export function deckBootOf(manifest: UiManifest | undefined, config: unknown): DeckBoot {
-  const mode = (config as { ui?: { theme?: { mode?: unknown } } } | null)?.ui?.theme?.mode;
   return {
     bootApi: 1,
     brand: { title: manifest?.brand.title ?? DEFAULT_TITLE },
-    theme: typeof mode === "string" && THEME_MODES.includes(mode) ? { mode: mode as ThemeMode } : {},
+    theme: deckBootTheme((config as { ui?: { theme?: unknown } } | null)?.ui?.theme),
     ...(manifest === undefined ? {} : { home: manifest.home?.page ?? null }),
   };
 }

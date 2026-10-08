@@ -2,11 +2,12 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { serializeDeckBoot, type DeckBoot } from "@deck/contract";
+import { readDeckBoot, serializeDeckBoot, THEME_DENSITIES, THEME_PRESETS, THEME_RADII, type DeckBoot } from "@deck/contract";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  initialThemeAttributes,
   initialThemeMode,
   LEGACY_THEME_KEY,
   PRE_PAINT_MARKER,
@@ -45,6 +46,7 @@ beforeEach(() => {
   localStorage.clear();
   document.head.replaceChildren();
   document.documentElement.classList.remove("dark");
+  for (const name of ["preset", "density", "radius"]) document.documentElement.removeAttribute(`data-theme-${name}`);
 });
 
 afterEach(() => {
@@ -110,6 +112,73 @@ describe("the pre-paint script", () => {
     systemPrefersDark(systemDark);
     prePaint();
     expect(isDark()).toBe(dark);
+  });
+});
+
+/** A boot object carrying the given `ui.theme` verbatim (it may hold values the schema rejects). */
+function bootTheme(theme: Record<string, unknown>): void {
+  const element = document.createElement("script");
+  element.type = "application/json";
+  element.id = "deck-boot";
+  element.textContent = JSON.stringify({ bootApi: 1, brand: { title: "Lab" }, theme });
+  document.head.append(element);
+}
+
+const attribute = (name: string) => document.documentElement.getAttribute(`data-theme-${name}`);
+
+describe("the pre-paint script: preset, density and radius", () => {
+  const prePaint = () => {
+    const script = /<script>([\s\S]*?)<\/script>/.exec(prePaintScript())![1]!;
+    new Function(script)();
+  };
+
+  it("initialThemeAttributes knows exactly the contract's values (it is inlined, so they are literals)", () => {
+    for (const [name, values] of [["preset", THEME_PRESETS], ["density", THEME_DENSITIES], ["radius", THEME_RADII]] as const) {
+      for (const value of values) {
+        expect(initialThemeAttributes(JSON.stringify({ theme: { [name]: value } }))).toEqual([[`data-theme-${name}`, value]]);
+      }
+    }
+    expect(initialThemeAttributes(JSON.stringify({ theme: { preset: "neon", density: "cosy", radius: 12 } }))).toEqual([]);
+    expect(initialThemeAttributes(null)).toEqual([]);
+    expect(initialThemeAttributes("{")).toEqual([]);
+  });
+
+  it.each([
+    ...THEME_PRESETS.map((value) => ["preset", value] as const),
+    ...THEME_DENSITIES.map((value) => ["density", value] as const),
+    ...THEME_RADII.map((value) => ["radius", value] as const),
+  ])("sets data-theme-%s for every value the schema accepts (%s)", (name, value) => {
+    systemPrefersDark(false);
+    bootTheme({ [name]: value });
+    prePaint();
+    expect(attribute(name)).toBe(value);
+  });
+
+  it("sets none of them without a boot object (the dev server) or for an unknown value", () => {
+    systemPrefersDark(false);
+    prePaint();
+    bootTheme({ preset: "neon", density: "cosy", radius: 12 });
+    prePaint();
+    for (const name of ["preset", "density", "radius"]) expect(attribute(name)).toBeNull();
+  });
+
+  it("applies them whatever mode the viewer chose, and the mode still follows the viewer", () => {
+    localStorage.setItem(THEME_CHOICE_KEY, "light");
+    systemPrefersDark(false);
+    bootTheme({ mode: "dark", preset: "rose", density: "compact", radius: "lg" });
+    prePaint();
+    expect(isDark()).toBe(false);
+    expect([attribute("preset"), attribute("density"), attribute("radius")]).toEqual(["rose", "compact", "lg"]);
+  });
+});
+
+describe("readDeckBoot", () => {
+  it("reads every theme setting, dropping values the schema does not accept", () => {
+    bootTheme({ mode: "dark", preset: "high-contrast", density: "compact", radius: "none", extra: true });
+    expect(readDeckBoot(document).theme).toEqual({ mode: "dark", preset: "high-contrast", density: "compact", radius: "none" });
+    document.head.replaceChildren();
+    bootTheme({ preset: "#00ff00", density: "cosy", radius: null });
+    expect(readDeckBoot(document).theme).toEqual({});
   });
 });
 

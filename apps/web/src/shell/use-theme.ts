@@ -1,12 +1,11 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { BOOT_ELEMENT_ID } from "@deck/contract";
+import { BOOT_ELEMENT_ID, THEME_MODES } from "@deck/contract";
 import { applyTheme } from "./theme.js";
 import { initialThemeMode, THEME_CHOICE_KEY, type ThemeMode } from "./theme-chain.js";
 
 /** User preference; "system" follows the OS via prefers-color-scheme. */
 export type { ThemeMode } from "./theme-chain.js";
 
-const MODES: readonly ThemeMode[] = ["system", "light", "dark"];
 
 /** The start mode: the same chain the pre-paint script runs (see `theme-chain.ts`). */
 function readStored(): ThemeMode {
@@ -75,5 +74,5 @@ export function useThemeMode(): [ThemeMode, (next: ThemeMode) => void] {
 
 /** The next preference in the system → light → dark cycle. */
 export function nextMode(mode: ThemeMode): ThemeMode {
-  return MODES[(MODES.indexOf(mode) + 1) % MODES.length]!;
+  return THEME_MODES[(THEME_MODES.indexOf(mode) + 1) % THEME_MODES.length]!;
 }

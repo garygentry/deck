@@ -256,7 +256,9 @@ Until the manifest loads, the sidebar and those slots are empty, and every regis
 routed. If it cannot be read, they fall back to the registry: the sidebar lists the registered
 pages by their `group` (and `nav: false`), every registered page is routed, the slots render what
 is registered there, and the brand is "Deck". So a page's registered `group` (its nav entry's
-manifest group id, such as `health`) only matters in that fallback.
+manifest group id, such as `health`) only matters in that fallback. A feature not yet moved onto
+its manifest registers a built-in group's heading instead (`Health`), which the fallback still
+matches until the last one moves.
 
 The registry is reactive. The shell's slot hosts call `useRegistryVersion()` and render what
 the UI manifest places (`useManifestSlot(slot)`), reading the registry for the components.

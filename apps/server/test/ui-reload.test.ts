@@ -136,7 +136,8 @@ describe("ui reloader", () => {
     h.reloader.reload();
     const message = h.reloader.current().ui.findings[0]?.message ?? "";
     expect(message).toContain("SCHEMA_INVALID at /ui/brand/title1 (The document does not match the required schema shape)");
-    expect(message).toContain("HELLO_SHOUTING at /ui/brand/title2;");
+    // A module code outside its section is named at the root only.
+    expect(message).toContain("HELLO_SHOUTING at /;");
     expect(message).toContain("(and 1 more)");
     expect(message).not.toContain("must be string");
   });
@@ -152,7 +153,15 @@ describe("ui reloader", () => {
       const h = harness();
       h.write({ exitClass: 1, config: null, findings: [{ code: "HELLO_SHOUTING", severity: "error", path: "/modules/hello/greeting", message: `token ${SECRET} is wrong` }] });
       expect(h.reloader.reload()).toBe("invalid");
-      expect(h.reloader.current().ui.findings[0]?.message).toContain("HELLO_SHOUTING at /modules/hello/greeting");
+      expect(h.reloader.current().ui.findings[0]?.message).toContain("HELLO_SHOUTING at /modules/hello.");
+      expect(leaks(h)).toBe(false);
+    });
+
+    it("for a module finding whose own path carries a secret: only its section is named", () => {
+      const h = harness();
+      h.write({ exitClass: 1, config: null, findings: [{ code: "HELLO_SHOUTING", severity: "error", path: `/modules/hello/${SECRET}/x`, message: "x" }] });
+      h.reloader.reload();
+      expect(h.reloader.current().ui.findings[0]?.message).toContain("HELLO_SHOUTING at /modules/hello.");
       expect(leaks(h)).toBe(false);
     });
 

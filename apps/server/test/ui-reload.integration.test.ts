@@ -19,12 +19,25 @@ import { watchDirectory } from "../src/ui/live.js";
 
 vi.setConfig({ testTimeout: 30_000 });
 
+/** Every line deck's boot logger writes, parsed: tests wait on them. */
+const logLines: Array<Record<string, unknown>> = [];
+
+vi.mock("../src/log/logger.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../src/log/logger.js")>();
+  const pino = (await import("pino")).default;
+  return {
+    ...original,
+    createLogger: () => pino({ level: "info" }, { write: (line: string) => void logLines.push(JSON.parse(line) as Record<string, unknown>) }),
+  };
+});
+
 const BASE = { schemaVersion: 2, estate: { name: "lab" } };
 const overlay = (ui: unknown) => ({ schemaVersion: 2, ui });
 
 const cleanup: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
   while (cleanup.length) await cleanup.pop()!();
+  logLines.length = 0;
   stopScheduler();
   vi.unstubAllGlobals();
 });
@@ -216,7 +229,7 @@ describe("ui hot reload, review round 1", () => {
     cfg.writeOverlay({ ...overlay({ brand: { title: "Lab" } }), modules: { canary: { leak: true } } });
     await waitFor(async () => expect(await findingOf(request)).toContain("UI_CONFIG_INVALID"));
     const text = await findingOf(request);
-    expect(text).toContain("CANARY_LEAK at /modules/canary/leak");
+    expect(text).toContain("CANARY_LEAK at /modules/canary.");
     expect(text).not.toContain(SECRET);
     expect(JSON.stringify((await manifest(request)).ui)).not.toContain(SECRET);
   });
@@ -280,6 +293,8 @@ describe("ui hot reload, review round 1", () => {
     for (const name of ["00-base.yaml", "10-overlay.yaml"]) symlinkSync(join("..data", name), join(dir, name));
     const request = await bootOn(dir);
     expect((await manifest(request)).ui.brand.title).toBe("Lab");
+    // Let the boot-time re-read settle first, so only the watch can see the swap.
+    await waitFor(async () => expect(logLines.some((line) => line.event === "config.reload" && line.result === "unchanged")).toBe(true));
 
     // What the kubelet does: write the new version, point ..data_tmp at it, rename it over ..data.
     version("..2026_10_08_b", "From the ConfigMap");
@@ -292,6 +307,63 @@ describe("ui hot reload, review round 1", () => {
 });
 
 describe("config directory watch", () => {
+  /** A ConfigMap-style directory: versioned dirs, a `..data` symlink, files linked through it. */
+  function configMapDir(): { dir: string; swap(content: string): void } {
+    const dir = mkdtempSync(join(tmpdir(), "deck-watch-cm-"));
+    cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+    let n = 0;
+    const version = (content: string) => {
+      const name = `..v${(n += 1)}`;
+      mkdirSync(join(dir, name));
+      writeFileSync(join(dir, name, "10-overlay.yaml"), content);
+      return name;
+    };
+    symlinkSync(version("a: 1"), join(dir, "..data"));
+    symlinkSync(join("..data", "10-overlay.yaml"), join(dir, "10-overlay.yaml"));
+    return {
+      dir,
+      swap(content) {
+        symlinkSync(version(content), join(dir, "..data_tmp"));
+        renameSync(join(dir, "..data_tmp"), join(dir, "..data"));
+      },
+    };
+  }
+
+  it("sees a ConfigMap swap with no file-system event at all, by the files' fingerprint", async () => {
+    const cm = configMapDir();
+    const logger = { info: vi.fn(), warn: vi.fn() };
+    const onChange = vi.fn();
+    // Events off: what Bun delivers for a re-pointed ..data symlink (nothing).
+    const watcher = watchDirectory(logger, { checkMs: 50, events: false })(cm.dir, onChange);
+    cleanup.push(() => watcher.close());
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(onChange).not.toHaveBeenCalled();
+    cm.swap("a: 2");
+    await vi.waitFor(() => expect(onChange).toHaveBeenCalled(), { timeout: 5_000, interval: 20 });
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("treats a file named like the directory as a change, not as the directory going away", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "deck-watch-"));
+    cleanup.push(() => rmSync(parent, { recursive: true, force: true }));
+    const dir = join(parent, "config");
+    mkdirSync(dir);
+    const logger = { info: vi.fn(), warn: vi.fn() };
+    const onChange = vi.fn();
+    const watcher = watchDirectory(logger, { checkMs: 60_000 })(dir, onChange);
+    cleanup.push(() => watcher.close());
+
+    writeFileSync(join(dir, "config"), "x");
+    rmSync(join(dir, "config"));
+    await vi.waitFor(() => expect(onChange).toHaveBeenCalled(), { timeout: 5_000, interval: 20 });
+    expect(logger.warn).not.toHaveBeenCalled();
+    // Still watching (the check is a minute away, so only events can say so).
+    onChange.mockClear();
+    writeFileSync(join(dir, "00-base.yaml"), "x: 1");
+    await vi.waitFor(() => expect(onChange).toHaveBeenCalled(), { timeout: 5_000, interval: 20 });
+  });
+
   it("reports changes under any name, and re-arms when the directory is replaced", async () => {
     const parent = mkdtempSync(join(tmpdir(), "deck-watch-"));
     cleanup.push(() => rmSync(parent, { recursive: true, force: true }));
@@ -299,7 +371,7 @@ describe("config directory watch", () => {
     mkdirSync(dir);
     const logger = { info: vi.fn(), warn: vi.fn() };
     const onChange = vi.fn();
-    const watcher = watchDirectory(logger, 50)(dir, onChange);
+    const watcher = watchDirectory(logger, { checkMs: 50 })(dir, onChange);
     cleanup.push(() => watcher.close());
 
     // A ConfigMap-style swap: no YAML file name is involved.
@@ -327,7 +399,7 @@ describe("config directory watch", () => {
     writeFileSync(join(dir, "00-base.yaml"), "x: 1");
     const logger = { info: vi.fn(), warn: vi.fn() };
     const onChange = vi.fn();
-    const watcher = watchDirectory(logger, 50)(dir, onChange);
+    const watcher = watchDirectory(logger, { checkMs: 50 })(dir, onChange);
     cleanup.push(() => watcher.close());
 
     // A deployed directory is older than a clock tick; one made and remade within the same tick

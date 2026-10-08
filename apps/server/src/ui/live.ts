@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { statSync, watch as watchFs } from "node:fs";
-import { basename } from "node:path";
+import { readdirSync, realpathSync, statSync, watch as watchFs } from "node:fs";
+import { basename, join } from "node:path";
 
 import type { UiFinding, UiManifest } from "@deck/module-sdk";
 import { FINDING_CATALOG, MODULE_HOST_FINDING_CATALOG, type Finding } from "@deck/schema";
@@ -189,19 +189,34 @@ export function createUiReloader(options: UiReloaderOptions): UiReloader {
   };
 }
 
+export interface WatchDirectoryOptions {
+  /** How often the directory's identity and files are checked. Default: {@link WATCH_CHECK_MS}. */
+  checkMs?: number;
+  /** Listen for file-system events as well (default true); without them, only the check sees changes. */
+  events?: boolean;
+}
+
 /**
  * Watch a directory for any change, whatever the file name: editors and deploy tools replace
  * files through temp names, and a Kubernetes ConfigMap swaps a symlinked `..data` directory.
  *
+ * File-system events report most changes at once, but not all: under Bun, re-pointing a
+ * ConfigMap's `..data` symlink raises none. So every `checkMs` the watch also fingerprints the
+ * YAML files deck reads (each one's real path, modification time and size, through symlinks)
+ * and reports a change when the fingerprint moves: a change is seen within `checkMs` at worst.
+ *
  * The directory is identified by device, inode and birth time (a directory deleted and made
- * again can reuse its inode). On every event, and every `checkMs`, the watch checks it still
- * watches that directory; an event naming the directory itself also means it is gone. When the directory is gone or was replaced, or the watch failed, it
+ * again can reuse its inode). On every event and every check, the watch checks it still
+ * watches that directory. When the directory is gone or was replaced, or the watch failed, it
  * logs that, reports a change (a reload then says the config is missing) and arms again once
  * the directory is back, reporting another change. It never throws after it starts.
  */
-export function watchDirectory(logger: Pick<Logger, "info" | "warn">, checkMs = WATCH_CHECK_MS): WatchDir {
+export function watchDirectory(logger: Pick<Logger, "info" | "warn">, options: WatchDirectoryOptions = {}): WatchDir {
+  const checkMs = options.checkMs ?? WATCH_CHECK_MS;
+  const events = options.events ?? true;
   return (dir, onChange) => {
     let armed: { close(): void; id: string } | undefined;
+    let print = fingerprintOf(dir);
     let closed = false;
     const event = (state: ConfigWatchEvent["state"], error?: string): ConfigWatchEvent => ({
       event: "config.watch",
@@ -210,33 +225,49 @@ export function watchDirectory(logger: Pick<Logger, "info" | "warn">, checkMs = 
       ...(error === undefined ? {} : { error }),
     });
 
+    /** Report a change, and remember the files as they are now. */
+    const changed = () => {
+      print = fingerprintOf(dir);
+      onChange();
+    };
+
     const lose = (error: string) => {
       if (armed === undefined) return;
       armed.close();
       armed = undefined;
       logger.warn(event("lost", error), "config directory watch lost; deck re-arms it when the directory is back");
-      onChange();
+      changed();
     };
 
-    const arm = (state: "armed" | "rearmed") => {
+    /** Watch the directory as it is now; `state` names the log line, none when quiet. */
+    const arm = (state: "armed" | "rearmed" | "quiet") => {
       const id = identityOf(dir);
       if (id === undefined) return false;
-      try {
-        const fsWatcher = watchFs(dir, { persistent: false }, (type, name) => {
-          if (closed) return;
-          // Node names the directory itself when it is deleted (Bun reports nothing); a
-          // directory made again at once can even look the same to `stat`.
-          if (type === "rename" && name === basename(dir)) return lose("directory is gone");
-          if (!verify()) return;
-          onChange();
-        });
-        fsWatcher.on("error", () => lose("watch failed"));
-        armed = { close: () => fsWatcher.close(), id };
-      } catch {
-        if (state === "armed") logger.warn(event("lost", "watch failed"), "config directory watch failed; deck retries");
-        return false;
+      let close = () => undefined as void;
+      if (events) {
+        try {
+          const fsWatcher = watchFs(dir, { persistent: false }, (type, name) => {
+            if (closed) return;
+            if (!verify()) return;
+            // Node names the directory itself when it is deleted (Bun reports nothing), and a
+            // directory made again at once can look the same to `stat`. A file of that name in
+            // it raises the same event: either way, watch the directory as it is now.
+            if (type === "rename" && name === basename(dir)) {
+              armed?.close();
+              armed = undefined;
+              arm("quiet");
+            }
+            changed();
+          });
+          fsWatcher.on("error", () => lose("watch failed"));
+          close = () => fsWatcher.close();
+        } catch {
+          if (state === "armed") logger.warn(event("lost", "watch failed"), "config directory watch failed; deck retries");
+          return false;
+        }
       }
-      logger.info(event(state), state === "armed" ? "watching config directory" : "config directory watch re-armed");
+      armed = { close, id };
+      if (state !== "quiet") logger.info(event(state), state === "armed" ? "watching config directory" : "config directory watch re-armed");
       return true;
     };
 
@@ -252,12 +283,13 @@ export function watchDirectory(logger: Pick<Logger, "info" | "warn">, checkMs = 
     arm("armed");
     const check = setInterval(() => {
       if (closed) return;
-      if (armed !== undefined) {
-        verify();
-        if (armed !== undefined) return;
+      if (armed !== undefined && verify()) {
+        // The files may have changed with no event (a symlink re-pointed under Bun).
+        if (fingerprintOf(dir) !== print) changed();
+        return;
       }
       // The directory may have changed while unwatched: read it again once armed.
-      if (arm("rearmed")) onChange();
+      if (arm("rearmed")) changed();
     }, checkMs);
     (check as { unref?: () => void }).unref?.();
 
@@ -270,6 +302,30 @@ export function watchDirectory(logger: Pick<Logger, "info" | "warn">, checkMs = 
       },
     };
   };
+}
+
+/**
+ * The YAML files deck would read in a directory, as it would read them: each one's name, real
+ * path, modification time and size, following symlinks. Changes when any of them does.
+ */
+function fingerprintOf(dir: string): string {
+  let names: string[];
+  try {
+    names = readdirSync(dir).filter((name) => /\.ya?ml$/i.test(name)).sort();
+  } catch {
+    return "missing";
+  }
+  return names
+    .map((name) => {
+      const path = join(dir, name);
+      try {
+        const stats = statSync(path);
+        return `${name}>${realpathSync(path)}:${stats.mtimeMs}:${stats.size}`;
+      } catch {
+        return `${name}>missing`;
+      }
+    })
+    .join("\n");
 }
 
 function snapshot(config: DeckConfig, ui: UiManifest): LiveUi {
@@ -311,7 +367,8 @@ const SHOWN_FINDINGS = 3;
 /**
  * Why a failed load failed, in deck's own words: a tool error's code and its text, or the first
  * error findings' codes and JSON pointers, with the catalogue's summary for a kernel code. A
- * module's own code is named, never its message.
+ * module's own finding is named by its code and its section (`/modules/<id>`), never by its
+ * message or its own path.
  */
 function loadProblem(result: Exclude<LoaderResult, { exitClass: 0 }>): string {
   if (result.exitClass === 2) {
@@ -328,9 +385,20 @@ function loadProblem(result: Exclude<LoaderResult, { exitClass: 0 }>): string {
 
 function publicFinding(finding: Finding): string {
   const code = publicCode(finding.code);
-  const pointer = /^(\/[^\s]*)?$/.test(finding.path) && finding.path.length <= 200 ? finding.path || "/" : "/";
   const summary = CATALOG[code]?.summary;
+  // A kernel code's pointer is the kernel's; a module's finding names only the module's section,
+  // since a module chooses its own path and anything may ride in it.
+  const pointer = summary === undefined ? modulePointer(finding.path) : kernelPointer(finding.path);
   return `${code} at ${pointer}${summary === undefined ? "" : ` (${summary.replace(/\.$/, "")})`}`;
+}
+
+function kernelPointer(path: string): string {
+  return /^(\/[^\s]*)?$/.test(path) && path.length <= 200 ? path || "/" : "/";
+}
+
+function modulePointer(path: string): string {
+  const id = /^\/modules\/([a-z][a-z0-9-]{0,63})(?:\/|$)/.exec(path)?.[1];
+  return id === undefined ? "/" : `/modules/${id}`;
 }
 
 /** A code as an identifier: anything else (a module's code is any string) is not repeated. */

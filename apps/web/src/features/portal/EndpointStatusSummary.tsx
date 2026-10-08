@@ -1,3 +1,4 @@
+import { PORTAL_UI } from "@deck/contract/modules/portal";
 import type { JSX } from "react";
 import { HealthSummaryPill } from "../../shell/health-header/HealthSummaryPill.js";
 import type {
@@ -7,8 +8,11 @@ import type {
 import type { PortalData } from "./card-status.js";
 import { usePortalData } from "./usePortalData.js";
 
-/** The portal route this summary links to (self-sufficient fragment). */
-const PORTAL_HREF = "/";
+/**
+ * The portal page this summary links to (self-sufficient fragment): its own path from the
+ * portal's manifest, never `/`, which renders whichever page is home.
+ */
+export const PORTAL_HREF = PORTAL_UI.contributes!.pages![0]!.path;
 
 /**
  * Derive the rich health summary from live portal data (absorbs the former

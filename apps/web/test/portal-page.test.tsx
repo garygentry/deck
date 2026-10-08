@@ -313,17 +313,17 @@ describe("summary", () => {
     expect(container.querySelector('[data-slot="health-header"]')).toBeNull();
   });
 
-  it("renders the self-sufficient endpoint summary as a / link with icon + text", () => {
+  it("renders the self-sufficient endpoint summary as a link to the portal's own path (not /, which is home) with icon + text", () => {
     portalData = loaded();
     render(<EndpointStatusSummary />);
     const link = screen.getByRole("link", { name: /1 up \/ 1 down/ });
-    expect(link).toHaveAttribute("href", "/");
+    expect(link).toHaveAttribute("href", "/portal");
     expect(link.querySelector("svg.lucide-triangle-alert")).not.toBeNull();
   });
 
   it("derives mixed, all-down, all-up, and honest zero rich summaries", () => {
     expect(deriveEndpointSummary(loaded())).toMatchObject({
-      label: "1 up / 1 down", status: "warning", count: 1, href: "/",
+      label: "1 up / 1 down", status: "warning", count: 1, href: "/portal",
     });
     expect(deriveEndpointSummary(loaded({ gatus: { ...gatus, data: { endpoints: [
       { key: "a", up: false, latencyMs: null }, { key: "b", up: false, latencyMs: null },

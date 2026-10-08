@@ -41,6 +41,9 @@ test.describe("ui config (brand + home)", () => {
     await expect(hosts).toHaveAttribute("aria-current", "page");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Hosts"]);
     await expect(page).toHaveTitle(`Hosts · ${UI.brand.title}`);
+    // The endpoint pill goes to the portal's own path, not to / (which is Hosts here).
+    await expect(page.locator('[data-slot="health-header"] a[href="/portal"]')).toBeVisible();
+    await expect(page.locator('[data-slot="health-header"] a[href="/"]')).toHaveCount(0);
 
     await nav.getByRole("link", { name: "Portal", exact: true }).click();
     await expect(page).toHaveURL(/\/portal$/);

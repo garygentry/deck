@@ -129,7 +129,7 @@ describe("extension model", () => {
     registry.registerPage({ id: "page:t/detail", path: "/list/:id", label: "Detail", component: Component, nav: false });
     registry.registerCard({ id: "card:t/tile", slot: "t/summary", providerId: "docker", component: Component });
     registry.registerEntityFragment({ id: "section:t/findings", entity: "service", title: "Findings", section: "findings", component: Component });
-    const slot = registry.defineSummarySlot({ slotId: "app/topbar.status" });
+    const slot = registry.summarySlot("app/topbar.status");
     registry.registerSummaryFragment(slot, { id: "pill:t/status", component: Component, order: 10 });
 
     const summary = registry
@@ -219,6 +219,20 @@ describe("extension model", () => {
     expect(() => registry.defineSlot({ id: "app/nav", accepts: "nav", module: "core" })).toThrowError(
       expect.objectContaining({ code: "DUPLICATE_SLOT" }),
     );
+  });
+
+  it("declares every core slot the server's UI manifest lists, from the registry alone", async () => {
+    const registry = await import("../src/registry/registry.js");
+    const { SHELL_SLOTS } = await import("@deck/contract/modules/core");
+    // The top bar's slots included: no shell module has to load first.
+    expect(SHELL_SLOTS.map(({ id }) => id)).toEqual(expect.arrayContaining(["app/topbar.status", "app/topbar.actions"]));
+    for (const { id, accepts } of SHELL_SLOTS) expect(registry.getSlot(id), id).toEqual({ id, accepts, module: "core" });
+    expect(() => registry.defineSummarySlot({ slotId: "app/topbar.status" })).toThrowError(expect.objectContaining({ code: "DUPLICATE_SLOT" }));
+    // A typed handle exists only for a declared pill slot.
+    expect(registry.summarySlot("app/topbar.status")).toEqual({ slotId: "app/topbar.status" });
+    for (const slotId of ["app/topbar.actions", "app/topbar.statsu"]) {
+      expect(() => registry.summarySlot(slotId), slotId).toThrowError(expect.objectContaining({ code: "UNKNOWN_SLOT" }));
+    }
   });
 
   it("notifies subscribers and bumps the version on every registration", async () => {

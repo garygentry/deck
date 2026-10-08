@@ -1,4 +1,5 @@
-import type { ModuleManifest } from "@deck/module-sdk";
+import { SHELL_SLOTS as SHARED_SHELL_SLOTS } from "@deck/contract/modules/core";
+import { isKernelSlot, type ModuleManifest } from "@deck/module-sdk";
 import { describe, expect, it } from "vitest";
 
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";
@@ -312,6 +313,14 @@ describe("kernel-wired features", () => {
     for (const { manifest: feature } of KERNEL_FEATURES) {
       expect(uiContributionProblem(feature, { kernel: feature.id === "core" }), feature.id).toBeNull();
     }
+  });
+
+  it("give core exactly the shared shell slots, the list the web registry declares", () => {
+    expect(SHELL_SLOTS).toBe(SHARED_SHELL_SLOTS);
+    const core = KERNEL_FEATURES.find(({ manifest }) => manifest.id === "core")!;
+    expect(core.manifest.contributes?.slots).toEqual(SHARED_SHELL_SLOTS);
+    // Every kernel-reserved slot is core's, so none can be declared later by anything else.
+    expect(SHARED_SHELL_SLOTS.every(({ id }) => isKernelSlot(id))).toBe(true);
   });
 
   it("resolve with no findings", () => {

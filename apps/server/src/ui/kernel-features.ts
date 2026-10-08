@@ -1,4 +1,5 @@
-import { DECK_API_VERSION, type ModuleManifest, type SlotDecl } from "@deck/module-sdk";
+import { SHELL_SLOTS } from "@deck/contract/modules/core";
+import { DECK_API_VERSION, type ModuleManifest } from "@deck/module-sdk";
 
 /**
  * UI contributions of features still wired into the kernel, so the UI manifest lists every
@@ -12,18 +13,8 @@ export interface KernelFeature {
   requires?: string;
 }
 
-/**
- * The kernel-reserved slots, hosted by `core`: the shell's (`app/…`) and the entity detail
- * pages' (`entity:<entity>/…`). No module may declare a slot in these namespaces.
- */
-export const SHELL_SLOTS: readonly SlotDecl[] = [
-  { id: "app/nav", accepts: "nav" },
-  { id: "app/routes", accepts: "page" },
-  { id: "app/topbar.actions", accepts: "action" },
-  { id: "app/topbar.status", accepts: "pill" },
-  { id: "entity:host/sections", accepts: "entity-section" },
-  { id: "entity:service/sections", accepts: "entity-section" },
-];
+// The kernel-reserved slots are shared with the web registry, which declares them all.
+export { SHELL_SLOTS };
 
 function feature(id: string, contributes: ModuleManifest["contributes"], requires?: string): KernelFeature {
   return {

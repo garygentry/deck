@@ -4,8 +4,6 @@ import type { ComponentType } from "react";
 
 import { registerWebModule } from "../../registry/web-module.js";
 import type { HealthSummary } from "../../shell/health-header/health-summary.js";
-// Declares `app/topbar.status` before the pills attach to it, whatever imports this first.
-import "../../shell/health-header/slot.js";
 import { AlertsSummary } from "./AlertsSummary.js";
 import { MetricsSummary } from "./MetricsSummary.js";
 import { MonitoringPage } from "./pages.js";

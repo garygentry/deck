@@ -221,6 +221,10 @@ describe("uiManifestProblem", () => {
     ["a home without a path", { home: { page: "page:a/b" } }, "home is malformed"],
     ["a module without enabled", { modules: [{ id: "a" }] }, "modules[0] is malformed"],
     ["a disabled page without a path", { disabledPages: [{ id: "page:a/b", module: "a", title: "B" }] }, "disabledPages[0] is malformed"],
+    ["pages: [null]", { pages: [null] }, "pages[0] is malformed"],
+    ["pages that is not a list", { pages: {} }, "pages is not a list"],
+    ["a page without an id", { pages: [{ module: "a", path: "/a", title: "A" }] }, "pages[0] is malformed"],
+    ["a home that is not an object", { home: "page:a/b" }, "home is malformed"],
   ])("rejects %s", (_label, patch, problem) => {
     expect(uiManifestProblem({ ...golden, ...patch })).toBe(problem);
   });
@@ -397,6 +401,15 @@ describe("the shell, rendered from the served manifest", () => {
     const { HealthHeaderRegion } = await import("../src/shell/health-header/HealthHeaderRegion.js");
     render(<HealthHeaderRegion />);
     expect(screen.getAllByTestId("pill").map((pill) => pill.textContent)).toEqual(statusIds.slice(1).reverse());
+  });
+
+  it("takes the unavailable path for a malformed pages list: the shell still renders, from the registry", async () => {
+    const nav = await renderApp(() => Response.json({ ...golden, pages: [null] }));
+    await waitFor(() => expect(links(nav).length).toBeGreaterThan(0));
+    // The registry fallback: every registered page, Actions included, and the portal at /.
+    expect(links(nav)).toContain("Actions /actions");
+    expect(screen.getByRole("link", { name: "Deck" })).toHaveAttribute("href", "/");
+    expect(await screen.findByRole("heading", { level: 1, name: "Portal" })).toBeInTheDocument();
   });
 
   it("stays navigable when the manifest cannot be read: the registered pages, deck's brand, the theme menu", async () => {

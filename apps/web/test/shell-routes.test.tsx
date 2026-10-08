@@ -43,12 +43,12 @@ describe("resolveRoutes", () => {
   const pages = [
     page("page:portal/overview", "/portal", "Portal"),
     page("page:actions/overview", "/actions", "Actions"),
-    page("page:_ui/workbench", "/_ui", "UI workbench"),
+    page("page:ui-workbench/overview", "/_ui", "UI workbench"),
   ];
 
   it("does not route a disabled module's page, and answers its path as not enabled", () => {
     const routes = resolveRoutes(ready(golden), pages);
-    expect(ids(routes.routed)).toEqual(["page:portal/overview", "page:_ui/workbench"]);
+    expect(ids(routes.routed)).toEqual(["page:portal/overview", "page:ui-workbench/overview"]);
     expect(routes.notEnabled).toEqual([
       {
         id: "page:actions/overview",
@@ -135,11 +135,18 @@ describe("the home page", () => {
 });
 
 describe("routing follows the manifest's pages", () => {
+  it("narrows nothing beyond disabled modules for a manifest without a pages list", () => {
+    const pages = [page("page:portal/overview", "/portal", "Portal"), page("page:inventory/hosts", "/hosts", "Hosts"), page("page:actions/overview", "/actions", "Actions")];
+    const { pages: _pages, ...rest } = golden;
+    const routes = resolveRoutes(ready(rest as UiManifest), pages);
+    expect(ids(routes.routed)).toEqual(["page:portal/overview", "page:inventory/hosts"]);
+  });
+
   it("does not route a page the manifest does not route (an override switched it off), nor make it home", () => {
-    const pages = [page("page:portal/overview", "/portal", "Portal"), page("page:inventory/hosts", "/hosts", "Hosts"), page("page:_ui/workbench", "/_ui", "UI workbench")];
+    const pages = [page("page:portal/overview", "/portal", "Portal"), page("page:inventory/hosts", "/hosts", "Hosts"), page("page:ui-workbench/overview", "/_ui", "UI workbench")];
     const manifest: UiManifest = { ...golden, pages: golden.pages.filter((p) => p.id !== "page:portal/overview"), home: null };
     const routes = resolveRoutes(ready(manifest), pages);
-    expect(ids(routes.routed)).toEqual(["page:inventory/hosts", "page:_ui/workbench"]);
+    expect(ids(routes.routed)).toEqual(["page:inventory/hosts", "page:ui-workbench/overview"]);
     expect(routes.home).toBeUndefined();
     expect(routeForPath(routes, "/")).toBeUndefined();
     expect(routeForPath(routes, "/portal")).toBeUndefined();

@@ -95,12 +95,14 @@ function routesFromManifest(
 ): Omit<ResolvedRoutes, "home"> {
   const modules = new Map((Array.isArray(manifest.modules) ? manifest.modules : []).map((module) => [module.id, module]));
   const disabledIds = new Set<string>(disabledPages.map((page) => page.id));
-  const routedIds = new Set<string>((Array.isArray(manifest.pages) ? manifest.pages : []).map((page) => page.id));
+  // Absent (a manifest without `pages`): no narrowing beyond the disabled modules.
+  const routedIds = Array.isArray(manifest.pages) ? new Set<string>(manifest.pages.map((page) => page.id)) : undefined;
   const isOff = (page: PageRegistration): boolean => {
     const module = parseExtensionId(page.id)?.module;
     if (disabledIds.has(page.id)) return true;
+    if (module === undefined || !modules.has(module)) return false;
     // A page of a module the manifest lists is routed only where the manifest routes it.
-    return module !== undefined && modules.has(module) && (modules.get(module)?.enabled === false || !routedIds.has(page.id));
+    return modules.get(module)?.enabled === false || (routedIds !== undefined && !routedIds.has(page.id));
   };
   return {
     routed: pages.filter((page) => !isOff(page)),

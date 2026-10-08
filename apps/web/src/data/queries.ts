@@ -106,7 +106,8 @@ function listProblem(value: unknown, at: string, entryProblem: (entry: Record<st
  * Why a decoded body is not a UI manifest the shell can render from, or null. The shell
  * fields are checked entry by entry, so a malformed document takes the "unavailable" path
  * (the registry fallback, asked again each poll interval) instead of being cached. Fields an
- * older server does not send (`brand`, `home`, `navGroups`, `disabledPages`) may be absent.
+ * older server does not send (`brand`, `home`, `navGroups`, `disabledPages`) may be absent, and so may
+ * `pages` (then routing does not narrow to it).
  */
 export function uiManifestProblem(body: unknown): string | null {
   if (!isRecord(body)) return "not an object";
@@ -115,6 +116,12 @@ export function uiManifestProblem(body: unknown): string | null {
   if (body.home !== undefined && body.home !== null && !(isRecord(body.home) && isString(body.home.page) && isString(body.home.path))) return "home is malformed";
   return (
     listProblem(body.providers, "providers", (p) => !isString(p.id) || !isString(p.kind)) ??
+    // Routing reads each page's id: a malformed entry would break the router, not just a page.
+    listProblem(
+      body.pages,
+      "pages",
+      (p) => !isString(p.id) || !isString(p.module) || !isString(p.path) || !isString(p.title) || !isOptionalString(p.icon),
+    ) ??
     listProblem(body.navGroups, "navGroups", (g) => !isString(g.id) || !isString(g.label) || !isOptionalString(g.icon)) ??
     listProblem(
       body.nav,

@@ -18,8 +18,13 @@ import schema from "./schema.json" with { type: "json" };
  * `/api/health.llmUsage` field.
  */
 export const LLM_USAGE_MANIFEST: ModuleManifest = {
-  // Identity, routes and UI contributions are shared with the web half.
+  // Identity and UI contributions are shared with the web half.
   ...LLM_USAGE_UI,
+  contributes: {
+    ...LLM_USAGE_UI.contributes,
+    // Routes are server-only.
+    routes: { legacyAliases: ["/api/llm-usage"] },
+  },
   // The section names the env var holding the statusLine ingest token, never the token.
   envFromConfig: ["/claude/statusLine/credentialEnv"],
   config: {

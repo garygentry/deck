@@ -3,15 +3,16 @@
  * directory, edited on disk while it runs. Nothing restarts between reads.
  */
 
-import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { UiManifest } from "@deck/module-sdk";
+import type { FindingCodeDecl, ServerModule, UiManifest } from "@deck/module-sdk";
 import { BOOT_ELEMENT_ID } from "@deck/contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stringify } from "yaml";
 
+import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { stopScheduler } from "../src/providers/registry.js";
 import { boot, type BootHandle } from "../src/server/boot.js";
 import { watchDirectory } from "../src/ui/live.js";
@@ -38,19 +39,52 @@ function configDir(ui: unknown): { dir: string; writeOverlay(text: unknown): voi
   return { dir, writeOverlay: (document) => write("10-overlay.yaml", document) };
 }
 
+type Request_ = (path: string, init?: RequestInit) => Promise<Response>;
+
 /** Boot deck on `dir` with the HTTP listener stubbed; requests go straight to its fetch handler. */
-async function bootOn(dir: string, webDistDir?: string): Promise<(path: string, init?: RequestInit) => Promise<Response>> {
+async function bootOn(dir: string, options: { webDistDir?: string; modules?: readonly ServerModule<any>[] } = {}): Promise<Request_> {
   let fetchHandler: ((request: Request) => Response | Promise<Response>) | undefined;
   vi.stubGlobal("Bun", {
-    serve: (options: { fetch: (request: Request) => Response | Promise<Response> }) => {
-      fetchHandler = options.fetch;
+    serve: (serveOptions: { fetch: (request: Request) => Response | Promise<Response> }) => {
+      fetchHandler = serveOptions.fetch;
       return { stop: async () => undefined };
     },
   });
   process.env.DECK_LOG_LEVEL = "silent";
-  const handle: BootHandle = await boot({ configDir: dir, port: 0, uiReload: { debounceMs: 50 }, ...(webDistDir === undefined ? {} : { webDistDir }) });
+  const handle: BootHandle = await boot({ configDir: dir, port: 0, uiReload: { debounceMs: 50 }, ...options });
   cleanup.push(() => handle.stop());
   return (path, init) => Promise.resolve(fetchHandler!(new Request(`http://deck${path}`, init)));
+}
+
+const SECRET = "canary-9b1d4e7f-not-for-the-api";
+
+const CANARY_LEAK: FindingCodeDecl = { code: "CANARY_LEAK", severity: "error", summary: "The canary leaks.", fix: "Set leak to false." };
+
+/**
+ * A module whose config rule reports an error with an environment secret in its message, and
+ * whose init waits for `ready` (so a test can edit the config while modules start).
+ */
+function canaryModule(ready: Promise<void> = Promise.resolve()): ServerModule<{ leak: boolean }> {
+  return {
+    manifest: {
+      id: "canary",
+      version: "1.0.0",
+      deckApi: "^0.1",
+      enabledBy: { config: true },
+      config: {
+        schema: { type: "object", additionalProperties: false, properties: { leak: { type: "boolean" } } },
+        ownership: { "": "overlay" },
+        findings: [CANARY_LEAK],
+      },
+    },
+    configRules: [
+      (section, { layer }) =>
+        layer === "merged" && section.leak ? [{ code: CANARY_LEAK.code, path: "/leak", message: `token ${process.env.CANARY_TOKEN} leaked` }] : [],
+    ],
+    init: async () => {
+      await ready;
+    },
+  };
 }
 
 async function manifest(request: (path: string) => Promise<Response>): Promise<{ ui: UiManifest; etag: string }> {
@@ -110,7 +144,7 @@ describe("ui hot reload", () => {
     const dist = mkdtempSync(join(tmpdir(), "deck-reload-dist-"));
     cleanup.push(() => rmSync(dist, { recursive: true, force: true }));
     writeFileSync(join(dist, "index.html"), `<html><head><title>Deck</title></head><body><script type="application/json" id="${BOOT_ELEMENT_ID}"></script></body></html>`);
-    const request = await bootOn(cfg.dir, dist);
+    const request = await bootOn(cfg.dir, { webDistDir: dist });
     const before = await manifest(request);
     expect(await (await request("/")).text()).toContain("<title>Lab</title>");
 
@@ -131,12 +165,12 @@ describe("ui hot reload", () => {
     await vi.waitFor(async () => expect((await manifest(request)).ui.findings.map((f) => f.code)).toEqual(["UI_CONFIG_INVALID"]), { timeout: 10_000, interval: 50 });
     const broken = await manifest(request);
     expect({ ...broken.ui, findings: [] }).toEqual(good.ui);
-    expect(broken.ui.findings[0]?.message).toContain("Failed to parse 10-overlay.yaml");
+    expect(broken.ui.findings[0]?.message).toContain("CONFIG_YAML_PARSE: a config file is not valid YAML");
     expect(broken.ui.findings[0]?.message).not.toContain(cfg.dir);
 
     // YAML, but a ui the schema rejects.
     cfg.writeOverlay(overlay({ brand: { title: 42 } }));
-    await vi.waitFor(async () => expect((await manifest(request)).ui.findings[0]?.message).toContain("/ui/brand/title"), { timeout: 10_000, interval: 50 });
+    await vi.waitFor(async () => expect((await manifest(request)).ui.findings[0]?.message).toContain("at /ui/brand/title"), { timeout: 10_000, interval: 50 });
     expect((await manifest(request)).ui.brand.title).toBe("Lab");
 
     // A change outside ui: restart required, the old UI stays.
@@ -148,6 +182,112 @@ describe("ui hot reload", () => {
     // Reverted: the finding clears and the ETag is the booted one again.
     writeFileSync(join(cfg.dir, "00-base.yaml"), stringify(BASE));
     await vi.waitFor(async () => expect((await manifest(request)).etag).toBe(good.etag), { timeout: 10_000, interval: 50 });
+  });
+});
+
+describe("ui hot reload, review round 1", () => {
+  const waitFor = (check: () => Promise<void>, timeout = 10_000) => vi.waitFor(check, { timeout, interval: 50 });
+  const findingOf = async (request: Request_) => (await manifest(request)).ui.findings.map((f) => `${f.code}: ${f.message}`).join("\n");
+
+  it("swaps a theme-only edit into /api/config and index.html, though the manifest is unchanged", async () => {
+    const cfg = configDir({ brand: { title: "Lab" } });
+    const dist = mkdtempSync(join(tmpdir(), "deck-reload-dist-"));
+    cleanup.push(() => rmSync(dist, { recursive: true, force: true }));
+    writeFileSync(join(dist, "index.html"), `<html><head><title>Deck</title></head><body><script type="application/json" id="${BOOT_ELEMENT_ID}"></script></body></html>`);
+    const request = await bootOn(cfg.dir, { webDistDir: dist });
+    const before = await manifest(request);
+
+    cfg.writeOverlay(overlay({ brand: { title: "Lab" }, theme: { mode: "dark", preset: "rose" } }));
+    await waitFor(async () => expect(((await (await request("/api/config")).json()) as { ui: { theme?: unknown } }).ui.theme).toEqual({ mode: "dark", preset: "rose" }));
+    const page = await (await request("/")).text();
+    expect(page).toContain('"mode":"dark"');
+    expect(page).toContain('"preset":"rose"');
+    expect((await manifest(request)).etag).toBe(before.etag);
+  });
+
+  it("never serves a module finding's message: a secret in it stays out of /api/ui", async () => {
+    vi.stubEnv("CANARY_TOKEN", SECRET);
+    cleanup.push(() => {
+      vi.unstubAllEnvs();
+    });
+    const cfg = configDir({ brand: { title: "Lab" } });
+    const request = await bootOn(cfg.dir, { modules: [...BUILTIN_MODULES, canaryModule()] });
+
+    cfg.writeOverlay({ ...overlay({ brand: { title: "Lab" } }), modules: { canary: { leak: true } } });
+    await waitFor(async () => expect(await findingOf(request)).toContain("UI_CONFIG_INVALID"));
+    const text = await findingOf(request);
+    expect(text).toContain("CANARY_LEAK at /modules/canary/leak");
+    expect(text).not.toContain(SECRET);
+    expect(JSON.stringify((await manifest(request)).ui)).not.toContain(SECRET);
+  });
+
+  it("sees an edit made while modules are still starting", async () => {
+    const cfg = configDir({ brand: { title: "Lab" } });
+    // The canary module runs (its section is present), so boot waits on its init.
+    cfg.writeOverlay({ ...overlay({ brand: { title: "Lab" } }), modules: { canary: {} } });
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => (release = resolve));
+    const booting = bootOn(cfg.dir, { modules: [...BUILTIN_MODULES, canaryModule(ready)] });
+    // Boot has read the config and is waiting on the module's init: edit now, then let it start.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    cfg.writeOverlay({ ...overlay({ brand: { title: "Edited while starting" } }), modules: { canary: {} } });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    release();
+    const request = await booting;
+
+    await waitFor(async () => expect((await manifest(request)).ui.brand.title).toBe("Edited while starting"));
+  });
+
+  it("says the directory is missing or empty, naming no path, and clears once it is back", async () => {
+    const cfg = configDir({ brand: { title: "Lab" } });
+    const request = await bootOn(cfg.dir);
+    const good = await manifest(request);
+
+    // Empty: every YAML file gone.
+    const saved = readdirSync(cfg.dir);
+    const moved = mkdtempSync(join(tmpdir(), "deck-reload-moved-"));
+    cleanup.push(() => rmSync(moved, { recursive: true, force: true }));
+    for (const name of saved) renameSync(join(cfg.dir, name), join(moved, name));
+    await waitFor(async () => expect(await findingOf(request)).toContain("CONFIG_DIR_EMPTY: the config directory contains no YAML files"));
+    expect(await findingOf(request)).not.toContain(cfg.dir);
+    for (const name of saved) renameSync(join(moved, name), join(cfg.dir, name));
+    await waitFor(async () => expect((await manifest(request)).etag).toBe(good.etag));
+
+    // Missing: the directory deleted, then made again (often on the same inode).
+    rmSync(cfg.dir, { recursive: true });
+    await waitFor(async () => expect(await findingOf(request)).toContain("CONFIG_DIR_MISSING"));
+    expect(await findingOf(request)).not.toContain(cfg.dir);
+    mkdirSync(cfg.dir);
+    writeFileSync(join(cfg.dir, "00-base.yaml"), stringify(BASE));
+    writeFileSync(join(cfg.dir, "10-overlay.yaml"), stringify(overlay({ brand: { title: "Lab" } })));
+    // The watch re-arms on its next check (every 5 s) and reads the directory again.
+    await waitFor(async () => expect((await manifest(request)).etag).toBe(good.etag), 15_000);
+    // And it watches the new directory.
+    writeFileSync(join(cfg.dir, "10-overlay.yaml"), stringify(overlay({ brand: { title: "Back" } })));
+    await waitFor(async () => expect((await manifest(request)).ui.brand.title).toBe("Back"));
+  });
+
+  it("follows a Kubernetes ConfigMap layout, whose ..data symlink is re-pointed atomically", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "deck-reload-cm-"));
+    cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+    const version = (name: string, title: string) => {
+      mkdirSync(join(dir, name));
+      writeFileSync(join(dir, name, "00-base.yaml"), stringify(BASE));
+      writeFileSync(join(dir, name, "10-overlay.yaml"), stringify(overlay({ brand: { title } })));
+    };
+    version("..2026_10_08_a", "Lab");
+    symlinkSync("..2026_10_08_a", join(dir, "..data"));
+    for (const name of ["00-base.yaml", "10-overlay.yaml"]) symlinkSync(join("..data", name), join(dir, name));
+    const request = await bootOn(dir);
+    expect((await manifest(request)).ui.brand.title).toBe("Lab");
+
+    // What the kubelet does: write the new version, point ..data_tmp at it, rename it over ..data.
+    version("..2026_10_08_b", "From the ConfigMap");
+    symlinkSync("..2026_10_08_b", join(dir, "..data_tmp"));
+    renameSync(join(dir, "..data_tmp"), join(dir, "..data"));
+    rmSync(join(dir, "..2026_10_08_a"), { recursive: true });
+
+    await waitFor(async () => expect((await manifest(request)).ui.brand.title).toBe("From the ConfigMap"));
   });
 });
 
@@ -176,6 +316,30 @@ describe("config directory watch", () => {
 
     onChange.mockClear();
     writeFileSync(join(dir, "20-new.yaml"), "x: 1");
+    await vi.waitFor(() => expect(onChange).toHaveBeenCalled(), { timeout: 5_000, interval: 20 });
+  });
+
+  it("re-arms when the directory is deleted and made again, even on the same inode", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "deck-watch-"));
+    cleanup.push(() => rmSync(parent, { recursive: true, force: true }));
+    const dir = join(parent, "config");
+    mkdirSync(dir);
+    writeFileSync(join(dir, "00-base.yaml"), "x: 1");
+    const logger = { info: vi.fn(), warn: vi.fn() };
+    const onChange = vi.fn();
+    const watcher = watchDirectory(logger, 50)(dir, onChange);
+    cleanup.push(() => watcher.close());
+
+    // A deployed directory is older than a clock tick; one made and remade within the same tick
+    // (ext4 birth times are coarse) could look the same to stat.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    rmSync(dir, { recursive: true });
+    mkdirSync(dir);
+    await vi.waitFor(() => expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({ state: "rearmed" }), expect.any(String)), { timeout: 5_000, interval: 20 });
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ state: "lost" }), expect.any(String));
+
+    onChange.mockClear();
+    writeFileSync(join(dir, "00-base.yaml"), "x: 2");
     await vi.waitFor(() => expect(onChange).toHaveBeenCalled(), { timeout: 5_000, interval: 20 });
   });
 });

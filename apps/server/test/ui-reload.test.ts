@@ -72,7 +72,7 @@ describe("ui reloader", () => {
     const before = h.reloader.current();
     h.write(base({ brand: { title: "Gentry Lab" } }));
 
-    await expect(h.reloader.reload()).resolves.toBe("applied");
+    expect(h.reloader.reload()).toBe("applied");
     const after = h.reloader.current();
     expect(after.ui.brand.title).toBe("Gentry Lab");
     expect((after.config as { ui?: unknown }).ui).toEqual({ brand: { title: "Gentry Lab" } });
@@ -85,7 +85,7 @@ describe("ui reloader", () => {
     const h = harness();
     const before = h.reloader.current();
 
-    await expect(h.reloader.reload()).resolves.toBe("unchanged");
+    expect(h.reloader.reload()).toBe("unchanged");
     expect(h.reloader.current()).toBe(before);
     expect(h.build).not.toHaveBeenCalled();
   });
@@ -109,30 +109,85 @@ describe("ui reloader", () => {
     const good = h.reloader.current();
     h.write({ exitClass: 2, config: null, findings: [], toolError: { code: "CONFIG_YAML_PARSE", message: "Failed to parse /cfg/10-overlay.yaml: bad indentation" } });
 
-    await expect(h.reloader.reload()).resolves.toBe("invalid");
+    expect(h.reloader.reload()).toBe("invalid");
     const kept = h.reloader.current();
     expect(kept.config).toBe(good.config);
     expect({ ...kept.ui, findings: [] }).toEqual(good.ui);
     expect(h.codes()).toEqual(["UI_CONFIG_INVALID"]);
-    expect(kept.ui.findings[0]?.message).toContain("bad indentation");
+    expect(kept.ui.findings[0]?.message).toContain("CONFIG_YAML_PARSE: a config file is not valid YAML");
+    expect(kept.ui.findings[0]?.message).toContain("deck validate");
+    // deck's own words only: no loader text, no path.
+    expect(kept.ui.findings[0]?.message).not.toContain("bad indentation");
+    expect(kept.ui.findings[0]?.message).not.toContain("/cfg");
     expect(kept.etag).not.toBe(good.etag);
     expect(h.logger.warn).toHaveBeenCalledWith(expect.objectContaining({ result: "invalid" }), expect.any(String));
 
     h.write(good.config);
-    await expect(h.reloader.reload()).resolves.toBe("unchanged");
+    expect(h.reloader.reload()).toBe("unchanged");
     expect(h.reloader.current().etag).toBe(good.etag);
     expect(h.codes()).toEqual([]);
   });
 
-  it("names the first error findings of a config with findings", async () => {
+  it("names the first error findings by code and pointer, with the catalogue's summary for a kernel code", () => {
     const h = harness();
-    const error = (n: number) => ({ code: "SCHEMA_TYPE", severity: "error" as const, path: `/ui/brand/title${n}`, message: `must be string ${n}` });
-    h.write({ exitClass: 1, config: null, findings: [1, 2, 3, 4].map(error) });
+    const error = (code: string, n: number) => ({ code, severity: "error" as const, path: `/ui/brand/title${n}`, message: `must be string ${n}` });
+    h.write({ exitClass: 1, config: null, findings: [error("SCHEMA_INVALID", 1), error("HELLO_SHOUTING", 2), error("SCHEMA_INVALID", 3), error("SCHEMA_INVALID", 4)] });
 
-    await h.reloader.reload();
+    h.reloader.reload();
     const message = h.reloader.current().ui.findings[0]?.message ?? "";
-    expect(message).toContain("SCHEMA_TYPE at /ui/brand/title1: must be string 1");
+    expect(message).toContain("SCHEMA_INVALID at /ui/brand/title1 (The document does not match the required schema shape)");
+    expect(message).toContain("HELLO_SHOUTING at /ui/brand/title2;");
     expect(message).toContain("(and 1 more)");
+    expect(message).not.toContain("must be string");
+  });
+
+  describe("never publishes loader, module or exception text", () => {
+    const SECRET = "canary-5e3c7a1f-not-for-the-api";
+    const leaks = (h: ReturnType<typeof harness>) =>
+      [JSON.stringify(h.reloader.current()), JSON.stringify(h.logger.warn.mock.calls), JSON.stringify(h.logger.info.mock.calls)].some((text) =>
+        text.includes(SECRET),
+      );
+
+    it("for a module finding whose message carries a secret", () => {
+      const h = harness();
+      h.write({ exitClass: 1, config: null, findings: [{ code: "HELLO_SHOUTING", severity: "error", path: "/modules/hello/greeting", message: `token ${SECRET} is wrong` }] });
+      expect(h.reloader.reload()).toBe("invalid");
+      expect(h.reloader.current().ui.findings[0]?.message).toContain("HELLO_SHOUTING at /modules/hello/greeting");
+      expect(leaks(h)).toBe(false);
+    });
+
+    it("for a module finding whose code or pointer is not an identifier", () => {
+      const h = harness();
+      h.write({ exitClass: 1, config: null, findings: [{ code: `X ${SECRET}`, severity: "error", path: `not a pointer ${SECRET}`, message: "x" }] });
+      h.reloader.reload();
+      expect(h.reloader.current().ui.findings[0]?.message).toContain("UNKNOWN_CODE at /");
+      expect(leaks(h)).toBe(false);
+    });
+
+    it("for a tool error", () => {
+      const h = harness();
+      h.write({ exitClass: 2, config: null, findings: [], toolError: { code: "MODULE_MANIFEST_CONFLICT", message: `module x: ${SECRET}` } });
+      h.reloader.reload();
+      expect(h.reloader.current().ui.findings[0]?.message).toContain("MODULE_MANIFEST_CONFLICT: Two modules");
+      expect(leaks(h)).toBe(false);
+    });
+
+    it("for a load or a resolution that throws", () => {
+      const h = harness();
+      h.load.mockImplementationOnce(() => {
+        throw new Error(SECRET);
+      });
+      expect(h.reloader.reload()).toBe("invalid");
+      expect(leaks(h)).toBe(false);
+
+      h.build.mockImplementationOnce(() => {
+        throw new Error(SECRET);
+      });
+      h.write(base({ brand: { title: "Next" } }));
+      expect(h.reloader.reload()).toBe("invalid");
+      expect(h.reloader.current().ui.findings[0]?.message).toContain("the UI manifest could not be resolved");
+      expect(leaks(h)).toBe(false);
+    });
   });
 
   it("treats a manifest that fails to resolve as invalid", async () => {
@@ -142,16 +197,16 @@ describe("ui reloader", () => {
     });
     h.write(base({ brand: { title: "Next" } }));
 
-    await expect(h.reloader.reload()).resolves.toBe("invalid");
+    expect(h.reloader.reload()).toBe("invalid");
     expect(h.reloader.current().ui.brand.title).toBe("Lab");
-    expect(h.reloader.current().ui.findings[0]?.message).toContain("resolver exploded");
+    expect(h.reloader.current().ui.findings[0]?.message).not.toContain("resolver exploded");
   });
 
   it("does not swap on a change outside ui, even with a ui change, and says a restart is required", async () => {
     const h = harness();
     h.write(base({ brand: { title: "Next" } }, { integrations: [{ id: "x", kind: "link" }] }));
 
-    await expect(h.reloader.reload()).resolves.toBe("restart-required");
+    expect(h.reloader.reload()).toBe("restart-required");
     expect(h.reloader.current().ui.brand.title).toBe("Lab");
     expect(h.codes()).toEqual(["UI_RESTART_REQUIRED"]);
     expect(h.reloader.current().ui.findings[0]?.message).toContain("integrations");
@@ -164,27 +219,35 @@ describe("ui reloader", () => {
   it("compares with the booted config, so reverting the outside change applies a pending ui edit", async () => {
     const h = harness();
     h.write(base({ brand: { title: "Next" } }, { estate: { name: "renamed" } }));
-    await expect(h.reloader.reload()).resolves.toBe("restart-required");
+    expect(h.reloader.reload()).toBe("restart-required");
 
     h.write(base({ brand: { title: "Next" } }));
-    await expect(h.reloader.reload()).resolves.toBe("applied");
+    expect(h.reloader.reload()).toBe("applied");
     expect(h.reloader.current().ui.brand.title).toBe("Next");
     expect(h.codes()).toEqual([]);
   });
 
-  it("runs reloads one at a time, and once more for a change during one", async () => {
+  it("swaps a ui change that leaves the manifest as it was, such as a theme default", () => {
     const h = harness();
-    let calls = 0;
-    h.load.mockImplementation(() => {
-      calls += 1;
-      // A change arrives while the first reload runs.
-      if (calls === 1) void h.reloader.reload();
-      return ok(base({ brand: { title: `T${calls}` } }));
-    });
+    const before = h.reloader.current();
+    h.write(base({ brand: { title: "Lab" }, theme: { mode: "dark" } }));
 
-    await h.reloader.reload();
-    expect(h.load).toHaveBeenCalledTimes(2);
-    expect(h.reloader.current().ui.brand.title).toBe("T2");
+    expect(h.reloader.reload()).toBe("applied");
+    const after = h.reloader.current();
+    expect((after.config as { ui?: { theme?: unknown } }).ui?.theme).toEqual({ mode: "dark" });
+    // The manifest, and so its ETag, are unchanged; the config (and the page's boot object) are not.
+    expect(after.etag).toBe(before.etag);
+    expect(after).not.toBe(before);
+  });
+
+  it("reads the directory once when armed, so an edit made while deck started is not missed", async () => {
+    const h = harness();
+    h.write(base({ brand: { title: "Edited during boot" } }));
+    expect(h.load).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(h.load).toHaveBeenCalledOnce();
+    expect(h.reloader.current().ui.brand.title).toBe("Edited during boot");
   });
 
   it("stops watching and drops a pending reload on stop", async () => {
@@ -218,7 +281,7 @@ describe("served through the app", () => {
     expect((await app.request("/api/ui", { headers: { "If-None-Match": etag } })).status).toBe(304);
 
     h.write(base({ brand: { title: "Swapped" } }));
-    await h.reloader.reload();
+    h.reloader.reload();
     const second = await app.request("/api/ui", { headers: { "If-None-Match": etag } });
     expect(second.status).toBe(200);
     expect(second.headers.get("ETag")).not.toBe(etag);

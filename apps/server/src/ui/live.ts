@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import { statSync, watch as watchFs } from "node:fs";
-import { sep } from "node:path";
+import { basename } from "node:path";
 
 import type { UiFinding, UiManifest } from "@deck/module-sdk";
+import { FINDING_CATALOG, MODULE_HOST_FINDING_CATALOG, type Finding } from "@deck/schema";
 import type { Logger } from "pino";
 
 import { canonicalize } from "../config/canonical.js";
@@ -55,7 +56,7 @@ export interface UiReloader {
   /** What to serve now. */
   current(): LiveUi;
   /** Read the config directory again now (the watch calls it, debounced). */
-  reload(): Promise<ReloadOutcome>;
+  reload(): ReloadOutcome;
   /** Stop watching; a pending reload is dropped. */
   stop(): void;
 }
@@ -79,11 +80,16 @@ export function etagMatches(header: string | undefined, etag: string): boolean {
  * - it does not load: the last good config stays, with a `UI_CONFIG_INVALID` finding;
  * - a key outside {@link HOT_KEYS} differs: the last good config stays, with a
  *   `UI_RESTART_REQUIRED` finding (an edit to both does not swap `ui` either);
- * - only `ui` differs: its manifest is resolved and swapped in, findings cleared.
+ * - only `ui` differs: the config and its manifest are swapped in, findings cleared.
  *
  * Comparing with the booted config, never the last reload, makes what is served a function of
- * the files alone: reverting an edit clears its finding. Reloads run one at a time; a change
- * during one runs another after it.
+ * the files alone: reverting an edit clears its finding. The directory is read once more as
+ * soon as the watch is armed, so an edit made while deck was starting is not missed.
+ *
+ * What a reload publishes (findings and the `config.reload` log line) is written by deck alone:
+ * finding codes, JSON pointers and the catalogue's summaries, never a loader, module or
+ * exception message, which may carry anything the config or the environment holds.
+ * `deck validate` gives the detail.
  */
 export function createUiReloader(options: UiReloaderOptions): UiReloader {
   const { configDir, logger } = options;
@@ -91,15 +97,13 @@ export function createUiReloader(options: UiReloaderOptions): UiReloader {
   const bootCold = coldPart(options.config);
   let good = { config: options.config, ui: options.ui, canonical: canonicalize(options.config) };
   let live: LiveUi = snapshot(options.config, options.ui);
-
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let running: Promise<ReloadOutcome> | undefined;
-  let again = false;
   let stopped = false;
 
-  const publish = (config: DeckConfig, ui: UiManifest) => {
+  /** Serve this config and manifest. Only a swap replaces an unchanged manifest's snapshot. */
+  const publish = (config: DeckConfig, ui: UiManifest, swap = false) => {
     const next = snapshot(config, ui);
-    if (next.etag !== live.etag) live = next;
+    if (swap || next.etag !== live.etag) live = next;
   };
 
   const log = (event: Omit<ConfigReloadEvent, "event" | "configDir">, message: string) => {
@@ -108,24 +112,22 @@ export function createUiReloader(options: UiReloaderOptions): UiReloader {
     else logger.warn(line, message);
   };
 
-  const invalid = (problem: string): ReloadOutcome => {
-    // Files are named relative to the config directory: /api/ui need not show host paths.
-    const reason = problem.replaceAll(`${configDir}${sep}`, "");
+  const invalid = (reason: string): ReloadOutcome => {
     publish(good.config, withFinding(good.ui, {
       code: "UI_CONFIG_INVALID",
       severity: "warning",
-      message: `The config changed but does not load, so deck still serves the last good config: ${reason}`,
+      message: `The config changed but does not load, so deck still serves the last good config: ${reason}. Run deck validate for the details.`,
     }));
     log({ result: "invalid", reason }, "config reload failed; keeping the last good config");
     return "invalid";
   };
 
-  const reloadOnce = (): ReloadOutcome => {
+  const reload = (): ReloadOutcome => {
     let result: LoaderResult;
     try {
       result = options.load();
-    } catch (cause) {
-      return invalid(errorMessage(cause));
+    } catch {
+      return invalid("the config could not be read");
     }
     if (result.exitClass !== 0) return invalid(loadProblem(result));
 
@@ -151,31 +153,15 @@ export function createUiReloader(options: UiReloaderOptions): UiReloader {
     let ui: UiManifest;
     try {
       ui = options.build(candidate);
-    } catch (cause) {
-      return invalid(errorMessage(cause));
+    } catch {
+      return invalid("the UI manifest could not be resolved from it");
     }
     good = { config: candidate, ui, canonical };
-    publish(candidate, ui);
+    // A ui change that leaves the manifest as it was (a theme default, say) still swaps: the
+    // config, and the page's boot object rendered from it, change.
+    publish(candidate, ui, true);
     log({ result: "applied" }, "config reloaded; ui updated");
     return "applied";
-  };
-
-  const reload = (): Promise<ReloadOutcome> => {
-    if (running !== undefined) {
-      again = true;
-      return running;
-    }
-    running = (async () => {
-      let outcome: ReloadOutcome;
-      do {
-        again = false;
-        outcome = reloadOnce();
-      } while (again && !stopped);
-      return outcome;
-    })().finally(() => {
-      running = undefined;
-    });
-    return running;
   };
 
   const schedule = () => {
@@ -183,11 +169,14 @@ export function createUiReloader(options: UiReloaderOptions): UiReloader {
     if (timer !== undefined) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = undefined;
-      void reload();
+      reload();
     }, debounceMs);
   };
 
   const watcher = (options.watch ?? watchDirectory(logger))(configDir, schedule);
+  // The config deck booted with was read before the watch was armed (modules start in between):
+  // read the directory once more, so an edit made meanwhile is not missed.
+  schedule();
 
   return {
     current: () => live,
@@ -203,13 +192,16 @@ export function createUiReloader(options: UiReloaderOptions): UiReloader {
 /**
  * Watch a directory for any change, whatever the file name: editors and deploy tools replace
  * files through temp names, and a Kubernetes ConfigMap swaps a symlinked `..data` directory.
- * Every `checkMs` the watch checks the directory is still there and still the one it watches;
- * when it was removed, replaced or the watch failed, it logs that and arms again once it can
- * (then reports a change). It never throws after it starts.
+ *
+ * The directory is identified by device, inode and birth time (a directory deleted and made
+ * again can reuse its inode). On every event, and every `checkMs`, the watch checks it still
+ * watches that directory; an event naming the directory itself also means it is gone. When the directory is gone or was replaced, or the watch failed, it
+ * logs that, reports a change (a reload then says the config is missing) and arms again once
+ * the directory is back, reporting another change. It never throws after it starts.
  */
 export function watchDirectory(logger: Pick<Logger, "info" | "warn">, checkMs = WATCH_CHECK_MS): WatchDir {
   return (dir, onChange) => {
-    let armed: { close(): void; ino: number } | undefined;
+    let armed: { close(): void; id: string } | undefined;
     let closed = false;
     const event = (state: ConfigWatchEvent["state"], error?: string): ConfigWatchEvent => ({
       event: "config.watch",
@@ -218,35 +210,53 @@ export function watchDirectory(logger: Pick<Logger, "info" | "warn">, checkMs = 
       ...(error === undefined ? {} : { error }),
     });
 
-    const lose = (error?: string) => {
+    const lose = (error: string) => {
       if (armed === undefined) return;
       armed.close();
       armed = undefined;
       logger.warn(event("lost", error), "config directory watch lost; deck re-arms it when the directory is back");
+      onChange();
     };
 
     const arm = (state: "armed" | "rearmed") => {
-      const ino = inodeOf(dir);
-      if (ino === undefined) return false;
+      const id = identityOf(dir);
+      if (id === undefined) return false;
       try {
-        const fsWatcher = watchFs(dir, { persistent: false }, () => onChange());
-        fsWatcher.on("error", (cause) => lose(errorMessage(cause)));
-        armed = { close: () => fsWatcher.close(), ino };
-      } catch (cause) {
-        if (state === "armed") logger.warn(event("lost", errorMessage(cause)), "config directory watch failed; deck retries");
+        const fsWatcher = watchFs(dir, { persistent: false }, (type, name) => {
+          if (closed) return;
+          // Node names the directory itself when it is deleted (Bun reports nothing); a
+          // directory made again at once can even look the same to `stat`.
+          if (type === "rename" && name === basename(dir)) return lose("directory is gone");
+          if (!verify()) return;
+          onChange();
+        });
+        fsWatcher.on("error", () => lose("watch failed"));
+        armed = { close: () => fsWatcher.close(), id };
+      } catch {
+        if (state === "armed") logger.warn(event("lost", "watch failed"), "config directory watch failed; deck retries");
         return false;
       }
       logger.info(event(state), state === "armed" ? "watching config directory" : "config directory watch re-armed");
       return true;
     };
 
+    /** Whether the armed watch still watches the directory; loses it when not. */
+    const verify = (): boolean => {
+      if (armed === undefined) return false;
+      const id = identityOf(dir);
+      if (id === armed.id) return true;
+      lose(id === undefined ? "directory is gone" : "directory was replaced");
+      return false;
+    };
+
     arm("armed");
     const check = setInterval(() => {
       if (closed) return;
-      const ino = inodeOf(dir);
-      if (armed !== undefined && ino === armed.ino) return;
-      if (armed !== undefined) lose(ino === undefined ? "directory is gone" : "directory was replaced");
-      // The directory changed while unwatched: read it again once armed.
+      if (armed !== undefined) {
+        verify();
+        if (armed !== undefined) return;
+      }
+      // The directory may have changed while unwatched: read it again once armed.
       if (arm("rearmed")) onChange();
     }, checkMs);
     (check as { unref?: () => void }).unref?.();
@@ -284,25 +294,56 @@ function changedColdKeys(before: Map<string, string>, after: Map<string, string>
   return [...keys].filter((key) => before.get(key) !== after.get(key)).sort();
 }
 
-/** Why a failed load failed, in one line: its tool error, or its first error findings. */
+/** What deck says about each loader tool error: no path, no file content. */
+const TOOL_ERROR_TEXT: Readonly<Record<string, string>> = {
+  CONFIG_DIR_MISSING: "the config directory is missing or is not a directory",
+  CONFIG_DIR_EMPTY: "the config directory contains no YAML files",
+  CONFIG_YAML_PARSE: "a config file is not valid YAML",
+  CONFIG_MERGE_ERROR: "the config layers cannot be merged",
+  CONFIG_MIGRATION_REQUIRED: "a config file is schemaVersion 1 and needs deck config migrate",
+};
+
+const CATALOG: Readonly<Record<string, { summary: string }>> = { ...FINDING_CATALOG, ...MODULE_HOST_FINDING_CATALOG };
+
+/** How many error findings a reload names. */
+const SHOWN_FINDINGS = 3;
+
+/**
+ * Why a failed load failed, in deck's own words: a tool error's code and its text, or the first
+ * error findings' codes and JSON pointers, with the catalogue's summary for a kernel code. A
+ * module's own code is named, never its message.
+ */
 function loadProblem(result: Exclude<LoaderResult, { exitClass: 0 }>): string {
-  // A YAML error's message ends in a code frame: its first line says what and where.
-  if (result.exitClass === 2) return result.toolError.message.split("\n")[0]!.trim();
+  if (result.exitClass === 2) {
+    const code = publicCode(result.toolError.code);
+    const text = TOOL_ERROR_TEXT[code] ?? CATALOG[code]?.summary.replace(/\.$/, "");
+    return text === undefined ? code : `${code}: ${text}`;
+  }
   const errors = result.findings.filter((finding) => finding.severity === "error");
-  const shown = errors.slice(0, 3).map((finding) => `${finding.code} at ${finding.path || "/"}: ${finding.message}`);
+  if (errors.length === 0) return "the config has findings that stop deck from starting";
+  const shown = errors.slice(0, SHOWN_FINDINGS).map(publicFinding);
   const more = errors.length > shown.length ? ` (and ${errors.length - shown.length} more)` : "";
-  return shown.length === 0 ? "the config has findings that stop deck from starting" : `${shown.join("; ")}${more}`;
+  return `${shown.join("; ")}${more}`;
 }
 
-function inodeOf(dir: string): number | undefined {
+function publicFinding(finding: Finding): string {
+  const code = publicCode(finding.code);
+  const pointer = /^(\/[^\s]*)?$/.test(finding.path) && finding.path.length <= 200 ? finding.path || "/" : "/";
+  const summary = CATALOG[code]?.summary;
+  return `${code} at ${pointer}${summary === undefined ? "" : ` (${summary.replace(/\.$/, "")})`}`;
+}
+
+/** A code as an identifier: anything else (a module's code is any string) is not repeated. */
+function publicCode(code: string): string {
+  return /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : "UNKNOWN_CODE";
+}
+
+/** The directory's identity: device, inode and birth time, or none while it does not exist. */
+function identityOf(dir: string): string | undefined {
   try {
     const stats = statSync(dir);
-    return stats.isDirectory() ? stats.ino : undefined;
+    return stats.isDirectory() ? `${stats.dev}:${stats.ino}:${stats.birthtimeMs}` : undefined;
   } catch {
     return undefined;
   }
-}
-
-function errorMessage(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
 }

@@ -108,6 +108,8 @@ export class SnapshotProvider implements Provider<SnapshotProviderResult> {
   private latestSnapshot: SnapshotDocument | null = null;
   private latestFindings: readonly Finding[] = [];
   private latestClassification: 0 | 1 = 0;
+  /** The retained snapshot's `generatedAt` in epoch ms; null when absent or unparseable. */
+  private latestGeneratedAtMs: number | null = null;
 
   /** Cached non-I/O health; updated by fetch(), never by a health() probe. */
   private latestHealth: ProviderHealth = { ok: false, detail: "Awaiting first snapshot poll" };
@@ -118,6 +120,15 @@ export class SnapshotProvider implements Provider<SnapshotProviderResult> {
     this.config = config.config;
     this.now = config.now ?? (() => new Date());
     this.logger = config.logger;
+  }
+
+  /**
+   * When the last accepted snapshot says it was generated, in epoch ms: null before the first
+   * accepted read, or when its `generatedAt` is missing or unparseable. A refused read keeps
+   * the previous value, as it keeps the retained snapshot.
+   */
+  generatedAtMs(): number | null {
+    return this.latestGeneratedAtMs;
   }
 
   /** Return the latest in-memory read health without source I/O. */
@@ -185,6 +196,7 @@ export class SnapshotProvider implements Provider<SnapshotProviderResult> {
       this.latestSnapshot = snapshot;
       this.latestFindings = findings;
       this.latestClassification = classification;
+      this.latestGeneratedAtMs = parseGeneratedAt(snapshot.generatedAt);
       this.latestHealth = successHealth(classification, findings.length);
       event = {
         ...event,
@@ -290,6 +302,13 @@ function buildResult(
     readError: null,
   };
   return Object.freeze(result);
+}
+
+/** A snapshot's `generatedAt` as epoch ms, or null when it is not a parseable timestamp. */
+function parseGeneratedAt(value: unknown): number | null {
+  if (typeof value !== "string") return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
 }
 
 /** Reproduce the estate-contract classification of an accepted finding set. */

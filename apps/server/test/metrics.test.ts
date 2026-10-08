@@ -4,18 +4,24 @@
  * shell), and the kernel no longer naming the feature.
  */
 
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { BUILTIN_ROOT_PATHS, defineServerModule, pagePathProblem, type ModuleManifest, type PageDecl, type ProviderStats } from "@deck/module-sdk";
 import { primary } from "@deck/schema/fixtures";
 import type { Context, Next } from "hono";
 import type { Logger } from "pino";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { METRICS_MANIFEST, metricsModule } from "../src/metrics/module.js";
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { KERNEL_ENV_NAMES } from "../src/modules/context.js";
+import { registerAllProviders } from "../src/providers/index.js";
+import { listStats, startScheduler, stopScheduler } from "../src/providers/registry.js";
+import { SNAPSHOT_CONTENT, type SnapshotContent } from "../src/providers/snapshot/content.js";
+import { SNAPSHOT_MANIFEST, snapshotModule } from "../src/providers/snapshot/module.js";
 import { createApp, planningRouteTable, RESERVED_ROOT_PATHS } from "../src/server/app.js";
 import { buildUiManifest } from "../src/ui/manifest.js";
 import { uiContributionProblem } from "../src/ui/validate.js";
@@ -50,9 +56,15 @@ function builtinHost(extra: ReturnType<typeof testModule>[], env: Record<string,
 }
 
 /** A deck app with the metrics module composed as boot composes it. */
-async function harness(flag: string | undefined, providerStats: readonly ProviderStats[] = stats, webDistDir?: string) {
-  const { host } = testHost([metricsModule], {
+async function harness(
+  flag: string | undefined,
+  providerStats: readonly ProviderStats[] = stats,
+  webDistDir?: string,
+  { modules = [], now = () => 0 }: { modules?: ReturnType<typeof testModule>[]; now?: () => number } = {},
+) {
+  const { host } = testHost([metricsModule, ...modules], {
     env: flag === undefined ? {} : { DECK_METRICS_ENABLED: flag },
+    clock: { now },
     providerStats: () => providerStats,
     kernelRoutes: planningRouteTable(),
     reservedRootPaths: RESERVED_ROOT_PATHS,
@@ -156,6 +168,115 @@ describe("GET /metrics", () => {
     expect(response.status).toBe(404);
     expect(await response.text()).toBe("404 Not Found");
     expect(await (await app.request("/hosts/gov")).text()).toBe("<!doctype html>index");
+  });
+});
+
+/** A stand-in for the snapshot module's `snapshot/content` offer. */
+function contentModule(content: SnapshotContent) {
+  return testModule({ id: "content", services: { provides: [SNAPSHOT_CONTENT.name] } }, (ctx) => {
+    ctx.services.provide(SNAPSHOT_CONTENT, content);
+  });
+}
+
+const sample = (body: string, name: string) => body.match(new RegExp(`^${name} (.+)$`, "m"))?.[1];
+
+describe("the snapshot content-age gauges", () => {
+  const GENERATED_AT = Date.parse("2026-10-01T00:00:00Z");
+
+  it("are computed per scrape from generatedAt and the clock, beside the unchanged read age", async () => {
+    let now = GENERATED_AT + 90_500;
+    const { app } = await harness("true", stats, undefined, {
+      modules: [contentModule({ generatedAtMs: () => GENERATED_AT })],
+      now: () => now,
+    });
+
+    const first = await (await app.request("/metrics")).text();
+    for (const name of ["deck_snapshot_generated_age_seconds", "deck_snapshot_generated_timestamp_seconds"]) {
+      expect(first).toMatch(new RegExp(`^# HELP ${name} .+$`, "m"));
+      expect(first).toContain(`# TYPE ${name} gauge\n`);
+    }
+    expect(sample(first, "deck_snapshot_generated_age_seconds")).toBe("90.5");
+    expect(sample(first, "deck_snapshot_generated_timestamp_seconds")).toBe(String(GENERATED_AT / 1000));
+    expect(sample(first, "deck_snapshot_age_seconds")).toBe("12.5");
+
+    // Five days on, with the same file still readable: the read age stays put, the content age grows.
+    now += 5 * 86_400_000;
+    const later = await (await app.request("/metrics")).text();
+    expect(sample(later, "deck_snapshot_generated_age_seconds")).toBe("432090.5");
+    expect(sample(later, "deck_snapshot_generated_timestamp_seconds")).toBe(String(GENERATED_AT / 1000));
+    expect(sample(later, "deck_snapshot_age_seconds")).toBe("12.5");
+  });
+
+  it("are absent, HELP/TYPE kept, until a snapshot with a usable generatedAt has been read", async () => {
+    let generatedAt: number | null = null;
+    const { app } = await harness("true", stats, undefined, {
+      modules: [contentModule({ generatedAtMs: () => generatedAt })],
+      now: () => GENERATED_AT + 1_000,
+    });
+
+    const before = await (await app.request("/metrics")).text();
+    expect(before).toContain("# TYPE deck_snapshot_generated_age_seconds gauge\n");
+    expect(before).toContain("# TYPE deck_snapshot_generated_timestamp_seconds gauge\n");
+    expect(sample(before, "deck_snapshot_generated_age_seconds")).toBeUndefined();
+    expect(sample(before, "deck_snapshot_generated_timestamp_seconds")).toBeUndefined();
+
+    generatedAt = GENERATED_AT;
+    const after = await (await app.request("/metrics")).text();
+    expect(sample(after, "deck_snapshot_generated_age_seconds")).toBe("1");
+  });
+
+  it("are absent when no module offers the snapshot's content", async () => {
+    const response = await (await harness("true", [])).app.request("/metrics");
+    const body = await response.text();
+    expect(response.status).toBe(200);
+    expect(body).toContain("# TYPE deck_snapshot_generated_age_seconds gauge\n");
+    expect(body).not.toMatch(/^deck_snapshot_generated_(age|timestamp)_seconds /m);
+  });
+
+  it("are declared: metrics uses the service the snapshot module provides", () => {
+    expect(METRICS_MANIFEST.services).toEqual({ uses: [SNAPSHOT_CONTENT.name] });
+    expect(SNAPSHOT_MANIFEST.services).toEqual({ provides: [SNAPSHOT_CONTENT.name] });
+  });
+
+  describe("through the snapshot module and the provider registry", () => {
+    afterEach(() => stopScheduler());
+
+    async function scrapeAfterRead(generatedAt: unknown, now: number): Promise<string> {
+      const dir = mkdtempSync(join(tmpdir(), "deck-metrics-"));
+      const file = join(dir, "snapshot.json");
+      const doc: Record<string, unknown> = { schemaVersion: 1, hosts: [] };
+      if (generatedAt !== undefined) doc.generatedAt = generatedAt;
+      writeFileSync(file, JSON.stringify(doc));
+      const { host } = testHost([snapshotModule, metricsModule], {
+        env: { DECK_SNAPSHOT_SOURCE: file, DECK_METRICS_ENABLED: "true" },
+        clock: { now: () => now },
+        providerStats: listStats,
+        kernelRoutes: planningRouteTable(),
+        reservedRootPaths: RESERVED_ROOT_PATHS,
+      });
+      registerAllProviders(primary.merged, host.kindHandlers());
+      await host.start();
+      startScheduler();
+      await vi.waitFor(() => expect(listStats().find((entry) => entry.id === "snapshot")?.successTotal).toBe(1));
+      const app = createApp({ config: primary.merged, providers, logger, modules: host });
+      return (await app.request("/metrics")).text();
+    }
+
+    it("expose the read snapshot's generatedAt", async () => {
+      const body = await scrapeAfterRead("2026-10-01T00:00:00Z", GENERATED_AT + 3_600_000);
+      expect(sample(body, "deck_snapshot_generated_age_seconds")).toBe("3600");
+      expect(sample(body, "deck_snapshot_generated_timestamp_seconds")).toBe(String(GENERATED_AT / 1000));
+      expect(sample(body, "deck_snapshot_age_seconds")).toBeDefined();
+    });
+
+    it.each([["missing", undefined], ["unparseable", "not-a-date"]])(
+      "are absent, with no crash, when the read snapshot's generatedAt is %s",
+      async (_label, generatedAt) => {
+        const body = await scrapeAfterRead(generatedAt, GENERATED_AT);
+        expect(body).not.toMatch(/^deck_snapshot_generated_(age|timestamp)_seconds /m);
+        expect(sample(body, "deck_snapshot_age_seconds")).toBeDefined();
+      },
+    );
   });
 });
 

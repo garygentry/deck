@@ -224,7 +224,8 @@ describe("module host planning", () => {
     ]);
     const on = testHost([...BUILTIN_MODULES], { env: { DECK_ACTIONS_ENABLED: "1", DECK_METRICS_ENABLED: "1" }, kernelRoutes: planningRouteTable(), reservedRootPaths: RESERVED_ROOT_PATHS });
     expect(on.host.findings).toEqual([]);
-    expect(on.host.plan).toEqual(["actions", "alertmanager", "docker", "file-tree", "gatus", "http-health", "link", "llm-usage", "markdown-tree", "metrics", "monitoring", "portal", "prometheus", "snapshot", "drift", "inventory", "sources"].map((id) => ({ id, enabled: true })));
+    // metrics uses the snapshot module's snapshot/content service, so it follows snapshot too.
+    expect(on.host.plan).toEqual(["actions", "alertmanager", "docker", "file-tree", "gatus", "http-health", "link", "llm-usage", "markdown-tree", "monitoring", "portal", "prometheus", "snapshot", "drift", "inventory", "metrics", "sources"].map((id) => ({ id, enabled: true })));
   });
 });
 

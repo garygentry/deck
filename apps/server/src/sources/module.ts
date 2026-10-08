@@ -33,8 +33,9 @@ export const SOURCES_MANIFEST: ModuleManifest = {
   sharedEnv: [SOURCES_ENV.CACHE_DIR],
   services: { uses: [SOURCE_READER.name] },
   contributes: {
-    routes: { legacyAliases: ["/api/sources"], whenDisabled: NOT_RUNNING },
     ...SOURCES_UI.contributes,
+    // Last, so nothing in the shared copy can replace the server's routes.
+    routes: { legacyAliases: ["/api/sources"], whenDisabled: NOT_RUNNING },
   },
 };
 

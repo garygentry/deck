@@ -17,7 +17,7 @@ const UI = {
       id: "lab",
       path: "/lab",
       title: "Lab overview",
-      icon: "flask-conical",
+      icon: "gauge",
       nav: { group: "lab", order: 0 },
       sections: [
         {

@@ -42,7 +42,7 @@ describe("ui.pages", () => {
       page([
         { id: "load", type: "gauges/dial", title: "UPS load", source: "ups", select: "load_pct", options: { format: "percent" }, span: 2, rows: 1 },
         { type: "gauges/note", source: { kind: "http-json" }, options: { anything: [1, "two"] } },
-      ], { icon: "flask-conical", nav: { group: "lab", order: 0, label: "Lab" } }),
+      ], { icon: "gauge", nav: { group: "lab", order: 0, label: "Lab" } }),
     ]));
     expect(located(result)).toEqual([]);
     expect(result.classification).toBe(0);

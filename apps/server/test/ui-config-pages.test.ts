@@ -58,7 +58,7 @@ const LAB = {
   id: "lab",
   path: "/lab",
   title: "Lab overview",
-  icon: "flask-conical",
+  icon: "gauge",
   nav: { group: "lab", order: 0 },
   sections: [
     {
@@ -84,7 +84,7 @@ describe("config pages in the UI manifest", () => {
       module: "ui",
       path: "/lab",
       title: "Lab overview",
-      icon: "flask-conical",
+      icon: "gauge",
       component: "ConfigPage",
       layout: {
         sections: [
@@ -118,8 +118,8 @@ describe("config pages in the UI manifest", () => {
   it("adds its nav entry, labelled by its title unless the nav sets one", () => {
     const manifest = resolveWith({ pages: [LAB, { ...LAB, id: "power", path: "/power", nav: { group: "lab", label: "UPS" } }] });
     expect(manifest.nav.filter((item) => item.module === "ui")).toEqual([
-      { id: "nav:ui/lab", module: "ui", slot: "app/nav", page: "page:ui/lab", group: "lab", label: "Lab overview", icon: "flask-conical", order: 0 },
-      { id: "nav:ui/power", module: "ui", slot: "app/nav", page: "page:ui/power", group: "lab", label: "UPS", icon: "flask-conical", order: 100 },
+      { id: "nav:ui/lab", module: "ui", slot: "app/nav", page: "page:ui/lab", group: "lab", label: "Lab overview", icon: "gauge", order: 0 },
+      { id: "nav:ui/power", module: "ui", slot: "app/nav", page: "page:ui/power", group: "lab", label: "UPS", icon: "gauge", order: 100 },
     ]);
     expect(manifest.navGroups.map((group) => group.id)).toContain("lab");
     // Without `nav`, the page is routed but has no entry.

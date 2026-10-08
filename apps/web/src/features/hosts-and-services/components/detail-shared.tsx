@@ -261,7 +261,7 @@ export function SecretsSection({ secrets, reality }: { secrets: readonly string[
         <ul className="flex flex-col gap-1 text-sm">
           {secrets.map((secretId, index) => (
             <li key={`${secretId}:${index}`}>
-              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{secretId}</code>
+              <code className="rounded-sm bg-muted px-1 py-0.5 font-mono text-xs">{secretId}</code>
             </li>
           ))}
         </ul>

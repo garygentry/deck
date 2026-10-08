@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { THEME_PRESETS, type ThemePreset } from "@deck/contract";
-import { converter, parse } from "culori";
+import { converter, differenceCiede2000, formatCss, interpolate, parse } from "culori";
 import { describe, expect, it } from "vitest";
 import {
   AA_TEXT_TOKENS,
   contrastRatio,
+  NON_COLOUR_TOKENS,
   PRESET_OVERRIDES,
   PRESET_TOKENS,
   STATUS_TONES,
@@ -27,9 +28,15 @@ import {
 // - Focus ring and form-control edges (`--input`) clear the 3:1 non-text bar.
 //   `--border` is a decorative divider and is deliberately not held to 3:1.
 // - The ok tone stays ≥40° of hue from the primary, so "healthy" never reads
-//   as a link or an action.
-// - `high-contrast` raises every text bar to 7:1 (WCAG AAA), the focus ring
-//   and form edges to 4.5:1, and holds `--border` to the 3:1 non-text bar.
+//   as a link or an action, and every status tone's -fg stays clearly apart
+//   from `--primary` and `--ring` (CIEDE2000 ≥ 15, or ≥ 30° of hue when both
+//   are chromatic), so no accent preset reads as a status.
+// - The destructive control (Button/Badge) is checked as rendered: its
+//   foreground on `--destructive` composited at its dark-mode alpha.
+// - `high-contrast` raises every text bar to 7:1 (WCAG AAA), the focus ring,
+//   form edges and destructive control to 4.5:1 and 7:1 respectively, and
+//   holds its edges (`--border`, `--sidebar-border`, each status -border on
+//   its -bg) to the 3:1 non-text bar.
 //
 // Colour is never the only status signal (icon + text); these ratios make the
 // redundant colour cue legible, not load-bearing.
@@ -61,9 +68,36 @@ function hue(preset: ThemePreset, mode: Mode, token: string): number {
 const ratio = (preset: ThemePreset, mode: Mode, fg: string, bg: string): number =>
   contrastRatio(tokenColor(mode, fg, preset), tokenColor(mode, bg, preset));
 
+const ciede2000 = differenceCiede2000();
+/** Below this chroma a colour has no hue worth comparing. */
+const ACHROMATIC = 0.03;
+
+/** Whether two tokens are told apart: CIEDE2000 ≥ 15, or ≥ 30° of hue when both are chromatic. */
+function distinct(preset: ThemePreset, mode: Mode, a: string, b: string): { ok: boolean; detail: string } {
+  const ca = oklch(parse(tokenColor(mode, a, preset)))!;
+  const cb = oklch(parse(tokenColor(mode, b, preset)))!;
+  const delta = ciede2000(ca, cb);
+  const chromatic = ca.c >= ACHROMATIC && cb.c >= ACHROMATIC && ca.h !== undefined && cb.h !== undefined;
+  const gap = chromatic ? Math.min(Math.abs(ca.h! - cb.h!), 360 - Math.abs(ca.h! - cb.h!)) : 0;
+  return { ok: delta >= 15 || (chromatic && gap >= 30), detail: `ΔE2000 ${delta.toFixed(1)}, hue gap ${gap.toFixed(0)}°` };
+}
+
+/**
+ * The destructive Button/Badge as painted: `--destructive-control-foreground` on `--destructive`,
+ * which dark mode composites at `--destructive-control-alpha` over the surface it sits on.
+ */
+function destructiveControl(preset: ThemePreset, mode: Mode, surface: string): number {
+  const tokens = PRESET_TOKENS[preset][mode];
+  const alpha = mode === "dark" ? parseFloat(tokens["--destructive-control-alpha"]!) / 100 : 1;
+  const fill = interpolate([tokenColor(mode, surface, preset), tokenColor(mode, "--destructive", preset)], "oklab")(alpha);
+  return contrastRatio(tokenColor(mode, "--destructive-control-foreground", preset), formatCss(fill));
+}
+
 /** The bars a preset is held to: AA everywhere, AAA text for `high-contrast`. */
 const BARS = (preset: ThemePreset) =>
-  preset === "high-contrast" ? { text: 7, control: 4.5, border: 3 } : { text: 4.5, control: 3, border: undefined };
+  preset === "high-contrast"
+    ? { text: 7, control: 4.5, destructive: 7, border: 3 }
+    : { text: 4.5, control: 3, destructive: 4.5, border: undefined };
 
 describe("design token contrast", () => {
   it("defines every status tone with -fg, -bg and -border in both modes", () => {
@@ -82,7 +116,7 @@ describe("design token contrast", () => {
     for (const preset of THEME_PRESETS) {
       for (const mode of MODES) {
         for (const [token, value] of Object.entries(PRESET_TOKENS[preset][mode])) {
-          if (token === "--radius") continue;
+          if (NON_COLOUR_TOKENS.has(token)) continue;
           expect(value, `${preset} ${mode} ${token}`).toMatch(/^oklch\([^)]*\)$/);
         }
       }
@@ -123,10 +157,31 @@ describe("design token contrast", () => {
           }
         }
 
+        for (const surface of ["--background", "--card"]) {
+          it(`the destructive control, as rendered on ${surface}, meets ${bars.destructive}:1`, () => {
+            expect(destructiveControl(preset, mode, surface)).toBeGreaterThanOrEqual(bars.destructive);
+          });
+        }
+
         if (bars.border !== undefined) {
-          for (const surface of ["--background", "--card"]) {
-            it(`--border meets the ${bars.border}:1 non-text bar on ${surface}`, () => {
-              expect(ratio(preset, mode, "--border", surface)).toBeGreaterThanOrEqual(bars.border!);
+          const edges: [string, string][] = [
+            ["--border", "--background"],
+            ["--border", "--card"],
+            ["--sidebar-border", "--sidebar"],
+            ...STATUS_TONES.map((tone): [string, string] => [`--status-${tone}-border`, `--status-${tone}-bg`]),
+          ];
+          for (const [edge, surface] of edges) {
+            it(`${edge} meets the ${bars.border}:1 non-text bar on ${surface}`, () => {
+              expect(ratio(preset, mode, edge, surface)).toBeGreaterThanOrEqual(bars.border!);
+            });
+          }
+        }
+
+        for (const accent of ["--primary", "--ring"]) {
+          for (const tone of STATUS_TONES) {
+            it(`--status-${tone}-fg is told apart from ${accent}`, () => {
+              const { ok, detail } = distinct(preset, mode, `--status-${tone}-fg`, accent);
+              expect(ok, detail).toBe(true);
             });
           }
         }
@@ -161,7 +216,7 @@ describe("theme presets", () => {
       expect(Object.keys(dark).sort()).toEqual(Object.keys(light).sort());
     });
 
-    it(`${preset}: re-points only colour tokens the default defines`, () => {
+    it(`${preset}: re-points only tokens the default defines, never the radius`, () => {
       for (const token of Object.keys(PRESET_OVERRIDES[preset].light)) {
         expect(token).not.toBe("--radius");
         expect(THEME_TOKENS.light, `${preset} ${token}`).toHaveProperty(token);

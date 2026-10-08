@@ -36,7 +36,8 @@ function declarations(css: string, selector: string): Record<string, string> {
   return out;
 }
 
-const themeCss = readStyle("theme.css");
+/** The raw text of `src/styles/theme.css`. */
+export const themeCss = readStyle("theme.css");
 const lightTokens = declarations(themeCss, ":root");
 
 export const THEME_TOKENS: Readonly<Record<Mode, TokenValues>> = {
@@ -90,6 +91,9 @@ export function contrastRatio(a: string, b: string): number {
   }
   return wcagContrast(ca, cb);
 }
+
+/** Tokens in the colour blocks that are not colours (a length, an opacity). */
+export const NON_COLOUR_TOKENS: ReadonlySet<string> = new Set(["--radius", "--destructive-control-alpha"]);
 
 export const STATUS_TONES = ["ok", "warn", "danger", "info", "pending", "neutral"] as const;
 

@@ -1,47 +1,22 @@
-// Eager registration entry point for the sources browsing feature.
-// Import-side-effect only — exports nothing. Discovered by
-// `import.meta.glob("../features/*/index.ts")`; no shell edit. Registration errors are
-// intentionally uncaught so eager discovery fails loudly (mirrors `governed-actions/index.ts`).
+import { SOURCES_UI } from "@deck/contract/modules/sources";
+import { defineWebModule } from "@deck/module-sdk";
+import type { ComponentType } from "react";
 
-import { registerEntityFragment, registerPage } from "../../registry/registry.js";
+import type { EntityFragmentRegistration } from "../../registry/registry.js";
+import { registerWebModule } from "../../registry/web-module.js";
 import { ConfigsPage, DocsPage, OwnedConfigsFragment } from "./pages.js";
 
-// --- Docs page. ---
-registerPage({
-  id: "page:sources/docs",
-  path: "/docs",
-  label: "Docs",
-  icon: "book-open",
-  group: "Knowledge",
-  component: DocsPage,
+// The Docs and Configs pages and the owned-configs section on the host and service detail
+// pages. Their paths, titles, icons, nav group and the section's slots, order and heading are
+// the sources module's manifest data; the UI manifest decides at runtime what renders. The
+// entity-section slots are core's, declared by the registry itself.
+export const sourcesWebModule = defineWebModule(SOURCES_UI, {
+  // The section keeps the entity-section slots' component contract.
+  components: { DocsPage, ConfigsPage, OwnedConfigsFragment } satisfies {
+    DocsPage: ComponentType;
+    ConfigsPage: ComponentType;
+    OwnedConfigsFragment: EntityFragmentRegistration["component"];
+  },
 });
 
-// --- Configs page. ---
-registerPage({
-  id: "page:sources/configs",
-  path: "/configs",
-  label: "Configs",
-  icon: "file-cog",
-  group: "Knowledge",
-  component: ConfigsPage,
-});
-
-// --- Owned-configs section on BOTH the host and service detail pages, attached
-//     by id after drift's findings. Two distinct ids are required because extension ids are
-//     unique; the same component serves both entity kinds and branches on entity.entity. ---
-registerEntityFragment({
-  id: "section:sources/host-configs",
-  entity: "host",
-  section: "configs",
-  title: "Configs",
-  order: 20,
-  component: OwnedConfigsFragment,
-});
-registerEntityFragment({
-  id: "section:sources/service-configs",
-  entity: "service",
-  section: "configs",
-  title: "Configs",
-  order: 20,
-  component: OwnedConfigsFragment,
-});
+registerWebModule(sourcesWebModule);

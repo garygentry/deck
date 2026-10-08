@@ -4,7 +4,7 @@
  * shell), and the kernel no longer naming the feature.
  */
 
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,12 +16,15 @@ import type { Logger } from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { METRICS_MANIFEST, metricsModule } from "../src/metrics/module.js";
+import { metricsResponse } from "../src/metrics/route.js";
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { KERNEL_ENV_NAMES } from "../src/modules/context.js";
 import { registerAllProviders } from "../src/providers/index.js";
-import { listStats, startScheduler, stopScheduler } from "../src/providers/registry.js";
+import { listStats, read, register, startScheduler, stopScheduler } from "../src/providers/registry.js";
 import { SNAPSHOT_CONTENT, type SnapshotContent } from "../src/providers/snapshot/content.js";
+import { SNAPSHOT_TIMING, SnapshotProvider } from "../src/providers/snapshot/index.js";
 import { SNAPSHOT_MANIFEST, snapshotModule } from "../src/providers/snapshot/module.js";
+import type { SnapshotRevision, SnapshotSource, SnapshotSourceResult } from "../src/providers/snapshot/source.js";
 import { createApp, planningRouteTable, RESERVED_ROOT_PATHS } from "../src/server/app.js";
 import { buildUiManifest } from "../src/ui/manifest.js";
 import { uiContributionProblem } from "../src/ui/validate.js";
@@ -60,10 +63,15 @@ async function harness(
   flag: string | undefined,
   providerStats: readonly ProviderStats[] = stats,
   webDistDir?: string,
-  { modules = [], now = () => 0 }: { modules?: ReturnType<typeof testModule>[]; now?: () => number } = {},
+  {
+    modules = [],
+    builtin = [],
+    now = () => 0,
+  }: { modules?: ReturnType<typeof testModule>[]; builtin?: ReturnType<typeof testModule>[]; now?: () => number } = {},
 ) {
-  const { host } = testHost([metricsModule, ...modules], {
+  const { host } = testHost([metricsModule, ...builtin, ...modules], {
     env: flag === undefined ? {} : { DECK_METRICS_ENABLED: flag },
+    builtins: new Set([metricsModule, ...builtin]),
     clock: { now },
     providerStats: () => providerStats,
     kernelRoutes: planningRouteTable(),
@@ -171,9 +179,9 @@ describe("GET /metrics", () => {
   });
 });
 
-/** A stand-in for the snapshot module's `snapshot/content` offer. */
-function contentModule(content: SnapshotContent) {
-  return testModule({ id: "content", services: { provides: [SNAPSHOT_CONTENT.name] } }, (ctx) => {
+/** A module offering `snapshot/content`: the snapshot module's stand-in when passed as built-in. */
+function contentModule(content: SnapshotContent, id = "snapshot") {
+  return testModule({ id, services: { provides: [SNAPSHOT_CONTENT.name] } }, (ctx) => {
     ctx.services.provide(SNAPSHOT_CONTENT, content);
   });
 }
@@ -186,7 +194,7 @@ describe("the snapshot content-age gauges", () => {
   it("are computed per scrape from generatedAt and the clock, beside the unchanged read age", async () => {
     let now = GENERATED_AT + 90_500;
     const { app } = await harness("true", stats, undefined, {
-      modules: [contentModule({ generatedAtMs: () => GENERATED_AT })],
+      builtin: [contentModule({ generatedAtMs: () => GENERATED_AT })],
       now: () => now,
     });
 
@@ -210,7 +218,7 @@ describe("the snapshot content-age gauges", () => {
   it("are absent, HELP/TYPE kept, until a snapshot with a usable generatedAt has been read", async () => {
     let generatedAt: number | null = null;
     const { app } = await harness("true", stats, undefined, {
-      modules: [contentModule({ generatedAtMs: () => generatedAt })],
+      builtin: [contentModule({ generatedAtMs: () => generatedAt })],
       now: () => GENERATED_AT + 1_000,
     });
 
@@ -233,16 +241,65 @@ describe("the snapshot content-age gauges", () => {
     expect(body).not.toMatch(/^deck_snapshot_generated_(age|timestamp)_seconds /m);
   });
 
+  it("are floored at 0 when generatedAt is ahead of deck's clock; the raw timestamp shows the skew", async () => {
+    const { app } = await harness("true", stats, undefined, {
+      builtin: [contentModule({ generatedAtMs: () => GENERATED_AT + 30_000 })],
+      now: () => GENERATED_AT,
+    });
+    const body = await (await app.request("/metrics")).text();
+    expect(sample(body, "deck_snapshot_generated_age_seconds")).toBe("0");
+    expect(sample(body, "deck_snapshot_generated_timestamp_seconds")).toBe(String((GENERATED_AT + 30_000) / 1000));
+  });
+
+  it("take only the built-in snapshot module's offer: another module named aaa never shadows it", async () => {
+    const shadow = contentModule({ generatedAtMs: () => GENERATED_AT - 86_400_000 }, "aaa");
+    const alone = await harness("true", stats, undefined, { modules: [shadow], now: () => GENERATED_AT });
+    expect((await (await alone.app.request("/metrics")).text())).not.toMatch(/^deck_snapshot_generated_(age|timestamp)_seconds /m);
+
+    const both = await harness("true", stats, undefined, {
+      builtin: [contentModule({ generatedAtMs: () => GENERATED_AT })],
+      modules: [contentModule({ generatedAtMs: () => GENERATED_AT - 86_400_000 }, "aaa")],
+      now: () => GENERATED_AT + 5_000,
+    });
+    const body = await (await both.app.request("/metrics")).text();
+    expect(sample(body, "deck_snapshot_generated_age_seconds")).toBe("5");
+    expect(sample(body, "deck_snapshot_generated_timestamp_seconds")).toBe(String(GENERATED_AT / 1000));
+  });
+
+  it.each([
+    ["throws", () => { throw new Error("boom"); }],
+    ["answers NaN", () => Number.NaN],
+    ["answers Infinity", () => Number.POSITIVE_INFINITY],
+    ["answers a string", () => "1700000000000" as unknown as number],
+  ])("are absent, and the scrape still succeeds, when the offer %s", async (_label, generatedAtMs) => {
+    const { app } = await harness("true", stats, undefined, {
+      builtin: [contentModule({ generatedAtMs })],
+      now: () => GENERATED_AT,
+    });
+    const response = await app.request("/metrics");
+    const body = await response.text();
+    expect(response.status).toBe(200);
+    expect(body).not.toMatch(/^deck_snapshot_generated_(age|timestamp)_seconds /m);
+    expect(sample(body, "deck_snapshot_age_seconds")).toBe("12.5");
+  });
+
   it("are declared: metrics uses the service the snapshot module provides", () => {
     expect(METRICS_MANIFEST.services).toEqual({ uses: [SNAPSHOT_CONTENT.name] });
     expect(SNAPSHOT_MANIFEST.services).toEqual({ provides: [SNAPSHOT_CONTENT.name] });
   });
 
   describe("through the snapshot module and the provider registry", () => {
-    afterEach(() => stopScheduler());
+    const dirs: string[] = [];
+    const hosts: { stop(): Promise<void> }[] = [];
+    afterEach(async () => {
+      stopScheduler();
+      await Promise.all(hosts.splice(0).map((host) => host.stop()));
+      for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+    });
 
     async function scrapeAfterRead(generatedAt: unknown, now: number): Promise<string> {
       const dir = mkdtempSync(join(tmpdir(), "deck-metrics-"));
+      dirs.push(dir);
       const file = join(dir, "snapshot.json");
       const doc: Record<string, unknown> = { schemaVersion: 1, hosts: [] };
       if (generatedAt !== undefined) doc.generatedAt = generatedAt;
@@ -254,6 +311,7 @@ describe("the snapshot content-age gauges", () => {
         kernelRoutes: planningRouteTable(),
         reservedRootPaths: RESERVED_ROOT_PATHS,
       });
+      hosts.push(host);
       registerAllProviders(primary.merged, host.kindHandlers());
       await host.start();
       startScheduler();
@@ -277,6 +335,78 @@ describe("the snapshot content-age gauges", () => {
         expect(sample(body, "deck_snapshot_age_seconds")).toBeDefined();
       },
     );
+
+    /** A changed read of a snapshot generated at `generatedAt`. */
+    const changedRead = (generatedAt: string): SnapshotSourceResult => {
+      const text = JSON.stringify({ schemaVersion: 1, generatedAt, hosts: [] });
+      return { changed: true, bytes: text.length, text, revision: { sourceKind: "path", token: Symbol(generatedAt) } };
+    };
+
+    /**
+     * A source answering the queued snapshots at once, then holding every later read until the
+     * test settles it, ignoring the abort signal as a slow read would.
+     */
+    class HeldSource implements SnapshotSource {
+      readonly kind = "path";
+      private readonly held: Array<(result: SnapshotSourceResult) => void> = [];
+      constructor(private readonly immediate: string[] = []) {}
+      read(): Promise<SnapshotSourceResult> {
+        const next = this.immediate.shift();
+        if (next !== undefined) return Promise.resolve(changedRead(next));
+        return new Promise((resolve) => this.held.push(resolve));
+      }
+      accept(_revision: SnapshotRevision): void {}
+      /** Settle the oldest held read with a snapshot generated at `generatedAt`. */
+      settle(generatedAt: string): void {
+        this.held.shift()!(changedRead(generatedAt));
+      }
+    }
+
+    /** The two gauges as a scrape at `now` reads them through the provider's service answer. */
+    async function gauges(provider: SnapshotProvider, now: number) {
+      const body = await metricsResponse(new Request("http://deck/metrics"), {
+        stats: listStats(),
+        snapshotGeneratedAtMs: provider.generatedAtMs(),
+        nowMs: now,
+      }).text();
+      return [sample(body, "deck_snapshot_generated_age_seconds"), sample(body, "deck_snapshot_generated_timestamp_seconds")];
+    }
+
+    const A = "2026-10-01T00:00:00Z";
+    const B = "2026-10-06T00:00:00Z";
+    const served = () => (read("snapshot")!.data as { snapshot: { generatedAt: string } } | null)?.snapshot.generatedAt;
+
+    it("a read that completes after the poll timed out changes neither the served snapshot nor the gauges", async () => {
+      const source = new HeldSource([A]);
+      const provider = new SnapshotProvider("snapshot", { source, config: primary.merged });
+      const handle = register(provider, { ...SNAPSHOT_TIMING, timeoutMs: 20 });
+
+      await handle.runNow();
+      expect(served()).toBe(A);
+      expect(await gauges(provider, GENERATED_AT + 60_000)).toEqual(["60", String(GENERATED_AT / 1000)]);
+
+      // The second read outlives the registry's timeout, then lands with snapshot B.
+      await handle.runNow();
+      expect(listStats().find((entry) => entry.id === "snapshot")?.failureTotal).toBe(1);
+      source.settle(B);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(served()).toBe(A);
+      expect(provider.generatedAtMs()).toBe(GENERATED_AT);
+      expect(await gauges(provider, GENERATED_AT + 60_000)).toEqual(["60", String(GENERATED_AT / 1000)]);
+    });
+
+    it("a first poll that times out leaves the gauges absent even when its read lands later", async () => {
+      const source = new HeldSource();
+      const provider = new SnapshotProvider("snapshot", { source, config: primary.merged });
+      const handle = register(provider, { ...SNAPSHOT_TIMING, timeoutMs: 20 });
+
+      await handle.runNow();
+      source.settle(A);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(read("snapshot")!.data).toBeNull();
+      expect(provider.generatedAtMs()).toBeNull();
+      expect(await gauges(provider, GENERATED_AT)).toEqual([undefined, undefined]);
+    });
   });
 });
 

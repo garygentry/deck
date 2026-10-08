@@ -1,4 +1,4 @@
-import { defineServerModule, type ModuleManifest, type ServiceRef } from "@deck/module-sdk";
+import { defineServerModule, type ModuleManifest, type ServiceOffer, type ServiceRef } from "@deck/module-sdk";
 
 import type { SnapshotContent } from "../providers/snapshot/content.js";
 import { METRICS_PATH, metricsResponse } from "./route.js";
@@ -36,8 +36,24 @@ export const metricsModule = defineServerModule(METRICS_MANIFEST, (ctx) => {
   ctx.rootRoute(METRICS_PATH, (request) =>
     metricsResponse(request, {
       stats: ctx.providers.stats(),
-      snapshotGeneratedAtMs: ctx.services.get(SNAPSHOT_CONTENT)[0]?.generatedAtMs() ?? null,
+      snapshotGeneratedAtMs: snapshotGeneratedAtMs(ctx.services.offers(SNAPSHOT_CONTENT)),
       nowMs: ctx.clock.now(),
     }),
   );
 });
+
+/**
+ * The built-in snapshot module's answer, as finite epoch ms; null otherwise. Another module's
+ * offer of the name never speaks for the snapshot, and an offer that throws or answers
+ * something other than a finite number leaves the gauges absent rather than failing the scrape.
+ */
+function snapshotGeneratedAtMs(offers: readonly ServiceOffer<SnapshotContent>[]): number | null {
+  const offer = offers.find((candidate) => candidate.builtin && candidate.module === "snapshot");
+  if (offer === undefined) return null;
+  try {
+    const ms: unknown = offer.impl.generatedAtMs();
+    return typeof ms === "number" && Number.isFinite(ms) ? ms : null;
+  } catch {
+    return null;
+  }
+}

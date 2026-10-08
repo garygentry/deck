@@ -95,8 +95,9 @@ export function renderMetrics(input: MetricsInput): string {
   family(
     "deck_snapshot_generated_age_seconds",
     "gauge",
-    "Seconds since the last successfully read observed-reality snapshot was generated (its generatedAt).",
-    generatedAtMs === null ? [] : [`deck_snapshot_generated_age_seconds ${seconds(input.nowMs - generatedAtMs)}`],
+    "Seconds since the last successfully read observed-reality snapshot was generated (its generatedAt), floored at 0.",
+    // Floored like the read age: a producer clock ahead of deck's shows in the raw timestamp.
+    generatedAtMs === null ? [] : [`deck_snapshot_generated_age_seconds ${seconds(Math.max(0, input.nowMs - generatedAtMs))}`],
   );
   family(
     "deck_snapshot_generated_timestamp_seconds",

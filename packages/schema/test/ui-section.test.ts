@@ -36,7 +36,7 @@ describe("the ui section", () => {
   });
 
   it.each([
-    ["an unknown key", { pages: [] }, "/ui/pages"],
+    ["an unknown key", { dashboards: [] }, "/ui/dashboards"],
     ["an unknown brand key", { brand: { colour: "red" } }, "/ui/brand/colour"],
     ["a blank title", { brand: { title: "   " } }, "/ui/brand/title"],
     ["a javascript: logo", { brand: { logoUrl: "javascript:alert(1)" } }, "/ui/brand/logoUrl"],

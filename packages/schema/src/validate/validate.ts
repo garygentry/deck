@@ -13,6 +13,7 @@ import { layers } from "./rules/layers.js";
 import { providerKinds } from "./rules/provider-kinds.js";
 import { references } from "./rules/references.js";
 import { secrets } from "./rules/secrets.js";
+import { uiWidgets } from "./rules/ui-widgets.js";
 import { checkVersion } from "./rules/version.js";
 import { mapAjvErrors } from "./shape.js";
 
@@ -70,6 +71,7 @@ export function validate(
       ...(layer === "overlay" && isObject(options?.base) ? [] : references(doc, context, composed.references)),
       ...layers(doc, composed, layer, options?.base, strict),
       ...providerKinds(doc, composed, strict),
+      ...uiWidgets(doc, composed, strict),
       ...secrets(doc, context),
       // Module array identities: a duplicate the kernel rules already report is not repeated.
       ...composed.runChecks(document as JsonObject, layer, { disabledSections: strict ? "strict" : "advisory" }).filter(

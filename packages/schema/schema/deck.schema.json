@@ -28,7 +28,8 @@
           "type": "object", "description": "Overrides by extension, page or nav entry id. They replace, never merge: false disables, an object replaces attachTo and/or config, and a later layer's attachTo or config replaces an earlier layer's whole.",
           "propertyNames": { "minLength": 1 },
           "additionalProperties": { "$ref": "#/$defs/UiOverride" }
-        }
+        },
+        "pages": { "type": "array", "items": { "$ref": "#/$defs/UiPage" }, "description": "Config-defined pages (dashboards): sections of widgets, each page routed as page:ui/<id>." }
       }
     },
     "UiBrand": {
@@ -108,6 +109,52 @@
           }
         }
       ]
+    },
+    "UiPage": {
+      "title": "UiPage", "type": "object", "additionalProperties": false, "required": ["id", "path", "title", "sections"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The page's name; its id is page:ui/<id>." },
+        "path": { "type": "string", "maxLength": 512, "pattern": "^(?:/[A-Za-z0-9_~-][A-Za-z0-9._~-]*)+$", "description": "The page's path, such as /lab: literal segments only." },
+        "title": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "\\S", "description": "The page heading, nav label and document title." },
+        "icon": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "description": "An icon name from the shell's icon set." },
+        "nav": { "$ref": "#/$defs/UiPageNav", "description": "The page's sidebar entry (nav:ui/<id>); without it the page has none." },
+        "sections": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/UiSection" }, "description": "The page's sections, in reading order." }
+      }
+    },
+    "UiPageNav": {
+      "title": "UiPageNav", "type": "object", "additionalProperties": false, "required": ["group"],
+      "properties": {
+        "group": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The nav group the entry belongs to." },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80, "description": "The entry's label; default the page title." },
+        "order": { "type": "number", "description": "Order within the group; default 100." }
+      }
+    },
+    "UiSection": {
+      "title": "UiSection", "type": "object", "additionalProperties": false, "required": ["title", "widgets"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "\\S", "description": "The section heading." },
+        "columns": { "type": "integer", "minimum": 1, "maximum": 4, "description": "Grid columns from the md breakpoint up (one column below it); default 1." },
+        "widgets": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/UiWidget" }, "description": "The section's widgets, in reading order." }
+      }
+    },
+    "UiWidget": {
+      "title": "UiWidget", "type": "object", "additionalProperties": false, "required": ["type"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "A stable name, unique on the page; its id is widget:ui/<page>.<id>. Without one, the id is positional and changes when widgets move." },
+        "type": { "type": "string", "pattern": "^[a-z][a-z0-9-]*/[a-z0-9][a-z0-9-]*$", "description": "The widget type, <module>/<name>, such as core/json." },
+        "title": { "type": "string", "minLength": 1, "maxLength": 80, "description": "The widget's heading." },
+        "source": {
+          "description": "The provider the widget reads: a provider id, or the first provider of a kind.",
+          "anyOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "type": "string", "minLength": 1, "description": "A provider kind." } } }
+          ]
+        },
+        "select": { "type": "string", "minLength": 1, "maxLength": 1024, "description": "A JMESPath expression over the provider's data, evaluated on the server at each poll." },
+        "options": { "type": "object", "additionalProperties": { "$ref": "#/$defs/JsonValue" }, "description": "Options of the widget type, checked against its schema." },
+        "span": { "type": "integer", "minimum": 1, "maximum": 4, "description": "Columns the widget spans; default 1, at most the section's columns." },
+        "rows": { "type": "integer", "minimum": 1, "maximum": 6, "description": "Rows the widget spans; default 1." }
+      }
     },
     "Estate": {
       "title": "Estate", "type": "object", "additionalProperties": false, "required": ["name"],

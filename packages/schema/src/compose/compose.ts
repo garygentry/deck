@@ -49,6 +49,26 @@ export type ContributedInstanceRule = (
 ) => readonly ContributedFinding[];
 
 /**
+ * A widget type a contribution declares: `<module>/<name>`, where `<module>` is the
+ * contribution's id, with the JSON Schema of its `options`.
+ */
+export interface ContributedWidgetType {
+  type: string;
+  /** Schema of a widget's `options`; absent, any options object is accepted. */
+  optionsSchema?: JsonObject;
+}
+
+/** Hooks composition takes from outside the library. */
+export interface ComposeOptions {
+  /**
+   * Why a widget's `select` is not a usable expression, or `null` (UI_WIDGET_SELECT_INVALID).
+   * The engine lives behind the `@deck/schema/select` entry (`selectProblem`), so the main
+   * entry never loads it; without this hook, `select` is not checked.
+   */
+  selectProblem?: (expression: string) => string | null;
+}
+
+/**
  * What a module contributes to the config contract. A module manifest's `config` and
  * `providerKinds` map onto it field for field; rules come from the server module.
  */
@@ -81,6 +101,8 @@ export interface ConfigContribution {
   /** Finding codes the contribution's rules may emit. */
   findings?: readonly ({ code: string } & FindingCodeEntry)[];
   providerKinds?: readonly ContributedProviderKind[];
+  /** Widget types: their option schemas check `ui.pages[].sections[].widgets[].options`. */
+  widgetTypes?: readonly ContributedWidgetType[];
   rules?: readonly ContributedRule[];
   /**
    * Where the section names an estate host or service, relative to the section. They are
@@ -138,6 +160,12 @@ export interface ComposedConfig {
    * refused), by kind → module id: a reference to one is PROVIDER_KIND_DISABLED, not unknown.
    */
   readonly disabledKinds: ReadonlyMap<string, string>;
+  /** Widget types enabled contributions declare. */
+  readonly widgetTypes: ReadonlySet<string>;
+  /** Widget types declared only by contributions that will not run, by type → module id. */
+  readonly disabledWidgetTypes: ReadonlyMap<string, string>;
+  /** The `select` check composition was given ({@link ComposeOptions.selectProblem}). */
+  readonly selectProblem?: (expression: string) => string | null;
   /** Ids of enabled modules with a `modules.<id>` section, sorted. */
   readonly moduleIds: readonly string[];
   /** Every id that may have a `modules.<id>` section (enabled or disabled), sorted. */
@@ -177,6 +205,8 @@ const CODE_PATTERN = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
 /** A relative key path: `.`-separated keys, each optionally `[]` (every element of an array). */
 const KEY_PATH = /^[^.[\]]+(?:\[\])?(?:\.[^.[\]]+(?:\[\])?)*$/;
 const DEFS_REF = /^#\/\$defs\/([^/]+)/;
+/** A widget type: `<module>/<name>`. */
+const WIDGET_TYPE = /^[a-z][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/;
 /** Keywords that would give a contributed schema its own resource or dynamic scope. */
 const RESOURCE_KEYWORDS = ["$id", "$anchor", "$dynamicAnchor", "$dynamicRef", "$recursiveAnchor", "$recursiveRef"];
 
@@ -200,7 +230,7 @@ const INSTANCE_CORE: JsonObject = {
  * and rules) from the kernel and the given contributions. The root and `modules` stay
  * closed, so an unknown key or module is still rejected. Throws {@link ComposeError}.
  */
-export function composeConfig(contributions: readonly ConfigContribution[]): ComposedConfig {
+export function composeConfig(contributions: readonly ConfigContribution[], options: ComposeOptions = {}): ComposedConfig {
   const schema = structuredClone(kernelSchema) as unknown as KernelSchemaShape;
   const ownership: Record<string, Owner> = { ...OWNERSHIP };
   const identity: Record<string, IdentitySpec> = { ...IDENTITY };
@@ -208,6 +238,9 @@ export function composeConfig(contributions: readonly ConfigContribution[]): Com
   const kindOwners = new Map<string, string>();
   const bindableKinds = new Set<string>();
   const disabledKinds = new Map<string, string>();
+  const widgetOwners = new Map<string, string>();
+  const disabledWidgetTypes = new Map<string, string>();
+  const widgetSchemas: Array<{ type: string; schema: JsonObject; required: boolean }> = [];
   const instanceSchemas: Record<"integrations" | "sources", Array<{ kind: string; schema: JsonObject }>> = {
     integrations: [],
     sources: [],
@@ -319,6 +352,25 @@ export function composeConfig(contributions: readonly ConfigContribution[]): Com
       }
     }
 
+    for (const declared of contribution.widgetTypes ?? []) {
+      const type = declared?.type;
+      if (typeof type !== "string" || !WIDGET_TYPE.test(type) || type.slice(0, type.indexOf("/")) !== id) {
+        throw new ComposeError("MODULE_MANIFEST_INVALID", id, `widget type "${String(type)}" must have the form ${id}/<name>`);
+      }
+      if (off) {
+        if (!disabledWidgetTypes.has(type)) disabledWidgetTypes.set(type, id);
+        continue;
+      }
+      if (widgetOwners.has(type)) {
+        throw new ComposeError("MODULE_MANIFEST_CONFLICT", id, `widget type "${type}" is already declared by "${widgetOwners.get(type)}"`);
+      }
+      widgetOwners.set(type, id);
+      if (declared.optionsSchema !== undefined) {
+        const required = Array.isArray(declared.optionsSchema.required) && declared.optionsSchema.required.length > 0;
+        widgetSchemas.push({ type, schema: hoist(declared.optionsSchema, `widget__${type.replace("/", "__")}`, schema.$defs, id), required });
+      }
+    }
+
     for (const rule of contribution.rules ?? []) {
       if (off) disabled.get(id)!.rules.push(rule);
       else rules.push({ id, codes, rule });
@@ -339,6 +391,24 @@ export function composeConfig(contributions: readonly ConfigContribution[]): Com
       }),
       generic,
     );
+  }
+
+  // A widget of a declared type must have options its type accepts; one that requires options
+  // must have them. Any other type keeps the generic shape (UI_WIDGET_TYPE_UNKNOWN reports it).
+  if (widgetSchemas.length > 0) {
+    schema.$defs.UiWidget = {
+      allOf: [
+        schema.$defs.UiWidget!,
+        widgetSchemas.reduceRight<JsonObject>(
+          (otherwise, { type, schema: options, required }) => ({
+            if: { type: "object", properties: { type: { const: type } }, required: ["type"] },
+            then: { type: "object", properties: { options }, ...(required ? { required: ["options"] } : {}) },
+            else: otherwise,
+          }),
+          true as unknown as JsonObject,
+        ),
+      ],
+    };
   }
 
   const leaves = identityLeaves(identity);
@@ -392,6 +462,9 @@ export function composeConfig(contributions: readonly ConfigContribution[]): Com
     bindableKinds,
     // A kind an enabled contribution declares is known, even if an off module declares it too.
     disabledKinds: new Map([...disabledKinds].filter(([kind]) => !kindOwners.has(kind))),
+    widgetTypes: new Set(widgetOwners.keys()),
+    disabledWidgetTypes: new Map([...disabledWidgetTypes].filter(([type]) => !widgetOwners.has(type))),
+    ...(options.selectProblem === undefined ? {} : { selectProblem: options.selectProblem }),
     moduleIds: Object.freeze([...moduleIds].sort()),
     knownModuleIds: Object.freeze([...moduleIds, ...disabled.keys()].sort()),
     disabledModuleIds: new Set(disabled.keys()),

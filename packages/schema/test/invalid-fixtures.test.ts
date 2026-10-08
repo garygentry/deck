@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { BUILTIN_CONTRIBUTIONS, composeConfig, composeDefault, FINDING_CODES, validate, validateSnapshot } from "../src/index.js";
 import { FIXTURE_MODULE_STANDINS, invalid, kernelInvalid } from "../src/fixtures/index.js";
 import type { InvalidFixture } from "../src/types.js";
+import { selectProblem } from "../src/select.js";
 import { deepFreeze } from "./util.js";
 
 /** Whether a fixture carries a section a server module owns; deck's server tests validate those with the module. */
@@ -17,7 +18,8 @@ describe("invalid fixture catalog", () => {
       : validate(document, {
         layer: entry.layer,
         ...(entry.base === undefined ? {} : { base: deepFreeze(entry.base) }),
-        ...(entry.contributions === undefined ? {} : { composed: composeConfig([...BUILTIN_CONTRIBUTIONS, ...entry.contributions]) }),
+        // With the select check, as deck composes it.
+        ...(entry.contributions === undefined ? {} : { composed: composeConfig([...BUILTIN_CONTRIBUTIONS, ...entry.contributions], { selectProblem }) }),
         ...(entry.disabledSections === undefined ? {} : { disabledSections: entry.disabledSections }),
       });
     expect(result.classification).not.toBe(2);

@@ -68,6 +68,7 @@ export interface InvalidFixture {
 export type {
   DeckConfigDocument, Estate, Host, Service, Source, Integration, Bindings, Address, Access,
   Backup, SecretRef, ManagedConfig, Link, HostKind, HostStatus, ServiceKind, ServiceStatus, UiTheme,
+  UiPage, UiPageNav, UiSection, UiWidget,
 } from "./types.config.generated.js";
 
 export type {
@@ -80,7 +81,8 @@ export type {
   ExitClassification,
 } from "./findings.js";
 export type {
-  ComposedConfig, ComposedReference, ConfigContribution, ContributedFinding, ContributedProviderKind,
-  ContributedReference, ContributedRule, ContributedUnique, DisabledSections,
+  ComposedConfig, ComposedReference, ComposeOptions, ConfigContribution, ContributedFinding,
+  ContributedProviderKind, ContributedReference, ContributedRule, ContributedUnique, ContributedWidgetType,
+  DisabledSections,
 } from "./compose/compose.js";
 export type { IdentitySpec, Owner } from "./ownership.js";

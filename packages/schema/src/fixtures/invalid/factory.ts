@@ -45,6 +45,21 @@ export function fixtureFor(expect: FindingCode): InvalidFixture {
       document: config({ integrations: [{ id: "feed", kind: "fixture-feed", title: "Feed", baseUrl: "https://feed.invalid" }] }),
     };
     case "PROVIDER_KIND_UNKNOWN": return { ...common, layer: "merged", document: config({ integrations: [{ id: "odd", kind: "mystery-kind", title: "Odd", baseUrl: "https://odd.invalid" }] }) };
+    case "UI_WIDGET_TYPE_UNKNOWN": return { ...common, layer: "merged", document: config(dashboard({ type: "nobody/gauge" })) };
+    case "UI_WIDGET_TYPE_DISABLED": return {
+      ...common,
+      layer: "merged",
+      disabledSections: "strict",
+      contributions: [{ id: "fixture-feed", disabled: "not enabled: switched off", widgetTypes: [{ type: "fixture-feed/gauge" }] }],
+      document: config(dashboard({ type: "fixture-feed/gauge" })),
+    };
+    // Checked only when composition is given the select check (the server's is).
+    case "UI_WIDGET_SELECT_INVALID": return {
+      ...common,
+      layer: "merged",
+      contributions: [{ id: "fixture-feed", widgetTypes: [{ type: "fixture-feed/gauge" }] }],
+      document: config(dashboard({ type: "fixture-feed/gauge", source: "feed", select: "load[" })),
+    };
     case "SECRET_VALUE_SUSPECTED": return { ...common, layer: "merged", document: config({ estate: { name: "invalid-fixture", domains: { password: "not a reference value" } } }) };
     case "SNAPSHOT_HOST_DUPLICATE": return { ...common, layer: "snapshot", document: snapshot({ hosts: [observedHost("echo"), observedHost("echo")] }) };
     case "SNAPSHOT_SERVICE_DUPLICATE": return { ...common, layer: "snapshot", document: snapshot({ services: [observedService("echo", "pulse"), observedService("echo", "pulse")] }) };
@@ -56,6 +71,9 @@ export function fixtureFor(expect: FindingCode): InvalidFixture {
   }
 }
 
+function dashboard(widget: JsonObject): JsonObject {
+  return { ui: { pages: [{ id: "lab", path: "/lab", title: "Lab", sections: [{ title: "Power", widgets: [widget] }] }] } };
+}
 function host(name: string): JsonObject { return { name, kind: "vm", purpose: "Invalid fixture host" }; }
 function service(hostName: string, name: string): JsonObject { return { host: hostName, name, kind: "systemd", purpose: "Invalid fixture service" }; }
 function group(id: string): JsonObject { return { id, title: "Fixture group", items: [] }; }

@@ -74,6 +74,7 @@ Identity-keyed arrays pair elements using these fields. Identity values must be 
 | `integrations` | `["id"]` |
 | `ui.nav.groups` | `["id"]` |
 | `ui.nav.items` | `["id"]` |
+| `ui.pages` | `["id"]` |
 
 ## Recommended loader call order
 
@@ -131,6 +132,9 @@ Each code has a fixed severity. Trigger describes when it is emitted; Fix gives 
 | `PROVIDER_BINDING_UNSUPPORTED` | `info` | A host or service binds a declared provider kind that does not accept bindings; the binding is ignored. | Remove the binding, or bind a kind whose module accepts host and service bindings. |
 | `PROVIDER_KIND_DISABLED` | `warning` | A binding or integration uses a provider kind declared only by a module that is not running; the reference is ignored. Reported at `info` unless validation is strict (`disabledSections: "strict"`, as `deck validate` runs). | Enable or fix the module that provides the kind, or remove the references to it. |
 | `PROVIDER_KIND_UNKNOWN` | `warning` | A provider kind is not declared by any composed contribution. | Use a known provider kind or register the additional kind for validation. |
+| `UI_WIDGET_TYPE_UNKNOWN` | `warning` | A config page's widget names a type no composed contribution declares; it renders as unavailable. | Use a widget type a module provides, or install the module that provides it. |
+| `UI_WIDGET_TYPE_DISABLED` | `warning` | A widget's type is declared only by a module that is not running; it renders as unavailable. Reported at `info` unless validation is strict. | Enable or fix the module that provides the widget type, or remove the widget. |
+| `UI_WIDGET_SELECT_INVALID` | `error` | A widget's `select` is not a JMESPath expression. Checked only when composition is given the select check (`composeConfig(contributions, { selectProblem })`, with `selectProblem` from `@deck/schema/select`), as deck's is. | Correct the expression at the reported path; see jmespath.org for the syntax. |
 | `SECRET_VALUE_SUSPECTED` | `info` | A credential-related value resembles secret material. | Replace the value with a valid secret reference and keep secret material outside the document. |
 | `SNAPSHOT_HOST_DUPLICATE` | `error` | A snapshot repeats an observed host. | Keep one observation for each host in the snapshot. |
 | `SNAPSHOT_SERVICE_DUPLICATE` | `error` | A snapshot repeats an observed service identity. | Keep one observation for each service on a host. |
@@ -163,6 +167,12 @@ Provider kinds are declared by contributions. Deck's data-source modules declare
 The library's default composition (`composeDefault()`, used by `validate` and `merge` when no `composed` option is given) holds the kernel and the built-in contributions only, so it does **not** know the six module-owned kinds: a document that binds or integrates them gets `PROVIDER_KIND_UNKNOWN` there. Deck itself composes its modules in, so `deck validate` and boot know them. To validate such a document with the library alone, pass `composed: composeFixtures()` from `@deck/schema/fixtures`, whose `FIXTURE_DATA_SOURCES` stand-in declares the six kinds with their `bindable` flags and the docker, gatus, prometheus and alertmanager instance schemas (deck's tests keep it equal to the modules' manifests).
 
 Provider `kind` remains an open string in the schema. An unregistered kind produces the `PROVIDER_KIND_UNKNOWN` warning rather than a schema error. To accept another kind, compose a contribution that declares it. A kind may also carry an instance schema: an `integrations[]` (or `sources[]`) entry of that kind must then match it, while an entry of any other kind keeps the generic shape.
+
+## Widget types
+
+Widget types are declared by contributions too (`widgetTypes`: `{ type: "<id>/<name>", optionsSchema? }`, where `<id>` is the contribution's own id; two contributions declaring one type is `MODULE_MANIFEST_CONFLICT`). A widget of a declared type (`ui.pages[].sections[].widgets[]`) must have `options` its type's schema accepts, so a bad option is a schema error at its path, which fails validation like any other. A widget's `type` stays an open string: an undeclared type is `UI_WIDGET_TYPE_UNKNOWN`, not a schema error. An explicit widget `id` is unique on its page (`ID_DUPLICATE`).
+
+The JMESPath engine that checks a widget's `select` is not part of the main entry: import `selectProblem` (and `evaluateSelect`) from `@deck/schema/select` and pass it to `composeConfig`.
 
 A kind declared `bindable` may appear as a key of `hosts[].bindings` and `services[].bindings`. A binding of a declared kind that is not bindable is ignored, as before, and reported with the info finding `PROVIDER_BINDING_UNSUPPORTED` so the dead binding is visible without failing validation.
 

@@ -1,3 +1,4 @@
+import { ACTIONS_UI } from "@deck/contract/modules/actions";
 import { defineServerModule, type JsonSchema, type ModuleManifest } from "@deck/module-sdk";
 
 import { openAuditStore } from "./audit.js";
@@ -29,9 +30,8 @@ const DISABLED_STATUS = ACTION_REFUSAL_STATUS.ACTIONS_DISABLED;
  * they come from are env names this module owns, which no other module can declare.
  */
 export const ACTIONS_MANIFEST: ModuleManifest = {
-  id: "actions",
-  version: "1.0.0",
-  deckApi: "^0.1",
+  // Identity and UI contributions are shared with the web half.
+  ...ACTIONS_UI,
   enabledBy: { env: ACTIONS_ENV.ENABLED },
   env: [ACTIONS_ENV.ENABLED, ACTIONS_ENV.TIMEOUT_MS, ACTIONS_ENV.RUNNERS_FILE],
   dataDir: { legacyPath: "actions" },
@@ -43,8 +43,8 @@ export const ACTIONS_MANIFEST: ModuleManifest = {
     references: ["actions[].target"],
   },
   contributes: {
-    pages: [{ id: "page:actions/overview", path: "/actions", title: "Actions", icon: "zap", component: "ActionsPage" }],
-    nav: [{ id: "nav:actions/overview", page: "page:actions/overview", group: "operate" }],
+    ...ACTIONS_UI.contributes,
+    // The routes stay here: their disabled refusals are the server's error codes.
     routes: {
       legacyAliases: ["/api/actions"],
       whenDisabled: [

@@ -3,52 +3,67 @@ import { fileURLToPath } from "node:url";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type {
-  EntityFragmentRegistration,
-  PageRegistration,
-  SummaryFragmentRegistration,
-} from "../src/registry/registry.js";
-import type { HealthSummary } from "../src/shell/health-header/health-summary.js";
 import { resolveComponent } from "./support/lazy.js";
 
-// Import a fresh feature entrypoint against a fresh registry singleton, then
-// inspect the public registry accessors to prove the four eager side effects.
+// Import a fresh feature entrypoint against a fresh registry singleton, then inspect the public
+// registry accessors. The feature declares the health-header slot its pill attaches to.
 async function loadFreshFeature() {
   vi.resetModules();
-  // Importing the feature entrypoint runs its four registration side effects and
-  // transitively loads `shell/health-header/slot.ts` (which declares the health-header slot).
   await import("../src/features/drift-and-coverage/index.js");
   const registry = await import("../src/registry/registry.js");
   const { HealthHeaderSlot } = await import("../src/shell/health-header/slot.js");
-  const { DriftPage } = await import("../src/features/drift-and-coverage/DriftPage.js");
-  const { FindingsFragment } = await import(
-    "../src/features/drift-and-coverage/FindingsFragment.js"
-  );
-  const { DriftHealthSummary } = await import(
-    "../src/features/drift-and-coverage/DriftHealthSummary.js"
-  );
-  return { registry, HealthHeaderSlot, DriftPage, FindingsFragment, DriftHealthSummary };
+  const { DRIFT_UI } = await import("@deck/contract/modules/drift");
+  return { registry, HealthHeaderSlot, DRIFT_UI };
 }
 
-describe("drift feature registration", () => {
+// The components the feature registers, loaded only by the tests that compare against them (the
+// lazy pages are slow to transform cold).
+async function loadComponents() {
+  const { DriftPage } = await import("../src/features/drift-and-coverage/DriftPage.js");
+  const { FindingsFragment } = await import("../src/features/drift-and-coverage/FindingsFragment.js");
+  const { DriftHealthSummary } = await import("../src/features/drift-and-coverage/DriftHealthSummary.js");
+  return { DriftPage, FindingsFragment, DriftHealthSummary };
+}
+
+describe("the drift-and-coverage web half", () => {
   beforeEach(() => {
     vi.resetModules();
   });
 
-  it("registers exactly the /drift page with the drift page component", async () => {
-    const { registry, DriftPage } = await loadFreshFeature();
+  it("registers exactly the drift module's contributions, with no placement of its own", async () => {
+    const { registry, DRIFT_UI } = await loadFreshFeature();
+    const ours = registry.getAllExtensions().filter(({ module }) => module === "drift");
+    const declared = DRIFT_UI.contributes!;
+    expect(ours.map(({ id }) => id).sort()).toEqual(
+      [...declared.pages!, ...declared.nav!, ...declared.extensions!].map(({ id }) => id).sort(),
+    );
+    for (const extension of declared.extensions!) {
+      const registered = ours.find(({ id }) => id === extension.id)!;
+      expect(registered).toMatchObject({ kind: extension.kind });
+      expect(registered.attachTo).toEqual({ slot: extension.attachTo.slot, order: extension.attachTo.order ?? 100 });
+      // A pill carries no config; the registry stores it as empty.
+      expect(registered.config).toEqual(extension.config ?? {});
+    }
+  });
+
+  it("registers exactly the /drift page with the drift page component, listed in the health group", async () => {
+    const { registry } = await loadFreshFeature();
+    const { DriftPage } = await loadComponents();
     const driftPages = registry.getPages().filter((page) => page.id === "page:drift/overview");
     expect(driftPages).toHaveLength(1);
     const [page] = driftPages;
-    expect(page.path).toBe("/drift");
-    expect(page.label).toBe("Drift");
-    expect(await resolveComponent(page.component)).toBe(DriftPage);
+    expect(page).toMatchObject({ path: "/drift", label: "Drift", icon: "git-compare", group: "health" });
+    expect(await resolveComponent(page!.component)).toBe(DriftPage);
+    expect(page!.nav).not.toBe(false);
+    // The nav entry sets no order of its own, so the fallback nav orders it like the route.
+    expect(page!.navOrder).toBeUndefined();
     // No drift page is hidden from navigation and no extra drift page exists.
     expect(registry.getPages().filter((p) => p.path === "/drift")).toHaveLength(1);
   });
 
   it("registers exactly two findings-section entity fragments with distinct scopes", async () => {
-    const { registry, FindingsFragment } = await loadFreshFeature();
+    const { registry } = await loadFreshFeature();
+    const { FindingsFragment } = await loadComponents();
 
     const hostFindings = registry.getEntityFragments("host", "findings");
     expect(hostFindings.map((fragment) => fragment.id)).toEqual(["section:drift/host-findings"]);
@@ -74,60 +89,29 @@ describe("drift feature registration", () => {
   });
 
   it("registers exactly one drift summary in the health-header slot", async () => {
-    const { registry, HealthHeaderSlot, DriftHealthSummary } = await loadFreshFeature();
+    const { registry, HealthHeaderSlot } = await loadFreshFeature();
+    const { DriftHealthSummary } = await loadComponents();
     const summaries = registry.getExtensions(HealthHeaderSlot.slotId);
     expect(summaries.map((fragment) => fragment.id)).toEqual(["pill:drift/summary"]);
-    expect(summaries[0].component).toBe(DriftHealthSummary);
+    expect(await resolveComponent(summaries[0]!.component!)).toBe(DriftHealthSummary);
   });
 
-  it("component assignments satisfy the registry contracts", async () => {
-    const { DriftPage, FindingsFragment, DriftHealthSummary } = await loadFreshFeature();
-    // Compile-time proof (validated by `tsc --noEmit` over the test tree) that the
-    // registered components typecheck against PageRegistration, EntityFragment-
-    // Registration's EntityRef component, and the HealthSummary summary contract.
-    const page: PageRegistration = {
-      id: "page:drift/overview",
-      path: "/drift",
-      label: "Drift",
-      component: DriftPage,
-    };
-    const hostFragment: EntityFragmentRegistration = {
-      id: "section:drift/host-findings",
-      entity: "host",
-      section: "findings",
-      title: "Findings",
-      component: FindingsFragment,
-    };
-    const serviceFragment: EntityFragmentRegistration = {
-      id: "section:drift/service-findings",
-      entity: "service",
-      section: "findings",
-      title: "Findings",
-      component: FindingsFragment,
-    };
-    const summary: SummaryFragmentRegistration<HealthSummary> = {
-      id: "pill:drift/summary",
-      component: DriftHealthSummary,
-    };
-    expect([page.id, hostFragment.id, serviceFragment.id, summary.id]).toEqual([
-      "page:drift/overview",
-      "section:drift/host-findings",
-      "section:drift/service-findings",
-      "pill:drift/summary",
-    ]);
+  it("declares the health-header slot its pill attaches to, whatever imports it first", async () => {
+    vi.resetModules();
+    // Only the feature: nothing here imports the slot module before it.
+    await import("../src/features/drift-and-coverage/index.js");
+    const registry = await import("../src/registry/registry.js");
+    expect(registry.getSlot("app/topbar.status")).toBeDefined();
+    expect(registry.getOrphanAttachments()).toEqual([]);
   });
 
-  it("fails loudly when a registration is invalid", async () => {
-    // Eager discovery must not swallow RegistrationError; a duplicate id throws.
-    const { registry } = await loadFreshFeature();
-    expect(() =>
-      registry.registerPage({
-        id: "page:drift/overview",
-        path: "/drift-again",
-        label: "Drift Again",
-        component: () => null,
-      }),
-    ).toThrowError(expect.objectContaining({ code: "DUPLICATE_ID" }));
+  it("fails loudly when its own registration is refused", async () => {
+    vi.resetModules();
+    const registry = await import("../src/registry/registry.js");
+    // Another registration already holds one of drift's ids.
+    registry.registerPage({ id: "page:drift/overview", path: "/drift-elsewhere", label: "Elsewhere", component: () => null });
+    // Eager discovery must not swallow the RegistrationError.
+    await expect(import("../src/features/drift-and-coverage/index.js")).rejects.toMatchObject({ code: "DUPLICATE_ID" });
   });
 
   it("all registered surfaces share the drift store rather than polling or deriving", () => {

@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 // `../src/index.js` and `../src/actions.js` are the package's `.` and `./actions` exports.
 import { validateActionParams } from "../src/actions.js";
 import { POLL_DEFAULTS } from "../src/index.js";
+import { DRIFT_UI } from "../src/modules/drift.js";
 import { INVENTORY_UI } from "../src/modules/inventory.js";
 import { LLM_USAGE_UI } from "../src/modules/llm-usage.js";
 import { MONITORING_UI } from "../src/modules/monitoring.js";
@@ -60,6 +61,11 @@ describe("@deck/contract", () => {
     expect(JSON.parse(JSON.stringify(PORTAL_UI))).toEqual(PORTAL_UI);
     expect(SOURCES_UI.id).toBe("sources");
     expect(JSON.parse(JSON.stringify(SOURCES_UI))).toEqual(SOURCES_UI);
+  });
+
+  it("serves the drift module's UI contributions as plain JSON", () => {
+    expect(DRIFT_UI.id).toBe("drift");
+    expect(JSON.parse(JSON.stringify(DRIFT_UI))).toEqual(DRIFT_UI);
   });
 
   it("serves the inventory module's UI contributions as plain JSON", () => {

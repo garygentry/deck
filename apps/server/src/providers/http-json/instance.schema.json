@@ -34,7 +34,7 @@
       "type": "string",
       "maxLength": 2048,
       "pattern": "^https?://[^/?#@\\s]+(?:[/?#]\\S*)?$",
-      "description": "The http(s) URL polled; it may not carry user:password@."
+      "description": "The http(s) URL polled; it may not carry user:password@, and a query parameter whose name suggests a credential is refused (use auth.scheme query)."
     },
     "method": {
       "enum": [
@@ -53,11 +53,11 @@
       "additionalProperties": {
         "type": "string",
         "maxLength": 1024,
-        "pattern": "^[^\\r\\n]*$"
+        "pattern": "^[\\t\\x20-\\x7E]*$"
       }
     },
     "body": {
-      "description": "A JSON request body, sent with POST only."
+      "description": "A JSON request body, sent with POST only. A key whose name suggests a credential is refused."
     },
     "credentialEnv": {
       "type": "string",
@@ -76,39 +76,74 @@
           "enum": [
             "bearer",
             "basic",
-            "header"
+            "header",
+            "query"
           ],
-          "description": "bearer: Authorization: Bearer <value>; basic: the value is user:password, sent base64-encoded; header: the value in the named header."
+          "description": "bearer: Authorization: Bearer <value>; basic: the value is user:password, sent base64-encoded; header: the value in the named header; query: the value in the named URL query parameter."
         },
         "header": {
           "type": "string",
           "maxLength": 128,
           "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$",
           "description": "The header carrying the credential, for scheme header."
+        },
+        "param": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._~-]+$",
+          "description": "The query parameter carrying the credential, for scheme query."
         }
       },
-      "if": {
-        "properties": {
-          "scheme": {
-            "const": "header"
-          }
-        }
-      },
-      "then": {
-        "properties": {
-          "header": {
-            "type": "string"
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "scheme": {
+                "const": "header"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "header": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "header"
+            ]
+          },
+          "else": {
+            "properties": {
+              "header": false
+            }
           }
         },
-        "required": [
-          "header"
-        ]
-      },
-      "else": {
-        "properties": {
-          "header": false
+        {
+          "if": {
+            "properties": {
+              "scheme": {
+                "const": "query"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "param": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "param"
+            ]
+          },
+          "else": {
+            "properties": {
+              "param": false
+            }
+          }
         }
-      }
+      ]
     },
     "pollIntervalMs": {
       "type": "integer",

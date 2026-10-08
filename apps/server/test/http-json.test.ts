@@ -7,9 +7,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { load } from "../src/config/load.js";
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { kindRuntimes, planModules } from "../src/modules/host.js";
-import { HttpJsonError, HttpJsonProvider, type HttpJsonConfig } from "../src/providers/http-json/index.js";
+import { HttpJsonError, HttpJsonProvider, nestsDeeperThan, type HttpJsonConfig } from "../src/providers/http-json/index.js";
 import { registerAllProviders } from "../src/providers/index.js";
-import { listHealth, listProviders, providerCount, read, startScheduler, stopScheduler } from "../src/providers/registry.js";
+import { listHealth, listProviders, providerCount, read, register, startScheduler, stopScheduler } from "../src/providers/registry.js";
 import { createApp } from "../src/server/app.js";
 import { makeConfigDir } from "./util/tmp-config.js";
 
@@ -117,6 +117,25 @@ beforeAll(async () => {
     res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ method: req.method, body }));
   });
   other.routes.set("/ok", json({ other: true }));
+  // Reflects what it was sent: the credential header and query, as a careless API might.
+  fixture.routes.set("/reflect", (req, res) => {
+    res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ url: req.url, headers: req.headers }));
+  });
+  fixture.routes.set("/deep", (_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" }).end(`${"[".repeat(100_000)}${"]".repeat(100_000)}`);
+  });
+  fixture.routes.set("/deep-ok", (_req, res) => {
+    // 64 levels, and brackets inside strings, which do not nest.
+    res.writeHead(200, { "content-type": "application/json" }).end(`${"[".repeat(63)}{"s":"[[[[ \\" ]]"}${"]".repeat(63)}`);
+  });
+  fixture.routes.set("/flip", (() => {
+    let calls = 0;
+    return (req: IncomingMessage, res: ServerResponse) => {
+      calls += 1;
+      if (calls === 1) json({ good: true })(req, res, "");
+      else res.writeHead(200, { "content-type": "application/json" }).end(`${"[".repeat(100_000)}${"]".repeat(100_000)}`);
+    };
+  })());
 });
 
 afterAll(async () => {
@@ -137,6 +156,12 @@ describe("http-json provider: a 2xx JSON response", () => {
     expect(fixture.seen[0]).toMatchObject({ method: "GET", headers: { accept: "application/json", "x-client": "deck" } });
     expect(fixture.seen[0]!.headers.authorization).toBeUndefined();
     await expect(provider.health()).resolves.toEqual({ ok: true, detail: "HTTP 200" });
+  });
+
+  it("keeps a literal Content-Type on POST", async () => {
+    const provider = new HttpJsonProvider("q", { url: fixture.url("/echo"), method: "POST", body: { a: 1 }, headers: { "Content-Type": "application/vnd.api+json" } });
+    await provider.fetch();
+    expect(fixture.seen[0]!.headers["content-type"]).toBe("application/vnd.api+json");
   });
 
   it("POSTs a JSON body", async () => {
@@ -169,6 +194,34 @@ describe("http-json provider: auth from the declared env var only", () => {
     expect(fixture.seen.map((seen) => seen.headers.authorization)).toEqual(["Bearer one", "Bearer two"]);
   });
 
+  it("query: the value in the named query parameter, never in config", async () => {
+    await authed({ url: fixture.url("/ok?view=full"), auth: { scheme: "query", param: "api_key" } }).fetch();
+    const sent = new URL(fixture.seen[0]!.url, "http://x");
+    expect(sent.searchParams.get("api_key")).toBe(SECRET);
+    expect(sent.searchParams.get("view")).toBe("full");
+  });
+
+  it("query: the parameter is sent again on a same-origin redirect", async () => {
+    fixture.routes.set("/moved-q", redirect("/ok", 302));
+    await authed({ url: fixture.url("/moved-q"), auth: { scheme: "query", param: "api_key" } }).fetch();
+    expect(fixture.seen.map((seen) => new URL(seen.url, "http://x").searchParams.get("api_key"))).toEqual([SECRET, SECRET]);
+  });
+
+  it.each([
+    ["a line break", "a\nb"],
+    ["a non-Latin-1 character", "tok€n-value"],
+  ])("a credential holding %s fails the poll as credential, before any request", async (_name, value) => {
+    const error = await failure(authed({ env: env({ API_TOKEN: value }), auth: { scheme: "bearer" } }));
+    expect(error).toMatchObject({ code: "credential", message: "credential variable API_TOKEN holds a character a header cannot carry" });
+    expect(error.message).not.toContain(value);
+    expect(fixture.seen).toEqual([]);
+  });
+
+  it("basic and query carry any value, encoded", async () => {
+    await authed({ env: env({ API_TOKEN: "deck:pässwörd€" }), auth: { scheme: "basic" } }).fetch();
+    expect(fixture.seen[0]!.headers.authorization).toBe(`Basic ${Buffer.from("deck:pässwörd€").toString("base64")}`);
+  });
+
   it("a literal header of the credential's name never replaces it", async () => {
     await authed({ auth: { scheme: "header", header: "X-Api-Key" }, headers: { "x-api-key": "literal" } }).fetch();
     expect(fixture.seen[0]!.headers["x-api-key"]).toBe(SECRET);
@@ -176,7 +229,10 @@ describe("http-json provider: auth from the declared env var only", () => {
 
   it("an unset variable fails the poll by name, before any request", async () => {
     const error = await failure(authed({ env: env({}) }));
-    expect(error).toMatchObject({ code: "credential", message: "credential variable API_TOKEN is not set" });
+    expect(error).toMatchObject({
+      code: "credential",
+      message: "credential variable API_TOKEN is not set or not readable by this module (see MODULE_CREDENTIAL_ENV_REFUSED)",
+    });
     expect(fixture.seen).toEqual([]);
   });
 
@@ -185,6 +241,70 @@ describe("http-json provider: auth from the declared env var only", () => {
     const error = await failure(provider);
     expect(error).toMatchObject({ code: "http-status", message: "upstream answered HTTP 401" });
     expect(JSON.stringify(await provider.health())).not.toContain(SECRET);
+  });
+});
+
+describe("http-json provider: a response that echoes the credential", () => {
+  const reflect = (auth: HttpJsonConfig["auth"], value = SECRET) =>
+    new HttpJsonProvider("echo", { url: fixture.url("/reflect"), credentialEnv: "API_TOKEN", env: env({ API_TOKEN: value }), ...(auth ? { auth } : {}) });
+
+  it.each([
+    ["raw Authorization", undefined],
+    ["bearer", { scheme: "bearer" as const }],
+    ["basic", { scheme: "basic" as const }],
+    ["header", { scheme: "header" as const, header: "X-Api-Key" }],
+    ["query", { scheme: "query" as const, param: "api_key" }],
+  ])("is refused, never published (%s)", async (_name, auth) => {
+    const provider = reflect(auth, auth?.scheme === "basic" ? `deck:${SECRET}` : SECRET);
+    const error = await failure(provider);
+    expect(error).toMatchObject({ code: "credential-echo", message: "upstream response contains the credential; not published" });
+    expect(JSON.stringify(await provider.health())).not.toContain(SECRET);
+  });
+
+  it("is caught URL-encoded, and in a key", async () => {
+    const value = "p@ss w/rd+value";
+    fixture.routes.set("/echo-key", json({ [encodeURIComponent(value)]: 1 }));
+    const provider = new HttpJsonProvider("k", { url: fixture.url("/echo-key"), credentialEnv: "API_TOKEN", env: env({ API_TOKEN: value }), auth: { scheme: "basic" } });
+    expect((await failure(provider)).code).toBe("credential-echo");
+  });
+
+  it("is not flagged without a credential, or when the body merely differs", async () => {
+    await expect(new HttpJsonProvider("n", { url: fixture.url("/reflect") }).fetch()).resolves.toMatchObject({ url: "/reflect" });
+    fixture.routes.set("/near", json({ text: SECRET.slice(0, -1) }));
+    const near = new HttpJsonProvider("near", { url: fixture.url("/near"), credentialEnv: "API_TOKEN", env: env({ API_TOKEN: SECRET }), auth: { scheme: "bearer" } });
+    await expect(near.fetch()).resolves.toEqual({ text: SECRET.slice(0, -1) });
+  });
+});
+
+describe("http-json provider: nesting depth", () => {
+  it("refuses a response nested past 64 levels, under the size cap, before parsing", async () => {
+    const error = await failure(new HttpJsonProvider("d", { url: fixture.url("/deep") }));
+    expect(error).toMatchObject({ code: "too-deep", message: "upstream response nests deeper than 64 levels" });
+  });
+
+  it("accepts 64 levels, and ignores brackets inside strings", async () => {
+    await expect(new HttpJsonProvider("d", { url: fixture.url("/deep-ok") }).fetch()).resolves.toBeDefined();
+    expect(nestsDeeperThan('{"a":"[[[[[[[[[["}', 2)).toBe(false);
+    expect(nestsDeeperThan('[["\\\\"],[[1]]]', 2)).toBe(true);
+    expect(nestsDeeperThan('["\\"[[[["]', 1)).toBe(false);
+  });
+
+  it("through the registry: a deep payload is a classified failure, the last good data is kept, and the process carries on", async () => {
+    register(new HttpJsonProvider("flip", { url: fixture.url("/flip") }), { pollIntervalMs: 50, ttlMs: 60_000 });
+    startScheduler();
+    await vi.waitFor(() => expect(read("flip")?.data).toEqual({ good: true }));
+    await vi.waitFor(() => expect(read("flip")?.error).toEqual({ message: "upstream response nests deeper than 64 levels" }));
+    expect(read("flip")?.data).toEqual({ good: true });
+  });
+
+  it("the registry freezes provider data of any depth without overflowing the stack", async () => {
+    let deep: unknown = { leaf: true };
+    for (let level = 0; level < 200_000; level += 1) deep = { child: deep };
+    register({ id: "deep-any", kind: "test", health: async () => ({ ok: true }), fetch: async () => deep });
+    startScheduler();
+    await vi.waitFor(() => expect(read("deep-any")?.freshness.state).toBe("fresh"));
+    expect(read("deep-any")?.error).toBeNull();
+    expect(Object.isFrozen(read("deep-any")?.data)).toBe(true);
   });
 });
 
@@ -221,6 +341,21 @@ describe("http-json provider: failures are classified", () => {
     setTimeout(() => controller.abort(), 50);
     await expect(pending).rejects.toMatchObject({ code: "timeout" });
   });
+
+  it.each(["UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT", "ETIMEDOUT"])(
+    "the runtime's own %s is a timeout, its message never shown",
+    async (code) => {
+      vi.stubGlobal("fetch", async () => {
+        throw new TypeError("fetch failed", { cause: Object.assign(new Error(`timeout talking to ${SECRET}`), { code }) });
+      });
+      try {
+        const error = await failure(new HttpJsonProvider("t", { url: fixture.url("/ok") }));
+        expect(error).toMatchObject({ code: "timeout", message: `timed out (${code})` });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 
   it("a refused connection is unreachable, with the error code only", async () => {
     const closed = new Fixture();
@@ -259,22 +394,33 @@ describe("http-json provider: redirects", () => {
     expect(fixture.seen.map((seen) => [seen.url, seen.headers["x-api-key"]])).toEqual([["/moved", SECRET], ["/ok", SECRET]]);
   });
 
-  it("drops the credential once a redirect leaves the origin, and never sends it back", async () => {
-    fixture.routes.set("/away", redirect(other.url("/bounce")));
-    other.routes.set("/bounce", redirect(fixture.url("/ok"), 307));
-    await expect(authed(fixture.url("/away")).fetch()).resolves.toMatchObject({ load: 42 });
-    expect(other.seen).toHaveLength(1);
-    expect(other.seen[0]!.headers["x-api-key"]).toBeUndefined();
-    expect(other.seen[0]!.headers.authorization).toBeUndefined();
-    // Back on the configured origin after a foreign hop: still without it.
-    expect(fixture.seen.map((seen) => seen.headers["x-api-key"])).toEqual([SECRET, undefined]);
+  it.each([
+    ["header", { scheme: "header" as const, header: "X-Api-Key" }],
+    ["bearer", { scheme: "bearer" as const }],
+    ["query", { scheme: "query" as const, param: "api_key" }],
+  ])("refuses any cross-origin redirect of an authenticated request (%s)", async (_name, auth) => {
+    fixture.routes.set("/away", redirect(other.url("/ok")));
+    await expect(authed(fixture.url("/away"), { auth }).fetch()).rejects.toMatchObject({
+      code: "redirect",
+      message: "cross-origin redirect refused for an authenticated request",
+    });
+    expect(other.seen).toEqual([]);
   });
 
-  it("drops an Authorization credential cross-origin too", async () => {
-    fixture.routes.set("/away-bearer", redirect(other.url("/ok")));
-    await authed(fixture.url("/away-bearer"), { auth: { scheme: "bearer" } }).fetch();
-    expect(fixture.seen[0]!.headers.authorization).toBe(`Bearer ${SECRET}`);
-    expect(other.seen[0]!.headers.authorization).toBeUndefined();
+  it("refuses a Location reflecting the credential to another origin, which is never contacted", async () => {
+    fixture.routes.set("/reflect-redirect", (req, res) => {
+      const key = new URL(req.url ?? "/", "http://x").searchParams.get("api_key");
+      res.writeHead(302, { location: other.url(`/ok?leak=${key}`) }).end();
+    });
+    const error = await failure(authed(fixture.url("/reflect-redirect"), { auth: { scheme: "query", param: "api_key" } }));
+    expect(error.code).toBe("redirect");
+    expect(error.message).not.toContain(SECRET);
+    expect(other.seen).toEqual([]);
+  });
+
+  it("follows a cross-origin redirect of an unauthenticated request", async () => {
+    fixture.routes.set("/away-open", redirect(other.url("/ok")));
+    await expect(new HttpJsonProvider("o", { url: fixture.url("/away-open") }).fetch()).resolves.toEqual({ other: true });
   });
 
   it.each([
@@ -353,10 +499,49 @@ describe("the http-json kind in an estate", () => {
     ["a credential value inline", { token: SECRET }],
     ["a 0ms timeout", { timeoutMs: 0 }],
     ["a size cap over 16 MiB", { maxBytes: 16 * 1024 * 1024 + 1 }],
+    ["a non-ASCII header value", { headers: { "X-Client": "café" } }],
+    ["a control character in a header value", { headers: { "X-Client": "a\u0001b" } }],
+    ["auth scheme query without a param", { credentialEnv: "UPS_TOKEN", auth: { scheme: "query" } }],
+    ["a param on a non-query scheme", { credentialEnv: "UPS_TOKEN", auth: { scheme: "bearer", param: "k" } }],
   ])("refuses %s", (_name, extra) => {
     const result = validate([instance(extra)]);
     expect(result.exitClass).not.toBe(0);
     expect(shapeErrors(result).length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ["a malformed IPv6 host", "http://[::1/status.json", "HTTP_JSON_URL_INVALID", "/integrations/0/url"],
+    ["an out-of-range port", "http://ups.lan:99999/status.json", "HTTP_JSON_URL_INVALID", "/integrations/0/url"],
+    ["a credential-named query parameter", "http://ups.lan/status.json?view=1&API_KEY=abc", "HTTP_JSON_LITERAL_CREDENTIAL", "/integrations/0/url"],
+    ["an access_token query parameter", "https://ups.lan/s?access_token=abc", "HTTP_JSON_LITERAL_CREDENTIAL", "/integrations/0/url"],
+  ])("reports %s, which the schema pattern lets through, as a validate finding", (_name, url, code, path) => {
+    const result = validate([instance({ url })]);
+    expect(result.exitClass).not.toBe(0);
+    expect(result.findings).toContainEqual(expect.objectContaining({ code, severity: "error", path }));
+  });
+
+  it("reports a credential-named key in a literal body", () => {
+    const result = validate([instance({ method: "POST", body: { query: "up", variables: { password: "x" } } })]);
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: "HTTP_JSON_LITERAL_CREDENTIAL", severity: "error", path: "/integrations/0/body" }));
+  });
+
+  it("accepts auth scheme query, whose value comes from credentialEnv", () => {
+    const result = validate([instance({ credentialEnv: "UPS_TOKEN", auth: { scheme: "query", param: "api_key" } })]);
+    expect(shapeErrors(result)).toEqual([]);
+  });
+
+  it.each(["prometheus", "gatus", "docker", "alertmanager", "snapshot"])("reports an id equal to the built-in fixed provider id %s", (id) => {
+    const result = validate([instance({ id })]);
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: "HTTP_JSON_ID_RESERVED", severity: "error", path: "/integrations/0/id" }));
+  });
+
+  it("refuses a literal credential at the request boundary too, before any request", async () => {
+    const byUrl = await failure(new HttpJsonProvider("l", { url: fixture.url("/ok?token=abc") }));
+    expect(byUrl).toMatchObject({ code: "credential" });
+    expect(byUrl.message).not.toContain("abc");
+    const byBody = await failure(new HttpJsonProvider("l", { url: fixture.url("/echo"), method: "POST", body: { password: "abc" } }));
+    expect(byBody).toMatchObject({ code: "credential", message: "body key password looks like a credential; credentials come from credentialEnv" });
+    expect(fixture.seen).toEqual([]);
   });
 
   it("requires a title and a url", () => {
@@ -416,7 +601,9 @@ describe("the http-json kind in an estate", () => {
     const { plan, usable } = planModules({ modules: BUILTIN_MODULES, sectionOf: () => undefined, env: hostEnv });
     registerAllProviders(config, kindRuntimes(plan.filter((e) => e.enabled).map((e) => usable.get(e.id)!), hostEnv));
     startScheduler();
-    await vi.waitFor(() => expect(read("ups")?.error).toEqual({ message: "credential variable DECK_DATA_DIR is not set" }));
+    await vi.waitFor(() => expect(read("ups")?.error).toEqual({
+      message: "credential variable DECK_DATA_DIR is not set or not readable by this module (see MODULE_CREDENTIAL_ENV_REFUSED)",
+    }));
     expect(fixture.seen).toEqual([]);
   });
 });

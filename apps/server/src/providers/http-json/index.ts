@@ -1,12 +1,14 @@
 import type { EnvReader, ProviderFetchContext, ProviderHealth, ProviderSpec } from "@deck/module-sdk";
 
 import { POLL_DEFAULTS } from "../../contract/index.js";
+import { credentialBodyKeys, credentialQueryParams } from "./literal.js";
 
 /** How the credential `credentialEnv` names is sent. Without one, it is the raw `Authorization` value. */
 export type HttpJsonAuth =
   | { scheme: "bearer" }
   | { scheme: "basic" }
-  | { scheme: "header"; header: string };
+  | { scheme: "header"; header: string }
+  | { scheme: "query"; param: string };
 
 export interface HttpJsonConfig {
   url: string;
@@ -33,7 +35,9 @@ export type HttpJsonErrorCode =
   | "redirect"
   | "http-status"
   | "too-large"
-  | "not-json";
+  | "too-deep"
+  | "not-json"
+  | "credential-echo";
 
 export class HttpJsonError extends Error {
   constructor(
@@ -47,12 +51,34 @@ export class HttpJsonError extends Error {
 
 export const HTTP_JSON_DEFAULT_MAX_BYTES = 1024 * 1024;
 export const HTTP_JSON_MAX_REDIRECTS = 5;
+/** The deepest nesting of arrays and objects accepted in a response. */
+export const HTTP_JSON_MAX_DEPTH = 64;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+/** What a header value may hold: tab, printable ASCII and the rest of Latin-1. */
+const HEADER_VALUE = /^[\t\x20-\x7E\x80-\xFF]*$/;
+/** Runtime error codes for a connect, header or body timeout of the runtime's own. */
+const RUNTIME_TIMEOUT_CODES = new Set([
+  "ETIMEDOUT",
+  "ESOCKETTIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+  "TimeoutError",
+]);
+
+/** The credential for one poll: where it goes, and every form it may come back in. */
+interface Credential {
+  header?: { name: string; value: string };
+  query?: { param: string; value: string };
+  /** The raw value and its transmitted encodings, for the echo check. */
+  forms: string[];
+}
 
 /**
  * The `http-json` provider: one request per poll, whose parsed JSON body is the envelope's
- * `data`. Redirects are followed by hand, so the credential is dropped as soon as one leaves
- * the configured origin, and a body over `maxBytes` is cut off unread.
+ * `data`. Redirects are followed by hand: an authenticated request follows only same-origin
+ * ones, so the credential never leaves the configured origin. A body over `maxBytes`, nested
+ * past {@link HTTP_JSON_MAX_DEPTH}, or echoing the credential is refused, never published.
  */
 export class HttpJsonProvider implements ProviderSpec<unknown> {
   readonly kind = "http-json";
@@ -77,7 +103,7 @@ export class HttpJsonProvider implements ProviderSpec<unknown> {
     context?.signal.addEventListener("abort", onAbort, { once: true });
     if (context?.signal.aborted) controller.abort();
     try {
-      const { status, data } = await this.request(controller.signal, timeoutMs);
+      const { status, data } = await this.request(controller.signal);
       this.latestHealth = { ok: true, detail: `HTTP ${status}` };
       return data;
     } catch (error) {
@@ -90,23 +116,32 @@ export class HttpJsonProvider implements ProviderSpec<unknown> {
     }
   }
 
-  private async request(signal: AbortSignal, timeoutMs: number): Promise<{ status: number; data: unknown }> {
+  private async request(signal: AbortSignal): Promise<{ status: number; data: unknown }> {
+    refuseLiteralCredentials(this.cfg);
     const origin = new URL(this.cfg.url).origin;
-    const credential = credentialHeader(this.cfg);
+    const credential = credentialFor(this.cfg);
     let url = this.cfg.url;
     let method = this.cfg.method ?? "GET";
     let body = method === "POST" && this.cfg.body !== undefined ? JSON.stringify(this.cfg.body) : undefined;
-    let sendCredential = credential !== null;
 
     for (let hop = 0; ; hop += 1) {
       const headers = new Headers({ Accept: "application/json" });
       for (const [name, value] of Object.entries(this.cfg.headers ?? {})) headers.set(name, value);
-      if (body !== undefined) headers.set("Content-Type", "application/json");
+      if (body !== undefined && !headers.has("content-type")) headers.set("Content-Type", "application/json");
       // Set last, so a literal header of the same name never replaces the credential.
-      if (sendCredential && credential !== null) headers.set(credential.name, credential.value);
+      if (credential?.header) headers.set(credential.header.name, credential.header.value);
+      const target = new URL(url);
+      // Every hop is on the configured origin when a credential is sent (see below).
+      if (credential?.query) target.searchParams.set(credential.query.param, credential.query.value);
 
-      const response = await globalThis.fetch(url, { method, headers, body, redirect: "manual", signal });
-      if (!REDIRECT_STATUSES.has(response.status)) return { status: response.status, data: await readJson(response, this.cfg.maxBytes) };
+      const response = await globalThis.fetch(target, { method, headers, body, redirect: "manual", signal });
+      if (!REDIRECT_STATUSES.has(response.status)) {
+        const data = await readJson(response, this.cfg.maxBytes);
+        if (credential !== null && echoes(data, credential.forms)) {
+          throw new HttpJsonError("credential-echo", "upstream response contains the credential; not published");
+        }
+        return { status: response.status, data };
+      }
 
       await discard(response);
       const location = response.headers.get("location");
@@ -124,41 +159,90 @@ export class HttpJsonProvider implements ProviderSpec<unknown> {
       if (next.username !== "" || next.password !== "") {
         throw new HttpJsonError("redirect", "redirect to a URL with credentials refused");
       }
-      // Once the request leaves the configured origin (a scheme change included) the
-      // credential is dropped for the rest of the chain, as fetch does for Authorization.
-      if (next.origin !== origin) sendCredential = false;
+      // The Location itself could carry the credential (reflected from the query, say), so an
+      // authenticated request never leaves the configured origin, a scheme change included.
+      if (credential !== null && next.origin !== origin) {
+        throw new HttpJsonError("redirect", "cross-origin redirect refused for an authenticated request");
+      }
       if (response.status === 303 || ((response.status === 301 || response.status === 302) && method === "POST")) {
         method = "GET";
         body = undefined;
       }
       url = next.href;
-      if (signal.aborted) throw timeoutError(timeoutMs);
     }
   }
 }
 
-/** The credential header for this poll, or null when none is configured. */
-function credentialHeader({ credentialEnv, env, auth }: HttpJsonConfig): { name: string; value: string } | null {
+/**
+ * Config validation refuses these too; the request boundary checks again, so a literal
+ * credential is never sent whatever path the config took.
+ */
+function refuseLiteralCredentials({ url, body }: HttpJsonConfig): void {
+  const [param] = credentialQueryParams(url);
+  if (param !== undefined) {
+    throw new HttpJsonError("credential", `url query parameter ${param} looks like a credential; use credentialEnv with auth.scheme query`);
+  }
+  const [key] = credentialBodyKeys(body);
+  if (key !== undefined) throw new HttpJsonError("credential", `body key ${key} looks like a credential; credentials come from credentialEnv`);
+}
+
+/** The credential for this poll, or null when none is configured. */
+function credentialFor({ credentialEnv, env, auth }: HttpJsonConfig): Credential | null {
   if (credentialEnv === undefined) return null;
   const value = env?.get(credentialEnv);
   // Names only: the variable is named in config, its value never leaves this function.
   if (value === undefined || value === "") {
-    throw new HttpJsonError("credential", `credential variable ${credentialEnv} is not set`);
+    throw new HttpJsonError(
+      "credential",
+      `credential variable ${credentialEnv} is not set or not readable by this module (see MODULE_CREDENTIAL_ENV_REFUSED)`,
+    );
   }
-  if (/[\r\n]/.test(value)) throw new HttpJsonError("credential", `credential variable ${credentialEnv} holds a line break`);
+  const raw = [value, encodeURIComponent(value), new URLSearchParams({ v: value }).toString().slice(2)];
   switch (auth?.scheme) {
-    case "bearer":
-      return { name: "Authorization", value: `Bearer ${value}` };
-    case "basic":
-      return { name: "Authorization", value: `Basic ${Buffer.from(value, "utf8").toString("base64")}` };
-    case "header":
-      return { name: auth.header, value };
-    default:
-      return { name: "Authorization", value };
+    case "basic": {
+      // Base64 carries any value; only the encoded pair is sent.
+      const encoded = Buffer.from(value, "utf8").toString("base64");
+      const password = value.includes(":") ? value.slice(value.indexOf(":") + 1) : "";
+      return { header: { name: "Authorization", value: `Basic ${encoded}` }, forms: [...raw, encoded, password] };
+    }
+    case "query":
+      return { query: { param: auth.param, value }, forms: raw };
+    default: {
+      if (!HEADER_VALUE.test(value)) {
+        throw new HttpJsonError("credential", `credential variable ${credentialEnv} holds a character a header cannot carry`);
+      }
+      const header = auth?.scheme === "bearer"
+        ? { name: "Authorization", value: `Bearer ${value}` }
+        : { name: auth?.scheme === "header" ? auth.header : "Authorization", value };
+      return { header, forms: [...raw, header.value] };
+    }
   }
 }
 
-/** Read a 2xx body as JSON, capped at `maxBytes`; any other status is a failure. */
+/** Whether any string or key in `data` contains one of the credential's forms. Iterative. */
+function echoes(data: unknown, forms: readonly string[]): boolean {
+  // A short form matches only a whole string, so a 3-character value cannot flag every body.
+  const long = forms.filter((form) => form.length >= 6);
+  const short = new Set(forms.filter((form) => form.length > 0 && form.length < 6));
+  const hit = (text: string) => short.has(text) || long.some((form) => text.includes(form));
+  const pending: unknown[] = [data];
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (typeof value === "string") {
+      if (hit(value)) return true;
+    } else if (Array.isArray(value)) {
+      pending.push(...value);
+    } else if (value !== null && typeof value === "object") {
+      for (const [key, child] of Object.entries(value)) {
+        if (hit(key)) return true;
+        pending.push(child);
+      }
+    }
+  }
+  return false;
+}
+
+/** Read a 2xx body as JSON, capped at `maxBytes` and {@link HTTP_JSON_MAX_DEPTH}; any other status is a failure. */
 async function readJson(response: Response, maxBytes = HTTP_JSON_DEFAULT_MAX_BYTES): Promise<unknown> {
   if (response.status < 200 || response.status > 299) {
     await discard(response);
@@ -185,11 +269,36 @@ async function readJson(response: Response, maxBytes = HTTP_JSON_DEFAULT_MAX_BYT
     }
   }
   const text = new TextDecoder().decode(Buffer.concat(chunks));
+  // Checked before parsing: deep nesting would overflow recursive walks over the data later.
+  if (nestsDeeperThan(text, HTTP_JSON_MAX_DEPTH)) {
+    throw new HttpJsonError("too-deep", `upstream response nests deeper than ${HTTP_JSON_MAX_DEPTH} levels`);
+  }
   try {
     return JSON.parse(text);
   } catch {
     throw new HttpJsonError("not-json", "upstream response is not JSON");
   }
+}
+
+/** Whether JSON text opens more than `max` arrays or objects at once, brackets in strings aside. One linear scan. */
+export function nestsDeeperThan(text: string, max: number): boolean {
+  let depth = 0;
+  let inString = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text.charCodeAt(index);
+    if (inString) {
+      if (char === 0x5c) index += 1; // backslash: skip the escaped character
+      else if (char === 0x22) inString = false;
+    } else if (char === 0x22) {
+      inString = true;
+    } else if (char === 0x5b || char === 0x7b) {
+      depth += 1;
+      if (depth > max) return true;
+    } else if (char === 0x5d || char === 0x7d) {
+      depth -= 1;
+    }
+  }
+  return false;
 }
 
 function tooLarge(maxBytes: number): HttpJsonError {
@@ -200,26 +309,25 @@ async function discard(response: Response): Promise<void> {
   await response.body?.cancel().catch(() => {});
 }
 
-function timeoutError(timeoutMs: number): HttpJsonError {
-  return new HttpJsonError("timeout", `timed out after ${timeoutMs}ms`);
-}
-
 /**
  * Map any failure to an {@link HttpJsonError}. A runtime's own error text can carry the
  * request URL or headers, so it is never passed on: only a bare error code is kept.
  */
 function classify(error: unknown, signal: AbortSignal, timeoutMs: number): HttpJsonError {
   if (error instanceof HttpJsonError) return error;
-  if (signal.aborted) return timeoutError(timeoutMs);
+  if (signal.aborted) return new HttpJsonError("timeout", `timed out after ${timeoutMs}ms`);
   const code = errorCode(error);
+  if (code !== null && RUNTIME_TIMEOUT_CODES.has(code)) return new HttpJsonError("timeout", `timed out (${code})`);
   return new HttpJsonError("unreachable", code === null ? "upstream unreachable" : `upstream unreachable (${code})`);
 }
 
-/** A network error code (`ECONNREFUSED`, Bun's `ConnectionRefused`), from the error or its cause. */
+/** A network error code (`ECONNREFUSED`, Bun's `ConnectionRefused`), from the error or its causes. */
 function errorCode(error: unknown): string | null {
   for (let current = error, depth = 0; current !== null && typeof current === "object" && depth < 3; depth += 1) {
     const code = (current as { code?: unknown }).code;
     if (typeof code === "string" && /^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(code)) return code;
+    const name = (current as { name?: unknown }).name;
+    if (name === "TimeoutError") return name;
     current = (current as { cause?: unknown }).cause;
   }
   return null;

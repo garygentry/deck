@@ -2,6 +2,7 @@ import {
   defineServerModule,
   type JsonObject,
   type JsonSchema,
+  type ConfigRuleFinding,
   type ModuleManifest,
   type ProviderOffer,
   type ProviderTiming,
@@ -9,6 +10,7 @@ import {
 
 import { HttpJsonProvider, type HttpJsonAuth, type HttpJsonConfig } from "./index.js";
 import instanceSchema from "./instance.schema.json" with { type: "json" };
+import { CREDENTIAL_NAME, RESERVED_PROVIDER_IDS, credentialBodyKeys, credentialQueryParams, urlProblem } from "./literal.js";
 
 /**
  * The `http-json` data source: each `integrations[]` instance of kind `http-json` becomes a
@@ -20,24 +22,69 @@ export const HTTP_JSON_MANIFEST: ModuleManifest = {
   id: "http-json",
   version: "1.0.0",
   deckApi: "^0.1",
-  providerKinds: [{ kind: "http-json", instanceSchema: instanceSchema as JsonSchema, statusCapable: false }],
+  providerKinds: [
+    {
+      kind: "http-json",
+      instanceSchema: instanceSchema as unknown as JsonSchema,
+      statusCapable: false,
+      findings: [
+        {
+          code: "HTTP_JSON_URL_INVALID",
+          severity: "error",
+          summary: "An http-json integration's url is not an http(s) URL the runtime can parse.",
+          fix: "Give a full http:// or https:// URL with a valid host and port, and no user:password@.",
+        },
+        {
+          code: "HTTP_JSON_LITERAL_CREDENTIAL",
+          severity: "error",
+          summary: "An http-json integration's url query or body names what looks like a credential, which config may not hold.",
+          fix: "Put the credential in an environment variable, name it in credentialEnv, and send it with auth (scheme query for a query parameter).",
+        },
+        {
+          code: "HTTP_JSON_ID_RESERVED",
+          severity: "error",
+          summary: "An http-json integration's id is a provider id a built-in module registers under a fixed name.",
+          fix: "Choose another id.",
+        },
+      ],
+    },
+  ],
 };
 
-/** Header names a literal header may not take (the instance schema refuses them too). */
-const CREDENTIAL_HEADER = /auth|cookie|token|secret|key|pass|session|credential/i;
+/** What config validation reports for one instance beyond its schema. Pure. */
+function validateInstance(instance: JsonObject): ConfigRuleFinding[] {
+  const findings: ConfigRuleFinding[] = [];
+  const { id, url, body } = instance;
+  if (typeof id === "string" && RESERVED_PROVIDER_IDS.has(id)) {
+    findings.push({ code: "HTTP_JSON_ID_RESERVED", path: "/id", message: `id "${id}" is the fixed provider id of the built-in ${id} module; boot would fail when both register.` });
+  }
+  if (typeof url === "string") {
+    const problem = urlProblem(url);
+    if (problem !== null) findings.push({ code: "HTTP_JSON_URL_INVALID", path: "/url", message: `url ${problem}.` });
+    for (const param of credentialQueryParams(url)) {
+      findings.push({ code: "HTTP_JSON_LITERAL_CREDENTIAL", path: "/url", message: `url query parameter "${param}" looks like a credential; config may not hold one.`, hint: "Use credentialEnv with auth: { scheme: query, param: ... }." });
+    }
+  }
+  for (const key of credentialBodyKeys(body)) {
+    findings.push({ code: "HTTP_JSON_LITERAL_CREDENTIAL", path: "/body", message: `body key "${key}" looks like a credential; config may not hold one.` });
+  }
+  return findings;
+}
 
 function auth(value: unknown): HttpJsonAuth | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const { scheme, header } = value as { scheme?: unknown; header?: unknown };
   if (scheme === "bearer" || scheme === "basic") return { scheme };
   if (scheme === "header" && typeof header === "string") return { scheme, header };
+  const { param } = value as { param?: unknown };
+  if (scheme === "query" && typeof param === "string") return { scheme, param };
   return undefined;
 }
 
 function headers(value: unknown): Record<string, string> | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   const entries = Object.entries(value).filter(
-    (entry): entry is [string, string] => typeof entry[1] === "string" && !CREDENTIAL_HEADER.test(entry[0]),
+    (entry): entry is [string, string] => typeof entry[1] === "string" && !CREDENTIAL_NAME.test(entry[0]),
   );
   return entries.length === 0 ? undefined : Object.fromEntries(entries);
 }
@@ -61,11 +108,12 @@ function timing(instance: JsonObject): ProviderTiming | undefined {
 export const httpJsonModule = defineServerModule(HTTP_JSON_MANIFEST, () => {}, {
   kinds: {
     "http-json": {
+      validate: (instance) => validateInstance(instance),
       instances: (instances, { envFor, logger }) =>
         instances.flatMap((instance): ProviderOffer[] => {
           const { id, url } = instance;
           // Config validation has checked the shape; anything else is skipped, never fatal.
-          if (typeof id !== "string" || typeof url !== "string" || !/^https?:\/\//.test(url)) {
+          if (typeof id !== "string" || typeof url !== "string" || urlProblem(url) !== null) {
             logger.warn({ event: "http-json.instance.skipped", ...(typeof id === "string" ? { id } : {}) }, "http-json instance skipped");
             return [];
           }

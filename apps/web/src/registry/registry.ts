@@ -18,6 +18,7 @@ import type {
   PageRegistration,
   SummaryFragmentRegistration,
   SummarySlot,
+  WidgetTypeRegistration,
 } from "./registry-types.js";
 
 export type {
@@ -31,6 +32,8 @@ export type {
   PageRegistration,
   SummaryFragmentRegistration,
   SummarySlot,
+  WidgetProps,
+  WidgetTypeRegistration,
 } from "./registry-types.js";
 
 const DEFAULT_ORDER = 100;
@@ -59,6 +62,7 @@ export interface Slot {
 
 const extensions = new Map<string, Extension>();
 const slots = new Map<string, Slot>();
+const widgetTypes = new Map<string, WidgetTypeRegistration>();
 const listeners = new Set<() => void>();
 let version = 0;
 
@@ -415,6 +419,35 @@ export function registerSummaryFragment<P>(
 /** A view with the extension's order, left out when it is the default. */
 function withOrder<T extends object>(view: T, extension: Extension): T & { order?: number } {
   return extension.attachTo.order === DEFAULT_ORDER ? view : { ...view, order: extension.attachTo.order };
+}
+
+/** A widget type: `<module>/<name>`. */
+const WIDGET_TYPE = /^([a-z][a-z0-9-]*)\/[a-z0-9][a-z0-9-]*$/;
+
+/**
+ * Register the component a widget type renders with, so config pages' widgets of that type
+ * render. The type is namespaced to its module (`<module>/<name>`); a type registers once.
+ */
+export function registerWidgetType(registration: WidgetTypeRegistration): void {
+  const context = `registerWidgetType(${String(registration.type)})`;
+  const match = typeof registration.type === "string" ? WIDGET_TYPE.exec(registration.type) : null;
+  if (match === null || match[1] !== registration.module) {
+    throw new RegistrationError("INVALID_ID", `${context}: type must have the form ${String(registration.module)}/<name>`);
+  }
+  requireComponent(registration.component, context);
+  if (widgetTypes.has(registration.type)) throw new RegistrationError("DUPLICATE_ID", `${context}: widget type already registered`);
+  widgetTypes.set(registration.type, Object.freeze({ ...registration }));
+  notify();
+}
+
+/** The registered widget type, or none. */
+export function getWidgetType(type: string): WidgetTypeRegistration | undefined {
+  return widgetTypes.get(type);
+}
+
+/** Whether a widget type is registered. */
+export function hasWidgetType(type: string): boolean {
+  return widgetTypes.has(type);
 }
 
 export function getPages(): readonly PageRegistration[] {

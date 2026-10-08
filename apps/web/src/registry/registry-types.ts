@@ -1,4 +1,5 @@
 import type { FreshnessStamp } from "@deck/contract";
+import type { UiWidgetInstance } from "@deck/module-sdk";
 import type { ComponentType } from "react";
 
 export type IconRef = string;
@@ -95,4 +96,27 @@ export interface SummaryFragmentRegistration<P> {
   id: ExtensionId;
   component: ComponentType<P>;
   order?: number;
+}
+
+/**
+ * What a widget type's component renders from: its widget's value (the provider's data, or
+ * its `select` result, which the server evaluated), its options (checked against the type's
+ * options schema at boot) and the provider's freshness. The widget host renders loading,
+ * empty, error and stale states itself, so `value` is never empty here unless the widget
+ * reads no source (`freshness` is then `null`).
+ */
+export interface WidgetProps<Options = Record<string, unknown>> {
+  value: unknown;
+  options: Options;
+  freshness: FreshnessStamp | null;
+  /** The placed widget, as the UI manifest lists it. */
+  widget: UiWidgetInstance;
+}
+
+/** A widget type the web can render: `<module>/<name>` and its component. */
+export interface WidgetTypeRegistration {
+  type: string;
+  /** The module providing it, the type's namespace. */
+  module: string;
+  component: ComponentType<WidgetProps<any>>;
 }

@@ -138,7 +138,10 @@ describe("config pages in the UI manifest", () => {
       { code: "UI_WIDGET_SOURCE_UNKNOWN", severity: "warning", id: "widget:ui/lab.a" },
       { code: "UI_WIDGET_SOURCE_UNKNOWN", severity: "warning", id: "widget:ui/lab.b" },
     ]);
-    expect(pageOf(manifest, "page:ui/lab")?.layout?.sections[0]?.widgets.map((widget) => widget.source)).toEqual([null, null]);
+    expect(pageOf(manifest, "page:ui/lab")?.layout?.sections[0]?.widgets.map(({ source, sourceProblem }) => ({ source, sourceProblem }))).toEqual([
+      { source: null, sourceProblem: 'It reads provider "nope", which is not configured.' },
+      { source: null, sourceProblem: 'It reads a provider of kind "gatus", which is not configured.' },
+    ]);
   });
 
   it("hides a page by override, with its nav entry; a home there falls back with a reason", () => {
@@ -231,6 +234,21 @@ describe("a module's widget types", () => {
   it("are listed in the UI manifest with their sources", () => {
     const manifest = resolveUiManifest({ modules: [{ manifest: gauges.manifest, enabled: true }], kernelFeatures: KERNEL_FEATURES });
     expect(manifest.widgetTypes).toEqual([{ type: "core/json", module: "core" }, { type: "gauges/dial", module: "gauges", sources: ["http-json"] }]);
+  });
+
+  it("refuse a source of a kind they do not render", () => {
+    const manifest = resolveUiManifest({
+      modules: [{ manifest: gauges.manifest, enabled: true }],
+      kernelFeatures: KERNEL_FEATURES,
+      providers: PROVIDERS,
+      configPages: configPagesOf({ ui: { pages: [{ ...LAB, sections: [{ title: "S", widgets: [{ id: "a", type: "gauges/dial", source: "wiki" }, { id: "b", type: "gauges/dial", source: "ups" }] }] }] } }),
+    });
+    const widgets = pageOf(manifest, "page:ui/lab")?.layout?.sections[0]?.widgets ?? [];
+    expect(widgets.map(({ source, sourceProblem }) => ({ source, sourceProblem }))).toEqual([
+      { source: null, sourceProblem: 'It cannot render provider "wiki" (kind link).' },
+      { source: { id: "ups", kind: "http-json" }, sourceProblem: undefined },
+    ]);
+    expect(codes(manifest)).toContainEqual({ code: "UI_WIDGET_SOURCE_KIND", severity: "warning", id: "widget:ui/lab.a" });
   });
 
   it("from a module that takes a kernel id do not break composition", () => {

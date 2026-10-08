@@ -94,12 +94,13 @@ export function buildLayout(
       if (span > columns) {
         context.findings.push({ code: "UI_WIDGET_SPAN", severity: "warning", message: `widget "${id}" spans ${span} columns; its section has ${columns}, so it spans ${columns}`, id });
       }
-      const source = resolveSource(id, widget, context);
+      const { source, problem } = resolveSource(id, widget, context);
       widgets.push({
         id,
         type: widget.type,
         ...(widget.title === undefined ? {} : { title: widget.title }),
         source,
+        ...(problem === undefined ? {} : { sourceProblem: problem }),
         ...(widget.select === undefined ? {} : { select: widget.select, projection: id }),
         options: widget.options ?? {},
         span: Math.min(span, columns) as UiWidgetInstance["span"],
@@ -113,15 +114,16 @@ export function buildLayout(
 
 /**
  * The provider a widget reads: its `source` id, or the first provider of its `source` kind
- * by id (as the web's `useProvider({ kind })` picks); `null` with a finding when that names
- * no registered provider, or one of a kind the widget type cannot render.
+ * by id (as the web's `useProvider({ kind })` picks); `null` with a finding and a short
+ * problem for the widget to show when that names no registered provider, or one of a kind the
+ * widget type cannot render.
  */
 function resolveSource(
   id: ExtensionId,
   widget: ConfigWidget,
   context: { providers: readonly UiProvider[]; widgetTypes: readonly UiWidgetType[]; findings: UiFinding[] },
-): UiProvider | null {
-  if (widget.source === undefined) return null;
+): { source: UiProvider | null; problem?: string } {
+  if (widget.source === undefined) return { source: null };
   const wanted = widget.source;
   const provider =
     typeof wanted === "string"
@@ -130,7 +132,7 @@ function resolveSource(
   if (provider === undefined) {
     const named = typeof wanted === "string" ? `provider "${wanted}"` : `a provider of kind "${wanted.kind}"`;
     context.findings.push({ code: "UI_WIDGET_SOURCE_UNKNOWN", severity: "warning", message: `widget "${id}" reads ${named}, which is not registered`, id });
-    return null;
+    return { source: null, problem: `It reads ${named}, which is not configured.` };
   }
   const sources = context.widgetTypes.find((type) => type.type === widget.type)?.sources;
   if (sources !== undefined && !sources.includes(provider.kind)) {
@@ -140,9 +142,9 @@ function resolveSource(
       message: `widget "${id}" reads provider "${provider.id}" of kind "${provider.kind}", which widget type "${widget.type}" cannot render (it renders ${sources.join(", ")})`,
       id,
     });
-    return null;
+    return { source: null, problem: `It cannot render provider "${provider.id}" (kind ${provider.kind}).` };
   }
-  return { id: provider.id, kind: provider.kind };
+  return { source: { id: provider.id, kind: provider.kind } };
 }
 
 /**

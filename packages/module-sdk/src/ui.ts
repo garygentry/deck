@@ -149,6 +149,8 @@ export interface UiWidgetInstance {
    * kind); `null` when it names none, or one that is not registered (a finding).
    */
   source: UiProvider | null;
+  /** Why its `source` resolved to no provider (it renders an error state); absent otherwise. */
+  sourceProblem?: string;
   /** Its JMESPath `select`, which the server evaluates over the provider's data at each poll. */
   select?: string;
   /**

@@ -5,6 +5,7 @@ import { getPages } from "../registry/registry.js";
 import { useRegistryVersion } from "../registry/use-registry.js";
 import { AppShell } from "./AppShell.js";
 import { bootHome } from "./boot.js";
+import { configPageRegistrations } from "./config-page/routes.js";
 import { useBrandTitle } from "./manifest-slot.js";
 import { ModuleNotEnabledPage } from "./ModuleNotEnabledPage.js";
 import { NotFoundPage } from "./NotFoundPage.js";
@@ -25,7 +26,9 @@ export function App({ url }: { url?: string } = {}) {
 function Shell() {
   // Re-render when an extension registers late (a lazily loaded module).
   useRegistryVersion();
-  const routes = resolveRoutes(useUiManifest(), getPages(), bootHome());
+  const manifest = useUiManifest();
+  // Config pages (`ui.pages`) exist only in the manifest; they route like any module's page.
+  const routes = resolveRoutes(manifest, [...getPages(), ...configPageRegistrations(manifest)], bootHome());
   const { path } = useLocation();
   const config = useConfig();
   const title = routeForPath(routes, path)?.label;

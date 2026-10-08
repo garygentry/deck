@@ -10,8 +10,9 @@ const THEME_MODES: readonly string[] = ["light", "dark", "system"];
 const BOOT_PLACEHOLDER = `<script type="application/json" id="${BOOT_ELEMENT_ID}"></script>`;
 
 /**
- * The boot object for the current UI manifest and config: the brand title, and the
- * operator's default theme mode (`ui.theme.mode`). See `DeckBoot` for the channel's contract.
+ * The boot object for the current UI manifest and config: the brand title, the operator's
+ * default theme mode (`ui.theme.mode`) and the home page's id. See `DeckBoot` for the
+ * channel's contract.
  */
 export function deckBootOf(manifest: UiManifest | undefined, config: unknown): DeckBoot {
   const mode = (config as { ui?: { theme?: { mode?: unknown } } } | null)?.ui?.theme?.mode;
@@ -19,6 +20,7 @@ export function deckBootOf(manifest: UiManifest | undefined, config: unknown): D
     bootApi: 1,
     brand: { title: manifest?.brand.title ?? DEFAULT_TITLE },
     theme: typeof mode === "string" && THEME_MODES.includes(mode) ? { mode: mode as ThemeMode } : {},
+    ...(manifest === undefined ? {} : { home: manifest.home?.page ?? null }),
   };
 }
 

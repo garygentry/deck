@@ -4,7 +4,7 @@
  * SPA path, while static files pass through untouched.
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,7 +23,7 @@ vi.mock("hono/bun", () => ({
     context.req.path === "/assets/app.js" ? context.text("asset") : next(),
 }));
 
-/** The real template: what Vite emits keeps the boot element and the pre-paint script as written. */
+/** The real template: Vite keeps the boot element as written (its plugin only inlines the pre-paint script). */
 const TEMPLATE = readFileSync(fileURLToPath(new URL("../../web/index.html", import.meta.url)), "utf8");
 const dist = mkdtempSync(join(tmpdir(), "deck-index-"));
 writeFileSync(join(dist, "index.html"), TEMPLATE);
@@ -31,7 +31,8 @@ afterAll(() => rmSync(dist, { recursive: true, force: true }));
 
 const logger = { info: () => undefined, warn: () => undefined, error: () => undefined, debug: () => undefined, child: () => logger } as unknown as Logger;
 const providers = { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [] };
-const manifest = (title: string) => ({ brand: { title } }) as unknown as UiManifest;
+const manifest = (title: string, home: UiManifest["home"] = { page: "page:inventory/hosts", path: "/hosts" }) =>
+  ({ brand: { title }, home }) as unknown as UiManifest;
 
 /** The boot object as the shell reads it, from served HTML. */
 function bootIn(html: string) {
@@ -55,9 +56,7 @@ describe("the served index.html", () => {
     expect(response.headers.get("cache-control")).toBe("no-cache");
     const html = await response.text();
     expect(html).toContain("<title>Gentry Lab</title>");
-    expect(bootIn(html)).toEqual({ brand: { title: "Gentry Lab" }, theme: { mode: "dark" } });
-    // The pre-paint script is served unchanged.
-    expect(html).toContain('localStorage.getItem("deck-theme")');
+    expect(bootIn(html)).toEqual({ brand: { title: "Gentry Lab" }, theme: { mode: "dark" }, home: "page:inventory/hosts" });
   });
 
   it("passes static files and /api through", async () => {
@@ -73,6 +72,12 @@ describe("the served index.html", () => {
     expect(bootIn(html).brand?.title).toBe('</title><script>alert("x")</script>');
   });
 
+  it("carries the home page's id, null when no page can be home, and none without a manifest", () => {
+    expect(deckBootOf(manifest("Lab", null), {}).home).toBeNull();
+    expect(deckBootOf(manifest("Lab", { page: "page:portal/overview", path: "/portal" }), {}).home).toBe("page:portal/overview");
+    expect(bootIn(renderIndexHtml(TEMPLATE, deckBootOf(manifest("Lab", null), {}))).home).toBeNull();
+  });
+
   it("defaults the title to Deck and the mode to none without a manifest or ui.theme", () => {
     expect(deckBootOf(undefined, {})).toEqual({ bootApi: 1, brand: { title: "Deck" }, theme: {} });
     expect(deckBootOf(undefined, { ui: { theme: { mode: "neon" } } }).theme).toEqual({});
@@ -80,6 +85,27 @@ describe("the served index.html", () => {
 
   it("serves a template without the boot element as it is, but titled", () => {
     expect(renderIndexHtml("<title>Deck</title><body></body>", deckBootOf(manifest("Lab"), {}))).toBe("<title>Lab</title><body></body>");
+  });
+
+  it("re-reads index.html when it changes (a rebuilt dist), and not otherwise", async () => {
+    const changing = mkdtempSync(join(tmpdir(), "deck-index-changing-"));
+    try {
+      const file = join(changing, "index.html");
+      writeFileSync(file, "<title>Deck</title>one");
+      utimesSync(file, 1_000, 1_000);
+      const served = createApp({ config: { schemaVersion: 2, estate: { name: "lab" } }, providers, logger, webDistDir: changing });
+      expect(await (await served.request("/")).text()).toBe("<title>Deck</title>one");
+      writeFileSync(file, "<title>Deck</title>two");
+      utimesSync(file, 1_000, 1_000);
+      // Same mtime: the cached copy stands (one stat, no read).
+      expect(await (await served.request("/")).text()).toBe("<title>Deck</title>one");
+      utimesSync(file, 2_000, 2_000);
+      expect(await (await served.request("/hosts")).text()).toBe("<title>Deck</title>two");
+      rmSync(file);
+      expect((await served.request("/hosts")).status).toBe(404);
+    } finally {
+      rmSync(changing, { recursive: true, force: true });
+    }
   });
 
   it("404s an SPA path while the dist has no index.html", async () => {

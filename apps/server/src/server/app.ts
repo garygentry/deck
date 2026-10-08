@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { apiErrorBody, type UiManifest } from "@deck/module-sdk";
@@ -56,12 +56,20 @@ function lazyServeStatic(options: StaticOptions): MiddlewareHandler {
   };
 }
 
-/** A file's text, read on first use and kept; `undefined` while it does not exist (asked again next time). */
-function lazyText(path: string): () => Promise<string | undefined> {
-  let text: string | undefined;
+/**
+ * A file's text, kept while the file's mtime is unchanged: one `stat` per call, and a re-read
+ * when the file changes (a rebuilt web dist). `undefined` while it does not exist.
+ */
+function cachedText(path: string): () => Promise<string | undefined> {
+  let cached: { mtimeMs: number; text: string } | undefined;
   return async () => {
-    text ??= await readFile(path, "utf8").catch(() => undefined);
-    return text;
+    const mtimeMs = await stat(path).then((stats) => stats.mtimeMs, () => undefined);
+    if (mtimeMs === undefined) return (cached = undefined);
+    if (cached?.mtimeMs !== mtimeMs) {
+      const text = await readFile(path, "utf8").catch(() => undefined);
+      cached = text === undefined ? undefined : { mtimeMs, text };
+    }
+    return cached?.text;
   };
 }
 
@@ -174,7 +182,7 @@ export function createApp(deps: AppDeps): Hono {
     app.use("/*", async (context, next) =>
       context.req.path === "/" || context.req.path === "/index.html" ? next() : serveStatic(context, next),
     );
-    const indexTemplate = lazyText(join(deps.webDistDir, "index.html"));
+    const indexTemplate = cachedText(join(deps.webDistDir, "index.html"));
     app.get("/*", async (context, next) => {
       // Reserved root paths (a disabled module's, say) must 404, not serve the SPA shell.
       if (context.req.path.startsWith("/api/") || reserved.has(context.req.path)) return next();

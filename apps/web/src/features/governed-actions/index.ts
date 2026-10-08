@@ -1,15 +1,15 @@
-import { registerPage } from "../../registry/registry.js";
+import { ACTIONS_UI } from "@deck/contract/modules/actions";
+import { defineWebModule } from "@deck/module-sdk";
+import type { ComponentType } from "react";
+
+import { registerWebModule } from "../../registry/web-module.js";
 import { ActionsPage } from "./pages.js";
 
-// Exactly one eager registration discovered by `import.meta.glob`. The Actions
-// surface is a standalone page — no cards, no entity fragments, no summary-slot
-// contribution, no shell edit. Registration errors are intentionally uncaught so
-// eager discovery fails loudly (mirrors `drift-and-coverage/index.ts`).
-registerPage({
-  id: "page:actions/overview",
-  path: "/actions",
-  label: "Actions",
-  icon: "zap",
-  group: "Operate",
-  component: ActionsPage,
+// Where the Actions page routes and which nav group lists it are the actions module's manifest
+// data; the UI manifest decides at runtime what renders. It is a standalone page: no cards,
+// entity sections or pills, so it attaches to no shell slot.
+export const actionsWebModule = defineWebModule(ACTIONS_UI, {
+  components: { ActionsPage } satisfies { ActionsPage: ComponentType },
 });
+
+registerWebModule(actionsWebModule);

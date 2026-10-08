@@ -175,11 +175,11 @@ afterEach(() => {
 });
 
 describe("portal registration and assembled page", () => {
-  it("owns /", () => {
+  it("is routed at /portal and renders at / as the default home page", () => {
     portalData = loaded();
     const pages = getPages();
     expect(pages.map(({ id }) => id)).toEqual(["page:portal/overview"]);
-    expect(pages[0]).toMatchObject({ id: "page:portal/overview", path: "/", component: PortalPage });
+    expect(pages[0]).toMatchObject({ id: "page:portal/overview", path: "/portal", component: PortalPage });
 
     vi.stubGlobal("location", new URL("http://localhost/"));
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));

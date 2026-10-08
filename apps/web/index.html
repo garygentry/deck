@@ -4,14 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Deck</title>
+    <!-- The boot object (DeckBoot in @deck/contract): the server writes it in; empty under Vite dev. -->
+    <script type="application/json" id="deck-boot"></script>
     <script>
-      // Apply the stored theme before first paint (no flash). Mirrors
-      // shell/use-theme.ts: "light" | "dark" | "system" under "deck-theme".
+      // Apply the theme before first paint (no flash). Mirrors shell/use-theme.ts:
+      // the stored "light" | "dark" | "system" under "deck-theme", else the
+      // operator's default from the boot object, else "system".
       (function () {
         var mode = null;
         try {
           mode = localStorage.getItem("deck-theme");
         } catch (e) {}
+        if (mode !== "light" && mode !== "dark" && mode !== "system") {
+          try {
+            mode = JSON.parse(document.getElementById("deck-boot").textContent).theme.mode;
+          } catch (e) {
+            mode = null;
+          }
+        }
         var dark =
           mode === "dark" ||
           (mode !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);

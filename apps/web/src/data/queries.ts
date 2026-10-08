@@ -106,12 +106,13 @@ function listProblem(value: unknown, at: string, entryProblem: (entry: Record<st
  * Why a decoded body is not a UI manifest the shell can render from, or null. The shell
  * fields are checked entry by entry, so a malformed document takes the "unavailable" path
  * (the registry fallback, asked again each poll interval) instead of being cached. Fields an
- * older server does not send (`brand`, `navGroups`, `disabledPages`) may be absent.
+ * older server does not send (`brand`, `home`, `navGroups`, `disabledPages`) may be absent.
  */
 export function uiManifestProblem(body: unknown): string | null {
   if (!isRecord(body)) return "not an object";
   if (!Array.isArray(body.providers)) return "providers is not a list";
   if (body.brand !== undefined && !(isRecord(body.brand) && isString(body.brand.title))) return "brand is malformed";
+  if (body.home !== undefined && !(isRecord(body.home) && isString(body.home.page) && isString(body.home.path))) return "home is malformed";
   return (
     listProblem(body.providers, "providers", (p) => !isString(p.id) || !isString(p.kind)) ??
     listProblem(body.navGroups, "navGroups", (g) => !isString(g.id) || !isString(g.label) || !isOptionalString(g.icon)) ??

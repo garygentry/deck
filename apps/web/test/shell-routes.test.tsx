@@ -11,7 +11,7 @@ import type { UiManifestState } from "../src/data/index.js";
 import { resetQueryClient } from "../src/data/query-client.js";
 import type { PageRegistration } from "../src/registry/registry.js";
 import { ModuleNotEnabledPage } from "../src/shell/ModuleNotEnabledPage.js";
-import { moduleSwitches, resolveRoutes, type NotEnabledRoute } from "../src/shell/routes.js";
+import { moduleSwitches, resolveHome, resolveRoutes, routeForPath, type NotEnabledRoute } from "../src/shell/routes.js";
 
 /**
  * Capability-aware routing: a page the UI manifest lists as a disabled module's page is not
@@ -37,7 +37,7 @@ afterEach(() => {
 
 describe("resolveRoutes", () => {
   const pages = [
-    page("page:portal/overview", "/", "Portal"),
+    page("page:portal/overview", "/portal", "Portal"),
     page("page:actions/overview", "/actions", "Actions"),
     page("page:_ui/workbench", "/_ui", "UI workbench"),
   ];
@@ -67,16 +67,50 @@ describe("resolveRoutes", () => {
 
   it("routes every registered page until the manifest loads, or when it cannot be read", () => {
     for (const state of [{ status: "loading" }, { status: "error", message: "down" }] as UiManifestState[]) {
-      expect(resolveRoutes(state, pages)).toEqual({ routed: pages, notEnabled: [] });
+      expect(resolveRoutes(state, pages)).toEqual({ home: pages[0], routed: pages, notEnabled: [] });
     }
   });
 
   it("routes every registered page for the previous server's manifest (modules, but no disabled pages)", () => {
-    // The real previous shape: the golden without the two fields this change added.
-    const { disabledPages: _dropped, ...rest } = golden;
+    // The real previous shape: the golden without the fields added since.
+    const { disabledPages: _dropped, home: _home, ...rest } = golden;
     const previous = { ...rest, modules: golden.modules.map(({ enabledBy: _hint, ...module }) => module) } as UiManifest;
     expect(previous.modules.find((m) => m.id === "actions")).toMatchObject({ enabled: false });
-    expect(resolveRoutes(ready(previous), pages)).toEqual({ routed: pages, notEnabled: [] });
+    expect(resolveRoutes(ready(previous), pages)).toEqual({ home: pages[0], routed: pages, notEnabled: [] });
+  });
+});
+
+describe("the home page", () => {
+  const portal = page("page:portal/overview", "/portal", "Portal");
+  const hosts = page("page:inventory/hosts", "/hosts", "Hosts");
+  const hostDetail = page("page:inventory/host-detail", "/hosts/:name", "Host");
+  // A registered page on "/" never takes the home route: home is chosen by id.
+  const squatter = page("page:aaa/home", "/", "Squat");
+  const routed = [squatter, hostDetail, hosts, portal];
+  const withHome = (home: UiManifest["home"]): UiManifestState => ready({ ...golden, home });
+
+  it("is the manifest's home page, routed at / ahead of any page sharing the path", () => {
+    expect(resolveHome(withHome({ page: "page:inventory/hosts", path: "/hosts" }), routed)).toBe(hosts);
+    const routes = resolveRoutes(withHome({ page: "page:inventory/hosts", path: "/hosts" }), routed);
+    expect(routeForPath(routes, "/")).toBe(hosts);
+    expect(routeForPath(routes, "/hosts")).toBe(hosts);
+    expect(routeForPath(routes, "/portal")).toBe(portal);
+  });
+
+  it("is the portal, the default, until the manifest loads, when it cannot be read, or for an older server", () => {
+    const { home: _home, ...older } = golden;
+    for (const state of [{ status: "loading" }, { status: "error", message: "down" }, ready(older as UiManifest)] as UiManifestState[]) {
+      expect(resolveHome(state, routed)).toBe(portal);
+    }
+    expect(resolveHome({ status: "loading" }, [squatter, hosts])).toBeUndefined();
+  });
+
+  it("is none when the manifest's home is not routed here or has path parameters", () => {
+    expect(resolveHome(withHome({ page: "page:nope/overview", path: "/nope" }), routed)).toBeUndefined();
+    expect(resolveHome(withHome({ page: "page:inventory/host-detail", path: "/hosts/:name" }), routed)).toBeUndefined();
+    // No home in the manifest, and the default is not routed here.
+    expect(resolveHome(withHome(undefined), [hosts])).toBeUndefined();
+    expect(routeForPath(resolveRoutes(withHome({ page: "page:nope/overview", path: "/nope" }), routed), "/")).toBeUndefined();
   });
 });
 

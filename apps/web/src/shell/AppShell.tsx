@@ -19,11 +19,14 @@ function sidebarDefaultOpen(): boolean {
  */
 export function AppShell({
   pages,
+  home,
   path,
   title,
   children,
 }: {
   pages: readonly PageRegistration[];
+  /** The page `/` renders. */
+  home?: PageRegistration;
   path: string;
   title: string | undefined;
   children: ReactNode;
@@ -36,7 +39,7 @@ export function AppShell({
       >
         Skip to content
       </a>
-      <AppSidebar pages={pages} path={path} />
+      <AppSidebar pages={pages} home={home} path={path} />
       {/* min-w-0: let wide page content wrap or scroll instead of widening the column. */}
       <SidebarInset className="min-w-0">
         <TooltipProvider>

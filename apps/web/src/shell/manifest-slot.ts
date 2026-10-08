@@ -1,4 +1,4 @@
-import { APP_TITLE } from "@/ui";
+import { APP_TITLE, isIconName } from "@/ui";
 import { useUiManifest, type UiManifestState } from "../data/index.js";
 import { getAllExtensions, type Extension } from "../registry/registry.js";
 import { useRegistryVersion } from "../registry/use-registry.js";
@@ -59,4 +59,20 @@ export function brandInitial(brand: string | undefined): string {
 
 export function useBrandTitle(): string | undefined {
   return brandTitle(useUiManifest());
+}
+
+/** What the sidebar's brand mark shows: the logo, else the icon, else the title's initial. */
+export type BrandMark = { kind: "logo"; url: string } | { kind: "icon"; name: string } | { kind: "initial" };
+
+/**
+ * The brand mark from the manifest's `brand`, read leniently: a logo URL the server would not
+ * send (not http(s) or root-relative) and an icon the web does not bundle are ignored, so the
+ * mark falls back rather than breaking. The initial while the manifest loads or is unreadable.
+ */
+export function brandMark(manifest: UiManifestState): BrandMark {
+  if (manifest.status !== "ready") return { kind: "initial" };
+  const { logoUrl, icon } = (manifest.manifest.brand ?? {}) as { logoUrl?: unknown; icon?: unknown };
+  if (typeof logoUrl === "string" && /^(?:https?:\/\/|\/(?!\/))/.test(logoUrl)) return { kind: "logo", url: logoUrl };
+  if (typeof icon === "string" && isIconName(icon)) return { kind: "icon", name: icon };
+  return { kind: "initial" };
 }

@@ -4,7 +4,7 @@ import type { DeckConfig } from "@deck/server";
 import type { PortalModuleConfig } from "@deck/server/portal";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { DockerResult, GatusResult, PortalData } from "../src/features/portal/card-status.js";
 
 let portalData: PortalData;
@@ -437,62 +437,79 @@ describe("shared data and keyboard integration contracts", () => {
   }, 30_000);
 });
 
-// Last in the file: these register into the shared registry singleton.
-describe("slot host isolation (review L8)", () => {
+// Last in the file: these register into the shared registry singleton, once, in `beforeAll`, so
+// each test (alone with -t, or in the file) sees the same registered cards and seeds only its
+// manifest.
+describe("portal summary placement", () => {
   const Throws = (): never => {
     throw new Error("internal card failure must never reach the UI");
   };
+  const First = () => <p>first card</p>;
+  const Second = () => <p>second card</p>;
+  const placed = (id: string, order: number) => ({ id, kind: "widget", module: "probe", slot: PORTAL_SUMMARY_SLOT, order });
 
-  it("a throwing portal/summary widget leaves the portal heading, filters and cards intact", () => {
-    registerCard({ id: "card:probe/throws", slot: PORTAL_SUMMARY_SLOT, component: Throws });
-    getQueryClient().setQueryData(queryKeys.uiManifest, manifestPlacing(getAllExtensions()));
-    portalData = loaded();
+  beforeAll(() => {
+    registerCard({ id: "card:probe/first", slot: PORTAL_SUMMARY_SLOT, component: First, order: 10 });
+    registerCard({ id: "card:probe/second", slot: PORTAL_SUMMARY_SLOT, component: Second, order: 20 });
+    registerCard({ id: "card:probe/throws", slot: PORTAL_SUMMARY_SLOT, component: Throws, order: 30 });
+  });
+
+  /** What renders in the summary area (between the page header and the filters), in order. */
+  function summary(): string[] {
+    const items: string[] = [];
+    let node = screen.getByTestId("portal").querySelector('[data-slot="page-header"]')!.nextElementSibling;
+    for (; node !== null && node.getAttribute("data-slot") !== "filter-bar"; node = node.nextElementSibling) {
+      items.push(node.querySelector('[role="alert"]') !== null || node.getAttribute("role") === "alert" ? "alert" : node.textContent ?? "");
+    }
+    return items;
+  }
+
+  function renderQuietly(): void {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => undefined);
     render(<PortalPage />);
     quiet.mockRestore();
+  }
+
+  it("a throwing portal/summary widget leaves the portal heading, filters and cards intact (review L8)", () => {
+    getQueryClient().setQueryData(queryKeys.uiManifest, { ...manifestPlacing([]), extensions: [placed("card:probe/throws", 1)] });
+    portalData = loaded();
+    renderQuietly();
     expect(screen.getByRole("heading", { level: 1, name: "Portal" })).toBeInTheDocument();
     expect(screen.getByRole("search", { name: "Portal filters" })).toBeInTheDocument();
     expect(cardTitles().length).toBeGreaterThan(0);
+    expect(summary()).toEqual(["alert"]);
     expect(screen.getByRole("alert")).toHaveTextContent("Summary card unavailable");
     expect(document.body.textContent).not.toContain("internal card failure");
   });
-});
-
-describe("portal summary placement", () => {
-  const First = () => <p>first card</p>;
-  const Second = () => <p>second card</p>;
-  const shown = () => [...document.querySelectorAll("p")].map((el) => el.textContent).filter((text) => text?.endsWith(" card"));
-  const placed = (id: string, order: number) => ({ id, kind: "widget", module: "probe", slot: PORTAL_SUMMARY_SLOT, order });
 
   it("renders the cards the UI manifest places, in its order, and none of a module that is off", () => {
-    registerCard({ id: "card:probe/first", slot: PORTAL_SUMMARY_SLOT, component: First, order: 10 });
-    registerCard({ id: "card:probe/second", slot: PORTAL_SUMMARY_SLOT, component: Second, order: 20 });
     portalData = loaded();
 
     // The manifest's order wins over the registered one.
     getQueryClient().setQueryData(queryKeys.uiManifest, { ...manifestPlacing([]), extensions: [placed("card:probe/second", 1), placed("card:probe/first", 2)] });
-    render(<PortalPage />);
-    expect(shown()).toEqual(["second card", "first card"]);
+    renderQuietly();
+    expect(summary()).toEqual(["second card", "first card"]);
     cleanup();
 
     // A card the manifest does not list (its module is off) renders nothing.
     getQueryClient().setQueryData(queryKeys.uiManifest, { ...manifestPlacing([]), extensions: [placed("card:probe/first", 1)] });
-    render(<PortalPage />);
-    expect(shown()).toEqual(["first card"]);
+    renderQuietly();
+    expect(summary()).toEqual(["first card"]);
     cleanup();
 
     // Until the manifest loads, none render.
     resetQueryClient();
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
-    render(<PortalPage />);
-    expect(shown()).toEqual([]);
+    renderQuietly();
+    expect(summary()).toEqual([]);
     expect(screen.getByRole("heading", { level: 1, name: "Portal" })).toBeInTheDocument();
   });
 
-  it("falls back to the registered cards when the manifest cannot be read", () => {
+  it("falls back to every registered card, in registry order, when the manifest cannot be read", () => {
     portalData = loaded();
     getQueryClient().setQueryData(queryKeys.uiManifest, { unavailable: true, message: "down" });
-    render(<PortalPage />);
-    expect(shown()).toEqual(["first card", "second card"]);
+    renderQuietly();
+    expect(summary()).toEqual(["first card", "second card", "alert"]);
+    expect(document.body.textContent).not.toContain("internal card failure");
   });
 });

@@ -20,7 +20,7 @@ follows the estate config schema.
 | `GET` | `/api/providers` | Registered providers' identities (id and kind), in deterministic id order. | `ProvidersResponse` |
 | `GET` | `/api/providers/:id` | One provider's cached envelope (data, freshness, error). Unknown id → 404 `PROVIDER_NOT_FOUND`. | `ProviderEnvelope` |
 | `GET` | `/api/health` | Cached readiness: overall status, uptime, provider count, and per-provider health. Performs no upstream I/O. | `HealthResponse` |
-| `GET` | `/api/ui` | The resolved UI manifest: brand, modules, slots, pages, nav groups and entries, extensions and providers. Resolved once at startup. | `UiManifest` (`@deck/module-sdk`) |
+| `GET` | `/api/ui` | The resolved UI manifest: brand, home page, modules, slots, pages, nav groups and entries, extensions and providers. Resolved once at startup. | `UiManifest` (`@deck/module-sdk`) |
 
 `HealthResponse.status` is `degraded` when any provider's latest health is not ok, otherwise `ok`.
 `HealthResponse.modules` lists every known module's state by id. A module with no health report
@@ -49,8 +49,13 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
   `<kind>:<module>/<name>` (for example `pill:llm-usage/summary`). Each extension and nav entry
   names the slot it attaches to and its order there, and attaches only to a slot that accepts
   its kind.
-- `brand.title` is the name the shell shows in the sidebar and the document title: the estate's
-  `estate.name`, or `Deck` when that is empty.
+- `brand.title` is the name the shell shows in the sidebar and the document title:
+  `ui.brand.title`, else the estate's `estate.name`, else `Deck`. `brand.icon` and
+  `brand.logoUrl` are present when `ui.brand` sets them.
+- `home` names the page `/` renders (`page`) and that page's own path (`path`): `ui.home` when
+  it names a routed page without path parameters, else the portal. It is absent when neither
+  can be home, and then `/` is not found. No page is routed at `/` itself: `/` always renders
+  the home page.
 - `navGroups` lists the sidebar's groups in order, each with its `label`. The built-in order is
   Overview, Inventory, Health, Operate, Knowledge; a group a module uses that is not among them
   follows, by id, headed by its id. Only groups with a nav entry are listed.
@@ -63,8 +68,12 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
   - `UI_UNKNOWN_EXTENSION`: an override for an unknown id, or a nav entry to an undeclared page;
   - `UI_UNKNOWN_SLOT`: an extension on an unknown slot;
   - `UI_SLOT_KIND_MISMATCH`: an extension on a slot that does not accept its kind;
-  - `UI_PAGE_PATH_COLLISION`: two pages on one path, or a page on a module's declared root
-    path, which the server always answers instead (or 404s while that module is off);
+  - `UI_PAGE_PATH_COLLISION`: two pages on one path, a page on a module's declared root
+    path, which the server always answers instead (or 404s while that module is off), or a page
+    declaring `/`, which renders the home page;
+  - `UI_HOME_UNKNOWN`, `UI_HOME_DISABLED`, `UI_HOME_NOT_ROUTABLE`: `ui.home` names an unknown
+    page, a page that is not routed (its module is off, an override disables it, or its path is
+    taken), or a page with path parameters; the portal stays home;
   - `UI_DUPLICATE_ID`: an id or slot contributed twice (the incumbent keeps it: the kernel's
     shell first, then the kernel-wired features and built-in modules, then other modules), or
     a nav group configured twice (its first entry is used);
@@ -72,7 +81,24 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
   - `UI_INVALID_PAGE`: a disabled module's page whose path is not a usable page path, so it is
     not listed in `disabledPages`.
 
-  Overrides will come from the `ui.extensions` config section, which config cannot set yet.
+  Overrides come from the `ui.extensions` config section (see the
+  [estate configuration reference](estate-config.md#ui)).
+
+### The web shell's page
+
+When deck serves the web app, every path outside `/api` that is not a static file (including
+`/` and `/index.html`) answers with the shell's `index.html`, sent with `Cache-Control: no-cache`.
+The server writes two things into it: the brand title as its `<title>`, and a boot object in
+`<script type="application/json" id="deck-boot">`, which the page reads before it can make any
+request:
+
+```json
+{ "bootApi": 1, "brand": { "title": "Gentry Lab" }, "theme": { "mode": "dark" } }
+```
+
+`theme.mode` is `ui.theme.mode`, absent when unset; the pre-paint script applies it unless the
+viewer has chosen a mode. The shape is `DeckBoot` in `@deck/contract`; a new boot-time setting is
+an optional field there.
 
 ## Metrics
 

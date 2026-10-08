@@ -228,7 +228,7 @@
       "family": "diataxis",
       "type": "reference",
       "audience": ["operator", "maintainer"],
-      "purpose": "A complete, scannable description of every estate-config key: top-level document, estate, hosts, services, groups, sources, integrations, actions, agents.",
+      "purpose": "A complete, scannable description of every estate-config key: top-level document, estate, hosts, services, groups, sources, integrations, actions, agents, ui.",
       "sourceRefs": ["s-deck-schema", "s-schema-pkg", "s-validate"],
       "status": "planned",
       "priority": 2,

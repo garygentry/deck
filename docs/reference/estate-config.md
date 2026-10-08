@@ -24,7 +24,7 @@ The top-level document is an object with no additional properties.
 | `services` | array of Service | no | Declared services; absent is equivalent to an empty array. |
 | `sources` | array of Source | no | Document and configuration source declarations; absent is empty. |
 | `integrations` | array of Integration | no | External tool integrations; absent is empty. |
-| `ui` | object | no | Reserved for presentation settings; it accepts no keys yet. |
+| `ui` | object | no | Presentation settings: brand, theme, home page, navigation and extension overrides (see [ui](#ui)). Owned by the overlay layer. |
 | `modules` | object | no | Module settings, one section per module id (see [Modules](#modules)). |
 
 ### Modules
@@ -58,7 +58,7 @@ key, deep-merges matches, keeps base order, then appends new overlay elements.
 | --- | --- |
 | `hosts` | `name` |
 | `services` | `host` + `name` |
-| `sources`, `integrations`, `modules.portal.groups`, `modules.actions.actions` | `id` |
+| `sources`, `integrations`, `modules.portal.groups`, `modules.actions.actions`, `ui.nav.groups`, `ui.nav.items` | `id` |
 | `modules.actions.actions[].params` | `name` |
 | `hosts[].links`, `services[].links` | `href` |
 | `modules.portal.groups[].items` | `service` → `host` + `name`; `link` → `href`; `group` → `id` |
@@ -337,6 +337,75 @@ An `ActionParam` has no additional properties:
 | `default` | JSON value | no | Default value matching the declared type. |
 | `values` | array of string | no | Allowed values when the type is `enum`. |
 | `description` | string | no | Parameter description. |
+
+## ui
+
+`ui` holds presentation settings. It is owned by the overlay layer: a `ui` value in the base
+layer is reported as `LAYER_OVERLAY_KEY_IN_BASE`. Every key is optional, and with no `ui` section
+deck renders as it always has. The section and each object in it accept no additional properties.
+Colours are never configurable: the theme is chosen by name.
+
+```yaml
+ui:
+  brand: { title: Gentry Lab, icon: server }
+  theme: { mode: dark }
+  home: page:inventory/hosts
+  extensions:
+    pill:drift/summary: false
+```
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `brand` | object | The product name and mark in the sidebar, the browser tab and the page title. |
+| `theme` | object | The operator's theme defaults. |
+| `home` | string | The id of the page `/` renders, such as `page:inventory/hosts`. Default: the portal (`page:portal/overview`). |
+| `nav` | object | Sidebar group order, labels and icons, and extra nav entries. |
+| `extensions` | object | Overrides by extension, page or nav entry id. |
+
+`brand`:
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `title` | string, 1–80 characters, not blank | The name shown in the sidebar, the document title (`{page} · {title}`) and `index.html`'s `<title>`. Default: `estate.name`, then `Deck`. |
+| `icon` | icon name | An icon from the shell's icon set, shown in the sidebar mark in place of the title's initial. A name the shell does not have shows the initial. |
+| `logoUrl` | string | An `http(s)://` URL or a root-relative path (`/logo.svg`) to an image, shown as the sidebar mark in place of the icon. If it fails to load, the initial shows. |
+
+`theme`:
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `mode` | `light` \| `dark` \| `system` | The colour mode for a viewer who has not chosen one in the theme menu; default `system`. A viewer's own choice always wins. It is written into the page, so the first paint already uses it. |
+| `preset` | `teal` | The named colour preset; default `teal`. |
+| `density` | `compact` \| `comfortable` | Spacing of tables, lists and sections. Accepted; the shell does not apply it yet. |
+| `radius` | `none` \| `sm` \| `md` \| `lg` | Corner radius scale. Accepted; the shell does not apply it yet. |
+
+`home`: `/` renders the home page, and the page also stays at its own path; its sidebar entry
+links to `/`. The portal is the default home and is also served at `/portal`. A page with path
+parameters (`/hosts/:name`) cannot be home. A `home` naming an unknown page, a page of a module
+that is off or switched off by an override, or a page with parameters leaves the portal as home
+and is reported in `GET /api/ui` as `UI_HOME_UNKNOWN`, `UI_HOME_DISABLED` or
+`UI_HOME_NOT_ROUTABLE`; it never stops deck from starting.
+
+`nav` (accepted and validated; the shell does not apply it yet):
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `groups` | array of `{id, label?, icon?}` | Groups in sidebar order; groups not listed follow by id. |
+| `items` | array | Extra entries: a link `{id, group, label, href, icon?, order?}`, where `id` is `nav:<module>/<name>` and `href` is an `http(s)://` URL, or a separator `{id, group, separator: true, order?}`. |
+
+Both arrays merge across overlays by `id`, and an id repeated in one layer is `ID_DUPLICATE`.
+
+`extensions` maps an extension, page or nav entry id (as `GET /api/ui` lists them) to an
+override that replaces its default, never merges into it:
+
+- `false` hides it (a page's nav entry goes with the page), and `true` shows it.
+- An object takes `enabled`, `attachTo` (`slot`, `order`) and `config`. A page takes only
+  `enabled`; a nav entry `enabled` and `attachTo`. An omitted `attachTo.slot` keeps the slot,
+  and an omitted `attachTo.order` is 100. `config` replaces the extension's config wholesale.
+- `attachTo.group` (moving a nav entry to another group) is accepted but not applied yet.
+
+An override for an id deck does not know, or one that does not fit its target, is reported in
+`GET /api/ui` (`UI_UNKNOWN_EXTENSION`, `UI_INVALID_OVERRIDE`) and otherwise ignored.
 
 ## modules.llm-usage
 

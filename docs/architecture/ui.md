@@ -58,8 +58,11 @@ Contrast is tested, not assumed. `test/tokens-contrast.test.ts` holds every text
 on every surface in both themes, and each feature's contrast test checks its maps only use those
 tokens.
 
-The theme follows the stored preference (light, dark or system). An inline script in
-`index.html` applies it before first paint, so the page never flashes the wrong theme.
+The theme follows the viewer's stored preference (light, dark or system), else the
+operator's default (`ui.theme.mode`), else system. An inline script in `index.html` applies it
+before first paint, so the page never flashes the wrong theme. The operator's default reaches the
+page in the boot object the server writes into `index.html` (`DeckBoot` in `@deck/contract`,
+read with `readDeckBoot`); only a choice made in the theme menu is stored.
 
 ## Data
 
@@ -244,7 +247,13 @@ components:
   extension of the same id and kind and the entry's resolved `config` in place of the
   registered one (`placeExtensions`, `useManifestSlot(slot)`).
 - The brand in the sidebar header and the document title (`"{page} · {brand}"`) is the
-  manifest's `brand.title`.
+  manifest's `brand.title`. The sidebar mark beside it is `brand.logoUrl` as an image, else the
+  `brand.icon`, else the title's initial (`brandMark`); a logo that fails to load shows the
+  initial.
+- `/` renders the home page, chosen by id (`resolveHome`): the manifest's `home`, else the
+  portal's overview. It is the first route, so no page on `/` can take it, and it also stays
+  routed at its own path. Its nav entry links to `/` and is current on either path, and the top
+  bar and document title name it at `/`. No built-in page declares `/`.
 - Routing follows the manifest too (`resolveRoutes`): no registered page of a module the
   manifest lists as disabled is routed, so none can shadow an enabled page on its path. Each of
   the manifest's `disabledPages` renders `ModuleNotEnabledPage` at its path, naming every env var

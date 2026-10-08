@@ -202,6 +202,8 @@ curl -s http://localhost:8080/metrics
 | `deck_provider_poll_failure_total` | counter | `id`, `kind` | Completed polls that failed or timed out. |
 | `deck_provider_last_poll_latency_seconds` | gauge | `id`, `kind` | Duration of the latest completed poll; absent until a provider's first poll completes. |
 | `deck_snapshot_age_seconds` | gauge | — | Seconds since deck last successfully read the snapshot; absent when no snapshot source is configured or no read has succeeded. |
+| `deck_snapshot_generated_age_seconds` | gauge | — | Seconds since the last successfully read snapshot was generated (now minus its `generatedAt`), computed at each scrape; absent until a snapshot has been read, or when its `generatedAt` is missing or unparseable. |
+| `deck_snapshot_generated_timestamp_seconds` | gauge | — | That snapshot's `generatedAt` as Unix seconds; absent under the same conditions. |
 
 Counters reset when deck restarts.
 Like the rest of deck's HTTP surface, `/metrics` has no authentication of its own: scrape it
@@ -214,3 +216,24 @@ scrape_configs:
     static_configs:
       - targets: ["deck:8080"]
 ```
+
+`deck_snapshot_age_seconds` only says deck can still read the snapshot.
+If the estate's producer stops publishing but the last file stays readable, deck keeps
+re-reading it and that gauge stays near zero.
+To catch a stalled producer, alert on the age of the snapshot's content instead:
+
+```yaml
+groups:
+  - name: deck
+    rules:
+      - alert: DeckSnapshotStale
+        # The snapshot deck serves was generated more than 6 hours ago.
+        expr: deck_snapshot_generated_age_seconds > 6 * 3600
+        for: 15m
+        annotations:
+          summary: "deck's snapshot is {{ $value | humanizeDuration }} old"
+```
+
+`time() - deck_snapshot_generated_timestamp_seconds > 6 * 3600` is the same check against
+Prometheus's clock rather than deck's.
+Pick a threshold that matches how often your producer publishes.

@@ -42,7 +42,7 @@ function kindModule(
 }
 
 /** The kinds owned by built-in data-source modules. */
-const DATA_SOURCE_KINDS = ["link", "http-health", "docker", "gatus", "prometheus", "alertmanager", "markdown-tree", "file-tree", "snapshot"];
+const DATA_SOURCE_KINDS = ["link", "http-health", "http-json", "docker", "gatus", "prometheus", "alertmanager", "markdown-tree", "file-tree", "snapshot"];
 
 const estate = (extra: Partial<DeckConfig> = {}): DeckConfig =>
   ({ schemaVersion: 2, estate: { name: "kinds" }, ...extra }) as DeckConfig;
@@ -355,13 +355,14 @@ describe("the data-source modules", () => {
     const { composed } = builtinComposition({ sectionOf: () => undefined, env: {} });
     for (const kind of DATA_SOURCE_KINDS) {
       expect(composed.knownKinds.has(kind)).toBe(true);
-      expect(composed.bindableKinds.has(kind)).toBe(!["prometheus", "alertmanager", "markdown-tree", "file-tree", "snapshot"].includes(kind));
+      expect(composed.bindableKinds.has(kind)).toBe(!["http-json", "prometheus", "alertmanager", "markdown-tree", "file-tree", "snapshot"].includes(kind));
     }
     const defs = composed.schema.$defs as Record<string, unknown>;
     expect(defs.kind__docker).toBeDefined();
     expect(defs.kind__gatus).toBeDefined();
     expect(defs.kind__prometheus).toBeDefined();
     expect(defs.kind__alertmanager).toBeDefined();
+    expect(defs["kind__http-json"]).toBeDefined();
   });
 });
 

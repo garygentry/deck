@@ -1,0 +1,138 @@
+{
+  "title": "HTTP JSON integration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "title",
+    "url"
+  ],
+  "dependentRequired": {
+    "auth": [
+      "credentialEnv"
+    ]
+  },
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Integration id, unique across integrations; also the provider id."
+    },
+    "kind": {
+      "const": "http-json",
+      "description": "Provider kind."
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable integration title."
+    },
+    "deepLink": {
+      "type": "string",
+      "description": "Optional link to the API's own UI, shown on the integration's tile."
+    },
+    "url": {
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https?://[^/?#@\\s]+(?:[/?#]\\S*)?$",
+      "description": "The http(s) URL polled; it may not carry user:password@."
+    },
+    "method": {
+      "enum": [
+        "GET",
+        "POST"
+      ],
+      "description": "The request method; default GET."
+    },
+    "headers": {
+      "type": "object",
+      "description": "Literal, non-secret request headers. A name naming a credential (auth, cookie, token, secret, key, pass, session, credential) is refused: credentials come from credentialEnv.",
+      "propertyNames": {
+        "pattern": "^(?!.*(?:[Aa][Uu][Tt][Hh]|[Cc][Oo][Oo][Kk][Ii][Ee]|[Tt][Oo][Kk][Ee][Nn]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Kk][Ee][Yy]|[Pp][Aa][Ss][Ss]|[Ss][Ee][Ss][Ss][Ii][Oo][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]))[!#$%&'*+.^_`|~0-9A-Za-z-]+$",
+        "maxLength": 128
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 1024,
+        "pattern": "^[^\\r\\n]*$"
+      }
+    },
+    "body": {
+      "description": "A JSON request body, sent with POST only."
+    },
+    "credentialEnv": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "description": "Environment variable name holding a credential, never its value."
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scheme"
+      ],
+      "description": "How the credentialEnv value is sent; without it the value is the raw Authorization header.",
+      "properties": {
+        "scheme": {
+          "enum": [
+            "bearer",
+            "basic",
+            "header"
+          ],
+          "description": "bearer: Authorization: Bearer <value>; basic: the value is user:password, sent base64-encoded; header: the value in the named header."
+        },
+        "header": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$",
+          "description": "The header carrying the credential, for scheme header."
+        }
+      },
+      "if": {
+        "properties": {
+          "scheme": {
+            "const": "header"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "header": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "header"
+        ]
+      },
+      "else": {
+        "properties": {
+          "header": false
+        }
+      }
+    },
+    "pollIntervalMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 86400000,
+      "description": "Milliseconds between polls; default 30000."
+    },
+    "timeoutMs": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 60000,
+      "description": "Milliseconds a poll may take, redirects and body included; default 5000."
+    },
+    "ttlMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 86400000,
+      "description": "Milliseconds the data stays fresh; default the poll interval."
+    },
+    "maxBytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16777216,
+      "description": "The largest response body accepted, in bytes; default 1048576 (1 MiB)."
+    }
+  }
+}

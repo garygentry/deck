@@ -18,6 +18,7 @@ import { DOCKER_MANIFEST } from "../../src/providers/docker/module.js";
 import { FILE_TREE_MANIFEST } from "../../src/providers/file-tree/module.js";
 import { GATUS_MANIFEST } from "../../src/providers/gatus/module.js";
 import { HTTP_HEALTH_MANIFEST } from "../../src/providers/http-health/module.js";
+import { HTTP_JSON_MANIFEST } from "../../src/providers/http-json/module.js";
 import { LINK_MANIFEST } from "../../src/providers/link/module.js";
 import { MARKDOWN_TREE_MANIFEST } from "../../src/providers/markdown-tree/module.js";
 import { PROMETHEUS_MANIFEST } from "../../src/providers/prometheus/module.js";
@@ -56,6 +57,7 @@ export const BUILTIN_MANIFESTS: ReadonlySet<ModuleManifest> = new Set([
   FILE_TREE_MANIFEST,
   GATUS_MANIFEST,
   HTTP_HEALTH_MANIFEST,
+  HTTP_JSON_MANIFEST,
   INVENTORY_MANIFEST,
   LINK_MANIFEST,
   LLM_USAGE_MANIFEST,

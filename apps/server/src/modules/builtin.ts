@@ -12,6 +12,7 @@ import { dockerModule } from "../providers/docker/module.js";
 import { fileTreeModule } from "../providers/file-tree/module.js";
 import { gatusModule } from "../providers/gatus/module.js";
 import { httpHealthModule } from "../providers/http-health/module.js";
+import { httpJsonModule } from "../providers/http-json/module.js";
 import { linkModule } from "../providers/link/module.js";
 import { markdownTreeModule } from "../providers/markdown-tree/module.js";
 import { prometheusModule } from "../providers/prometheus/module.js";
@@ -32,6 +33,7 @@ export const BUILTIN_MODULES: readonly ServerModule<any>[] = [
   fileTreeModule,
   gatusModule,
   httpHealthModule,
+  httpJsonModule,
   inventoryModule,
   linkModule,
   llmUsageModule,

@@ -107,7 +107,8 @@ Features register surfaces at import time. `registry/discover.ts` imports every
 - `registerEntityFragment({ id, entity, title, section?, order?, component })` for a section on
   host or service detail pages (drift findings, owned configs; see "Entity sections" below);
 - `registerSummaryFragment(HealthHeaderSlot, { id, component })` for a health pill in the top
-  bar;
+  bar (a module on the contract declares its pills as `pill` extensions in its manifest
+  instead, as monitoring and llm-usage do);
 - `registerCard({ id, slot, component })` for a card in a host's card slot (the portal summary).
 
 Each call is a blueprint over one model, the **extension**: a component with a stable id, attached
@@ -120,7 +121,7 @@ config can address an extension by id.
 | Slot (accepts) | Blueprint | Host |
 |---|---|---|
 | `app/routes` (page), `app/nav` (nav) | `registerPage` | the router; the sidebar (see below) |
-| `app/topbar.status` (pill) | `registerSummaryFragment(HealthHeaderSlot, …)` | the health-header region |
+| `app/topbar.status` (pill) | a manifest `pill` extension (`registerWebModule`), or `registerSummaryFragment(HealthHeaderSlot, …)` | the health-header region |
 | `app/topbar.actions` (action) | `registerExtension` | the top bar's controls (the theme menu) |
 | `portal/summary` (widget) | `registerCard` | the portal page |
 | `entity:host/sections`, `entity:service/sections` (entity-section) | `registerEntityFragment` | host and service detail pages |

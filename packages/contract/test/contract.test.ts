@@ -9,6 +9,7 @@ import { POLL_DEFAULTS } from "../src/index.js";
 import { INVENTORY_UI } from "../src/modules/inventory.js";
 import { LLM_USAGE_UI } from "../src/modules/llm-usage.js";
 import { MONITORING_UI } from "../src/modules/monitoring.js";
+import { PORTAL_UI } from "../src/modules/portal.js";
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "../src");
 const MODULE_SDK = resolve(dirname(fileURLToPath(import.meta.url)), "../../module-sdk");
@@ -54,6 +55,8 @@ describe("@deck/contract", () => {
     expect(JSON.parse(JSON.stringify(LLM_USAGE_UI))).toEqual(LLM_USAGE_UI);
     expect(MONITORING_UI.id).toBe("monitoring");
     expect(JSON.parse(JSON.stringify(MONITORING_UI))).toEqual(MONITORING_UI);
+    expect(PORTAL_UI.id).toBe("portal");
+    expect(JSON.parse(JSON.stringify(PORTAL_UI))).toEqual(PORTAL_UI);
   });
 
   it("serves the inventory module's UI contributions as plain JSON", () => {

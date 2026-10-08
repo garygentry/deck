@@ -1,3 +1,4 @@
+import { PORTAL_UI } from "@deck/contract/modules/portal";
 import { defineServerModule, type JsonSchema, type ModuleManifest } from "@deck/module-sdk";
 
 import type { PortalModuleConfig } from "./config.generated.js";
@@ -17,9 +18,8 @@ const GROUP_ID_REPEATED = "Group or subgroup id {key} is used more than once acr
  * and the providers.
  */
 export const PORTAL_MANIFEST: ModuleManifest = {
-  id: "portal",
-  version: "0.1.0",
-  deckApi: "^0.1",
+  // Identity and UI contributions are shared with the web half.
+  ...PORTAL_UI,
   config: {
     schema: schema as unknown as JsonSchema,
     ownership: { "": "overlay" },
@@ -35,14 +35,6 @@ export const PORTAL_MANIFEST: ModuleManifest = {
     references: [
       { path: "groups[].items[]", service: "name", at: "element" },
       { path: "groups[].items[].items[]", service: "name", at: "element" },
-    ],
-  },
-  contributes: {
-    pages: [{ id: "page:portal/overview", path: "/", title: "Portal", icon: "layout-grid", component: "PortalPage" }],
-    nav: [{ id: "nav:portal/overview", page: "page:portal/overview", group: "overview", order: -1 }],
-    slots: [{ id: "portal/summary", accepts: "widget" }],
-    extensions: [
-      { id: "pill:portal/endpoints", kind: "pill", attachTo: { slot: "app/topbar.status" }, component: "EndpointStatusSummary" },
     ],
   },
 };

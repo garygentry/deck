@@ -109,7 +109,12 @@ Features register surfaces at import time. `registry/discover.ts` imports every
 - `registerSummaryFragment(HealthHeaderSlot, { id, component })` for a health pill in the top
   bar (a module on the contract declares its pills as `pill` extensions in its manifest
   instead, as monitoring and llm-usage do);
-- `registerCard({ id, slot, component })` for a card in a host's card slot (the portal summary).
+- `registerCard({ id, slot, component })` for a card in a module's widget slot.
+
+A card on the portal summary is a module's manifest contribution, not a `registerCard` call:
+the portal module declares the slot in its `contributes.slots`, and a module attaches a
+`widget` extension to it in its `contributes.extensions` (as llm-usage's
+`card:llm-usage/portal` does). The portal page renders what the UI manifest places there.
 
 Each call is a blueprint over one model, the **extension**: a component with a stable id, attached
 to a slot at an order. Ids have the form `<kind>:<module>/<name>`, and the kind matches the
@@ -123,7 +128,7 @@ config can address an extension by id.
 | `app/routes` (page), `app/nav` (nav) | `registerPage` | the router; the sidebar (see below) |
 | `app/topbar.status` (pill) | a manifest `pill` extension (`registerWebModule`), or `registerSummaryFragment(HealthHeaderSlot, …)` | the health-header region |
 | `app/topbar.actions` (action) | `registerExtension` | the top bar's controls (the theme menu) |
-| `portal/summary` (widget) | `registerCard` | the portal page |
+| `portal/summary` (widget) | the portal's `contributes.slots`; cards via `contributes.extensions` | the portal page (manifest-placed) |
 | `entity:host/sections`, `entity:service/sections` (entity-section) | `registerEntityFragment` | host and service detail pages |
 
 ### A module's web half
@@ -171,9 +176,11 @@ Moving a feature onto it:
 4. Keep the server UI goldens and `test/extension-ids.test.ts` unchanged; a registration
    test asserts the registry holds exactly the manifest's contributions.
 
-A slot is declared with `defineSlot({ id, accepts, module })`. Its id is namespaced to the
-module hosting it (`portal/summary`), and the `app/…` and `entity:…` namespaces belong to
-`core`. An extension attaches only to a slot that accepts its kind: a card is a `widget`, a
+A slot is declared with `defineSlot({ id, accepts, module })`, such as the top bar's
+`defineSlot({ id: "app/topbar.actions", accepts: "action", module: "core" })`. Its id is
+namespaced to the module hosting it, and the `app/…` and `entity:…` namespaces belong to
+`core`. A module on the contract declares its slots in `contributes.slots` instead, and
+`registerWebModule` defines them (the portal's `portal/summary`). An extension attaches only to a slot that accepts its kind: a card is a `widget`, a
 pill a `pill`, an entity fragment an `entity-section`. A mismatch throws at registration,
 whichever of the slot and the extension is declared first.
 
@@ -225,8 +232,9 @@ components:
 - The sidebar lists the manifest's `navGroups` in order, and in each its `nav` entries, with
   their labels and icons. An entry to a page the web does not route is left out, and so is the
   page of a module that is off.
-- The top bar's slots (`app/topbar.status`, `app/topbar.actions`) and the entity pages'
-  sections render the manifest's entries for the slot, in its order, each with the web
+- The top bar's slots (`app/topbar.status`, `app/topbar.actions`), the portal's summary cards
+  (`portal/summary`, declared by the portal module's manifest) and the entity pages' sections
+  render the manifest's entries for the slot, in its order, each with the web
   extension of the same id and kind and the entry's resolved `config` in place of the
   registered one (`placeExtensions`, `useManifestSlot(slot)`).
 - The brand in the sidebar header and the document title (`"{page} · {brand}"`) is the

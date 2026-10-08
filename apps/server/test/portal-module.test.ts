@@ -10,6 +10,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { PORTAL_UI } from "@deck/contract/modules/portal";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { composeDefault, FINDING_CATALOG, merge, resolveOwner, validate, type JsonObject } from "@deck/schema";
@@ -215,6 +216,12 @@ describe("the portal is a built-in module", () => {
     expect(PORTAL_MANIFEST.contributes?.nav?.map(({ id }) => id)).toEqual(["nav:portal/overview"]);
     expect(PORTAL_MANIFEST.contributes?.slots?.map(({ id }) => id)).toEqual(["portal/summary"]);
     expect(PORTAL_MANIFEST.contributes?.extensions?.map(({ id }) => id)).toEqual(["pill:portal/endpoints"]);
+  });
+
+  it("takes its identity and UI contributions from the copy the web half registers against", () => {
+    const { id, version, deckApi, contributes } = PORTAL_MANIFEST;
+    expect({ id, version, deckApi, contributes }).toEqual(PORTAL_UI);
+    expect(contributes).toBe(PORTAL_UI.contributes);
   });
 });
 

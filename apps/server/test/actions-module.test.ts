@@ -21,6 +21,7 @@ import { ModuleInitError } from "../src/modules/host.js";
 import { ACTIONS_FIXTURES_DIR, actionsApp } from "./util/actions-module.js";
 import { createFakeSpawner, type FakeSpawner } from "./util/fake-spawner.js";
 import { testHost } from "./util/modules.js";
+import { serverOnlyFields } from "./util/shared-ui.js";
 import { makeDataDir } from "./util/tmp-data.js";
 
 const RUNNERS_FILE = join(ACTIONS_FIXTURES_DIR, "runners.json");
@@ -86,6 +87,7 @@ describe("actions module manifest", () => {
     expect({ id, version, deckApi, contributes: ui }).toEqual(ACTIONS_UI);
     expect(contributes.pages).toBe(ACTIONS_UI.contributes?.pages);
     expect(contributes.nav).toBe(ACTIONS_UI.contributes?.nav);
+    expect(serverOnlyFields(ACTIONS_UI)).toEqual([]);
     // Only the routes are the server's own: their disabled refusals carry its error codes.
     expect(routes?.legacyAliases).toEqual(["/api/actions"]);
   });

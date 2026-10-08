@@ -22,6 +22,7 @@ import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { PORTAL_MANIFEST, portalModule } from "../src/portal/module.js";
 import portalSchema from "../src/portal/schema.json" with { type: "json" };
 import { KERNEL_FEATURES } from "../src/ui/kernel-features.js";
+import { serverOnlyFields } from "./util/shared-ui.js";
 import { makeConfigDir } from "./util/tmp-config.js";
 
 /** What deck validates with: the kernel composed with the built-in modules. */
@@ -222,6 +223,7 @@ describe("the portal is a built-in module", () => {
     const { id, version, deckApi, contributes } = PORTAL_MANIFEST;
     expect({ id, version, deckApi, contributes }).toEqual(PORTAL_UI);
     expect(contributes).toBe(PORTAL_UI.contributes);
+    expect(serverOnlyFields(PORTAL_UI)).toEqual([]);
   });
 });
 

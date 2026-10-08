@@ -18,6 +18,7 @@ import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { ModuleInitError } from "../src/modules/host.js";
 import { createApp } from "../src/server/app.js";
 import { testHost } from "./util/modules.js";
+import { serverOnlyFields } from "./util/shared-ui.js";
 
 const NOW = 1_767_225_600_000;
 const providers = { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [] };
@@ -56,9 +57,13 @@ describe("llm-usage module", () => {
   });
 
   it("takes its identity and UI contributions from the copy the web half registers against", () => {
-    const { id, version, deckApi, contributes } = LLM_USAGE_MANIFEST;
-    expect({ id, version, deckApi, contributes }).toEqual(LLM_USAGE_UI);
-    expect(contributes).toBe(LLM_USAGE_UI.contributes);
+    const { id, version, deckApi, contributes = {} } = LLM_USAGE_MANIFEST;
+    const { routes, ...ui } = contributes;
+    expect({ id, version, deckApi, contributes: ui }).toEqual(LLM_USAGE_UI);
+    for (const key of Object.keys(ui) as (keyof typeof ui)[]) expect(ui[key]).toBe(LLM_USAGE_UI.contributes?.[key]);
+    expect(serverOnlyFields(LLM_USAGE_UI)).toEqual([]);
+    // Only the routes are the server's own, added after the shared contributions.
+    expect(routes).toEqual({ legacyAliases: ["/api/llm-usage"] });
   });
 
   it("serves byte-identical bodies at /api/m/llm-usage and the legacy /api/llm-usage", async () => {

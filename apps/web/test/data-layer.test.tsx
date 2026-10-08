@@ -9,6 +9,7 @@ import {
   useConfig,
   useProvider,
   useUiManifest,
+  UI_MANIFEST_REFRESH_MS,
 } from "../src/data/index.js";
 import { usePortalData } from "../src/features/portal/usePortalData.js";
 
@@ -399,9 +400,11 @@ describe("review round 2 regressions", () => {
     expect(calls("/api/ui")).toBe(2);
     expect(screen.getByText("gatus none")).toBeTruthy();
     const gatusAfterHeal = calls("/api/providers/gatus");
+    // Healed, the manifest is no longer asked every poll interval, only every refresh interval.
+    await tick(UI_MANIFEST_REFRESH_MS - 1);
+    expect(calls("/api/ui")).toBe(2);
     await tick(POLL_DEFAULTS.pollIntervalMs * 3);
     expect(calls("/api/providers/gatus")).toBe(gatusAfterHeal);
-    expect(calls("/api/ui")).toBe(2);
     expect(screen.getByText("docker data")).toBeTruthy();
   });
 });

@@ -12,7 +12,7 @@ notifyManager.setScheduler(queueMicrotask);
  * tab does not refetch on its own.
  */
 export function createDeckQueryClient(): QueryClient {
-  return new QueryClient({
+  const client = new QueryClient({
     defaultOptions: {
       queries: {
         retry: false,
@@ -24,6 +24,10 @@ export function createDeckQueryClient(): QueryClient {
       },
     },
   });
+  // Hooks pass the client directly (no provider mounts it): mount it here, so the queries that
+  // opt in (the UI manifest) see the window regain focus.
+  client.mount();
+  return client;
 }
 
 let client = createDeckQueryClient();
@@ -35,5 +39,6 @@ export function getQueryClient(): QueryClient {
 /** Test seam: drop every cached query (and the client holding them). */
 export function resetQueryClient(): void {
   client.clear();
+  client.unmount();
   client = createDeckQueryClient();
 }

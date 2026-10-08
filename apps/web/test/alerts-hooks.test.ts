@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { POLL_DEFAULTS } from "@deck/contract";
+import { UI_MANIFEST_REFRESH_MS } from "../src/data/index.js";
 import type { FreshnessStamp, ProviderEnvelope } from "@deck/contract";
 import { createElement as h } from "react";
 import { mount as render } from "./support/render.js";
@@ -130,7 +131,10 @@ describe("alerts-and-health data hooks", () => {
 
       await advance(POLL_DEFAULTS.pollIntervalMs);
       expect(providerCalls()).toBe(3);
-      expect(fetchMock.mock.calls.filter((call) => call[0] === "/api/ui")).toHaveLength(1);
+      // The manifest keeps its own cadence (one refresh per UI_MANIFEST_REFRESH_MS), not the poll's.
+      expect(fetchMock.mock.calls.filter((call) => call[0] === "/api/ui")).toHaveLength(
+        1 + Math.floor((2 * POLL_DEFAULTS.pollIntervalMs) / UI_MANIFEST_REFRESH_MS),
+      );
 
       // Interval cleanup: after unmount no further poll fires.
       probe.unmount();

@@ -8,6 +8,7 @@ import { bootHome } from "./boot.js";
 import { useBrandTitle } from "./manifest-slot.js";
 import { ModuleNotEnabledPage } from "./ModuleNotEnabledPage.js";
 import { NotFoundPage } from "./NotFoundPage.js";
+import { ReloadNotice } from "./ReloadNotice.js";
 import { HOME_PATH, resolveRoutes, routeForPath, type ResolvedRoutes } from "./routes.js";
 import { useConfig, useUiManifest } from "../data/index.js";
 
@@ -37,6 +38,7 @@ function Shell() {
           {config.message}
         </Callout>
       )}
+      <ReloadNotice />
       <RoutedContent routes={routes} />
     </AppShell>
   );

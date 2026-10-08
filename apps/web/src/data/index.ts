@@ -17,6 +17,7 @@ export {
   useConfig,
   useProvider,
   useUiManifest,
+  UI_MANIFEST_REFRESH_MS,
   type ConfigState,
   type ProviderRef,
   type ProviderState,

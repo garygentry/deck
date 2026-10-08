@@ -47,18 +47,24 @@ export type UiManifestState =
   | { status: "ready"; manifest: UiManifest }
   | { status: "error"; message: string };
 
+/** How often a page re-reads the UI manifest, which the server swaps when the `ui` config changes. */
+export const UI_MANIFEST_REFRESH_MS = 60_000;
+
 /**
- * The resolved UI manifest (`/api/ui`), read once per page load. When it cannot be read the
- * state is `error` (a settled answer), asked again every poll interval by its readers until it
- * succeeds; it never goes back to `loading` while it is asked again.
+ * The resolved UI manifest (`/api/ui`), shared by every reader: one read per page load, then
+ * again when the window regains focus and every {@link UI_MANIFEST_REFRESH_MS}, so a `ui`
+ * config change shows without a reload (an unchanged manifest is a cheap 304 and keeps its
+ * references). When it cannot be read the state is `error` (a settled answer), asked again
+ * every poll interval until it succeeds; it never goes back to `loading` while it is asked again.
  */
 export function useUiManifest(): UiManifestState {
   const query = useQuery(
     {
       ...uiManifestQuery,
       // While it is unavailable, ask again each poll interval so readers heal within a tick.
-      refetchInterval: (q) => (isUiManifestUnavailable(q.state.data) ? POLL_DEFAULTS.pollIntervalMs : false),
+      refetchInterval: (q) => (isUiManifestUnavailable(q.state.data) ? POLL_DEFAULTS.pollIntervalMs : UI_MANIFEST_REFRESH_MS),
       refetchIntervalInBackground: true,
+      refetchOnWindowFocus: "always",
     },
     getQueryClient(),
   );

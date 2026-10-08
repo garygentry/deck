@@ -6,28 +6,8 @@
     <title>Deck</title>
     <!-- The boot object (DeckBoot in @deck/contract): the server writes it in; empty under Vite dev. -->
     <script type="application/json" id="deck-boot"></script>
-    <script>
-      // Apply the theme before first paint (no flash). Mirrors shell/use-theme.ts:
-      // the stored "light" | "dark" | "system" under "deck-theme", else the
-      // operator's default from the boot object, else "system".
-      (function () {
-        var mode = null;
-        try {
-          mode = localStorage.getItem("deck-theme");
-        } catch (e) {}
-        if (mode !== "light" && mode !== "dark" && mode !== "system") {
-          try {
-            mode = JSON.parse(document.getElementById("deck-boot").textContent).theme.mode;
-          } catch (e) {
-            mode = null;
-          }
-        }
-        var dark =
-          mode === "dark" ||
-          (mode !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-        document.documentElement.classList.toggle("dark", dark);
-      })();
-    </script>
+    <!-- The pre-paint theme script (shell/theme-chain.ts), inlined by vite.config.ts. -->
+    <!-- deck:pre-paint-theme -->
   </head>
   <body>
     <div id="app"></div>

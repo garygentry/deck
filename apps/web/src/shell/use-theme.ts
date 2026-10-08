@@ -1,25 +1,17 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { readDeckBoot } from "@deck/contract";
+import { BOOT_ELEMENT_ID } from "@deck/contract";
 import { applyTheme } from "./theme.js";
+import { initialThemeMode, THEME_CHOICE_KEY, type ThemeMode } from "./theme-chain.js";
 
 /** User preference; "system" follows the OS via prefers-color-scheme. */
-export type ThemeMode = "system" | "light" | "dark";
+export type { ThemeMode } from "./theme-chain.js";
 
-const STORAGE_KEY = "deck-theme";
 const MODES: readonly ThemeMode[] = ["system", "light", "dark"];
 
-/**
- * The viewer's stored preference, else the operator's default the server wrote into the page
- * (`ui.theme.mode`), else "system". `index.html` runs the same logic before first paint.
- */
+/** The start mode: the same chain the pre-paint script runs (see `theme-chain.ts`). */
 function readStored(): ThemeMode {
-  try {
-    const value = localStorage.getItem(STORAGE_KEY);
-    if (value === "light" || value === "dark" || value === "system") return value;
-  } catch {
-    // Private mode / blocked storage — fall back to the default.
-  }
-  return (typeof document === "undefined" ? undefined : readDeckBoot(document).theme.mode) ?? "system";
+  const bootText = typeof document === "undefined" ? null : document.getElementById(BOOT_ELEMENT_ID)?.textContent;
+  return initialThemeMode((key) => localStorage.getItem(key), bootText);
 }
 
 function prefersDark(): boolean {
@@ -53,7 +45,7 @@ function subscribe(listener: () => void): () => void {
 function setThemeMode(next: ThemeMode): void {
   current = next;
   try {
-    localStorage.setItem(STORAGE_KEY, next);
+    localStorage.setItem(THEME_CHOICE_KEY, next);
   } catch {
     // Non-fatal; the theme still applies for this session.
   }

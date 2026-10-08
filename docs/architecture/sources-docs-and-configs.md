@@ -40,11 +40,13 @@ An unknown source id, or one of a kind no running module serves, yields `404` `S
 
 ## Web UI
 
-The feature registers two SPA pages and one entity fragment:
+The sources module's manifest declares the UI as data, in `@deck/contract/modules/sources` (`SOURCES_UI`), which the server manifest spreads in. It contributes two pages, listed in the `knowledge` nav group, and an owned-configs `entity-section` on each detail page:
 
 - `/docs` (nav label "Docs") — the `markdown-tree` browser: a tree view, rendered Markdown with a table of contents and syntax highlighting, and search.
 - `/configs` (nav label "Configs") — the `file-tree` browser: verbatim file viewing with a notice that content is shown exactly as stored, no redaction.
-- An **owned-configs** section ("Configs", order 20) attached by id to both the host- and service-detail pages, after drift's findings, surfacing the config files a given host or service owns (via each source's optional `owner`).
+- An **owned-configs** section ("Configs", in the shared `configs` section at order 20): `section:sources/host-configs` on `entity:host/sections` and `section:sources/service-configs` on `entity:service/sections`, after drift's findings (order 10). It surfaces the config files a given host or service owns (via each source's optional `owner`).
+
+The web half (`features/sources-docs-and-configs/index.ts`) supplies only the components the manifest names (`DocsPage`, `ConfigsPage`, `OwnedConfigsFragment`) and registers them with `registerWebModule`; where each one renders comes from the manifest, and the UI manifest (`GET /api/ui`) decides at runtime.
 
 Markdown is rendered with `markdown-it`, sanitized with DOMPurify, and highlighted with highlight.js — all in the browser. Oversized files show a "too large" notice (reporting the size in MiB); binary files show a placeholder instead of bytes.
 
@@ -72,7 +74,7 @@ Each source is declared in estate config under `sources[]`:
 | `location.path` | Filesystem path (local-path source), or… |
 | `location.repo` + `location.ref` | HTTPS/SSH git remote and optional branch/tag/ref (git source). |
 | `include` / `exclude` | Optional glob patterns bounding the browsable tree. |
-| `owner` | Optional `{ host, service? }` linking config files to an inventory entity (drives the owned-configs fragment). |
+| `owner` | Optional `{ host, service? }` linking config files to an inventory entity (drives the owned-configs section). |
 | `credentialEnv` | Optional environment-variable **name** holding a private-repo token (see Private-repo credentials). Never the token value. |
 
 ### Fixed bounds

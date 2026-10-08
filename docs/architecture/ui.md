@@ -105,12 +105,12 @@ Features register surfaces at import time. `registry/discover.ts` imports every
 
 - `registerPage({ id, path, label, icon, group, component, nav? })` for a routed page;
 - `registerEntityFragment({ id, entity, title, section?, order?, component })` for a section on
-  host or service detail pages (drift findings; see "Entity sections" below; a module on the
-  contract declares its sections as `entity-section` extensions in its manifest instead, as
-  sources does for owned configs);
+  host or service detail pages (see "Entity sections" below). A module on the contract declares
+  its sections as `entity-section` extensions in its manifest instead, as drift does for its
+  findings and sources for owned configs;
 - `registerSummaryFragment(HealthHeaderSlot, { id, component })` for a health pill in the top
   bar (a module on the contract declares its pills as `pill` extensions in its manifest
-  instead, as monitoring and llm-usage do);
+  instead, as monitoring, drift and llm-usage do);
 - `registerCard({ id, slot, component })` for a card in a module's widget slot.
 
 A card on the portal summary is a module's manifest contribution, not a `registerCard` call:
@@ -197,7 +197,7 @@ Registration follows the same rules as the server's manifest validation, shared 
 - every extension but a nav entry needs a component;
 - an entity section needs a title, and a section it names is lowercase (`a-z`, `0-9`, `-`) with no
   `.`,
-  whichever way it is registered (`registerEntityFragment` or `registerExtension`).
+  whichever way it is registered (`registerWebModule`, `registerEntityFragment` or `registerExtension`).
 
 ### Entity sections
 

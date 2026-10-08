@@ -79,18 +79,23 @@ afterEach(() => {
 });
 
 /** Render the whole app at `path`, serving `ui` and the `ups` provider's envelope. */
-async function renderApp(path: string, ui: UiManifest, ups: () => ProviderEnvelope | null = () => envelope()) {
+async function renderApp(
+  path: string,
+  ui: UiManifest | (() => Promise<UiManifest>),
+  ups: () => ProviderEnvelope | null = () => envelope(),
+) {
   vi.resetModules();
-  vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+  const fetch = vi.fn(async (input: string | URL | Request) => {
     const url = String(input);
     if (url === "/api/config") return Response.json(primary.merged);
-    if (url === "/api/ui") return Response.json(ui);
+    if (url === "/api/ui") return Response.json(typeof ui === "function" ? await ui() : ui);
     if (url === "/api/providers/ups") {
       const body = ups();
       return body === null ? new Response(null, { status: 404 }) : Response.json(body);
     }
     return new Response(null, { status: 404 });
-  }));
+  });
+  vi.stubGlobal("fetch", fetch);
   vi.stubGlobal("location", new URL(`http://localhost${path}`));
   vi.stubGlobal("matchMedia", (query: string) => ({
     matches: false, media: query, onchange: null,
@@ -102,6 +107,7 @@ async function renderApp(path: string, ui: UiManifest, ups: () => ProviderEnvelo
   await import("../src/registry/discover.js");
   const { App } = await import("../src/shell/App.js");
   render(<App />);
+  return fetch;
 }
 
 const main = () => screen.getByRole("main");
@@ -172,7 +178,15 @@ describe("widgetView", async () => {
   const sourced = widget("load", { source: { id: "ups", kind: "http-json" }, select: "load", projection: "widget:ui/lab.load" });
 
   it("is an error for a type no module registers, or a source that did not resolve", () => {
-    expect(widgetView(sourced, undefined, null)).toMatchObject({ state: "error", title: "Unknown widget type" });
+    expect(widgetView(sourced, undefined, null)).toMatchObject({ state: "error", title: "Widget unavailable" });
+    // The server says no enabled module provides it, or the manifest does not list it: unavailable,
+    // even though the web bundles a component for it.
+    expect(widgetView(widget("x", { typeProblem: 'No enabled module provides the widget type "gauges/dial".' }), type, null)).toEqual({
+      state: "error",
+      title: "Widget unavailable",
+      message: 'No enabled module provides the widget type "gauges/dial".',
+    });
+    expect(widgetView(sourced, type, { envelope: envelope(), loading: false }, false)).toMatchObject({ state: "error", title: "Widget unavailable" });
     expect(widgetView(widget("x", { sourceProblem: 'It reads provider "nope", which is not configured.' }), type, null)).toEqual({
       state: "error",
       title: "No data source",
@@ -264,6 +278,67 @@ describe("a widget on the page", () => {
     const boom = screen.getByRole("region", { name: "Widget boom" });
     expect(within(boom).getByRole("alert")).toHaveTextContent("Widget boom unavailable");
     expect(screen.getByRole("region", { name: "Widget fine" }).querySelector("code")?.textContent).toBe("null");
+  });
+});
+
+describe("a widget whose type the manifest does not list", () => {
+  it("renders as unavailable and reads no data, though the web bundles its component", async () => {
+    const fetch = await renderApp("/lab", served({ widgetTypes: [] }));
+    const load = await screen.findByRole("region", { name: "Widget load" });
+    expect(within(load).getByText("Widget unavailable")).toBeInTheDocument();
+    expect(within(main()).getAllByText("Widget unavailable")).toHaveLength(4);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(fetch.mock.calls.map(([input]) => String(input))).not.toContain("/api/providers/ups");
+  });
+});
+
+describe("while the manifest loads", () => {
+  it("a deep link to a config page shows a loading state, never 'not found', then the page", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await renderApp("/lab", async () => {
+      await gate;
+      return served();
+    });
+    expect(await screen.findByText("Loading page…")).toBeInTheDocument();
+    expect(screen.queryByText("Page not found")).toBeNull();
+    release();
+    expect(await screen.findByRole("heading", { level: 1, name: "Lab overview" })).toBeInTheDocument();
+  });
+
+  it("a config page as home shows a loading state at /, never the portal", async () => {
+    const boot = document.createElement("script");
+    boot.type = "application/json";
+    boot.id = (await import("@deck/contract")).BOOT_ELEMENT_ID;
+    boot.textContent = JSON.stringify({ bootApi: 1, brand: { title: "Lab" }, theme: {}, home: "page:ui/lab" });
+    document.head.append(boot);
+    try {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      await renderApp("/", async () => {
+        await gate;
+        return served({ home: { page: "page:ui/lab", path: "/lab" } });
+      });
+      expect(await screen.findByText("Loading page…")).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { level: 1, name: "Portal" })).toBeNull();
+      release();
+      expect(await screen.findByRole("heading", { level: 1, name: "Lab overview" })).toBeInTheDocument();
+    } finally {
+      boot.remove();
+    }
+  });
+
+  it("awaits only while loading, for / with a config home and for unrouted paths", async () => {
+    const { awaitingConfigPage } = await import("../src/shell/App.js");
+    const routes = { home: undefined, routed: [{ id: "page:portal/overview" as const, path: "/portal", label: "Portal", component: () => null }], notEnabled: [] };
+    const loading = { status: "loading" } as const;
+    expect(awaitingConfigPage(loading, routes, "/", "page:ui/lab")).toBe(true);
+    expect(awaitingConfigPage(loading, routes, "/", "page:portal/overview")).toBe(false);
+    expect(awaitingConfigPage(loading, routes, "/", undefined)).toBe(false);
+    expect(awaitingConfigPage(loading, routes, "/lab", undefined)).toBe(true);
+    expect(awaitingConfigPage(loading, routes, "/portal", undefined)).toBe(false);
+    expect(awaitingConfigPage({ status: "error", message: "down" }, routes, "/lab", "page:ui/lab")).toBe(false);
+    expect(awaitingConfigPage({ status: "ready", manifest: golden }, routes, "/lab", "page:ui/lab")).toBe(false);
   });
 });
 

@@ -77,6 +77,23 @@ test.describe("a config page (dashboard)", () => {
     await expect(main(page).getByRole("region", { name: "Unknown source" })).toContainText('It reads provider "no-such-provider", which is not configured.');
   });
 
+  test("a deep link shows a loading state while the manifest loads, never 'not found'", async ({ page }) => {
+    await useSpecApi(page, api.port);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    // Hold /api/ui back (a later route takes precedence), then hand it to the spec API.
+    await page.route("**/api/ui", async (route) => {
+      await held;
+      await route.fallback();
+    });
+    await page.goto("/lab");
+    await expect(page.getByText("Loading page…")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Page not found")).toHaveCount(0);
+    release();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Lab overview"], { timeout: 15_000 });
+    await expect(page.getByText("Page not found")).toHaveCount(0);
+  });
+
   test("has one h1, a heading per section and widget, in reading order", async ({ page }) => {
     await useSpecApi(page, api.port);
     await page.setViewportSize({ width: 1280, height: 900 });

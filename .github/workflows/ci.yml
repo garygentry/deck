@@ -196,6 +196,15 @@ jobs:
         run: |
           bun apps/server/src/cli/deck.ts render packages/schema/src/fixtures/primary --out /tmp/rendered.deck.config.json
           diff -u apps/server/test/golden/deck.config.json /tmp/rendered.deck.config.json
+      - name: Web bundle carries no select engine
+        # A widget's `select` (JMESPath) is evaluated on the server only; the built bundle must
+        # not contain the engine, however it might be reached.
+        run: |
+          (cd apps/web && bunx vite build --outDir /tmp/web-dist --emptyOutDir)
+          if grep -rlE "TreeInterpreter|jmespath" /tmp/web-dist; then
+            echo "::error::the JMESPath engine reached the web bundle"
+            exit 1
+          fi
       - name: Bare-Bun boot smoke
         run: |
           export DECK_PORT=8787

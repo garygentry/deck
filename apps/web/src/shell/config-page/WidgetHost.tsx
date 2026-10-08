@@ -2,7 +2,7 @@ import type { FreshnessStamp, ProviderEnvelope } from "@deck/contract";
 import type { UiWidgetInstance } from "@deck/module-sdk";
 import { EmptyState, ErrorState, FragmentBoundary, FreshnessBadge, LoadingState, Section, cn } from "@/ui";
 
-import { useProvider } from "../../data/index.js";
+import { useProvider, useUiManifest } from "../../data/index.js";
 import { getWidgetType, type WidgetTypeRegistration } from "../../registry/registry.js";
 import { useRegistryVersion } from "../../registry/use-registry.js";
 
@@ -31,8 +31,9 @@ export type WidgetView =
   | { state: "ready"; value: unknown; freshness: FreshnessStamp | null };
 
 /**
- * The view for a widget: an error when its type is not registered or its source did not
- * resolve; loading until the provider's first read; an error when the provider has no data
+ * The view for a widget: unavailable when the server says no enabled module provides its type
+ * (`typeProblem`), the manifest does not list the type (`listed`) or the web has not registered
+ * it; an error when its source did not resolve; loading until the provider's first read; an error when the provider has no data
  * because it failed, or the widget's `select` failed on it; empty when the value is null or
  * an empty list or object; else the value (the `select` result the server evaluated, or the
  * provider's data whole), with the provider's freshness. A widget that reads no source (a
@@ -42,9 +43,14 @@ export function widgetView(
   widget: UiWidgetInstance,
   type: WidgetTypeRegistration | undefined,
   provider: { envelope: ProviderEnvelope | null; loading: boolean } | null,
+  listed = true,
 ): WidgetView {
-  if (type === undefined) {
-    return { state: "error", title: "Unknown widget type", message: `No enabled module provides the widget type "${widget.type}".` };
+  if (widget.typeProblem !== undefined || !listed || type === undefined) {
+    return {
+      state: "error",
+      title: "Widget unavailable",
+      message: widget.typeProblem ?? `No enabled module provides the widget type "${widget.type}".`,
+    };
   }
   if (widget.sourceProblem !== undefined) return { state: "error", title: "No data source", message: widget.sourceProblem };
   if (provider === null) return { state: "ready", value: null, freshness: null };
@@ -91,6 +97,11 @@ export function WidgetHost({ widget }: { widget: UiWidgetInstance }) {
   useRegistryVersion();
   const type = getWidgetType(widget.type);
   const title = widget.title ?? widget.type;
+  // A type of a module that is off renders as unavailable, and reads no data, even when the web bundles it.
+  const manifest = useUiManifest();
+  const widgetTypes = manifest.status === "ready" ? manifest.manifest.widgetTypes : undefined;
+  const listed = !Array.isArray(widgetTypes) || widgetTypes.some((entry) => entry?.type === widget.type);
+  const available = listed && type !== undefined && widget.typeProblem === undefined;
   return (
     <div
       data-slot="widget"
@@ -98,8 +109,8 @@ export function WidgetHost({ widget }: { widget: UiWidgetInstance }) {
       data-widget-id={widget.id}
       className={cn("min-w-0", COL_SPAN[widget.span], ROW_SPAN[widget.rows] ?? ROW_SPAN[1])}
     >
-      {widget.source === null ? (
-        <WidgetCard widget={widget} title={title} view={widgetView(widget, type, null)} type={type} resetKey={widget} />
+      {widget.source === null || !available ? (
+        <WidgetCard widget={widget} title={title} view={widgetView(widget, type, null, listed)} type={type} resetKey={widget} />
       ) : (
         <SourcedWidget widget={widget} sourceId={widget.source.id} title={title} type={type} />
       )}

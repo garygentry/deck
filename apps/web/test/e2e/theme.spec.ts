@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { LEGACY_THEME_KEY, THEME_CHOICE_KEY } from "../../src/shell/theme-chain.js";
 
 /**
  * Theme switching: the `.dark` class on <html> selects the dark tokens in
@@ -8,8 +9,8 @@ import { expect, test, type Page } from "@playwright/test";
  */
 
 /** Where the theme menu stores the viewer's choice; `deck-theme` is an older shell's key. */
-const STORAGE_KEY = "deck-theme-choice";
-const LEGACY_KEY = "deck-theme";
+const STORAGE_KEY = THEME_CHOICE_KEY;
+const LEGACY_KEY = LEGACY_THEME_KEY;
 
 async function storePreference(page: Page, mode: string, key = STORAGE_KEY): Promise<void> {
   await page.addInitScript(

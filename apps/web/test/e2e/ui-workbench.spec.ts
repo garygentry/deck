@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { seedTheme } from "./theme-seed.js";
 
 /**
  * The dev-only `/_ui` component workbench. The structural checks run everywhere.
@@ -57,7 +58,7 @@ test.describe("visual baselines", () => {
     for (const width of WIDTHS) {
       test(`${width}px ${theme}`, async ({ page }) => {
         await page.clock.setFixedTime(FROZEN_NOW);
-        await page.addInitScript((mode) => localStorage.setItem("deck-theme", mode), theme);
+        await seedTheme(page, theme);
         await page.setViewportSize({ width, height: 900 });
         await page.goto("/_ui");
         await expect(workbench(page)).toBeVisible();

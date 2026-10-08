@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { FIXTURE } from "./inventory-fixture.js";
 import { populatedLlmUsage } from "./llm-usage-fixture.js";
+import { seedTheme } from "./theme-seed.js";
 
 /**
  * Automated accessibility pass: every route, light and dark, must have no
@@ -31,7 +32,7 @@ for (const theme of ["light", "dark"] as const) {
   test.describe(`${theme} theme`, () => {
     for (const [name, path] of ROUTES) {
       test(`${name} has no serious or critical axe violations`, async ({ page }) => {
-        await page.addInitScript((mode) => localStorage.setItem("deck-theme", mode), theme);
+        await seedTheme(page, theme);
         await page.goto(path);
         await expect(page.locator("main#main")).toBeVisible();
         // Prove the theme took, so the dark pass never silently re-tests light.
@@ -58,7 +59,7 @@ for (const theme of ["light", "dark"] as const) {
 for (const theme of ["light", "dark"] as const) {
   test(`populated llm usage (${theme}) has no serious or critical axe violations`, async ({ page }) => {
     await page.route("**/api/llm-usage", (route) => route.fulfill({ json: populatedLlmUsage(Date.now()) }));
-    await page.addInitScript((mode) => localStorage.setItem("deck-theme", mode), theme);
+    await seedTheme(page, theme);
     await page.goto("/usage");
     await expect(page.getByRole("meter", { name: "Current session" })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: /Sources and polling/ }).click();

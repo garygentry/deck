@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { ACTIONS_UI } from "@deck/contract/modules/actions";
 import { defineServerModule, type ServerModuleContext } from "@deck/module-sdk";
 import { composeDefault } from "@deck/schema";
 import { Hono } from "hono";
@@ -20,6 +21,7 @@ import { ModuleInitError } from "../src/modules/host.js";
 import { ACTIONS_FIXTURES_DIR, actionsApp } from "./util/actions-module.js";
 import { createFakeSpawner, type FakeSpawner } from "./util/fake-spawner.js";
 import { testHost } from "./util/modules.js";
+import { serverOnlyFields } from "./util/shared-ui.js";
 import { makeDataDir } from "./util/tmp-data.js";
 
 const RUNNERS_FILE = join(ACTIONS_FIXTURES_DIR, "runners.json");
@@ -77,6 +79,17 @@ describe("actions module manifest", () => {
     });
     expect(ACTIONS_MANIFEST.env).toEqual(["DECK_ACTIONS_ENABLED", "DECK_ACTION_TIMEOUT_MS", "DECK_RUNNERS_FILE"]);
     expect(ACTIONS_MANIFEST.dataDir).toEqual({ legacyPath: "actions" });
+  });
+
+  it("takes its identity and UI contributions from the copy the web half registers against", () => {
+    const { id, version, deckApi, contributes = {} } = ACTIONS_MANIFEST;
+    const { routes, ...ui } = contributes;
+    expect({ id, version, deckApi, contributes: ui }).toEqual(ACTIONS_UI);
+    expect(contributes.pages).toBe(ACTIONS_UI.contributes?.pages);
+    expect(contributes.nav).toBe(ACTIONS_UI.contributes?.nav);
+    expect(serverOnlyFields(ACTIONS_UI)).toEqual([]);
+    // Only the routes are the server's own: their disabled refusals carry its error codes.
+    expect(routes?.legacyAliases).toEqual(["/api/actions"]);
   });
 
   it.each([

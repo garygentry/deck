@@ -7,6 +7,7 @@ import { INVENTORY_UI } from "@deck/contract/modules/inventory";
 import { describe, expect, it } from "vitest";
 
 import { INVENTORY_MANIFEST } from "../src/inventory/module.js";
+import { serverOnlyFields } from "./util/shared-ui.js";
 
 describe("inventory module", () => {
   it("takes its identity and UI contributions from the copy the web half registers against", () => {
@@ -17,6 +18,6 @@ describe("inventory module", () => {
 
   it("keeps its server-only fields out of the shared copy", () => {
     expect(INVENTORY_MANIFEST.dependsOn).toEqual(["snapshot"]);
-    expect(Object.keys(INVENTORY_UI).sort()).toEqual(["contributes", "deckApi", "id", "version"]);
+    expect(serverOnlyFields(INVENTORY_UI)).toEqual([]);
   });
 });

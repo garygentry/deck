@@ -100,38 +100,37 @@ The cache keeps deck's timing:
 ## Pages, the registry and the shell
 
 Features register surfaces at import time. `registry/discover.ts` imports every
-`features/*/index.ts`. A feature on the module contract registers its module's web half (see
-"A module's web half" below); the others still call the blueprints directly:
+`features/*/index.ts`. A feature registers its module's web half (see "A module's web half"
+below): where each page, nav entry, pill, card and entity section attaches is manifest data, so
+a feature never hard-codes a path, slot, group or order. Pages, nav entries, `app/topbar.status`
+pills, `portal/summary` cards and entity sections are all manifest-placed: declare them in the
+module's `contributes`, never with a direct registry call.
 
-- `registerPage({ id, path, label, icon, group, component, nav? })` for a routed page;
-- `registerEntityFragment({ id, entity, title, section?, order?, component })` for a section on
-  host or service detail pages (see "Entity sections" below). A module on the contract declares
-  its sections as `entity-section` extensions in its manifest instead, as drift does for its
-  findings and sources for owned configs;
-- `registerSummaryFragment(HealthHeaderSlot, { id, component })` for a health pill in the top
-  bar (a module on the contract declares its pills as `pill` extensions in its manifest
-  instead, as monitoring, drift and llm-usage do);
-- `registerCard({ id, slot, component })` for a card in a module's widget slot.
+The registry's blueprint calls (`registerPage`, `registerEntityFragment`,
+`registerSummaryFragment`, `registerCard`, `registerExtension`) are the primitives
+`registerWebModule` and core build on. Core uses them for its own controls (it registers the
+theme menu, an `action` extension, and the dev-only `/_ui` workbench page, which no module
+manifest lists), and tests use them for fixtures. No module's feature calls them.
 
-A card on the portal summary is a module's manifest contribution, not a `registerCard` call:
-the portal module declares the slot in its `contributes.slots`, and a module attaches a
-`widget` extension to it in its `contributes.extensions` (as llm-usage's
-`card:llm-usage/portal` does). The portal page renders what the UI manifest places there.
-
-Each call is a blueprint over one model, the **extension**: a component with a stable id, attached
+Each registration is a blueprint over one model, the **extension**: a component with a stable id, attached
 to a slot at an order. Ids have the form `<kind>:<module>/<name>`, and the kind matches the
 blueprint: `page:inventory/hosts`, `pill:drift/summary`, `card:llm-usage/portal`,
 `section:sources/host-configs`. A listed page also contributes its nav entry,
 `nav:inventory/hosts`. The ids are the ones the server's UI manifest (`GET /api/ui`) lists, so
 config can address an extension by id.
 
-| Slot (accepts) | Blueprint | Host |
-|---|---|---|
-| `app/routes` (page), `app/nav` (nav) | `registerPage` | the router; the sidebar (see below) |
-| `app/topbar.status` (pill) | a manifest `pill` extension (`registerWebModule`), or `registerSummaryFragment(HealthHeaderSlot, …)` | the health-header region |
-| `app/topbar.actions` (action) | `registerExtension` | the top bar's controls (the theme menu) |
-| `portal/summary` (widget) | the portal's `contributes.slots`; cards via `contributes.extensions` | the portal page (manifest-placed) |
-| `entity:host/sections`, `entity:service/sections` (entity-section) | a manifest `entity-section` extension (`registerWebModule`), or `registerEntityFragment` | host and service detail pages |
+| Slot (accepts) | Declared in | Placed by | Host |
+|---|---|---|---|
+| `app/routes` (page), `app/nav` (nav) | `registry.ts` (core) | a manifest's `pages` and `nav` | the router; the sidebar (see below) |
+| `app/topbar.status` (pill) | `registry.ts` (core) | a manifest `pill` extension | the health-header region |
+| `app/topbar.actions` (action) | `registry.ts` (core) | a manifest `action` extension (core's theme menu is one) | the top bar's controls |
+| `portal/summary` (widget) | the portal's `contributes.slots` | a manifest `widget` extension | the portal page |
+| `entity:host/sections`, `entity:service/sections` (entity-section) | `registry.ts` (core) | a manifest `entity-section` extension | host and service detail pages |
+
+The registry declares every core slot when it loads, from the list the server's UI manifest
+gives core (`SHELL_SLOTS` in `@deck/contract/modules/core`), so nothing has to load before a
+feature that attaches to one. The shell's slot modules only hand out typed handles
+(`HealthHeaderSlot` types the status pills' payload).
 
 ### A module's web half
 
@@ -159,8 +158,9 @@ The web adds no paths, slots or orders of its own. Everything is checked before 
 registers, so a refused module leaves nothing behind. It refuses, naming the module and the
 component or extension: a name the manifest references that the table lacks (or holds
 something other than a component under), a table entry nothing references, any other extension without a component, a nav entry it cannot express
-(an `href` entry, one not named `nav:<page name>`, two for one page), and whatever the registry
-itself refuses (ids, paths, orders, slot kinds, entity-section config, duplicates). The
+(an `href` entry, one not named `nav:<page name>`, two for one page), an extension (widget
+descriptors included) on a core slot (`app/…`, `entity:…`) that core does not declare
+(`UNKNOWN_SLOT`, instead of an orphan that never renders), and whatever the registry itself refuses (ids, paths, orders, slot kinds, entity-section config, duplicates). The
 registrations are the defaults; at runtime the UI manifest still decides what renders, where
 and with what config (below).
 
@@ -174,15 +174,19 @@ Moving a feature onto it:
    `packages/contract/src/modules/<id>.ts`, and spread it into the server manifest.
 2. Replace the feature's `register*` calls with one `registerWebModule` per module it serves,
    and delete the placement constants (paths, slots, orders, group headings) from the web.
+   Check the component table with `satisfies` against each slot's component contract (a pill
+   takes `HealthSummary`). A feature imports nothing from the shell to attach to a core slot:
+   the registry has declared them all.
 3. Read module-route data through the shared query client (see "Data").
 4. Keep the server UI goldens and `test/extension-ids.test.ts` unchanged; a registration
-   test asserts the registry holds exactly the manifest's contributions.
+   test asserts the registry holds exactly the manifest's contributions, and a server test that
+   the manifest takes them from the shared copy. A module that contributes no UI gets a
+   server-side assertion that it has none.
 
-A slot is declared with `defineSlot({ id, accepts, module })`, such as the top bar's
-`defineSlot({ id: "app/topbar.actions", accepts: "action", module: "core" })`. Its id is
-namespaced to the module hosting it, and the `app/…` and `entity:…` namespaces belong to
-`core`. A module on the contract declares its slots in `contributes.slots` instead, and
-`registerWebModule` defines them (the portal's `portal/summary`). An extension attaches only to a slot that accepts its kind: a card is a `widget`, a
+A module declares the slots it hosts in `contributes.slots`, and `registerWebModule` defines
+them (the portal's `portal/summary`). A slot id is namespaced to the module hosting it, and the
+`app/…` and `entity:…` namespaces belong to `core`, whose slots the registry declares itself
+(above). An extension attaches only to a slot that accepts its kind: a card is a `widget`, a
 pill a `pill`, an entity fragment an `entity-section`. A mismatch throws at registration,
 whichever of the slot and the extension is declared first.
 
@@ -255,11 +259,12 @@ components:
 Until the manifest loads, the sidebar and those slots are empty, and every registered page is
 routed. If it cannot be read, they fall back to the registry: the sidebar lists the registered
 pages by their `group` (and `nav: false`), every registered page is routed, the slots render what
-is registered there, and the brand is "Deck". So `registerPage`'s `group` (a manifest group id
-such as `health`, or a built-in group's heading) only matters in that fallback.
+is registered there, and the brand is "Deck". So a page's registered `group` (its nav entry's
+manifest group id, such as `health`) only matters in that fallback.
 
-The registry is reactive. The shell's slot hosts call `useRegistryVersion()` and read their
-blueprint view (`getPages()`, `getCards(slot)`, …). Module code that wants the raw extensions of a
+The registry is reactive. The shell's slot hosts call `useRegistryVersion()` and render what
+the UI manifest places (`useManifestSlot(slot)`), reading the registry for the components.
+`getCards(slot)` is the registry-only view of a widget slot, which serves only that fallback. Module code that wants the raw extensions of a
 slot uses `useSlot(slot)`, which returns the same array until the next registration. Either way,
 an extension registered after first render appears without a reload, for example one from a
 lazily loaded module.

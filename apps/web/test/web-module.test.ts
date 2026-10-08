@@ -23,6 +23,7 @@ const DEMO = manifest({
   ],
 });
 
+// A fresh registry: core's slots, the top bar's included, are declared with it.
 async function fresh() {
   vi.resetModules();
   const registry = await import("../src/registry/registry.js");
@@ -159,6 +160,59 @@ describe("registerWebModule", () => {
     }
   });
 
+  it("attaches to every core slot with no shell module loaded, the top bar's action slot included", async () => {
+    const { registry, registerWebModule } = await fresh();
+    const Action = () => null;
+    const withAction = manifest({
+      ...DEMO.contributes,
+      extensions: [...DEMO.contributes!.extensions!, { id: "action:demo/refresh", kind: "action", attachTo: { slot: "app/topbar.actions" }, component: "Action" }],
+    });
+    registerWebModule(defineWebModule(withAction, { components: { Page, Pill, Card, Action } }));
+    expect(registry.getExtensions("app/topbar.status").map(({ id }) => id)).toEqual(["pill:demo/summary"]);
+    expect(registry.getExtensions("app/topbar.actions").map(({ id }) => id)).toEqual(["action:demo/refresh"]);
+    expect(registry.getOrphanAttachments()).toEqual([]);
+  });
+
+  it("refuses an extension on a core slot core does not declare, registering nothing", async () => {
+    const { registry, registerWebModule } = await fresh();
+    const typo = { ...DEMO.contributes!.extensions![0]!, attachTo: { slot: "app/topbar.statsu" } };
+    const before = registry.getRegistryVersion();
+    expect(() => registerWebModule(defineWebModule(manifest({ ...DEMO.contributes, extensions: [...DEMO.contributes!.extensions!.slice(1), typo] }), { components: { Page, Pill, Card } }))).toThrowError(
+      expect.objectContaining({
+        code: "UNKNOWN_SLOT",
+        message: 'registerWebModule(demo): extension "pill:demo/summary" attaches to core slot "app/topbar.statsu", which core does not declare',
+      }),
+    );
+    expect(registry.getRegistryVersion()).toBe(before);
+    expect(registry.getAllExtensions().filter(({ module }) => module === "demo")).toEqual([]);
+    expect(registry.getSlot("demo/cards")).toBeUndefined();
+  });
+
+  it("refuses a widget descriptor on a core slot core does not declare, registering nothing", async () => {
+    const { registry, registerWebModule } = await fresh();
+    const descriptor = { id: "widget:demo/stray", kind: "widget", attachTo: { slot: "app/sidebar.widgets" }, widget: { type: "demo/stat" } } as const;
+    const before = registry.getRegistryVersion();
+    expect(() => registerWebModule(defineWebModule(manifest({ ...DEMO.contributes, extensions: [...DEMO.contributes!.extensions!, descriptor] }), { components: { Page, Pill, Card } }))).toThrowError(
+      expect.objectContaining({
+        code: "UNKNOWN_SLOT",
+        message: 'registerWebModule(demo): extension "widget:demo/stray" attaches to core slot "app/sidebar.widgets", which core does not declare',
+      }),
+    );
+    // No slots, pages or extensions left behind, and no registration happened at all.
+    expect(registry.getRegistryVersion()).toBe(before);
+    expect(registry.getAllExtensions().filter(({ module }) => module === "demo")).toEqual([]);
+    expect(registry.getPages().filter(({ id }) => id.startsWith("page:demo/"))).toEqual([]);
+    expect(registry.getSlot("demo/cards")).toBeUndefined();
+  });
+
+  it("accepts an extension on another module's slot that is declared later", async () => {
+    const { registry, registerWebModule } = await fresh();
+    const early = manifest({ extensions: [{ id: "card:demo/early", kind: "widget", attachTo: { slot: "host/cards" }, component: "Card" }] });
+    registerWebModule(defineWebModule(early, { components: { Card } }));
+    registry.defineSlot({ id: "host/cards", accepts: "widget", module: "host" });
+    expect(registry.getExtensions("host/cards").map(({ id }) => id)).toEqual(["card:demo/early"]);
+  });
+
   it("orders the fallback nav by the nav entries' order, and leaves the routes' order alone", async () => {
     const { registry, registerWebModule } = await fresh();
     const { groupNavPages, resolveNav } = await import("../src/shell/nav.js");
@@ -187,7 +241,7 @@ describe("registerWebModule", () => {
 describe("the llm-usage web half", () => {
   it("registers exactly its module's contributions, with no placement of its own", async () => {
     vi.resetModules();
-    await import("../src/shell/health-header/slot.js");
+    // No shell module first: the pill's core slot is declared with the registry.
     await import("../src/features/portal/index.js");
     await import("../src/features/llm-usage/index.js");
     const registry = await import("../src/registry/registry.js");

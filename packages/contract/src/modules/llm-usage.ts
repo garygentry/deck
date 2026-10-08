@@ -11,7 +11,6 @@ export const LLM_USAGE_UI: WebModuleManifest = {
   version: "1.0.0",
   deckApi: "^0.1",
   contributes: {
-    routes: { legacyAliases: ["/api/llm-usage"] },
     pages: [{ id: "page:llm-usage/overview", path: "/usage", title: "LLM usage", icon: "gauge", component: "LlmUsagePage" }],
     nav: [{ id: "nav:llm-usage/overview", page: "page:llm-usage/overview", group: "health" }],
     extensions: [

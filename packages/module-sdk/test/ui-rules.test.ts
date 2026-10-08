@@ -4,6 +4,7 @@ import {
   entitySectionName,
   entitySectionProblem,
   extensionIdProblem,
+  isKernelSlot,
   isSafeHref,
   orderProblem,
   pagePathProblem,
@@ -30,6 +31,10 @@ describe("shared UI rules", () => {
     expect(slotIdProblem("app/nav", "a")).toMatch(/kernel-reserved/);
     expect(slotIdProblem("app/nav", "core", { kernel: true })).toBeNull();
     expect(slotAcceptsProblem("tile", "a/b")).toMatch(/accepts must be one of/);
+    expect(isKernelSlot("app/topbar.status")).toBe(true);
+    expect(isKernelSlot("entity:host/sections")).toBe(true);
+    expect(isKernelSlot("portal/summary")).toBe(false);
+    expect(isKernelSlot("apps/x")).toBe(false);
   });
 
   it("checks orders, page paths and hrefs", () => {

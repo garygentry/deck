@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 // `../src/index.js` and `../src/actions.js` are the package's `.` and `./actions` exports.
 import { validateActionParams } from "../src/actions.js";
 import { POLL_DEFAULTS } from "../src/index.js";
+import { ACTIONS_UI } from "../src/modules/actions.js";
 import { DRIFT_UI } from "../src/modules/drift.js";
 import { INVENTORY_UI } from "../src/modules/inventory.js";
 import { LLM_USAGE_UI } from "../src/modules/llm-usage.js";
@@ -57,6 +58,8 @@ describe("@deck/contract", () => {
     expect(JSON.parse(JSON.stringify(LLM_USAGE_UI))).toEqual(LLM_USAGE_UI);
     expect(MONITORING_UI.id).toBe("monitoring");
     expect(JSON.parse(JSON.stringify(MONITORING_UI))).toEqual(MONITORING_UI);
+    expect(ACTIONS_UI.id).toBe("actions");
+    expect(JSON.parse(JSON.stringify(ACTIONS_UI))).toEqual(ACTIONS_UI);
     expect(PORTAL_UI.id).toBe("portal");
     expect(JSON.parse(JSON.stringify(PORTAL_UI))).toEqual(PORTAL_UI);
     expect(SOURCES_UI.id).toBe("sources");

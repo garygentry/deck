@@ -1,11 +1,15 @@
-import type { ModuleManifest } from "./manifest.js";
+import type { ModuleContributions, ModuleManifest } from "./manifest.js";
 
 /**
  * The part of a manifest the web half reads: the module's identity and its UI contributions
- * (pages, nav entries, slots, extensions). A full {@link ModuleManifest} is one too, so an
- * external module passes its whole manifest; a built-in shares just this part with the web.
+ * (pages, nav entries, slots, extensions). It has no `routes`, which are server-only: a
+ * built-in's shared copy cannot declare them, so the server manifest that spreads it in owns
+ * its routes alone. A full {@link ModuleManifest} value is still accepted where one is
+ * expected, so an external module passes its whole manifest.
  */
-export type WebModuleManifest = Pick<ModuleManifest, "id" | "version" | "deckApi" | "contributes">;
+export type WebModuleManifest = Pick<ModuleManifest, "id" | "version" | "deckApi"> & {
+  contributes?: Omit<ModuleContributions, "routes">;
+};
 
 /**
  * A module's web half: a table of components that the manifest's pages, extensions and

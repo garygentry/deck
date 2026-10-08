@@ -1,3 +1,4 @@
+import { SHELL_SLOTS } from "@deck/contract/modules/core";
 import {
   entitySectionName,
   entitySectionProblem,
@@ -168,12 +169,10 @@ export function getSlot(id: string): Slot | undefined {
   return slots.get(id);
 }
 
-// The slots core hosts for pages, nav and entity sections (the status slot is declared by the
-// health header, which owns its payload type).
-defineSlot({ id: "app/routes", accepts: "page", module: "core" });
-defineSlot({ id: "app/nav", accepts: "nav", module: "core" });
-defineSlot({ id: "entity:host/sections", accepts: "entity-section", module: "core" });
-defineSlot({ id: "entity:service/sections", accepts: "entity-section", module: "core" });
+// Every slot core hosts (routes, nav, the top bar's, the entity pages'), declared here with the
+// registry, so a module attaches to any of them whatever imports it first. The list is the one
+// the server's UI manifest gives core.
+for (const slot of SHELL_SLOTS) defineSlot({ id: slot.id, accepts: slot.accepts, module: "core" });
 
 export interface ExtensionInput {
   id: ExtensionId;
@@ -358,6 +357,17 @@ export function registerEntityFragment(registration: EntityFragmentRegistration)
     "section",
     "registerEntityFragment",
   );
+}
+
+/**
+ * A typed handle to a pill slot that is already declared (core's `app/topbar.status`), whose
+ * pills render with payload `P`. Throws `UNKNOWN_SLOT` if no pill slot has that id.
+ */
+export function summarySlot<P>(slotId: string): SummarySlot<P> {
+  if (slots.get(slotId)?.accepts !== "pill") {
+    throw new RegistrationError("UNKNOWN_SLOT", `summarySlot: "${slotId}" is not a declared pill slot`);
+  }
+  return { slotId };
 }
 
 /** Declare a pill slot whose pills render with payload `P` (hosted by `core` unless `module` is given). */

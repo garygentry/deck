@@ -5,8 +5,6 @@ import type { ComponentType } from "react";
 import type { EntityFragmentRegistration } from "../../registry/registry.js";
 import { registerWebModule } from "../../registry/web-module.js";
 import type { HealthSummary } from "../../shell/health-header/health-summary.js";
-// Declares `app/topbar.status` before the pill attaches to it, whatever imports this first.
-import "../../shell/health-header/slot.js";
 import { DriftHealthSummary } from "./DriftHealthSummary.js";
 import { DriftPage, FindingsFragment } from "./pages.js";
 

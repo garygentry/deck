@@ -58,6 +58,15 @@ describe("pilot manifest types", () => {
     const { id, version, deckApi, contributes } = pilotManifest;
     const shared: WebModuleManifest = { id, version, deckApi, ...(contributes === undefined ? {} : { contributes }) };
     expectTypeOf(defineWebModule(shared, { components: {} }).manifest).toEqualTypeOf<WebModuleManifest>();
+    // Routes are server-only: a shared copy cannot declare them.
+    const withRoutes: WebModuleManifest = {
+      id,
+      version,
+      deckApi,
+      // @ts-expect-error `routes` is not a web contribution
+      contributes: { routes: { legacyAliases: ["/api/llm-usage"] } },
+    };
+    void withRoutes;
   });
 
   it("rejects non-JSON manifest values at compile time", () => {

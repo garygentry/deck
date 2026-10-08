@@ -2,6 +2,7 @@ import {
   entitySectionProblem,
   EXTENSION_KINDS,
   extensionIdProblem,
+  isKernelSlot,
   orderProblem,
   pagePathProblem,
   slotAcceptsProblem,
@@ -30,8 +31,10 @@ import type { ExtensionId } from "./registry-types.js";
  * lacks, or holds as something other than a component; a table entry nothing names; an
  * extension that is neither rendered by a component nor a widget descriptor; nav entries the
  * registry cannot express (an `href` entry, one not named after its page, a second one for a
- * page); and anything the registry itself would refuse (ids, paths, orders, slot kinds,
- * entity-section config, duplicates).
+ * page); an extension, widget descriptors included, attaching to a core slot (`app/…`,
+ * `entity:…`) that core does not declare, which would otherwise sit orphaned; and anything the
+ * registry itself would refuse (ids, paths, orders, slot kinds, entity-section config,
+ * duplicates).
  */
 export function registerWebModule(module: WebModule): void {
   const { id, contributes = {} } = module.manifest;
@@ -45,6 +48,16 @@ export function registerWebModule(module: WebModule): void {
   // Widget descriptors (a `widget`, no component) render through their widget type, not here.
   const descriptor = (extension: ExtensionDecl) => extension.component === undefined && extension.widget !== undefined;
   const extensions = (contributes.extensions ?? []).filter((extension) => !descriptor(extension));
+
+  // Core slots: the registry declares every one up front, so a core slot it lacks is a typo, not
+  // a slot still to come (a module's slot may be declared after its extensions attach). Every
+  // extension is checked, widget descriptors too, though only the others register here.
+  for (const extension of contributes.extensions ?? []) {
+    const slot: unknown = extension.attachTo?.slot;
+    if (typeof slot === "string" && isKernelSlot(slot) && getSlot(slot) === undefined) {
+      fail("UNKNOWN_SLOT", `extension "${extension.id}" attaches to core slot "${slot}", which core does not declare`);
+    }
+  }
 
   // Components: every name the manifest references is in the table, and only those.
   for (const extension of extensions) {

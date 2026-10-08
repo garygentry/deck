@@ -1,5 +1,8 @@
 import type { WebModuleManifest } from "@deck/module-sdk";
 
+/** The widget slot the portal page hosts, under its header: summary cards other modules attach. */
+export const PORTAL_SUMMARY_SLOT = "portal/summary";
+
 /**
  * The portal module's identity and UI contributions: its launch page, nav entry, the
  * `portal/summary` widget slot it hosts and its endpoint pill. The server's manifest spreads
@@ -7,9 +10,6 @@ import type { WebModuleManifest } from "@deck/module-sdk";
  * of where each contribution attaches. It is data only (no runtime imports), so the browser
  * bundle can load it.
  */
-/** The widget slot the portal page hosts, under its header: summary cards other modules attach. */
-export const PORTAL_SUMMARY_SLOT = "portal/summary";
-
 export const PORTAL_UI: WebModuleManifest = {
   id: "portal",
   version: "0.1.0",

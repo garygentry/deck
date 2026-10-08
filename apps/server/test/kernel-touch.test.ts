@@ -31,7 +31,7 @@ describe("kernel-touch", () => {
     expect(isKernelPath("apps/server/src/providers/registry.ts")).toBe(true);
     expect(isKernelPath("packages/schema/schema/deck.schema.json")).toBe(true);
     expect(isKernelPath("apps/web/src/ui/lib/icons.ts")).toBe(true);
-    expect(isKernelPath("apps/web/src/shell/portal-summary-slot.ts")).toBe(true);
+    expect(isKernelPath("apps/web/src/shell/manifest-slot.ts")).toBe(true);
     // The UI manifest resolver and the kernel-wired features' UI declarations.
     expect(isKernelPath("apps/server/src/ui/resolve.ts")).toBe(true);
     expect(isKernelPath("apps/server/src/ui/kernel-features.ts")).toBe(true);
@@ -56,7 +56,7 @@ describe("kernel-touch", () => {
       "apps/server/src/contract/api.ts",
       "packages/schema/src/ownership.ts",
       "apps/web/src/features/llm-usage/index.ts",
-      "apps/web/src/shell/portal-summary-slot.ts",
+      "apps/web/src/shell/manifest-slot.ts",
       "apps/server/test/llm-usage-io.test.ts",
       "apps/server/src/server/app.ts",
       "",
@@ -65,7 +65,7 @@ describe("kernel-touch", () => {
       "apps/server/src/contract/api.ts",
       "apps/server/src/server/app.ts",
       "apps/server/src/server/boot.ts",
-      "apps/web/src/shell/portal-summary-slot.ts",
+      "apps/web/src/shell/manifest-slot.ts",
       "packages/schema/src/ownership.ts",
     ]);
   });

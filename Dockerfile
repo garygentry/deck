@@ -28,7 +28,8 @@ COPY . .
 RUN pnpm --filter @deck/web build
 
 # ---- runtime: Bun serves the built dist + /api from one process ----
-FROM oven/bun:1.3.9-alpine AS runtime
+# The tag must match .bun-version, which CI installs; a server test fails if they differ.
+FROM oven/bun:1.4.2-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     DECK_CONFIG_DIR=/config \

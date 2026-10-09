@@ -32,7 +32,9 @@ into `apps/web/dist`).
 Nothing else is compiled, because the server and `@deck/schema` run directly from TypeScript
 source under Bun at runtime; only the browser needs a bundling step.
 
-The **runtime** stage is `oven/bun:1.3.9-alpine`.
+The **runtime** stage is `oven/bun:1.4.2-alpine`.
+Its tag matches `.bun-version` at the repo root, which every CI job installs, so CI tests the Bun
+that ships. A server unit test (`apps/server/test/bun-version-pin.test.ts`) fails if the two differ.
 It copies the fully installed and built workspace across at the same `/app` path, which preserves
 pnpm's `node_modules/.pnpm` symlink store so the server's dependencies and `@deck/schema` resolve
 unchanged under Bun.
@@ -89,8 +91,10 @@ so parallelism comes from cross-runner shards).
 `bun-parity` re-runs the unit tests under Bun, proving the code that ships in the runtime image
 behaves the same on the runtime engine. Each workspace runs through `scripts/bun-parity-vitest.sh`,
 which starts `bunx --bun vitest run` (plain `bunx` follows vitest's `node` shebang and would test
-under Node). Its reporter prints the Bun version into the job log, and the step fails if the run
-was not under Bun or exited without reaching its end.
+under Node). Its reporter prints the Bun version into the job log, and
+`scripts/bun-parity-check.ts` fails the step unless the run was under Bun, reached its end, ran
+every scheduled test file, passed with no unhandled errors, and executed at least one test
+(skipped tests do not count).
 `gates` runs the correctness guards: a golden `deck render` comparison and
 a bare-Bun boot smoke that boots the server and asserts a well-formed `/api/health` payload.
 Together they protect the invariant this deployment depends on — that the same source runs

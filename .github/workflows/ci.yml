@@ -79,7 +79,7 @@ jobs:
       # PATH it exits 127.
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -123,14 +123,15 @@ jobs:
     # scripts/bun-parity-vitest.sh runs `bunx --bun vitest run` (plain `bunx`
     # follows vitest's node shebang and tests under Node), prints the Bun
     # version, and fails a run that is incomplete, failed, or executed nothing
-    # (scripts/bun-parity-check.ts).
+    # (scripts/bun-parity-check.ts). Bun comes from .bun-version, the version
+    # the runtime image ships.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
       - name: Install with Bun
         id: install
         run: bun install
@@ -179,7 +180,7 @@ jobs:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
       - name: Kernel files touched
         env:
           BASE_REF: ${{ github.base_ref || 'main' }}
@@ -202,7 +203,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
       - name: Install with Bun
         run: bun install
       - name: Check golden render

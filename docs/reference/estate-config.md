@@ -185,7 +185,8 @@ An Access object has no additional properties; every field is optional.
 may appear: an unknown kind is reported as `PROVIDER_KIND_UNKNOWN`, and a known kind that does
 not accept bindings as `PROVIDER_BINDING_UNSUPPORTED` (info: the binding is ignored). The built-in bindable
 kinds are `link` and `http-health` (each binding becomes a provider), `docker` and `gatus`
-(a binding selects entries from that integration's provider), and `snapshot`. `prometheus` and
+(a binding selects entries from that integration's provider), and `snapshot`. A `docker`,
+`gatus` or `http-health` binding gives the service's portal card its live status. `prometheus` and
 `alertmanager` are integration-only: a binding of either is reported as
 `PROVIDER_BINDING_UNSUPPORTED`. The source kinds `markdown-tree` and `file-tree` are not bindable
 either: a source names its host or service in its own `owner`.
@@ -196,6 +197,18 @@ It matches `^[a-z0-9]+(?:[.-][a-z0-9]+)*$` and is at most 64 characters.
 ## Portal: groups and items
 
 These live under `modules.portal.groups`.
+
+The portal page (`page:portal/overview`) is a dashboard: the `portal/summary` slot's cards,
+then one `portal/groups` widget (`widget:portal/overview.groups`) showing every group.
+`ui.extensions` can switch that widget off by id; a config page can place `portal/groups`, with
+a `groups` option to show only some groups (see `ui.pages` under [ui](#ui)).
+
+A service card's status comes from the service's first binding of a kind whose module declares
+how its data gives a status, and whose provider is registered: the built-in kinds first, in the
+order `docker` (the container is running, and healthy or without a health check), `gatus` (the
+endpoint is up), `http-health` (the probe answered 2xx or 3xx), then other modules' kinds by
+name. A service with none of these is a plain link card. A card whose provider has not answered
+yet says "Checking"; the rest of the portal renders meanwhile.
 
 ### Group
 
@@ -545,6 +558,12 @@ number or text; this widget's value is a list."), so a wrong `select` is easy to
 | `core/markdown` | Markdown, rendered and sanitised as the docs view does it. | `content`; without it, the value, which must be text |
 | `core/health-pills` | The top bar's health pills, in its order. Reads no source. | `pills`: extension ids (`pill:drift/summary`) to show only those |
 | `core/json` | The value as formatted JSON, for looking at what a source and `select` give. | `wrap: true` soft-wraps long lines |
+
+Modules add their own types. The portal's:
+
+| Type | Shows | Options |
+| --- | --- | --- |
+| `portal/groups` | The portal's groups of cards, with its search and its status and group filters. Reads no source: it reads `modules.portal.groups` and the cards' providers. | `groups`: the top-level group ids to show, in that order (1–64, unique); default every group, in the portal's order. An id no group has is skipped and reported in `GET /api/ui` (`UI_WIDGET_OPTION_UNKNOWN`). |
 
 - A **field** (`field`, `titleField`, …) is a key of an item, or keys joined by dots
   (`load.avg`). It is never a query: shape the data with the widget's `select`, such as

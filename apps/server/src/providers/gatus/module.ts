@@ -1,3 +1,4 @@
+import { GATUS_STATUS } from "@deck/contract/modules/data-sources";
 import { defineServerModule, type JsonSchema, type ModuleManifest } from "@deck/module-sdk";
 
 import { GatusProvider } from "./index.js";
@@ -12,7 +13,7 @@ export const GATUS_MANIFEST: ModuleManifest = {
   id: "gatus",
   version: "1.0.0",
   deckApi: "^0.1",
-  providerKinds: [{ kind: "gatus", fixedId: "gatus", instanceSchema: instanceSchema as JsonSchema, bindable: true, statusCapable: true }],
+  providerKinds: [{ kind: "gatus", fixedId: "gatus", instanceSchema: instanceSchema as JsonSchema, bindable: true, statusCapable: true, status: GATUS_STATUS }],
 };
 
 export const gatusModule = defineServerModule(GATUS_MANIFEST, () => {}, {

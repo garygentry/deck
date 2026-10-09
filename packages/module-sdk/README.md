@@ -257,7 +257,8 @@ composes into the config contract:
   occurrence in document order is `ID_DUPLICATE`, with `message` if given (`{key}` stands for
   the id, inserted literally). The identity row of an array a namespace covers only keys the
   merge. An empty `unique` list is invalid.
-- `references`: where the section names an estate host or service, resolved like the
+- `references`: where the section names an estate host or service (not to be confused with a
+  widget type's `optionReferences`, under [UI contributions](#ui-contributions)), resolved like the
   kernel's own references (`REF_HOST_UNRESOLVED`, `REF_SERVICE_UNRESOLVED`, and
   `OVERLAY_DANGLING_REF` against an overlay's base). A string is a key path whose value is
   `{ host, service? }`. The object form `{ path, host?, service?, at? }` names the fields
@@ -313,6 +314,17 @@ this package as a type). Resolution reads manifests only:
 The rules themselves are exported as pure functions (`extensionIdProblem`, `slotIdProblem`,
 `orderProblem`, `pagePathProblem`, `entitySectionProblem`, `entitySectionName`, `isSafeHref`, …),
 so the web registry checks registrations exactly as the server checks manifests.
+
+A widget type (`contributes.widgetTypes[]`: `type`, `optionsSchema`, `component`, `sources`)
+may also declare `optionReferences`, `[{ option, list, key }]`: options whose values (text, or a
+list of text) name entries of the module's **own** config section, each the `key` of an entry of
+`modules.<id>.<list>`. The portal's `portal/groups` declares `{ option: "groups", list:
+"groups", key: "id" }`. A value no entry has is reported in the UI manifest
+(`UI_WIDGET_OPTION_UNKNOWN`, a warning) and the widget skips it. Contrast the config section's
+`references` (above): those resolve **estate hosts and services** named in the section itself,
+as config findings (`REF_HOST_UNRESOLVED`, …); `optionReferences` resolve a widget's
+**options** against the module's own section, as UI findings. A malformed list makes the
+manifest invalid.
 
 `core` hosts the slots `app/nav` (nav entries), `app/routes` (pages), `app/topbar.status`
 (pills), `app/topbar.actions` (actions; the theme menu, `action:core/theme-menu`, is one),

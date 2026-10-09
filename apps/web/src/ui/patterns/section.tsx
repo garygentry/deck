@@ -13,8 +13,8 @@ export interface SectionProps extends Omit<ComponentProps<"section">, "title" | 
   actions?: ReactNode;
   /** `plain` (default) flows in the page; `card` sits on a bordered card surface. */
   variant?: "plain" | "card";
-  /** Heading level: 2 (default) under the page `h1`, 3 for a nested section. */
-  level?: 2 | 3 | 4;
+  /** Heading level: 2 (default) under the page `h1`, 3 to 5 for nested sections. */
+  level?: 2 | 3 | 4 | 5;
 }
 
 /**

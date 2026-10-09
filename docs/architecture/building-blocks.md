@@ -122,7 +122,7 @@ exposition is the built-in `metrics` module: it owns `DECK_METRICS_ENABLED`, dec
 as a root path, and reads the provider registry's poll statistics through its module context.
 A built-in declares `dependsOn` on a module whose provider or service it consumes and cannot do
 without: drift and inventory depend on `snapshot`. A module that only enriches its view when
-another is present (the portal's card status from `docker` or `gatus`, monitoring's integration
+another is present (the portal's card status from any kind that declares `status`, monitoring's integration
 cards) does not, so switching that source off leaves it running. The dependant is ordered after
 its dependencies, and is dropped (MODULE_DEPENDENCY_MISSING) when one is refused at planning:
 absent, switched off, or with an unusable manifest. Disabling a module later, when its kind

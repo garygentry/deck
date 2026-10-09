@@ -11,6 +11,7 @@ export const CARD_STATUS = defineStatusMap<CardStatus>({
   "not-found": { tone: "warn", icon: "search-x", label: "Not found" },
   "broken-reference": { tone: "danger", icon: "unlink", label: "Broken reference" },
   static: { tone: "neutral", icon: "link", label: "Link" },
+  pending: { tone: "pending", icon: "hourglass", label: "Checking" },
 });
 
 export interface PortalCardProps {

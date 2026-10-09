@@ -111,7 +111,15 @@ export interface WidgetProps<Options = Record<string, unknown>> {
   freshness: FreshnessStamp | null;
   /** The placed widget, as the UI manifest lists it. */
   widget: UiWidgetInstance;
+  /**
+   * Where it renders: in a dashboard's card (`card`, the default), or as a module page's own
+   * body (`page`, the portal's groups), where it is the page's main content.
+   */
+  placement?: WidgetPlacement;
 }
+
+/** How a widget is placed: a dashboard card, or a module page's own body without card chrome. */
+export type WidgetPlacement = "card" | "page";
 
 /** A widget type the web can render: `<module>/<name>` and its component. */
 export interface WidgetTypeRegistration {

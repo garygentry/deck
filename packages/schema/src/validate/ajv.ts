@@ -65,3 +65,20 @@ export function relaxRequired<T extends object>(schema: T): T {
 }
 
 export const checkSnapshot: ValidateFunction = createAjv().compile(snapshotSchema);
+
+/**
+ * Why `options` do not satisfy a widget type's options schema, or null: the schema does not
+ * compile, or refuses them (the first error). How a module page's declared widgets, which take
+ * `{}`, are checked against their types.
+ */
+export function widgetOptionsProblem(schema: unknown, options: unknown): string | null {
+  let accepts: ValidateFunction;
+  try {
+    accepts = createAjv().compile(schema as object);
+  } catch (cause) {
+    return `its options schema does not compile: ${(cause as Error).message}`;
+  }
+  if (accepts(options)) return null;
+  const [first] = accepts.errors ?? [];
+  return `its type refuses the options ${JSON.stringify(options)}${first === undefined ? "" : ` (${first.instancePath || "/"} ${first.message ?? "is invalid"})`}`;
+}

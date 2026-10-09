@@ -24,6 +24,9 @@ async function openPortal(page: Page): Promise<void> {
   await routePortalFixture(page);
   await page.goto("/");
   await expect(page.getByRole("link", { name: "Grafana" })).toBeVisible();
+  // Cards render before their providers first answer (each says "Checking" until then): wait
+  // until every one has its status.
+  await expect(portal(page).getByText("Checking", { exact: true })).toHaveCount(0);
 }
 
 test("renders the fixed estate as grouped card links with filters", async ({ page }) => {

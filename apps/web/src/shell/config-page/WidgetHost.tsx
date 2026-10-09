@@ -5,6 +5,7 @@ import { EmptyState, ErrorState, FragmentBoundary, FreshnessBadge, LoadingState,
 
 import { useProvider, useUiManifest } from "../../data/index.js";
 import { getWidgetType, type WidgetTypeRegistration } from "../../registry/registry.js";
+import type { WidgetPlacement } from "../../registry/registry-types.js";
 import { useRegistryVersion } from "../../registry/use-registry.js";
 
 // Static class maps (Tailwind sees every class literally): spans apply from `md` up, where the
@@ -92,8 +93,11 @@ export function isEmptyValue(value: unknown): boolean {
  * its type's component, or a loading, empty or error state. A freshness badge shows when the
  * provider's data is not fresh. The component renders inside a `FragmentBoundary`, so a
  * widget that throws leaves the page and its other widgets working.
+ *
+ * With `placement="page"` (a module page's own dashboard, such as the portal's groups) there is
+ * no card, title or grid span: the body renders as the page's content, in the same boundary.
  */
-export function WidgetHost({ widget }: { widget: UiWidgetInstance }) {
+export function WidgetHost({ widget, placement = "card" }: { widget: UiWidgetInstance; placement?: WidgetPlacement }) {
   // A widget type registered after the page rendered (a lazily loaded module) shows up.
   useRegistryVersion();
   const type = getWidgetType(widget.type);
@@ -103,6 +107,17 @@ export function WidgetHost({ widget }: { widget: UiWidgetInstance }) {
   const widgetTypes = manifest.status === "ready" ? manifest.manifest.widgetTypes : undefined;
   const listed = !Array.isArray(widgetTypes) || widgetTypes.some((entry) => entry?.type === widget.type);
   const available = listed && type !== undefined && widget.typeProblem === undefined;
+  if (placement === "page") {
+    return (
+      <div data-slot="widget" data-widget-type={widget.type} data-widget-id={widget.id}>
+        {widget.source === null || !available ? (
+          <WidgetBoundary widget={widget} label={title} view={widgetView(widget, type, null, listed)} type={type} resetKey={widget} placement={placement} />
+        ) : (
+          <SourcedWidget widget={widget} sourceId={widget.source.id} title={title} type={type} placement={placement} />
+        )}
+      </div>
+    );
+  }
   return (
     <div
       data-slot="widget"
@@ -119,10 +134,25 @@ export function WidgetHost({ widget }: { widget: UiWidgetInstance }) {
   );
 }
 
-function SourcedWidget({ widget, sourceId, title, type }: { widget: UiWidgetInstance; sourceId: string; title: string; type: WidgetTypeRegistration | undefined }) {
+function SourcedWidget({
+  widget,
+  sourceId,
+  title,
+  type,
+  placement = "card",
+}: {
+  widget: UiWidgetInstance;
+  sourceId: string;
+  title: string;
+  type: WidgetTypeRegistration | undefined;
+  placement?: WidgetPlacement;
+}) {
   const provider = useProvider<unknown>(sourceId);
+  const view = widgetView(widget, type, provider);
   // A new envelope (new data) retries a widget that threw.
-  return <WidgetCard widget={widget} title={title} view={widgetView(widget, type, provider)} type={type} resetKey={provider.envelope} />;
+  return placement === "page"
+    ? <WidgetBoundary widget={widget} label={title} view={view} type={type} resetKey={provider.envelope} placement={placement} />
+    : <WidgetCard widget={widget} title={title} view={view} type={type} resetKey={provider.envelope} />;
 }
 
 function WidgetCard({
@@ -142,17 +172,48 @@ function WidgetCard({
   const badge = freshness !== null && freshness.state !== "fresh" && freshness.state !== "static" ? <FreshnessBadge freshness={freshness} /> : undefined;
   return (
     <Section variant="card" level={3} title={title} actions={badge} className="h-full">
-      <FragmentBoundary label={title} resetKey={resetKey}>
-        {/* A widget type whose component loads on first use (core/table) waits here, not the page. */}
-        <Suspense fallback={<LoadingState label="Loading widget…" preset="lines" rows={2} />}>
-          <WidgetBody widget={widget} view={view} type={type} />
-        </Suspense>
-      </FragmentBoundary>
+      <WidgetBoundary widget={widget} label={title} view={view} type={type} resetKey={resetKey} placement="card" />
     </Section>
   );
 }
 
-function WidgetBody({ widget, view, type }: { widget: UiWidgetInstance; view: WidgetView; type: WidgetTypeRegistration | undefined }) {
+/** A widget's body in its error boundary, under a `Suspense` for a type whose component loads on first use. */
+function WidgetBoundary({
+  widget,
+  label,
+  view,
+  type,
+  resetKey,
+  placement,
+}: {
+  widget: UiWidgetInstance;
+  label: string;
+  view: WidgetView;
+  type: WidgetTypeRegistration | undefined;
+  resetKey: unknown;
+  placement: WidgetPlacement;
+}) {
+  return (
+    <FragmentBoundary label={label} resetKey={resetKey}>
+      {/* A widget type whose component loads on first use (core/table) waits here, not the page. */}
+      <Suspense fallback={<LoadingState label="Loading widget…" preset="lines" rows={2} />}>
+        <WidgetBody widget={widget} view={view} type={type} placement={placement} />
+      </Suspense>
+    </FragmentBoundary>
+  );
+}
+
+function WidgetBody({
+  widget,
+  view,
+  type,
+  placement,
+}: {
+  widget: UiWidgetInstance;
+  view: WidgetView;
+  type: WidgetTypeRegistration | undefined;
+  placement: WidgetPlacement;
+}) {
   switch (view.state) {
     case "loading":
       return <LoadingState label="Loading data…" preset="lines" rows={2} />;
@@ -162,7 +223,7 @@ function WidgetBody({ widget, view, type }: { widget: UiWidgetInstance; view: Wi
       return <EmptyState compact title="No data to show" />;
     case "ready": {
       const Component = type!.component;
-      return <Component value={view.value} options={widget.options} freshness={view.freshness} widget={widget} />;
+      return <Component value={view.value} options={widget.options} freshness={view.freshness} widget={widget} placement={placement} />;
     }
   }
 }

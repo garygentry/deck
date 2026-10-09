@@ -16,10 +16,12 @@ export {
   resolveProvider,
   useConfig,
   useProvider,
+  useProviders,
   useUiManifest,
   UI_MANIFEST_REFRESH_MS,
   type ConfigState,
   type ProviderRef,
   type ProviderState,
+  type ProvidersState,
   type UiManifestState,
 } from "./hooks.js";

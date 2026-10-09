@@ -77,6 +77,17 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
   `label`. An override's `attachTo.group` moves a nav entry to that group.
 - `providers` lists the registered provider instances (id and kind), so the web polls only
   providers that exist.
+- `statusKinds`, present when an enabled module declares one, lists the bindable,
+  status-capable provider kinds whose binding gives a portal card its status, by kind: `kind`,
+  `module`, `fixedId` (when the status reads the kind's fixed instance) and `status` (the
+  module's declaration: which `provider` a binding reads, `binding` or `fixed`; `match`, how
+  the bound item is found in a list; `up`, the conditions that make it up). The web derives a
+  card's status from it, with no code per kind.
+- A module page that declares a dashboard has a `layout` too (the portal's: `{slot:
+  "portal/summary"}`, then a section of one `portal/groups` widget,
+  `widget:portal/overview.groups`). A slot section is listed while its host is enabled; a
+  widget section has no `title`, and its widgets read no source and take no options. An
+  override can switch such a widget off by id.
 - `pages` also lists the config pages (`ui.pages`) that route, as pages of module `ui`
   (`page:ui/<id>`, component `ConfigPage`) with a `layout`: their `sections` (`title`,
   `columns`), each with its `widgets` in order. A widget has its `id`
@@ -114,6 +125,10 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
     (or no provider of its kind);
   - `UI_WIDGET_SOURCE_KIND`: a widget's provider is of a kind its widget type cannot render;
   - `UI_WIDGET_SPAN`: a widget spans more columns than its section has (it spans them all);
+  - `UI_WIDGET_OPTION_UNKNOWN`: a widget option names an entry its module's config does not have
+    (a `portal/groups` group id); the widget skips it;
+  - `UI_STATUS_UNDECLARED`: a bindable, status-capable provider kind declares no `status`, so
+    its bindings give cards no status;
   - `UI_OVERRIDE_POSITIONAL` (`severity: "info"`): an override targets a widget by its
     positional id, which changes when its page's sections or widgets move;
   - `UI_CONFIG_INVALID`: the config directory changed and no longer loads, so the last good

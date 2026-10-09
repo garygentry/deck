@@ -335,6 +335,8 @@ function kindsProblem(manifest: ModuleManifest, kinds: Readonly<Record<string, P
       return `provider kind "${String(decl?.kind)}" must match ${KIND_PATTERN.source}`;
     }
     if (declared.has(decl.kind)) return `provider kind "${decl.kind}" is declared twice`;
+    const status = decl.status === undefined ? null : statusDeclProblem(decl);
+    if (status !== null) return `provider kind "${decl.kind}" status ${status}`;
     declared.set(decl.kind, decl);
   }
   const handlers = kinds;
@@ -354,6 +356,49 @@ function kindsProblem(manifest: ModuleManifest, kinds: Readonly<Record<string, P
     }
   }
   return null;
+}
+
+/** A key path into provider data: keys joined by dots, no query syntax. */
+const STATUS_FIELD = /^[^.\s\[\]*|&!?@'"`(){}]+(?:\.[^.\s\[\]*|&!?@'"`(){}]+)*$/;
+
+/**
+ * Why a provider kind's `status` declaration is unusable, or null: only a `bindable`,
+ * `statusCapable` kind declares one; `provider` is `binding`, or `fixed` with the kind's
+ * `fixedId`; `match` names three key paths; `up` holds 1–8 conditions, each a key path and
+ * 1–32 text, number or boolean values. Nothing else is accepted.
+ */
+function statusDeclProblem(decl: NonNullable<ModuleManifest["providerKinds"]>[number]): string | null {
+  const status: unknown = decl.status;
+  if (decl.bindable !== true || decl.statusCapable !== true) return "is declared, but the kind is not bindable and statusCapable";
+  if (status === null || typeof status !== "object" || Array.isArray(status)) return "must be an object";
+  const { provider, match, up, ...rest } = status as Record<string, unknown>;
+  if (Object.keys(rest).length > 0) return `has unknown key "${Object.keys(rest)[0]}"`;
+  if (provider !== "binding" && provider !== "fixed") return 'provider must be "binding" or "fixed"';
+  if (provider === "fixed" && typeof decl.fixedId !== "string") return 'provider "fixed" needs the kind\'s fixedId';
+  const isField = (value: unknown): boolean => typeof value === "string" && value.length <= 256 && STATUS_FIELD.test(value);
+  if (match !== undefined) {
+    if (match === null || typeof match !== "object" || Array.isArray(match)) return "match must be { list, key, binding }";
+    const { list, key, binding, ...other } = match as Record<string, unknown>;
+    if (Object.keys(other).length > 0 || !isField(list) || !isField(key) || !isField(binding)) return "match must be { list, key, binding }, each a key path";
+  }
+  if (!Array.isArray(up) || up.length === 0 || up.length > 8) return "up must list 1 to 8 conditions";
+  for (const condition of up as unknown[]) {
+    if (condition === null || typeof condition !== "object" || Array.isArray(condition)) return "up conditions must be { field, in }";
+    const { field, in: values, ...other } = condition as Record<string, unknown>;
+    if (Object.keys(other).length > 0 || !isField(field)) return "up conditions must be { field, in }, field a key path";
+    if (!Array.isArray(values) || values.length === 0 || values.length > 32 || !values.every((value) => ["string", "number", "boolean"].includes(typeof value))) {
+      return "up condition in must list 1 to 32 text, number or boolean values";
+    }
+  }
+  return null;
+}
+
+/** Why a module that is not built in declares a status reading a fixed provider, or null. */
+function fixedStatusProblem(manifest: ModuleManifest): string | null {
+  const kinds: unknown = manifest.providerKinds;
+  if (!Array.isArray(kinds)) return null;
+  const fixed = (kinds as Array<{ kind?: unknown; status?: { provider?: unknown } }>).find((decl) => decl?.status?.provider === "fixed");
+  return fixed === undefined ? null : `provider kind "${String(fixed.kind)}" status provider "fixed" is reserved for built-in modules (a fixed id is honoured for them only)`;
 }
 
 /**
@@ -644,6 +689,8 @@ export function planModules(options: PlanOptions): ModulePlanning {
     const problem = manifestProblem(manifest, reservedPagePaths)
       // Only a built-in has data that predates modules.
       ?? (manifest.dataDir !== undefined && !builtin ? "dataDir.legacyPath is reserved for built-in modules" : null)
+      // A fixed id is honoured for built-ins only, so another module's status cannot read one.
+      ?? (builtin ? null : fixedStatusProblem(manifest))
       ?? ("problem" in kinds ? kinds.problem : kindsProblem(manifest, kinds.kinds))
       ?? options.manifestProblems?.get(id)
       ?? kernelCollision(manifest, options.kernelRoutes ?? [], reservedRootPaths);

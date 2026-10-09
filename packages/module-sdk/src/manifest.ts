@@ -156,6 +156,12 @@ export interface ProviderKindDecl {
   bindable?: boolean;
   /** Its data can drive a status tone. */
   statusCapable?: boolean;
+  /**
+   * How a binding of this kind gives a bound card (a portal service) its up or down status:
+   * declared data the web reads, so any `bindable`, `statusCapable` kind drives cards with no
+   * feature code. Only such a kind may declare it.
+   */
+  status?: ProviderStatusDecl;
   /** Finding codes the kind handler's `validate` rule may report. */
   findings?: FindingCodeDecl[];
   /**
@@ -164,6 +170,35 @@ export interface ProviderKindDecl {
    * instance taking it apart. Honoured for built-in modules only.
    */
   fixedId?: string;
+}
+
+/**
+ * Where a binding's status is in provider data, and which values mean up. The bound item is
+ * read from the provider (`provider`); it is up when every `up` condition holds, else down. A
+ * provider with no data, or none for the item, says so (unreachable, not found).
+ */
+export interface ProviderStatusDecl {
+  /**
+   * The provider a binding reads: `binding`, the one the kind's binding handler registers
+   * under the binding's own id (one provider per binding, as `http-health`'s); `fixed`, the
+   * kind's `fixedId` instance, shared by every binding (as `docker`'s).
+   */
+  provider: "binding" | "fixed";
+  /**
+   * The bound item: the element of the list at `list` (a key path of the data) whose `key`
+   * field equals the binding's `binding` field (`{ list: "containers", key: "name", binding:
+   * "container" }`). A binding without that field (text or a number) has no status from this
+   * kind. Absent: the provider's data is the item.
+   */
+  match?: { list: string; key: string; binding: string };
+  /** The item is up when every condition holds (its field's value is one of `in`), else down. */
+  up: StatusConditionDecl[];
+}
+
+/** A condition on a bound item: the value at `field` (a key path) is one of `in`. */
+export interface StatusConditionDecl {
+  field: string;
+  in: Array<string | number | boolean>;
 }
 
 /** An extension id: `<kind>:<module>/<name>`, e.g. `pill:llm-usage/summary`. */
@@ -190,6 +225,34 @@ export interface PageDecl {
   icon?: string;
   /** Export name in the module's web component table. */
   component: string;
+  /**
+   * The page's default dashboard: what its component renders, in reading order. The UI
+   * manifest resolves it (each widget addressable by `widget:<module>/<page name>.<id>`, so
+   * an override can switch it off), and the page renders it.
+   */
+  layout?: PageLayoutDecl;
+}
+
+/** A module page's dashboard: sections in reading order. */
+export interface PageLayoutDecl {
+  sections: PageSectionDecl[];
+}
+
+/**
+ * One section of a module page's dashboard: the widgets a `widget` slot's extensions place
+ * (`{ slot }`, a slot the module hosts), or widgets of the module's own types or core's.
+ */
+export type PageSectionDecl = { slot: string } | { widgets: PageWidgetDecl[] };
+
+/**
+ * A widget on a module page's dashboard. It reads no provider and takes no options: its
+ * component brings its own data, and an operator's dashboard (`ui.pages`) places the type with
+ * options and a source.
+ */
+export interface PageWidgetDecl {
+  /** Unique on the page: the widget is `widget:<module>/<page name>.<id>`. */
+  id: string;
+  type: `${string}/${string}`;
 }
 
 export interface NavDecl {
@@ -225,6 +288,23 @@ export interface WidgetTypeDecl {
   component?: string;
   /** Provider kinds the widget can render. */
   sources?: string[];
+  /**
+   * Options whose values name entries of the module's own config section (not to be confused
+   * with `config.references`, which resolve estate hosts and services): each value of
+   * `option` (text, or a list of text) should be the `key` of an entry of `modules.<id>.<list>`.
+   * One that is not is reported in the UI manifest (UI_WIDGET_OPTION_UNKNOWN); the widget
+   * still renders, skipping it.
+   */
+  optionReferences?: WidgetOptionReferenceDecl[];
+}
+
+/** A widget option that names entries of its module's config section (`portal/groups`' `groups`). */
+export interface WidgetOptionReferenceDecl {
+  option: string;
+  /** The list in the module's section (`groups`). */
+  list: string;
+  /** The key of its entries the option names (`id`). */
+  key: string;
 }
 
 export interface StatusMapData {

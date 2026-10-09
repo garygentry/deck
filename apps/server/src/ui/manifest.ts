@@ -44,11 +44,18 @@ export function buildUiManifest(deps: UiManifestDeps): UiManifest {
     ...(estateName === undefined ? {} : { estateName }),
     ui: uiConfigOf(deps.config),
     configPages: configPagesOf(deps.config),
+    moduleSections: moduleSectionsOf(deps.config),
   });
   // The manifest's config pages decide what each envelope projects: a rebuilt manifest
   // (a reloaded ui config) replaces the selects with its own.
   deps.providers.setProjections(deriveProjections(ui));
   return ui;
+}
+
+/** The config's `modules` sections, or none. */
+function moduleSectionsOf(config: unknown): Readonly<Record<string, unknown>> {
+  const modules = (config as { modules?: unknown } | null)?.modules;
+  return modules !== null && typeof modules === "object" && !Array.isArray(modules) ? (modules as Record<string, unknown>) : {};
 }
 
 function unusableManifest(id: string): ModuleManifest {

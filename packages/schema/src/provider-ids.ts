@@ -26,6 +26,24 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** A host binding's owner: `host:<name>`. */
+export function hostOwner(name: string): string {
+  return `host:${name}`;
+}
+
+/** A service binding's owner: `service:<host>:<name>`. */
+export function serviceOwner(host: string, name: string): string {
+  return `service:${host}:${name}`;
+}
+
+/**
+ * The provider id a binding is registered under: its own string `id`, else `<kind>:<owner>`.
+ * The one rule boot, config validation and the web's card status all use.
+ */
+export function bindingProviderId(kind: string, owner: string, value: Readonly<Record<string, unknown>>): string {
+  return typeof value.id === "string" ? value.id : `${kind}:${owner}`;
+}
+
 function escapePointerSegment(segment: string): string {
   return segment.replace(/~/g, "~0").replace(/\//g, "~1");
 }
@@ -41,15 +59,15 @@ export function estateBindings(doc: Pick<DeckConfigDocument, "hosts" | "services
   const collect = (raw: Record<string, unknown> | undefined, owner: string, pointer: string): void => {
     for (const [kind, value] of Object.entries(raw ?? {})) {
       if (!isObject(value)) continue;
-      const id = typeof value.id === "string" ? value.id : `${kind}:${owner}`;
+      const id = bindingProviderId(kind, owner, value);
       bindings.push({ kind, owner, id, value, path: `${pointer}/bindings/${escapePointerSegment(kind)}` });
     }
   };
   for (const [index, host] of (doc.hosts ?? []).entries()) {
-    collect(host.bindings, `host:${host.name}`, `/hosts/${index}`);
+    collect(host.bindings, hostOwner(host.name), `/hosts/${index}`);
   }
   for (const [index, service] of (doc.services ?? []).entries()) {
-    collect(service.bindings, `service:${service.host}:${service.name}`, `/services/${index}`);
+    collect(service.bindings, serviceOwner(service.host, service.name), `/services/${index}`);
   }
   return bindings;
 }

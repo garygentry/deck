@@ -9,7 +9,8 @@
     "./fixtures": "./src/fixtures/index.ts",
     "./deck.schema.json": "./schema/deck.schema.json",
     "./snapshot.schema.json": "./schema/snapshot.schema.json",
-    "./select": "./src/select.ts"
+    "./select": "./src/select.ts",
+    "./provider-ids": "./src/provider-ids.ts"
   },
   "files": [
     "schema",

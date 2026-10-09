@@ -1,5 +1,6 @@
 import type {
   ExtensionDecl,
+  JsonObject,
   ExtensionId,
   ModuleManifest,
   NavDecl,
@@ -21,7 +22,9 @@ import type {
   UiPage,
   UiProvider,
   UiSlot,
+  UiStatusKind,
   UiWidgetType,
+  WidgetOptionReferenceDecl,
 } from "@deck/module-sdk";
 
 import {
@@ -36,7 +39,15 @@ import {
   UI_CONFIG_NAV_ID_PATTERN,
 } from "@deck/module-sdk";
 
-import { buildLayout, CONFIG_PAGE_COMPONENT, configPageIds, configWidgetIds, type ConfigPage } from "./config-pages.js";
+import {
+  buildLayout,
+  buildModuleLayout,
+  CONFIG_PAGE_COMPONENT,
+  configPageIds,
+  configWidgetIds,
+  modulePageWidgetIds,
+  type ConfigPage,
+} from "./config-pages.js";
 import { DEFAULT_BRAND_TITLE, DEFAULT_UI, type UiDefaults, type UiNavGroupConfig, type UiNavItemConfig } from "./defaults.js";
 import type { KernelFeature } from "./kernel-features.js";
 import { isRecord, RESERVED_MODULE_IDS } from "./validate.js";
@@ -81,6 +92,8 @@ export interface ResolveUiInput {
   ui?: UiDefaults;
   /** Config-defined pages (`ui.pages`), listed as pages of module `ui` with their layout. */
   configPages?: readonly ConfigPage[];
+  /** The config's module sections (`modules`), which widget option references name entries of. */
+  moduleSections?: Readonly<Record<string, unknown>>;
 }
 
 interface Unit {
@@ -126,6 +139,11 @@ type NavEntryDecl = NavDecl & { separator?: true };
  * entry when they set `nav`), after every module's in precedence. Each routed one carries its
  * layout; each of its widgets is addressable by id (`widget:ui/<page>.<name>`), and an override
  * can switch it off. Widget types are those of enabled modules and the kernel, by type.
+ *
+ * A module page that declares a dashboard (`layout`) carries it resolved: its
+ * slot sections while their host is enabled, and its widgets (`widget:<module>/<page>.<id>`,
+ * which an override can switch off) without a source or options. `statusKinds` lists the
+ * enabled bindable, status-capable kinds' `status` declarations.
  */
 export function resolveUiManifest(input: ResolveUiInput): UiManifest {
   const findings: UiFinding[] = [];
@@ -142,9 +160,18 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
   const declaredNav = new Set<string>();
   const knownSlots = new Set<string>();
   const entitySections = new Set<string>();
+  // Widget id → whether it is positional (changes when widgets move).
+  const widgetIds = new Map<string, boolean>();
   for (const { manifest } of units) {
     const contributes = manifest.contributes ?? {};
     for (const page of contributes.pages ?? []) declaredPages.add(page.id);
+    // A module page's dashboard widgets take overrides like a config page's (always by name).
+    for (const page of contributes.pages ?? []) {
+      for (const id of modulePageWidgetIds(page)) {
+        knownIds.add(id);
+        widgetIds.set(id, false);
+      }
+    }
     for (const nav of contributes.nav ?? []) declaredNav.add(nav.id);
     for (const extension of contributes.extensions ?? []) if (extension.kind === "entity-section") entitySections.add(extension.id);
     for (const decl of [...(contributes.pages ?? []), ...(contributes.nav ?? []), ...(contributes.extensions ?? [])]) {
@@ -159,8 +186,6 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
   }
   const configPages = input.configPages ?? [];
   const configPageIdSet = new Set<string>();
-  // Widget id → whether it is positional (changes when widgets move).
-  const widgetIds = new Map<string, boolean>();
   for (const page of configPages) {
     const ids = configPageIds(page);
     knownIds.add(ids.page);
@@ -242,6 +267,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
 
   // Widget types: the first by precedence keeps a type two modules declare.
   const widgetTypes = new Map<string, UiWidgetType>();
+  const optionReferences = new Map<string, { module: string; references: readonly WidgetOptionReferenceDecl[] }>();
   for (const { manifest } of enabledUnits) {
     for (const decl of manifest.contributes?.widgetTypes ?? []) {
       const owner = widgetTypes.get(decl.type);
@@ -250,6 +276,29 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
         continue;
       }
       widgetTypes.set(decl.type, { type: decl.type, module: manifest.id, ...(decl.sources === undefined ? {} : { sources: [...decl.sources] }) });
+      if (decl.optionReferences !== undefined) optionReferences.set(decl.type, { module: manifest.id, references: decl.optionReferences });
+    }
+  }
+
+  // Status kinds: the first by precedence keeps a kind two modules declare (the host refuses that anyway).
+  const statusKinds = new Map<string, UiStatusKind>();
+  for (const { manifest } of enabledUnits) {
+    for (const decl of manifest.providerKinds ?? []) {
+      if (decl.bindable !== true || decl.statusCapable !== true || statusKinds.has(decl.kind)) continue;
+      if (decl.status === undefined) {
+        findings.push({
+          code: "UI_STATUS_UNDECLARED",
+          severity: "warning",
+          message: `provider kind "${decl.kind}" of module "${manifest.id}" is bindable and statusCapable but declares no status, so its bindings give cards no status`,
+        });
+        continue;
+      }
+      statusKinds.set(decl.kind, {
+        kind: decl.kind,
+        module: manifest.id,
+        ...(decl.fixedId === undefined ? {} : { fixedId: decl.fixedId }),
+        status: structuredClone(decl.status),
+      });
     }
   }
 
@@ -350,6 +399,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
     }
     pathOwner.set(decl.path, decl.id);
     const configPage = decl.module === UI_CONFIG_MODULE ? configPageById.get(decl.id) : undefined;
+    const enabled = (id: ExtensionId): boolean => isEnabled(overrides.get(id), true);
     pages.push({
       id: decl.id,
       module: decl.module,
@@ -357,19 +407,26 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
       title: decl.title,
       ...(decl.icon === undefined ? {} : { icon: decl.icon }),
       component: decl.component,
-      ...(configPage === undefined
-        ? {}
-        : {
-            layout: buildLayout(configPage, {
-              providers: input.providers ?? [],
-              widgetTypes: [...widgetTypes.values()],
-              enabled: (id) => isEnabled(overrides.get(id), true),
-              findings,
-            }),
-          }),
+      ...(configPage !== undefined
+        ? { layout: buildLayout(configPage, { providers: input.providers ?? [], widgetTypes: [...widgetTypes.values()], enabled, findings }) }
+        : decl.layout !== undefined && decl.module !== UI_CONFIG_MODULE
+          ? { layout: buildModuleLayout(decl, { slots, knownSlots, widgetTypes: [...widgetTypes.values()], enabled, findings }) }
+          : {}),
     });
   }
   const routedPages = new Set<string>(pages.map((page) => page.id));
+  for (const page of pages) {
+    for (const section of page.layout?.sections ?? []) {
+      if (!("widgets" in section)) continue;
+      for (const widget of section.widgets) {
+        const declared = optionReferences.get(widget.type);
+        if (declared === undefined || widget.typeProblem !== undefined) continue;
+        for (const problem of unknownReferences(widget.options, declared.references, input.moduleSections?.[declared.module])) {
+          findings.push({ code: "UI_WIDGET_OPTION_UNKNOWN", severity: "warning", message: `widget "${widget.id}" option ${problem}; it is skipped`, id: widget.id });
+        }
+      }
+    }
+  }
   const home = resolveHome(
     ui.home,
     pages,
@@ -480,10 +537,29 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
     providers: [...(input.providers ?? [])]
       .map(({ id, kind }) => ({ id, kind }))
       .sort((a, b) => compareIds(a.id, b.id)),
+    ...(statusKinds.size === 0 ? {} : { statusKinds: [...statusKinds.values()].sort((a, b) => compareIds(a.kind, b.kind)) }),
     widgetTypes: [...widgetTypes.values()].sort((a, b) => compareIds(a.type, b.type)),
     ...(ui.statusMaps === undefined || Object.keys(ui.statusMaps).length === 0 ? {} : { statusMaps: copyStatusMaps(ui.statusMaps) }),
     findings,
   };
+}
+
+/**
+ * What a widget's options name that its module's section does not have: for each reference,
+ * each value of the option (text, or a list of text) that no entry of the section's `list` has
+ * as its `key`.
+ */
+function unknownReferences(options: JsonObject, references: readonly WidgetOptionReferenceDecl[], section: unknown): string[] {
+  const problems: string[] = [];
+  for (const { option, list, key } of references) {
+    const value = options[option];
+    const named = typeof value === "string" ? [value] : Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+    if (named.length === 0) continue;
+    const entries = isRecord(section) && Array.isArray(section[list]) ? (section[list] as unknown[]) : [];
+    const known = new Set(entries.flatMap((entry) => (isRecord(entry) && typeof entry[key] === "string" ? [entry[key]] : [])));
+    for (const name of named) if (!known.has(name)) problems.push(`${option} names "${name}", which no ${list} entry has as its ${key}`);
+  }
+  return problems;
 }
 
 /** The status maps, copied (the manifest is served as is), by name. */

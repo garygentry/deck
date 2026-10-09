@@ -143,6 +143,7 @@ describe("checkDescribe: declarative only, the config's own descriptors", () => 
     ["a relative markdown link", { widgets: [{ id: "w", type: "core/markdown", options: { content: "see [health](/api/health)" } }] }, /content links somewhere/],
     ["a raw HTML link into deck", { widgets: [{ id: "w", type: "core/markdown", options: { content: '<a href="/api/health">x</a>' } }] }, /content links somewhere/],
     ["a markdown reference link to another scheme", { widgets: [{ id: "w", type: "core/markdown", options: { content: "[x][r]\n\n[r]: javascript:alert(1)" } }] }, /content links somewhere/],
+    ["a reference link whose multi-line definition points into deck", { widgets: [{ id: "w", type: "core/markdown", options: { content: "see [x][id]\n\n[id]:\n  /api/health" } }] }, /content links somewhere/],
     ["a raw image map area into deck", { widgets: [{ id: "w", type: "core/markdown", options: { content: '<area href="/api/actions">' } }] }, /content links somewhere/],
     ["a raw button formaction into deck", { widgets: [{ id: "w", type: "core/markdown", options: { content: "<button formaction=/api/run>x</button>" } }] }, /content links somewhere/],
     ["a markdown image with a relative src", { widgets: [{ id: "w", type: "core/markdown", options: { content: "![x](img.png)" } }] }, /content links somewhere/],
@@ -150,6 +151,15 @@ describe("checkDescribe: declarative only, the config's own descriptors", () => 
     const result = checkDescribe({ ...DESCRIBE, ...patch }, "ups");
     expect(result.ok).toBe(false);
     expect(result.ok ? "" : result.problem).toMatch(problem);
+  });
+
+  it.each([
+    ["prose with an attribute-like phrase", "Set data=on in upsd.conf"],
+    ["prose with an assignment", "background = grey"],
+    ["a fence holding a relative link", "```\n[a](/x)\n```"],
+    ["a code span holding an href", "`href=\"/x\"`"],
+  ])("accepts markdown with %s: only parsed links and real HTML tags are checked", (_label, content) => {
+    expect(checkDescribe({ ...DESCRIBE, widgets: [{ id: "w", type: "core/markdown", options: { content } }] }, "ups").ok).toBe(true);
   });
 
   it("accepts markdown whose links are all absolute http(s) URLs, raw HTML included", () => {
@@ -244,6 +254,19 @@ describe("the remote provider: describe on its own cadence", () => {
     const health = await remote.health();
     expect(health.ok).toBe(true);
     expect(health.detail).toMatch(/describe: unreachable \(timed out after 2000ms\)$/);
+  });
+
+  it("a describe whose markdown links into deck by a multi-line reference is refused; the last good one stays, with a finding", async () => {
+    let body: unknown = DESCRIBE;
+    other.routes.set("/deck/v1/describe", (req, res) => json(body)(req, res));
+    const { directory, provider: remote } = provider(other.url);
+    await remote.describe();
+    body = { ...DESCRIBE, widgets: [{ id: "notes", type: "core/markdown", options: { content: "[x][id]\n\n[id]:\n  /api/health" } }] };
+    await remote.describe();
+    const [entry] = directory.snapshot();
+    expect(entry?.describe).toEqual(DESCRIBE);
+    expect(entry?.problem).toEqual({ code: "REMOTE_DESCRIBE_INVALID", message: "/widgets/0 options: content links somewhere other than an absolute http(s) URL" });
+    expect(directory.current().findings).toContainEqual(expect.objectContaining({ code: "REMOTE_DESCRIBE_INVALID", id: "page:remote/ups" }));
   });
 
   it("an invalid describe keeps the last good one, with the problem", async () => {
@@ -368,6 +391,19 @@ describe("the remote provider: observedAt", () => {
     await vi.waitFor(() => expect(read("ups")?.data).toEqual({ load: 1 }), { timeout: 5_000 });
     expect(read("ups")?.freshness).toMatchObject({ state: "stale", observedAt: new Date(old).toISOString() });
     expect(read("ups")!.freshness.ageMs!).toBeGreaterThanOrEqual(89_000);
+  });
+
+  it("data older than unreachableAfterMs from a source that answers is stale, never unreachable; health stays ok", async () => {
+    // 10 minutes old against a 60s ttl (unreachable after 3 × ttl): the poll itself succeeded.
+    const old = minutesAgo(10);
+    other.routes.set("/deck/v1/data", json({ data: { load: 3 }, observedAt: old }));
+    other.routes.set("/deck/v1/describe", json(DESCRIBE));
+    register(bare(other.url), { ttlMs: 60_000 });
+    startScheduler();
+    await vi.waitFor(() => expect(read("ups")?.data).toEqual({ load: 3 }), { timeout: 5_000 });
+    expect(read("ups")?.freshness).toMatchObject({ state: "stale", observedAt: new Date(old).toISOString() });
+    expect(read("ups")!.freshness.ageMs!).toBeGreaterThanOrEqual(599_000);
+    expect(listHealth().ups).toMatchObject({ ok: true });
   });
 
   it("without observedAt the poll time is used, and a future observedAt counts as now", async () => {

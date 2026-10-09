@@ -2,6 +2,7 @@ import { isExternalHref, isSafeHref, type JsonObject } from "@deck/module-sdk";
 import { CORE_WIDGET_TYPES } from "@deck/contract/modules/core";
 import { compileWidgetOptions, createAjv, remoteDescribeSchema, type SchemaProblem } from "@deck/schema";
 import { selectProblem } from "@deck/schema/select";
+import MarkdownIt from "markdown-it";
 
 /**
  * The widget types a sidecar may place: deck's declarative `core/…` types, each rendered by
@@ -134,31 +135,53 @@ function unsafeOptionHref(options: JsonObject | undefined): string | null {
 }
 
 /**
- * Link and resource targets in markdown text: inline links and images, reference definitions,
- * autolinks, and raw HTML attributes that navigate, submit or fetch (`href`, `src`, `srcset`,
- * `action`, `formaction`, `poster`, …). Broad on purpose: the web enforces
- * the same policy where it renders; this refuses a document that tries early.
+ * Markdown parsed as the web renders it (raw HTML on, bare URLs linked). Every link destination
+ * is kept for the check, even one the renderer would drop (`javascript:`), so it is refused here.
  */
-const MARKDOWN_TARGETS: readonly RegExp[] = [
-  /\]\(\s*<?([^)\s>]*)/g,
-  /^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*<?([^\s>]*)/gm,
-  /<([A-Za-z][A-Za-z0-9+.-]*:[^\s>]*)>/g,
-  /\b(?:href|xlink:href|src|srcset|action|formaction|poster|background|cite|longdesc|data|ping)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,
-];
+const markdown = new MarkdownIt({ html: true, linkify: true });
+markdown.validateLink = () => true;
+
+/** Attributes of a real HTML tag that navigate, submit or fetch. */
+const URL_ATTRIBUTE = /^(?:href|xlink:href|src|srcset|action|formaction|poster|background|cite|longdesc|data|ping)$/i;
+/** One HTML start tag, and one attribute in it (name, then a quoted or bare value). */
+const HTML_TAG = /<[A-Za-z][^\s/>]*((?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*\/?>/g;
+const HTML_ATTRIBUTE = /([^\s"'>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+
+/**
+ * The link and resource targets of markdown text, from its parse: link destinations (inline,
+ * reference-style and autolinks), image sources, and the URL attributes of real HTML tags
+ * (`html_inline` / `html_block` tokens). Code spans and fences are never read.
+ */
+function markdownTargets(text: string): string[] {
+  const targets: string[] = [];
+  const html = (fragment: string) => {
+    for (const tag of fragment.matchAll(HTML_TAG)) {
+      for (const [, name, double, single, bare] of (tag[1] ?? "").matchAll(HTML_ATTRIBUTE)) {
+        if (name !== undefined && URL_ATTRIBUTE.test(name)) targets.push(double ?? single ?? bare ?? "");
+      }
+    }
+  };
+  const pending = markdown.parse(text, {});
+  while (pending.length > 0) {
+    const token = pending.shift()!;
+    if (token.type === "link_open") targets.push(token.attrGet("href") ?? "");
+    else if (token.type === "image") targets.push(token.attrGet("src") ?? "");
+    else if (token.type === "html_inline" || token.type === "html_block") html(token.content);
+    if (token.children !== null) pending.push(...token.children);
+  }
+  return targets;
+}
 
 /**
  * A `core/markdown` `content` target that is not an absolute http(s) URL (a path, a
  * protocol-relative `//host`, another scheme): a sidecar's markdown may link only off deck.
+ * Best effort before rendering; the web's render-time link policy is the authority.
  */
 function unsafeMarkdownHref(options: JsonObject | undefined): string | null {
   const content = options?.content;
   if (typeof content !== "string") return null;
-  for (const pattern of MARKDOWN_TARGETS) {
-    for (const match of content.matchAll(pattern)) {
-      const target = (match[1] ?? match[2] ?? match[3] ?? "").trim();
-      if (target === "") continue;
-      if (!isExternalHref(target) || !isSafeHref(target)) return "content links somewhere other than an absolute http(s) URL";
-    }
+  for (const target of markdownTargets(content)) {
+    if (!isExternalHref(target) || !isSafeHref(target)) return "content links somewhere other than an absolute http(s) URL";
   }
   return null;
 }

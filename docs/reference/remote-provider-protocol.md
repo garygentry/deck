@@ -58,7 +58,9 @@ credential.
 `data` (any JSON) is the provider's data: what widgets read and their `select` shapes. The
 optional `observedAt` (RFC 3339, at most 40 characters) is when the sidecar took it: the
 envelope's `observedAt` and age, and so its staleness, follow it rather than the poll time (a
-time in the future counts as now), and the health detail shows it normalised. A body without
+time in the future counts as now), and the health detail shows it normalised. Old data from a
+sidecar that answers is `stale`, never `unreachable`: `unreachable` follows the time since the
+last successful poll. A body without
 `data`, or with a malformed `observedAt`, fails the poll.
 
 ### `GET /deck/v1/describe`
@@ -104,9 +106,11 @@ Beyond the schema, deck checks what a schema cannot say:
 - `core/markdown` content goes through the same sanitiser as every markdown deck renders: raw
   HTML is parsed, then DOMPurify keeps only what it allows (no scripts, styles, frames, objects,
   embeds or forms, and no event handlers). There is no raw-HTML path for a sidecar.
-- **Markdown links are external only.** Every target in a `core/markdown` widget's `content`
-  (markdown links and images, reference definitions, autolinks, raw HTML `href`/`src`) must be
-  an absolute `http(s)` URL, or the document is refused. Where it renders, every sidecar widget
+- **Markdown links are external only.** Deck parses a `core/markdown` widget's `content` as it
+  renders it: every link destination (inline, reference-style or autolink), image source and URL
+  attribute of a real HTML tag must be an absolute `http(s)` URL, or the document is refused.
+  Code spans and fences are not read. This check is early and best effort; the render-time
+  policy below is the authority. Where it renders, every sidecar widget
   applies the same policy to whatever markdown it shows (its content, raw HTML in it, or text
   from the sidecar's data): an absolute `http(s)` link opens in a new tab with the external-link
   marker; any other (a path, a fragment, a protocol-relative `//host`, another scheme) becomes

@@ -1,7 +1,7 @@
 /**
  * Module-singleton browse state for the sources feature (Docs + Configs).
  *
- * Mirrors `features/drift-and-coverage/store.ts` and `governed-actions/run-store.ts`: a
+ * Mirrors `features/drift-and-coverage/store.ts` and `modules/actions/web/run-store.ts`: a
  * module-scoped `Object.freeze`d state value replaced atomically, a `Set` of listener records,
  * an isolating `notify()` that iterates a **copy** and swallows a throwing listener, a
  * `getSourceBrowse()` snapshot reader, and a `subscribeSourceBrowse(listener) => () => void`

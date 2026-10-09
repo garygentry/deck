@@ -30,9 +30,10 @@ import { setFile, setManifest, setSearch } from "./sources-store.js";
 export type Source = NonNullable<DeckConfig["sources"]>[number];
 
 /**
- * Fixed server endpoints for the sources feature (the analogue of governed-actions' frozen
- * `ACTION_ENDPOINTS`). Not configurable by page or component code. `:id` and query values are
- * percent-encoded here so callers pass raw ids/paths. Every endpoint is a GET (REQ-RO-01).
+ * Fixed server endpoints for the sources feature (the analogue of the frozen `ACTION_ENDPOINTS`
+ * in `modules/actions/web/client.ts`). Not configurable by page or component code. `:id` and
+ * query values are percent-encoded here so callers pass raw ids/paths. Every endpoint is a GET
+ * (REQ-RO-01).
  */
 export const SOURCE_ENDPOINTS = Object.freeze({
   /** GET the provider envelope: manifest + freshness. Drives the tree and the freshness badge. */

@@ -29,7 +29,7 @@ import { logAcquireFailure } from "./events.js";
 /**
  * A spawned `git` process. Mirrors `engine-core`'s `SpawnedRun` shape, but the source git
  * seam takes an ARGV ARRAY plus cwd/env (git needs `clone --depth 1 …`, a working dir, and
- * an in-memory credential env) — it deliberately does NOT reuse `actions/spawn.ts`
+ * an in-memory credential env) — it deliberately does NOT reuse `modules/actions/server/spawn.ts`
  * `RunnerSpawner`, which is argv[0]-only + stdin-JSON.
  */
 export interface SpawnedGit {
@@ -494,7 +494,7 @@ function randomToken(): string {
 /**
  * Minimal `Bun.spawn` typing, declared ambiently so this module type-checks under Node
  * (vitest) without @types/bun and without importing anything Bun-only at module scope.
- * Mirrors the `declare const Bun` pattern in `actions/spawn.ts` / `server/boot.ts`.
+ * Mirrors the `declare const Bun` pattern in `modules/actions/server/spawn.ts` / `server/boot.ts`.
  */
 declare const Bun: {
   spawn(options: {

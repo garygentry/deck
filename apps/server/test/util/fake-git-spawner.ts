@@ -5,8 +5,9 @@ import type { GitSpawner, SpawnedGit } from "../../src/sources/acquire.js";
 /**
  * Scripted behaviour for one fake `git clone`. Applied per CLONE spawn (in order for the
  * array form); non-clone git calls (e.g. `rev-parse HEAD`) are answered generically with a
- * canned commit sha. Mirrors `test/util/fake-spawner.ts` but for the argv-based `GitSpawner`
- * seam (`clone --depth 1 --branch <ref> <repo> <dir>` with a cwd/env) — no Bun, no real git.
+ * canned commit sha. Mirrors `modules/actions/test/server/util/fake-spawner.ts` but for the
+ * argv-based `GitSpawner` seam (`clone --depth 1 --branch <ref> <repo> <dir>` with a cwd/env) —
+ * no Bun, no real git.
  */
 export interface FakeGitScript {
   /** Files to stage into the clone target dir (argv's last positional) to simulate a clone. */

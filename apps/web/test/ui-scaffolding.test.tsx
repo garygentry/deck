@@ -288,6 +288,55 @@ describe("PageErrorBoundary", () => {
     );
     expect(container.firstElementChild?.tagName).toBe("P");
   });
+
+  it("keeps the page's root (data-slot, data-state=error) around the fallback with pageSlot", () => {
+    const { container } = render(
+      <PageErrorBoundary pageSlot="alerts-page">
+        <Throws />
+      </PageErrorBoundary>,
+    );
+    const root = container.firstElementChild as HTMLElement;
+    expect(root).toHaveAttribute("data-slot", "alerts-page");
+    expect(root).toHaveAttribute("data-state", "error");
+    expect(within(root).getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(within(root).getByRole("region", { name: "This page could not be displayed" })).toBeInTheDocument();
+  });
+
+  it("moves focus to the remounted page's h1 after Retry, not to <body>", async () => {
+    let shouldThrow = true;
+    function Page() {
+      if (shouldThrow) throw new Error("boom");
+      return (
+        <div data-slot="hosts-page">
+          <h1>Hosts</h1>
+        </div>
+      );
+    }
+    render(
+      <main>
+        <PageErrorBoundary pageSlot="hosts-page">
+          <Page />
+        </PageErrorBoundary>
+      </main>,
+    );
+    shouldThrow = false;
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    const heading = screen.getByRole("heading", { level: 1, name: "Hosts" });
+    expect(heading).toHaveFocus();
+    expect(heading).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("refocuses the fallback's heading when Retry fails again", async () => {
+    render(
+      <main>
+        <PageErrorBoundary>
+          <Throws />
+        </PageErrorBoundary>
+      </main>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(screen.getByRole("heading", { level: 1, name: "This page could not be displayed" })).toHaveFocus();
+  });
 });
 
 describe("FragmentBoundary", () => {

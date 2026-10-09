@@ -1,7 +1,7 @@
 /**
  * Module-singleton run state for governed actions.
  *
- * Mirrors `features/drift-and-coverage/store.ts`: a module-scoped `Object.freeze`d
+ * Mirrors `modules/drift/web/store.ts`: a module-scoped `Object.freeze`d
  * state value replaced atomically, a `Set` of listener records, an isolating
  * `notify()` that iterates a copy and swallows a throwing listener, a
  * `getRunState()` snapshot reader, and a `subscribeRunState(listener) => () => void`

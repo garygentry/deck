@@ -1,10 +1,10 @@
 /**
  * Pure keyboard-intent primitives for the confirm/run interaction and audit detail.
  *
- * Mirrors `drift-and-coverage/keyboard.ts`: pure functions that never touch the DOM,
- * read live state, or filter by control origin. The mounted component owns
- * event-target filtering (e.g. not hijacking Enter inside a typed-confirm field until
- * it matches) and applying the intent.
+ * Mirrors the drift module's keyboard handling (`modules/drift/web`): pure functions
+ * that never touch the DOM, read live state, or filter by control origin. The mounted
+ * component owns event-target filtering (e.g. not hijacking Enter inside a typed-confirm
+ * field until it matches) and applying the intent.
  */
 
 /** Resolved single-key intent for the confirm/run interaction. */

@@ -1,5 +1,5 @@
 import type { UiExtension } from "@deck/module-sdk";
-import { APP_TITLE, isIconName } from "@/ui";
+import { APP_TITLE, isContributedIconName, isIconName } from "@/ui";
 import { useUiManifest, type UiManifestState } from "../data/index.js";
 import { getAllExtensions, type Extension } from "../registry/registry.js";
 import { useRegistryVersion } from "../registry/use-registry.js";
@@ -74,12 +74,14 @@ export type BrandMark = { kind: "logo"; url: string } | { kind: "icon"; name: st
 /**
  * The brand mark from the manifest's `brand`, read leniently: a logo URL the server would not
  * send (not http(s) or root-relative) and an icon the web does not bundle are ignored, so the
- * mark falls back rather than breaking. The initial while the manifest loads or is unreadable.
+ * mark falls back rather than breaking. A module's icon (`<module>/<name>`) is kept: `Icon`
+ * renders it once the manifest's icons are in, the fallback icon if it never is. The initial
+ * while the manifest loads or is unreadable.
  */
 export function brandMark(manifest: UiManifestState): BrandMark {
   if (manifest.status !== "ready") return { kind: "initial" };
   const { logoUrl, icon } = (manifest.manifest.brand ?? {}) as { logoUrl?: unknown; icon?: unknown };
   if (typeof logoUrl === "string" && /^(?:https?:\/\/|\/(?!\/))/.test(logoUrl)) return { kind: "logo", url: logoUrl };
-  if (typeof icon === "string" && isIconName(icon)) return { kind: "icon", name: icon };
+  if (typeof icon === "string" && (isIconName(icon) || isContributedIconName(icon))) return { kind: "icon", name: icon };
   return { kind: "initial" };
 }

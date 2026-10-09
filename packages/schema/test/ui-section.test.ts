@@ -29,6 +29,8 @@ describe("the ui section", () => {
     expect(validate(withUi(full))).toMatchObject({ classification: 0, findings: [] });
     expect(validate(withUi({}))).toMatchObject({ classification: 0, findings: [] });
     expect(validate(withUi({ brand: { logoUrl: "/assets/logo.png" } })).classification).toBe(0);
+    // A module's contributed icon, `<module>/<name>`.
+    expect(validate(withUi({ brand: { icon: "maintenance/wrench" } })).classification).toBe(0);
   });
 
   it.each(["teal", "slate", "copper", "rose", "high-contrast"])("accepts the %s preset", (preset) => {
@@ -39,6 +41,7 @@ describe("the ui section", () => {
     ["an unknown key", { dashboards: [] }, "/ui/dashboards"],
     ["an unknown brand key", { brand: { colour: "red" } }, "/ui/brand/colour"],
     ["a blank title", { brand: { title: "   " } }, "/ui/brand/title"],
+    ["a brand icon with two module segments", { brand: { icon: "a/b/c" } }, "/ui/brand/icon"],
     ["a javascript: logo", { brand: { logoUrl: "javascript:alert(1)" } }, "/ui/brand/logoUrl"],
     ["a data: logo", { brand: { logoUrl: "data:image/svg+xml,<svg/>" } }, "/ui/brand/logoUrl"],
     ["a protocol-relative logo", { brand: { logoUrl: "//evil.example/logo.svg" } }, "/ui/brand/logoUrl"],

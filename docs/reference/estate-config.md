@@ -462,7 +462,7 @@ ui:
 | Key | Type | Description |
 | --- | --- | --- |
 | `title` | string, 1–80 characters, not blank | The name shown in the sidebar, the document title (`{page} · {title}`) and `index.html`'s `<title>`. Default: `estate.name`, then `Deck`. |
-| `icon` | icon name | An icon from the shell's icon set, shown in the sidebar mark in place of the title's initial. A name the shell does not have shows the initial. |
+| `icon` | icon name | An icon from the shell's icon set, or one a runtime module contributes (`<module>/<name>`), shown in the sidebar mark in place of the title's initial. A name the shell does not have shows the initial; a module icon that does not arrive shows the fallback icon. |
 | `logoUrl` | string | An `http(s)://` URL or a root-relative path (`/logo.svg`) to an image, shown as the sidebar mark in place of the icon. If it fails to load, the initial shows. |
 
 `theme`:

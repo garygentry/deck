@@ -519,7 +519,7 @@ export interface UiBrand {
  */
 title?: string
 /**
- * An icon name from the shell's icon set, shown in place of the title's initial.
+ * An icon name from the shell's icon set, or one a module contributes (<module>/<name>), shown in place of the title's initial.
  */
 icon?: string
 /**

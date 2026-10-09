@@ -67,6 +67,7 @@ export function fixtureFor(expect: FindingCode): InvalidFixture {
     };
     case "UI_STATUS_MAP_UNKNOWN": return { ...common, layer: "merged", document: config(dashboard({ type: "core/stat", source: "feed", options: { statusMap: "ups-load" } })) };
     // The parser refuses the host (no octet is 999); the options schema checks only the url's shape.
+    case "UI_EMBED_NOT_FRAMEABLE": return { ...common, layer: "merged", document: config({ ui: { ...(dashboard({ type: "core/embed", options: { url: "http://[::1]:3000/d/ups" } }).ui as JsonObject), allowUnsafeEmbeds: true } }) };
     case "UI_EMBED_URL_INVALID": return { ...common, layer: "merged", document: config({ ui: { ...(dashboard({ type: "core/embed", options: { url: "https://999.1.1.1/d/ups" } }).ui as JsonObject), allowUnsafeEmbeds: true } }) };
     case "UI_EMBED_DISALLOWED": return { ...common, layer: "merged", document: config(dashboard({ type: "core/embed", options: { url: "https://grafana.invalid/d/ups" } })) };
     // Checked only when composition is given the select check (the server's is).

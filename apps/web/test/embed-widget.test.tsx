@@ -184,6 +184,14 @@ describe("core/embed under the page's frame policy", () => {
     expect(reload).toHaveBeenCalledOnce();
   });
 
+  it.each(["http://[::1]:3000/d", "https://my_host.lan/d"])("says %s can't be embedded (no policy can name its origin), and frames nothing", async (url) => {
+    const { container } = show(allowed, { url }, "UPS graph", undefined);
+    expect(await screen.findByText("This address can't be embedded")).toBeInTheDocument();
+    expect(screen.queryByText("Reload to show this page")).toBeNull();
+    expect(frame(container)).toBeNull();
+    expect(screen.getByRole("link", { name: /^Open / })).toHaveAttribute("href", new URL(url).href);
+  });
+
   it("frameAllowed: any origin without a page policy (the dev server); else only a named one", () => {
     expect(frameAllowed("https://a.example", undefined)).toBe(true);
     expect(frameAllowed("https://a.example", ["https://a.example"])).toBe(true);

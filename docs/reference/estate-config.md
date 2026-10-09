@@ -463,6 +463,7 @@ ui:
 | `pages` | array | Config-defined pages (dashboards): sections of widgets. |
 | `statusMaps` | object | Named maps from widget values to status tones, which widgets name in their `statusMap` option. |
 | `allowUnsafeEmbeds` | boolean | Lets `core/embed` widgets show other sites' pages in sandboxed frames. Default `false`. |
+| `frameSources` | array of string | While `allowUnsafeEmbeds` is `true`, origins besides the `core/embed` URLs' own that a framed page may load or redirect to, such as a sign-in portal (`https://auth.example.net`); same form as `frameAncestors`. deck's own origin is never allowed, even through a wildcard. |
 | `frameAncestors` | array of string | Origins besides deck's own that may show deck in a frame, such as a Home Assistant panel: `https://ha.example.net`, or `https://*.example.net` for its subdomains. Each is an `http(s)` origin with an optional port and no path; at most 32. Default none: only deck's own origin may frame it. See [Security](../security.md#browser-policy). |
 
 `brand`:
@@ -653,12 +654,15 @@ With it on:
   65535, for example. The schema checks only the loose shape (`http(s)://`, then an authority
   without `@`, whitespace or backslashes). `deck validate` then reports a URL the parser refuses
   as `UI_EMBED_URL_INVALID` (an error), and the browser runs the same check before it frames
-  anything.
+  anything. While embeds are on, a valid URL whose origin deck's Content-Security-Policy cannot
+  name (an IPv6 literal, a host with `_`) is `UI_EMBED_NOT_FRAMEABLE` (a warning): the widget says
+  it can't be embedded.
 - The frame sends no referrer, loads lazily and is titled by the widget's `title` (default "Page
   from" its host).
 - A URL on deck's own origin is refused in the browser ("Deck does not frame its own pages"),
-  since such a page could lift its own sandbox. Only the configured URL is checked, not where
-  the framed site redirects or navigates afterwards.
+  since such a page could lift its own sandbox. Where the framed site redirects or navigates
+  afterwards is held by the page's Content-Security-Policy: only the embeds' origins and
+  `ui.frameSources`, never deck's own (see [Security](../security.md#browser-policy)).
 - A site that refuses to be framed (`X-Frame-Options`, CSP `frame-ancestors`) leaves the frame
   blank; the link under it opens the page in a new tab.
 

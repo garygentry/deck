@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -165,12 +165,23 @@ for (const colorScheme of ["light", "dark"] as const) {
   });
 }
 
-test("refuses a framed page that redirects into deck's own origin", async ({ browser }) => {
+test("refuses a framed page that redirects into deck's own origin, even with a same-origin embed configured", async ({ browser }) => {
+  // Add an embed of deck's own origin (known only now) beside the escaping one, by hot reload.
+  const layer = join(api.tmp, "runtime", "config", "zzzz-ui.yaml");
+  const document = JSON.parse(readFileSync(layer, "utf8")) as { ui: { pages: { id: string; sections: { widgets: unknown[] }[] }[] } };
+  document.ui.pages.find((page) => page.id === "escape")!.sections[0]!.widgets.push({ id: "self", type: "core/embed", title: "Deck itself", options: { url: `${origin()}/portal`, height: "sm" } });
+  writeFileSync(layer, JSON.stringify(document));
+  await expect.poll(async () => (await (await fetch(`${origin()}/api/ui`)).text()).includes("Deck itself"), { timeout: 30_000 }).toBe(true);
+  const policy = (await fetch(`${origin()}/escape`)).headers.get("content-security-policy") ?? "";
+  expect(policy).toContain(`frame-src ${helperOrigin};`);
+  expect(policy).not.toContain(`frame-src ${origin()}`);
+
   const context = await browser.newContext({ baseURL: origin() });
   try {
     const page = await context.newPage();
     const violations = await watchViolations(page);
     await page.goto("/escape");
+    await expect(page.getByText("Deck does not frame its own pages; place their widgets on a dashboard instead.")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('iframe[title="Escaping frame"]')).toBeAttached({ timeout: 30_000 });
     await expect.poll(async () => (await violations.events()).map((violation) => violation.directive), { timeout: 15_000 }).toContain("frame-src");
     // No frame ever holds deck's shell.

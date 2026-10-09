@@ -21,7 +21,7 @@ import { requestLogger } from "../log/logger.js";
 import { etagMatches, etagOf, type LiveUi } from "../ui/live.js";
 import type { RuntimeWebAssets } from "../modules/runtime.js";
 import { deckBootOf, renderIndexHtml } from "./index-html.js";
-import { frameAncestorsOf, frameOriginsOf, scriptNonce, securityHeaders, shellPolicy } from "./security-headers.js";
+import { frameAncestorsOf, frameOriginsFor, requestOrigins, scriptNonce, securityHeaders, shellPolicy } from "./security-headers.js";
 import { mountModuleAssets } from "./module-assets.js";
 import { RESERVED_ROOT_PATHS } from "./reserved-paths.js";
 
@@ -227,8 +227,9 @@ export function createApp(deps: AppDeps): Hono {
       context.header("Cache-Control", "no-cache");
       const { ui, config } = current();
       const nonce = scriptNonce();
-      const frameOrigins = frameOriginsOf(ui);
-      context.header("Content-Security-Policy", shellPolicy({ nonce, frameOrigins, frameAncestors: frameAncestorsOf(config) }));
+      // Never deck's own origin, as this request reached it (directly or through the proxy).
+      const frameOrigins = frameOriginsFor(ui, config, requestOrigins(context.req.url, (name) => context.req.header(name)));
+      context.header("Content-Security-Policy", shellPolicy({ nonce, frameOrigins }));
       return context.html(renderIndexHtml(template, { ...deckBootOf(ui, config), frameOrigins }, nonce));
     });
   }

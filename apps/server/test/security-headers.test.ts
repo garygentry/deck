@@ -10,14 +10,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { validate } from "@deck/schema";
+import deckSchema from "@deck/schema/deck.schema.json" with { type: "json" };
+import { ORIGIN_SETTING_PATTERN } from "@deck/schema/embed";
 import type { UiManifest } from "@deck/module-sdk";
-import type { Context, Next } from "hono";
+import { Hono, type Context, type Next } from "hono";
 import type { Logger } from "pino";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 import type { DeckConfig } from "../src/contract/index.js";
 import { createApp } from "../src/server/app.js";
-import { FRAME_ANCESTOR, frameAncestorsOf, frameOriginsOf, shellPolicy } from "../src/server/security-headers.js";
+import { embedOriginsOf, frameAncestorsOf, frameOriginsFor, ORIGIN_SETTING, requestOrigins, securityHeaders, shellPolicy, sourceMatches } from "../src/server/security-headers.js";
 
 vi.mock("hono/bun", () => ({
   serveStatic: () => async (context: Context, next: Next) =>
@@ -52,17 +54,34 @@ const manifestWith = (allowUnsafeEmbeds: boolean, urls: string[]) =>
     home: null,
     ...(allowUnsafeEmbeds ? { allowUnsafeEmbeds: true } : {}),
     pages: [{ id: "page:ui/lab", module: "ui", path: "/lab", title: "Lab", component: "ConfigPage", layout: { sections: [{ columns: 2, widgets: urls.map(embed) }] } }],
-    extensions: [{ id: "widget:ui/slot.e", kind: "widget", type: "core/embed", options: { url: "https://placed.example:8443/x" } }],
+    extensions: [{ id: "widget:ops/slot.e", kind: "widget", module: "ops", slot: "portal/summary", order: 1, widget: { type: "core/embed", options: { url: "https://placed.example:8443/x" } } }],
   }) as unknown as UiManifest;
 
-function appWith(options: { ui?: UiManifest; frameAncestors?: string[] } = {}) {
-  const config = { schemaVersion: 2, estate: { name: "lab" }, ...(options.frameAncestors === undefined ? {} : { ui: { frameAncestors: options.frameAncestors } }) } as DeckConfig;
+function appWith(options: { ui?: UiManifest; frameAncestors?: string[]; frameSources?: string[] } = {}) {
+  const ui = {
+    ...(options.frameAncestors === undefined ? {} : { frameAncestors: options.frameAncestors }),
+    ...(options.frameSources === undefined ? {} : { frameSources: options.frameSources }),
+  };
+  const config = { schemaVersion: 2, estate: { name: "lab" }, ui } as DeckConfig;
   return createApp({ config, providers, logger, ui: options.ui ?? manifestWith(false, []), webDistDir: dist });
 }
 
-/** The directives of a policy, by name. */
-function directives(policy: string | null): Record<string, string> {
-  return Object.fromEntries((policy ?? "").split(";").map((part) => part.trim().split(/\s+/)).filter((words) => words[0] !== "").map(([name, ...values]) => [name!, values.join(" ")]));
+/**
+ * The policies a Content-Security-Policy header holds (a header sent twice reads as one,
+ * comma-joined), each as its directives by name.
+ */
+function policies(header: string | null): Record<string, string>[] {
+  return (header ?? "").split(",").map((policy) => Object.fromEntries(policy.split(";").map((part) => part.trim().split(/\s+/)).filter((words) => words[0] !== "").map(([name, ...values]) => [name!, values.join(" ")])));
+}
+
+/** The shell's own policy (the one naming `script-src`); the framing policy is separate. */
+function directives(header: string | null): Record<string, string> {
+  return policies(header).find((policy) => "script-src" in policy) ?? {};
+}
+
+/** The framing policies of a response: every `frame-ancestors` it carries. */
+function ancestors(header: string | null): string[] {
+  return policies(header).flatMap((policy) => (policy["frame-ancestors"] === undefined ? [] : [policy["frame-ancestors"]]));
 }
 
 describe("the web shell's Content-Security-Policy", () => {
@@ -96,8 +115,8 @@ describe("the web shell's Content-Security-Policy", () => {
       "object-src": "'none'",
       "base-uri": "'none'",
       "form-action": "'self'",
-      "frame-ancestors": "'self'",
     });
+    expect(ancestors((await appWith().request("/")).headers.get("content-security-policy"))).toEqual(["'self'"]);
     expect(policy["script-src"]).not.toMatch(/unsafe|strict-dynamic|\*/);
   });
 
@@ -116,10 +135,57 @@ describe("the web shell's Content-Security-Policy", () => {
   });
 
   it("builds the same policy from its parts", () => {
-    expect(shellPolicy({ nonce: "n", frameOrigins: ["https://a.example"], frameAncestors: ["https://ha.example"] })).toBe(
-      "default-src 'self'; script-src 'self' 'nonce-n'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http: https:; font-src 'self' data:; connect-src 'self'; frame-src https://a.example; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self' https://ha.example",
+    expect(shellPolicy({ nonce: "n", frameOrigins: ["https://a.example"] })).toBe(
+      "default-src 'self'; script-src 'self' 'nonce-n'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http: https:; font-src 'self' data:; connect-src 'self'; frame-src https://a.example; object-src 'none'; base-uri 'none'; form-action 'self'",
     );
-    expect(frameOriginsOf(undefined)).toEqual([]);
+    expect(embedOriginsOf(undefined)).toEqual([]);
+  });
+
+  it("walks placed widgets only, once per manifest", () => {
+    const manifest = { ...manifestWith(true, ["https://grafana.example.net/d"]), stray: { type: "core/embed", options: { url: "https://stray.example" } } } as unknown as UiManifest;
+    const origins = embedOriginsOf(manifest);
+    expect(origins).toEqual(["https://grafana.example.net", "https://placed.example:8443"]);
+    expect(embedOriginsOf(manifest)).toBe(origins);
+  });
+
+  describe("never frames deck's own origin", () => {
+    const urls = ["https://deck.example.net/portal", "https://grafana.example.net/d"];
+
+    it("as the request reached it (Host)", async () => {
+      const response = await appWith({ ui: manifestWith(true, urls) }).request("https://deck.example.net/");
+      expect(directives(response.headers.get("content-security-policy"))["frame-src"]).toBe("https://grafana.example.net https://placed.example:8443");
+      expect(await response.text()).toContain('"frameOrigins":["https://grafana.example.net","https://placed.example:8443"]');
+    });
+
+    it("behind the reverse proxy (X-Forwarded-Host and -Proto)", async () => {
+      const response = await appWith({ ui: manifestWith(true, urls) }).request("http://deck:8095/", { headers: { "X-Forwarded-Host": "deck.example.net", "X-Forwarded-Proto": "https" } });
+      expect(directives(response.headers.get("content-security-policy"))["frame-src"]).toBe("https://grafana.example.net https://placed.example:8443");
+    });
+
+    it("nor a ui.frameSources entry, or a wildcard, that covers it", async () => {
+      const response = await appWith({ ui: manifestWith(true, ["https://grafana.example.net/d"]), frameSources: ["https://*.example.net", "https://deck.example.net", "https://auth.lab.example"] }).request("https://deck.example.net/");
+      expect(directives(response.headers.get("content-security-policy"))["frame-src"]).toBe("https://auth.lab.example https://grafana.example.net https://placed.example:8443");
+    });
+
+    it("requestOrigins / sourceMatches", () => {
+      const none = () => undefined;
+      expect(requestOrigins("http://deck:8095/x", none)).toEqual(["http://deck:8095"]);
+      expect(requestOrigins("http://deck:8095/x", (name) => ({ "x-forwarded-host": "deck.example.net, inner", "x-forwarded-proto": "https" })[name])).toEqual(["http://deck:8095", "https://deck.example.net"]);
+      expect(requestOrigins("http://deck:8095/x", (name) => ({ "x-forwarded-host": "deck.example.net" })[name])).toEqual(["http://deck:8095", "http://deck.example.net", "https://deck.example.net"]);
+      expect(sourceMatches("https://*.example.net", "https://deck.example.net")).toBe(true);
+      expect(sourceMatches("https://*.example.net", "https://example.net")).toBe(false);
+      expect(sourceMatches("http://deck.example.net", "https://deck.example.net")).toBe(true);
+      expect(sourceMatches("https://deck.example.net:8443", "https://deck.example.net")).toBe(false);
+      expect(sourceMatches("https://deck.example.net", "https://deck.example.net:443")).toBe(true);
+      expect(frameOriginsFor(manifestWith(false, ["https://a.example"]), { ui: { frameSources: ["https://b.example"] } }, [])).toEqual([]);
+    });
+  });
+
+  it("adds ui.frameSources while embeds are on (a sign-in portal the framed app redirects to)", async () => {
+    const on = await appWith({ ui: manifestWith(true, ["https://grafana.example.net/d"]), frameSources: ["https://auth.example.net"] }).request("/");
+    expect(directives(on.headers.get("content-security-policy"))["frame-src"]).toBe("https://auth.example.net https://grafana.example.net https://placed.example:8443");
+    const off = await appWith({ ui: manifestWith(false, []), frameSources: ["https://auth.example.net"] }).request("/");
+    expect(directives(off.headers.get("content-security-policy"))["frame-src"]).toBe("'none'");
   });
 });
 
@@ -128,34 +194,88 @@ describe("frame-ancestors on every response", () => {
 
   it.each(paths)("by default, %s may be framed by deck's own origin only (with X-Frame-Options and nosniff)", async (path) => {
     const response = await appWith().request(path);
-    expect(directives(response.headers.get("content-security-policy"))["frame-ancestors"]).toBe("'self'");
+    expect(ancestors(response.headers.get("content-security-policy"))).toEqual(["'self'"]);
     expect(response.headers.get("x-frame-options")).toBe("SAMEORIGIN");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
   it.each(paths)("with ui.frameAncestors, %s may be framed by those origins too, and X-Frame-Options is not sent", async (path) => {
     const response = await appWith({ frameAncestors: ["https://ha.example.net", "https://*.lab.example"] }).request(path);
-    expect(directives(response.headers.get("content-security-policy"))["frame-ancestors"]).toBe("'self' https://ha.example.net https://*.lab.example");
+    expect(ancestors(response.headers.get("content-security-policy"))).toEqual(["'self' https://ha.example.net https://*.lab.example"]);
     expect(response.headers.get("x-frame-options")).toBeNull();
   });
 
   it("only the shell carries the full policy; other responses carry frame-ancestors alone", async () => {
-    expect(Object.keys(directives((await appWith().request("/api/health")).headers.get("content-security-policy")))).toEqual(["frame-ancestors"]);
+    expect(policies((await appWith().request("/api/health")).headers.get("content-security-policy"))).toEqual([{ "frame-ancestors": "'self'" }]);
+  });
+
+  /** A bare app behind the middleware, with routes that set policies or answer immutable responses. */
+  function routes(extra: string[]) {
+    const upstream = new Hono();
+    upstream.get("/", (context) => context.text("upstream"));
+    const app = new Hono();
+    app.use("*", securityHeaders(() => extra));
+    app.get("/strict", (context) => {
+      context.header("Content-Security-Policy", "default-src 'none'");
+      return context.text("strict");
+    });
+    app.get("/loose", (context) => {
+      context.header("Content-Security-Policy", "frame-ancestors *");
+      context.header("X-Frame-Options", "ALLOWALL");
+      return context.text("loose");
+    });
+    app.get("/redirect", () => Response.redirect("https://deck.example.net/elsewhere", 302));
+    app.get("/fetched", async () => fetchLike(await upstream.request("/")));
+    return app;
+  }
+
+  /** A response with immutable headers, as `fetch()` returns. */
+  async function fetchLike(response: Response): Promise<Response> {
+    const immutable = new Response(await response.text(), response);
+    Object.defineProperty(immutable, "headers", { value: new Proxy(immutable.headers, { get: (target, key) => (key === "set" || key === "append" || key === "delete" ? () => { throw new TypeError("immutable"); } : Reflect.get(target, key, target)) }) });
+    return immutable;
+  }
+
+  it.each([["a route's own strict policy", "/strict"], ["a route's permissive frame-ancestors *", "/loose"]])("keeps framing enforced beside %s", async (_label, path) => {
+    for (const extra of [[], ["https://ha.example.net"]]) {
+      const response = await routes(extra).request(path);
+      const header = response.headers.get("content-security-policy");
+      // The route's own policy stays, and deck's framing policy applies beside it.
+      expect(policies(header)).toContainEqual({ "frame-ancestors": ["'self'", ...extra].join(" ") });
+      expect(header).toContain(path === "/strict" ? "default-src 'none'" : "frame-ancestors *");
+      expect(response.headers.get("x-frame-options")).toBe(extra.length === 0 ? "SAMEORIGIN" : null);
+    }
+  });
+
+  it.each(["/redirect", "/fetched"])("sets the headers on %s, whose headers are immutable, without failing it", async (path) => {
+    const response = await routes([]).request(path);
+    expect(response.status).toBe(path === "/redirect" ? 302 : 200);
+    expect(ancestors(response.headers.get("content-security-policy"))).toEqual(["'self'"]);
+    expect(response.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+    if (path === "/redirect") expect(response.headers.get("location")).toBe("https://deck.example.net/elsewhere");
+    else expect(await response.text()).toBe("upstream");
   });
 });
 
-describe("ui.frameAncestors", () => {
-  const config = (frameAncestors: unknown) => ({ schemaVersion: 2, estate: { name: "lab" }, ui: { frameAncestors } });
+describe.each(["frameAncestors", "frameSources"] as const)("ui.%s", (key) => {
+  const config = (origins: unknown) => ({ schemaVersion: 2, estate: { name: "lab" }, ui: { [key]: origins } });
+
+  it("holds the same pattern as the server's check", () => {
+    const ui = (deckSchema as unknown as { $defs: Record<string, { properties: Record<string, { items: { pattern: string } }> }> }).$defs.Ui!.properties;
+    expect(ui[key]!.items.pattern).toBe(ORIGIN_SETTING_PATTERN);
+    expect(ORIGIN_SETTING.source).toBe(new RegExp(ORIGIN_SETTING_PATTERN).source);
+  });
 
   it.each([["https://ha.example.net"], ["http://10.0.0.5:8123"], ["https://*.example.net"], ["http://homeassistant"]])("accepts %s", (origin) => {
     expect(validate(config([origin])).findings.filter((finding) => finding.severity === "error")).toEqual([]);
-    expect(FRAME_ANCESTOR.test(origin)).toBe(true);
+    expect(ORIGIN_SETTING.test(origin)).toBe(true);
   });
 
   it.each([["https://ha.example.net/path"], ["ftp://ha.example.net"], ["'self'"], ["*"], ["https://ha.example.net; script-src *"], ["https://a.example/"], ["javascript:alert(1)"]])("refuses %s", (origin) => {
     expect(validate(config([origin])).findings).toContainEqual(expect.objectContaining({ code: "SCHEMA_INVALID", severity: "error" }));
-    expect(FRAME_ANCESTOR.test(origin)).toBe(false);
+    expect(ORIGIN_SETTING.test(origin)).toBe(false);
     // Even past validation, a value the pattern refuses never reaches the header.
-    expect(frameAncestorsOf(config([origin]))).toEqual([]);
+    if (key === "frameAncestors") expect(frameAncestorsOf(config([origin]))).toEqual([]);
+    else expect(frameOriginsFor({ allowUnsafeEmbeds: true, pages: [] } as unknown as UiManifest, config([origin]), [])).toEqual([]);
   });
 });

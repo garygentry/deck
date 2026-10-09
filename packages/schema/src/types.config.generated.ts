@@ -510,6 +510,12 @@ allowUnsafeEmbeds?: boolean
  */
 frameAncestors?: string[]
 /**
+ * While ui.allowUnsafeEmbeds is true, origins besides the core/embed URLs' own that framed pages may load or redirect to (Content-Security-Policy frame-src), such as a sign-in page: https://auth.example.net; no path. Deck's own origin is never allowed.
+ * 
+ * @maxItems 32
+ */
+frameSources?: string[]
+/**
  * Named maps from a widget's values to status tones, which widget options reference by name (statusMap).
  */
 statusMaps?: {

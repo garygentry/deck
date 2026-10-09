@@ -224,7 +224,24 @@ ui:
   navigates to one of deck's pages, or to any other site, gets a refused frame.
 - An embed whose site you add, or embeds you turn on, while a viewer has deck open shows
   "Reload to show this page" until that viewer reloads: the page's policy is fixed when it
-  loads. An IP-literal IPv6 URL cannot be named in that policy; use a host name.
+  loads.
+- An address no policy can name, an IPv6 literal or a host with `_`, is never framed: the
+  widget says "This address can't be embedded" and `deck validate` warns
+  (`UI_EMBED_NOT_FRAMEABLE`). Use a host name of letters, digits, `.` and `-`.
+- **A framed app that redirects to another origin needs that origin listed.** The frame may go
+  only to the embeds' own origins, so an app behind single sign-on or forward-auth (Authelia,
+  Authentik, oauth2-proxy) that sends the frame to its sign-in portal, or a site that redirects
+  `http://` to `https://`, gets a refused frame. List each origin the frame must reach in
+  `ui.frameSources`:
+
+  ```yaml
+  ui:
+    allowUnsafeEmbeds: true
+    frameSources:
+      - https://auth.home.example     # the sign-in portal Grafana's proxy redirects to
+  ```
+
+  deck never adds its own origin, even through a wildcard such as `https://*.home.example`.
 - Many sites refuse to be framed (`X-Frame-Options` or a CSP `frame-ancestors`), and the frame
   then stays blank. Allow deck's origin in that site's settings (Grafana: `allow_embedding`),
   or use the **Open** link under the frame, which opens the page in a new tab.

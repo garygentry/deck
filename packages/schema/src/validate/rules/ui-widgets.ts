@@ -1,6 +1,6 @@
 import type { ComposedConfig } from "../../compose/compose.js";
 import { finding, type Finding } from "../../findings.js";
-import { embedUrlProblem } from "../../embed.js";
+import { embedUrlProblem, frameOriginOf } from "../../embed.js";
 import type { DeckConfigDocument, ValidateLayer } from "../../types.js";
 
 /**
@@ -21,7 +21,9 @@ import type { DeckConfigDocument, ValidateLayer } from "../../types.js";
  *   widget may sit in different layers;
  * - a `core/embed` url the URL parser refuses, or that carries user:password@
  *   (UI_EMBED_URL_INVALID, an error), on the merged document: the same check the web makes
- *   before it frames anything (the options schema checks only the url's loose shape).
+ *   before it frames anything (the options schema checks only the url's loose shape);
+ * - while embeds are on, a valid `core/embed` url whose origin no Content-Security-Policy can
+ *   name (UI_EMBED_NOT_FRAMEABLE, a warning): the widget says it can't be embedded.
  * A widget's options are checked by the composed schema, against its type's options schema.
  */
 export function uiWidgets(
@@ -78,6 +80,9 @@ export function uiWidgets(
         if (widget.type === "core/embed" && layer === "merged" && typeof url === "string") {
           const urlProblem = embedUrlProblem(url);
           if (urlProblem !== null) findings.push(finding("UI_EMBED_URL_INVALID", `${path}/options/url`, `core/embed url ${JSON.stringify(url)}: ${urlProblem}`));
+          else if (doc.ui?.allowUnsafeEmbeds === true && frameOriginOf(url) === null) {
+            findings.push(finding("UI_EMBED_NOT_FRAMEABLE", `${path}/options/url`, `core/embed url ${JSON.stringify(url)}: deck's Content-Security-Policy cannot name its origin, so the page never frames it`));
+          }
         }
         if (widget.type === "core/embed" && checkEmbeds) {
           findings.push(finding(

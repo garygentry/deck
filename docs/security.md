@@ -97,8 +97,9 @@ Each way of extending deck gets the trust its form allows. Climb only as far as 
 
 ## Browser policy
 
-Every response carries `frame-ancestors` (in a `Content-Security-Policy` header) and
-`X-Content-Type-Options: nosniff`. By default only deck's own origin may frame deck, and
+Every response carries `frame-ancestors` in a `Content-Security-Policy` of its own, and
+`X-Content-Type-Options: nosniff`. A policy a module's route sets applies beside it, never in
+place of it. By default only deck's own origin may frame deck, and
 `X-Frame-Options: SAMEORIGIN` says so to older browsers too. To show deck inside another app,
 such as a Home Assistant panel, list that app's origin in `ui.frameAncestors`. deck then omits
 `X-Frame-Options`, which cannot name another origin. The setting takes effect without a restart.
@@ -110,8 +111,11 @@ The web shell's page carries a Content-Security-Policy that browsers enforce:
   on every response, and no `eval` runs. The page is served `Cache-Control: no-cache`, so a
   cached copy never outlives its nonce.
 - **Requests** (`fetch`) go to deck's origin only.
-- **Frames** may show only the origins of the `core/embed` URLs in the config, and none while
-  `ui.allowUnsafeEmbeds` is off. deck's own origin is never among them.
+- **Frames** may show only the origins of the `core/embed` URLs in the config, plus those
+  `ui.frameSources` lists (a sign-in portal a framed app redirects to), and none while
+  `ui.allowUnsafeEmbeds` is off. deck's own origin is never among them: deck leaves out the
+  origin each request reached it on, and, behind the reverse proxy, the one `X-Forwarded-Host`
+  and `X-Forwarded-Proto` name, so have the proxy send them.
 - **Styles** may be inline as well as deck's own, and **images** may come from any `http(s)`
   URL (brand logos, images in docs). A sanitized page cannot inject a script, but it can show an
   image from another site.

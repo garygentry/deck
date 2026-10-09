@@ -1,6 +1,6 @@
 import { EMBED_SANDBOX } from "@deck/contract/modules/widgets";
 // The one url rule (dependency-free), which config validation runs too.
-import { embedUrlProblem } from "@deck/schema/embed";
+import { embedUrlProblem, frameOriginOf } from "@deck/schema/embed";
 import { Button, EmptyState, ErrorState, ExternalLink, Icon, LoadingState, cn } from "@/ui";
 
 import { useUiManifest } from "../../data/index.js";
@@ -63,8 +63,9 @@ export function embedTarget(raw: unknown, ownOrigin: string): { url: URL } | { p
  * (for a site that refuses to be framed). It frames nothing unless the UI manifest says the ui
  * config allows embeds (`ui.allowUnsafeEmbeds: true`); until the manifest arrives it waits, and
  * when the manifest cannot be read it stays off. The frame sends no referrer and loads lazily.
- * A page served before embeds of its origin were allowed (a `ui` hot reload since) cannot frame
- * it under its policy, so the widget asks for a reload instead.
+ * An origin the page's policy can never name says so; a page served before embeds of its origin
+ * were allowed (a `ui` hot reload since) cannot frame it under its policy, so the widget asks
+ * for a reload instead.
  */
 export function EmbedWidget({ options, widget, frameOrigins = bootFrameOrigins() }: WidgetProps<EmbedOptions> & { frameOrigins?: readonly string[] | undefined }) {
   const manifest = useUiManifest();
@@ -78,6 +79,15 @@ export function EmbedWidget({ options, widget, frameOrigins = bootFrameOrigins()
   if (manifest.status === "loading") return <LoadingState label="Loading widget…" preset="lines" rows={2} />;
   if (manifest.status !== "ready" || manifest.manifest.allowUnsafeEmbeds !== true) {
     return <EmptyState compact icon="eye-off" title="Embeds are off" description="Set ui.allowUnsafeEmbeds: true to show this page here." action={open} />;
+  }
+  // An origin no Content-Security-Policy can name (an IPv6 literal, a host with `_`): never framed.
+  if (frameOriginOf(target.url.href) === null) {
+    return (
+      <div data-slot="embed" className="flex flex-col gap-2">
+        <ErrorState compact title="This address can't be embedded" message="Deck can frame only a host name or an IPv4 address." />
+        <div className="flex justify-end">{open}</div>
+      </div>
+    );
   }
   if (!frameAllowed(target.url.origin, frameOrigins)) {
     // Fixed text: the URL is not repeated here.

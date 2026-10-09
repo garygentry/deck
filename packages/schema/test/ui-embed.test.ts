@@ -30,6 +30,13 @@ describe("ui.allowUnsafeEmbeds and core/embed", () => {
     expect(result.findings.map((finding) => finding.code)).not.toContain("UI_EMBED_DISALLOWED");
   });
 
+  it.each(["http://[::1]:3000/d", "https://my_host.lan/d"])("warns that %s can't be framed while embeds are on (UI_EMBED_NOT_FRAMEABLE), and not while they are off", (url) => {
+    const on = validate(dashboard([embed({ url })], { allowUnsafeEmbeds: true }));
+    expect(located(on)).toEqual([{ code: "UI_EMBED_NOT_FRAMEABLE", path: "/ui/pages/0/sections/0/widgets/0/options/url", severity: "warning" }]);
+    const off = validate(dashboard([embed({ url })]));
+    expect(off.findings.map((finding) => finding.code)).not.toContain("UI_EMBED_NOT_FRAMEABLE");
+  });
+
   it("is overlay-owned, like the rest of ui", () => {
     const result = validate({ ...base, ui: { allowUnsafeEmbeds: true } }, { layer: "base" });
     expect(result.findings.map((finding) => finding.code)).toContain("LAYER_OVERLAY_KEY_IN_BASE");
@@ -95,7 +102,11 @@ describe("ui.allowUnsafeEmbeds and core/embed", () => {
     "https://grafana.lab:65535/d?a=b#c",
     "https://wiki.lab/a@b",
   ])("accepts %s", (url) => {
-    expect(located(validate(dashboard([embed({ url })], { allowUnsafeEmbeds: true })))).toEqual([]);
+    // Valid; a host CSP cannot name (`_`, an IPv6 literal) is only warned about.
+    const unframeable = url.includes("_") || url.includes("[");
+    expect(located(validate(dashboard([embed({ url })], { allowUnsafeEmbeds: true })))).toEqual(
+      unframeable ? [{ code: "UI_EMBED_NOT_FRAMEABLE", path: "/ui/pages/0/sections/0/widgets/0/options/url", severity: "warning" }] : [],
+    );
   });
 
   it("accepts an empty sandbox list (the frame may do nothing)", () => {

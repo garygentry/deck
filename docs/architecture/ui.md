@@ -16,10 +16,11 @@ apps/web/src/
     lib/          cn(), icons.ts (curated Lucide set), status.ts (tones), format.ts, filters.ts
     index.ts      the public barrel: feature code imports from "@/ui"
   shell/          AppShell, AppSidebar, Topbar, ThemeMenu, NotFoundPage, the health header
-  features/*/     one directory per feature; `index.ts` registers pages and fragments
+  features/*/     one directory per feature not yet co-located; `index.ts` registers its web half
   styles/         app.css (Tailwind entry + base rules), theme.css (tokens), hljs.css; the token
                   utilities (`@theme inline`) are packages/sdk/tailwind/theme.css, shared with
                   runtime modules' styles
+modules/<id>/web/ a co-located built-in module's web half, compiled into the app like a feature
 ```
 
 - **Primitives** are shadcn/ui components, copied into the repo rather than installed. They
@@ -135,7 +136,8 @@ The cache keeps deck's timing:
 ## Pages, the registry and the shell
 
 Features register surfaces at import time. `registry/discover.ts` imports every
-`features/*/index.ts`. A feature registers its module's web half (see "A module's web half"
+`features/*/index.ts` and every co-located built-in's `modules/*/web/index.ts` (a unit test holds
+the discovered set equal to the server's built-ins that have a web half). A feature registers its module's web half (see "A module's web half"
 below): where each page, nav entry, pill, card and entity section attaches is manifest data, so
 a feature never hard-codes a path, slot, group or order. Pages, nav entries, `app/topbar.status`
 pills, `portal/summary` cards and entity sections are all manifest-placed: declare them in the
@@ -178,7 +180,7 @@ loads server code). The feature's `index.ts` pairs it with a component table and
 ```ts
 import { LLM_USAGE_UI } from "@deck/contract/modules/llm-usage";
 import { defineWebModule } from "@deck/module-sdk";
-import { registerWebModule } from "../../registry/web-module.js";
+import { registerWebModule } from "@/registry/web-module.js";
 
 registerWebModule(defineWebModule(LLM_USAGE_UI, {
   components: { LlmUsagePage, LlmUsageSummary, LlmUsagePortalCard },

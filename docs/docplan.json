@@ -39,7 +39,7 @@
     { "id": "s-providers", "path": "apps/server/src/providers/**", "type": "api", "note": "9 provider kinds — alertmanager, docker, file-tree, gatus, http-health, link, markdown-tree, prometheus, snapshot — plus registry (register/read/startScheduler/listHealth) and wiring (registerAllProviders)." },
     { "id": "s-drift", "path": "packages/drift/src/**", "type": "api", "note": "Server-derived drift/coverage projection: deriveDriftProjection, filters, evidence, ordering, coverage rows/counts, severities, waiver state." },
     { "id": "s-sources", "path": "apps/server/src/sources/**", "type": "api", "note": "Read-only source browsing: tree/file/raw/search, path confinement (confine.ts), git acquisition + on-disk cache, capability gating (SOURCE_NOT_FOUND when off)." },
-    { "id": "s-llm-usage", "path": "apps/server/src/llm-usage/**", "type": "api", "note": "LLM usage collector: Claude statusLine/OAuth/transcripts and Codex app-server/rollout sources, adaptive cadence with the 2-minute OAuth floor, /api/llm-usage routes and the ingest bearer gate."},
+    { "id": "s-llm-usage", "path": "modules/llm-usage/server/**", "type": "api", "note": "LLM usage collector: Claude statusLine/OAuth/transcripts and Codex app-server/rollout sources, adaptive cadence with the 2-minute OAuth floor, /api/llm-usage routes and the ingest bearer gate."},
     { "id": "s-actions", "path": "apps/server/src/actions/**", "type": "api", "note": "Governed actions: executor, runner allowlist, param validation, audit store, run events. Capability OFF by default; routes 403 until enabled." },
     { "id": "s-secrets", "path": "packages/schema/src/secrets.ts, packages/schema/src/validate/rules/secrets.ts", "type": "config", "note": "Secret-reference model: credentialEnv holds an env-var NAME (pattern ^[A-Z][A-Z0-9_]*$), never a value; suspected-secret detection in validation." },
     { "id": "s-freshness", "path": "packages/contract/src/freshness.ts, apps/server/src/providers/registry.ts", "type": "api", "note": "Freshness model (FreshnessStamp/State, ProviderEnvelope) and deriveState; snapshotStaleAfter drives host freshness." },
@@ -219,7 +219,7 @@
         { "heading": "Push live Claude Code numbers with the statusLine hook", "intent": "Token setup, settings.json, reverse-proxy exemption for the ingest route only.", "sourceRefs": ["s-env"] },
         { "heading": "Read the page", "intent": "Per-bar attribution and the source states in Diagnostics.", "sourceRefs": ["s-deck-schema"] }
       ],
-      "verification": "Written against apps/server/src/llm-usage (collector, routes, config) and scripts/statusline-ingest.sh."
+      "verification": "Written against modules/llm-usage/server (collector, routes, config) and scripts/statusline-ingest.sh."
     },
     {
       "id": "r1",

@@ -129,6 +129,25 @@ absent, switched off, or with an unusable manifest. Disabling a module later, wh
 handler fails during provider registration, does not cascade: its dependants keep running,
 degraded.
 
+**Where a built-in module lives.** A co-located built-in is one workspace package,
+`modules/<id>/` (`@deck/module-<id>`):
+
+| Path | Holds |
+|---|---|
+| `schema.json` | its `modules.<id>` config section schema, if it has one |
+| `server/` | its server half; `server/module.ts` exports the module the server's static built-in list (`apps/server/src/modules/builtin.ts`) imports |
+| `web/` | its web half; `web/index.ts` registers it, and the web app discovers every `modules/*/web/index.ts` |
+| `test/server/`, `test/web/` | its unit tests, run by the host app's test suite (`apps/server`, `apps/web`) |
+
+There is no `module.json`: a built-in's manifest is TypeScript (the data half in
+`@deck/contract/modules/<id>`, which the web loads too, spread into `server/module.ts`). Only a
+runtime module ships its manifest as JSON (`deck-module.json`). The package declares its own
+dependencies; it has no build, typecheck or test script of its own, because both halves compile
+inside their host app (the web half may import the app's `@/` modules, which runtime modules reach
+through `@deck/sdk` instead). Tests that drive the module through the kernel (the module host, the
+app, the config pipeline) stay in the host app's `test/`. Built-ins not yet co-located still live
+in `apps/server/src/<id>` (or `providers/<kind>`) and `apps/web/src/features/<feature>`.
+
 ![Building-block view: the config loader feeds boot wiring, which registers providers and starts the poll scheduler feeding drift projection; the sources and actions runtimes are capability-gated, all exposed through the Hono app.](./diagrams/building-blocks.svg)
 
 *Server building blocks: the config loader feeds boot wiring, which registers providers and starts

@@ -1,4 +1,4 @@
-import type { UiExtension } from "@deck/module-sdk";
+import { CONFIG_PAGE_COMPONENT, type UiExtension } from "@deck/module-sdk";
 import { useEffect, useLayoutEffect, useSyncExternalStore, type ComponentType } from "react";
 import { LoadingState, setContributedIcons } from "@/ui";
 
@@ -79,7 +79,8 @@ export function runtimePageRegistrations(manifest: UiManifestState, registered: 
   if (manifest.status !== "ready" || modules.size === 0 || !Array.isArray(manifest.manifest.pages)) return [];
   const have = new Set<string>(registered.map((page) => page.id));
   return manifest.manifest.pages
-    .filter((page) => modules.has(page.module) && !have.has(page.id))
+    // A config page (ConfigPage) routes through the config-page routes, whoever contributes it.
+    .filter((page) => modules.has(page.module) && !have.has(page.id) && page.component !== CONFIG_PAGE_COMPONENT)
     .map((page) => ({
       id: page.id,
       path: page.path,

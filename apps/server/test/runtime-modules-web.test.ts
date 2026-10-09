@@ -14,7 +14,9 @@ import type { UiManifest, UiModule } from "@deck/module-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stringify } from "yaml";
 
+import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { moduleDigest, readWebAssets } from "../src/modules/runtime.js";
+import { buildUiManifest } from "../src/ui/manifest.js";
 import { stopScheduler } from "../src/providers/registry.js";
 import { boot, type BootHandle } from "../src/server/boot.js";
 
@@ -214,5 +216,42 @@ describe("module paths", () => {
       expect(module?.enabled, id).toBe(false);
       expect(module?.reason, id).toMatch(/modules/);
     }
+  });
+});
+
+describe("runtime web modules beside runtime pages", () => {
+  it("lists a runtime module's web half and icons beside a remote integration's runtime page", () => {
+    const maintenance = JSON.parse(readFileSync(join(EXAMPLE, "deck-module.json"), "utf8"));
+    const remote = BUILTIN_MODULES.find((module) => module.manifest.id === "remote")!.manifest;
+    const asset = { body: new Uint8Array(), sha256: "0" };
+    const ui = buildUiManifest({
+      config: { schemaVersion: 2, estate: { name: "lab" } },
+      providers: { listProviders: () => [], setProjections: () => {} },
+      modules: {
+        plan: [
+          { id: "maintenance", enabled: true },
+          { id: "remote", enabled: true },
+        ] as never,
+        manifests: new Map([["maintenance", maintenance], ["remote", remote]]),
+        builtinIds: new Set(["remote"]),
+      },
+      capabilities: {},
+      web: new Map([["maintenance", { script: asset, manifest: asset }]]),
+      runtimePages: () => ({
+        // A remote integration's page, as the remote module's directory reports it (fields the test does not need left out).
+        pages: [{ id: "ups", module: "remote", linkPolicy: "external", path: "/remote/ups", title: "UPS", sections: [{ widgets: [{ id: "load", type: "core/stat" }] }] }] as never,
+        nav: [],
+        findings: [],
+      }),
+    });
+    expect(ui.modules.find((module) => module.id === "maintenance")?.web).toEqual({ script: "/modules/maintenance/web.js" });
+    expect(ui.modules.find((module) => module.id === "remote")?.web).toBeUndefined();
+    expect(Object.keys(ui.icons ?? {})).toEqual(["maintenance/wrench"]);
+    expect(ui.pages.map((page) => [page.id, page.component])).toEqual(
+      expect.arrayContaining([
+        ["page:maintenance/windows", "MaintenancePage"],
+        ["page:remote/ups", "ConfigPage"],
+      ]),
+    );
   });
 });

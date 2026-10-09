@@ -14,7 +14,15 @@
     "sources": { "type": "array", "items": { "$ref": "#/$defs/Source" }, "description": "Document and configuration source declarations; absent is equivalent to an empty array." },
     "integrations": { "type": "array", "items": { "$ref": "#/$defs/Integration" }, "description": "External tool integrations; absent is equivalent to an empty array." },
     "ui": { "$ref": "#/$defs/Ui", "description": "Presentation settings: brand, theme, home page, navigation and extension overrides." },
-    "modules": { "type": "object", "additionalProperties": false, "properties": {}, "description": "Module settings keyed by module id; each module contributes its own section schema." }
+    "modules": { "type": "object", "additionalProperties": false, "properties": {}, "description": "Module settings keyed by module id; each module contributes its own section schema." },
+    "moduleIntegrity": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$": { "type": "string", "pattern": "^sha256-[A-Za-z0-9+/]{43}=$", "description": "sha256-<base64> digest of the module directory, as `deck module digest <dir>` prints it." }
+      },
+      "additionalProperties": false,
+      "description": "Integrity pins for runtime modules in DECK_MODULES_DIR, keyed by module id: a pinned module's code loads only when its directory matches the digest."
+    }
   },
   "$defs": {
     "Ui": {

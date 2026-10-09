@@ -83,6 +83,13 @@ export interface ConfigContribution {
    * identities would raise is reported too, at info ("would fail when <id> is enabled").
    */
   disabled?: string;
+  /**
+   * With `disabled`: the module was meant to run but its code could not be loaded, so its
+   * section is checked at the severity its problems would have when it runs, whatever
+   * `disabledSections` says. Config that is wrong for a module stays a config error even when
+   * the module itself is broken.
+   */
+  strictSection?: boolean;
   /** Schema of the `modules.<id>` section. Absent: the contribution has no section. */
   schema?: JsonObject;
   /** Ownership rows relative to the section (`""` is the section itself; default overlay). */
@@ -267,7 +274,7 @@ export function composeConfig(contributions: readonly ConfigContribution[], opti
       // Known but not running: its section is accepted as-is in the composed document.
       schema.properties.modules.properties[id] = { description: `Settings of module ${id}, which is not enabled.` };
       ownership[prefix] = "overlay";
-      disabled.set(id, { reason: contribution.disabled!, def: undefined, codes: new Set(), rules: [], identity: [], unique: [], references: [] });
+      disabled.set(id, { reason: contribution.disabled!, strict: contribution.strictSection === true, def: undefined, codes: new Set(), rules: [], identity: [], unique: [], references: [] });
     }
 
     if (contribution.schema !== undefined) {
@@ -485,9 +492,9 @@ export function composeConfig(contributions: readonly ConfigContribution[], opti
       const findings: Finding[] = [...duplicateIdentities(document, checkedIdentity), ...duplicateIds(document, namespaces)];
       // Strictly, a disabled section's duplicates are checked in each authored layer too, as an
       // enabled module's are: a merge pairs elements by identity and would hide them.
-      if (!advisory && layer !== "merged") {
+      if (layer !== "merged") {
         for (const [id, section] of disabled) {
-          if (!Object.prototype.hasOwnProperty.call(sections, id)) continue;
+          if ((advisory && !section.strict) || !Object.prototype.hasOwnProperty.call(sections, id)) continue;
           findings.push(...duplicateIdentities(document, section.identity), ...duplicateIds(document, section.unique));
         }
       }
@@ -522,7 +529,7 @@ export function composeConfig(contributions: readonly ConfigContribution[], opti
           findings.push(moduleFinding("MODULE_SECTION_DISABLED", id, `modules.${id} is set, but module "${id}" is not enabled (${section.reason}); the section is ignored.`));
           // What enabling the module would report, so a disabled section is still checked:
           // advisory, at info; strict, exactly as reported (an error fails validation).
-          const wouldFail = (item: Finding): Finding => (advisory
+          const wouldFail = (item: Finding): Finding => (advisory && !section.strict
             ? {
               code: "MODULE_SECTION_DISABLED",
               severity: catalogued.MODULE_SECTION_DISABLED!.severity,
@@ -613,6 +620,8 @@ function instanceFindings(
 /** A disabled module's section: why it is off, and what it would be checked against if on. */
 interface DisabledSection {
   reason: string;
+  /** Checked at real severity even when disabled sections are advisory (see `strictSection`). */
+  strict: boolean;
   /** The hoisted section schema, when the module contributes one that composes. */
   def: string | undefined;
   codes: ReadonlySet<string>;

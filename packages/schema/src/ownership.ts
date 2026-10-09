@@ -58,7 +58,7 @@ export const OWNERSHIP = {
   "services[].links": "overlay", "services[].bindings": "overlay",
   "services[].hidden": "overlay",
 
-  sources: "overlay", integrations: "overlay", ui: "overlay", modules: "container",
+  sources: "overlay", integrations: "overlay", ui: "overlay", modules: "container", moduleIntegrity: "both",
 } as const satisfies Record<string, Owner>;
 
 /** A key path with an explicit ownership row. */

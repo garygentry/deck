@@ -237,7 +237,11 @@ describe("Chromium configuration and CI installation", () => {
     // Unit tests still run (in the node-pnpm job) and are not dropped.
     expect(ciText).toContain("test:unit");
     // Bun parity stays Vitest-only; no Playwright/Chromium install leaks into it.
-    expect(ciText).toContain("bunx vitest run");
+    // Its wrapper starts vitest with `--bun`, so the tests run on Bun, not Node.
+    expect(ciText).toContain("scripts/bun-parity-vitest.sh");
+    const bunParityScript = readFileSync(join(repoRoot, "scripts/bun-parity-vitest.sh"), "utf8");
+    expect(bunParityScript).toContain("bunx --bun vitest run");
+    expect(bunParityScript).not.toMatch(/playwright/i);
     // Existing repository gates remain intact.
     expect(ciText).toContain("Check golden render");
     expect(ciText).toContain("Bare-Bun boot smoke");

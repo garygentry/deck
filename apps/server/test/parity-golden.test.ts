@@ -203,23 +203,33 @@ describe("parity goldens", () => {
     }
   });
 
-  it("every invalid estate fixture emits its code, and its deck validate output matches", async () => {
-    // Fixtures added after the goldens froze (MODULE_UNKNOWN) are asserted on their code
-    // only; the rest must match the frozen golden under the v1 → v2 mapping.
-    const frozen = readGolden("invalid-fixtures") as Record<string, unknown>;
-    const projections: Record<string, unknown> = {};
-    for (const fixture of estateFixtures) {
+  // One test per fixture, so each `deck validate` capture gets the normal budget and a hang
+  // names its fixture. Their outputs are compared with the frozen golden as a whole below.
+  // Fixtures added after the goldens froze (MODULE_UNKNOWN) are asserted on their code only;
+  // the rest must match the frozen golden under the v1 → v2 mapping.
+  const frozenInvalid = readGolden("invalid-fixtures") as Record<string, unknown>;
+  const invalidProjections: Record<string, unknown> = {};
+  const invalidCaptured = new Set<string>();
+
+  it.each(estateFixtures.map((fixture) => [fixture.name, fixture] as const))(
+    "invalid estate fixture %s emits its code",
+    async (_name, fixture) => {
       const estate = layersDir(invalidLayers(fixture));
       try {
         const { validate } = await capture({ id: fixture.name, dir: estate.dir });
         expect(`${validate.stdout}${validate.stderr}`, fixture.name).toContain(fixture.expect);
-        if (fixture.name in frozen) projections[fixture.name] = validate;
+        if (fixture.name in frozenInvalid) invalidProjections[fixture.name] = validate;
+        invalidCaptured.add(fixture.name);
       } finally {
         estate.cleanup();
       }
-    }
+    },
+  );
+
+  it("every invalid estate fixture's deck validate output matches", () => {
+    expect([...invalidCaptured].sort(), "a fixture capture above failed").toEqual(estateFixtures.map((fixture) => fixture.name).sort());
     // The version fixture moved from 2 (unsupported under v1) to 3 (unsupported under v2).
-    expectV2Parity("invalid-fixtures", projections, [
+    expectV2Parity("invalid-fixtures", invalidProjections, [
       ["schemaVersion 2 is not supported; this library supports version(s) 1.", "schemaVersion 3 is not supported; this library supports version(s) 2."],
     ]);
   });

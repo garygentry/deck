@@ -79,7 +79,7 @@ jobs:
       # PATH it exits 127.
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -120,39 +120,53 @@ jobs:
     # One job, one step per workspace: a per-workspace matrix paid a runner
     # boot, Bun install and per-job minute round-up four times over. Each step
     # runs even if an earlier one fails, so every workspace still reports.
+    # scripts/bun-parity-vitest.sh runs `bunx --bun vitest run` (plain `bunx`
+    # follows vitest's node shebang and tests under Node), prints the Bun
+    # version, and fails a run that is incomplete, failed, or executed nothing
+    # (scripts/bun-parity-check.ts). Bun comes from .bun-version, the version
+    # the runtime image ships.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
       - name: Install with Bun
         id: install
         run: bun install
       - name: Vitest under Bun (packages/schema)
         working-directory: packages/schema
-        run: bunx vitest run
+        run: bash ../../scripts/bun-parity-vitest.sh
       - name: Vitest under Bun (packages/module-sdk)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         working-directory: packages/module-sdk
-        run: bunx vitest run
+        run: bash ../../scripts/bun-parity-vitest.sh
       - name: Vitest under Bun (packages/contract)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         working-directory: packages/contract
-        run: bunx vitest run
+        run: bash ../../scripts/bun-parity-vitest.sh
+      - name: Guard self-test (a run that executes no test must fail)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        working-directory: packages/contract
+        # GITHUB_ACTIONS=false: the expected failure must not annotate the PR.
+        run: |
+          if GITHUB_ACTIONS=false bash ../../scripts/bun-parity-vitest.sh -t zzz-no-such-test; then
+            echo "::error::bun-parity-vitest.sh passed a run that executed no test"
+            exit 1
+          fi
       - name: Vitest under Bun (packages/drift)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         working-directory: packages/drift
-        run: bunx vitest run
+        run: bash ../../scripts/bun-parity-vitest.sh
       - name: Vitest under Bun (apps/server)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         working-directory: apps/server
-        run: bunx vitest run
+        run: bash ../../scripts/bun-parity-vitest.sh
       - name: Vitest under Bun (apps/web)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         working-directory: apps/web
-        run: bunx vitest run
+        run: bash ../../scripts/bun-parity-vitest.sh
 
   kernel-touch:
     # Informational: lists the kernel files this branch changes (see scripts/kernel-touch.ts).
@@ -166,7 +180,7 @@ jobs:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
       - name: Kernel files touched
         env:
           BASE_REF: ${{ github.base_ref || 'main' }}
@@ -189,7 +203,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
       - name: Install with Bun
         run: bun install
       - name: Check golden render

@@ -49,7 +49,7 @@ interface Harness {
   app: ReturnType<typeof createApp>;
   audit: AuditStore;
   spawner: FakeSpawner;
-  cancelSpy: Mock<[runId: string], boolean>;
+  cancelSpy: Mock<(runId: string) => boolean>;
   cleanups: (() => void)[];
 }
 

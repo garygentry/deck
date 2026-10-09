@@ -16,6 +16,7 @@ import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { stopScheduler } from "../src/providers/registry.js";
 import { boot, type BootHandle } from "../src/server/boot.js";
 import { watchDirectory } from "../src/ui/live.js";
+import { stubBun, unstubBun } from "./util/stub-bun.js";
 
 vi.setConfig({ testTimeout: 30_000 });
 
@@ -39,6 +40,7 @@ afterEach(async () => {
   while (cleanup.length) await cleanup.pop()!();
   logLines.length = 0;
   stopScheduler();
+  unstubBun();
   vi.unstubAllGlobals();
 });
 
@@ -57,7 +59,7 @@ type Request_ = (path: string, init?: RequestInit) => Promise<Response>;
 /** Boot deck on `dir` with the HTTP listener stubbed; requests go straight to its fetch handler. */
 async function bootOn(dir: string, options: { webDistDir?: string; modules?: readonly ServerModule<any>[] } = {}): Promise<Request_> {
   let fetchHandler: ((request: Request) => Response | Promise<Response>) | undefined;
-  vi.stubGlobal("Bun", {
+  stubBun({
     serve: (serveOptions: { fetch: (request: Request) => Response | Promise<Response> }) => {
       fetchHandler = serveOptions.fetch;
       return { stop: async () => undefined };
@@ -306,6 +308,19 @@ describe("ui hot reload, review round 1", () => {
   });
 });
 
+/**
+ * Bun before 1.3.14 drops fs.watch events for some names (`..data_tmp`) and, once a watched
+ * directory is renamed away, fails every later fs.watch in the process with ENOENT. Fixed
+ * upstream in https://github.com/oven-sh/bun/pull/29952 (shipped in 1.3.14). The image and CI
+ * pin a fixed Bun (#42, `.bun-version`); this skip remains for a local Bun older than that.
+ */
+const bunWatchBroken =
+  process.versions.bun !== undefined &&
+  (globalThis as unknown as { Bun: { semver: { order(a: string, b: string): number } } }).Bun.semver.order(
+    process.versions.bun,
+    "1.3.14",
+  ) < 0;
+
 describe("config directory watch", () => {
   /** A ConfigMap-style directory: versioned dirs, a `..data` symlink, files linked through it. */
   function configMapDir(): { dir: string; swap(content: string): void } {
@@ -364,7 +379,7 @@ describe("config directory watch", () => {
     await vi.waitFor(() => expect(onChange).toHaveBeenCalled(), { timeout: 5_000, interval: 20 });
   });
 
-  it("reports changes under any name, and re-arms when the directory is replaced", async () => {
+  it.skipIf(bunWatchBroken)("reports changes under any name, and re-arms when the directory is replaced", async () => {
     const parent = mkdtempSync(join(tmpdir(), "deck-watch-"));
     cleanup.push(() => rmSync(parent, { recursive: true, force: true }));
     const dir = join(parent, "config");

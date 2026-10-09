@@ -32,7 +32,9 @@ into `apps/web/dist`).
 Nothing else is compiled, because the server and `@deck/schema` run directly from TypeScript
 source under Bun at runtime; only the browser needs a bundling step.
 
-The **runtime** stage is `oven/bun:1.3.9-alpine`.
+The **runtime** stage is `oven/bun:1.4.2-alpine`.
+Its tag matches `.bun-version` at the repo root, which every CI job installs, so CI tests the Bun
+that ships. A server unit test (`apps/server/test/bun-version-pin.test.ts`) fails if the two differ.
 It copies the fully installed and built workspace across at the same `/app` path, which preserves
 pnpm's `node_modules/.pnpm` symlink store so the server's dependencies and `@deck/schema` resolve
 unchanged under Bun.
@@ -87,7 +89,12 @@ the dual Node/Bun nature of the build.
 `web-e2e` runs the Playwright suite sharded across runners (the suite is single-worker by design,
 so parallelism comes from cross-runner shards).
 `bun-parity` re-runs the unit tests under Bun, proving the code that ships in the runtime image
-behaves the same on the runtime engine.
+behaves the same on the runtime engine. Each workspace runs through `scripts/bun-parity-vitest.sh`,
+which starts `bunx --bun vitest run` (plain `bunx` follows vitest's `node` shebang and would test
+under Node). Its reporter prints the Bun version into the job log, and
+`scripts/bun-parity-check.ts` fails the step unless the run was under Bun, reached its end,
+completed every scheduled test file, passed with no unhandled errors, and executed at least one
+test (skipped tests do not count).
 `gates` runs the correctness guards: a golden `deck render` comparison and
 a bare-Bun boot smoke that boots the server and asserts a well-formed `/api/health` payload.
 Together they protect the invariant this deployment depends on — that the same source runs
@@ -101,6 +108,24 @@ upstreams, and the route table. Refreshing them is an explicit opt-in
 `kernel-touch` is informational and never fails the build. It lists the kernel files a branch
 changes (`scripts/kernel-touch.ts` holds the kernel path list), as a trend to keep near zero for
 new modules. On a separate line it lists the parity-gate files touched.
+
+
+### Release checklist: prove the image before re-pinning
+
+No CI job builds the runtime image. `release.yml` builds it for the first time when a `v*` tag is
+pushed. CI proves the source under the pinned Bun (`.bun-version`), not the image itself, so a
+change to the image recipe, such as a new `oven/bun` tag, is first exercised at release. Before
+an operator re-pins an estate to a new image, build it and boot-smoke it:
+
+1. Build the image from the release commit: `docker build -t deck:release-check .`
+2. Boot it on the primary fixture estate, on a port nothing else uses:
+   `docker run -d --name deck-release-check -p 18080:8080 -v "$PWD/packages/schema/src/fixtures/primary:/config:ro" deck:release-check`
+3. Within 30 s, `curl -fsS http://127.0.0.1:18080/api/health` must return `"status"` of `ok` or
+   `degraded`, the same bar as the `gates` job's bare-Bun boot smoke. The fixture's git-repo
+   source cannot be cloned without network, so `degraded` is correct there. The container's own
+   `HEALTHCHECK` must also report healthy (`docker inspect -f '{{.State.Health.Status}}'`).
+4. `docker exec deck-release-check bun --version` prints the version in `.bun-version`.
+5. Remove the container (`docker rm -f deck-release-check`), then tag and re-pin.
 
 ![Deployment view: a Node builder produces the web bundle, the Bun runtime image serves web and API from one process on :8080, Compose mounts the estate read-only, and CI gates guard releases.](./diagrams/deployment.svg)
 

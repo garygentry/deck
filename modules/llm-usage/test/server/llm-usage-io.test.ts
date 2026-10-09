@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import { fetchOauthUsage, OAUTH_BETA, OAUTH_USAGE_URL, retryAfterMs, type OauthDeps } from "../src/llm-usage/claude/oauth.js";
-import { createTranscriptScanner, scanTranscripts, totalsFromEntries, TranscriptIndex } from "../src/llm-usage/claude/transcripts.js";
+import { fetchOauthUsage, OAUTH_BETA, OAUTH_USAGE_URL, retryAfterMs, type OauthDeps } from "../../server/claude/oauth.js";
+import { createTranscriptScanner, scanTranscripts, totalsFromEntries, TranscriptIndex } from "../../server/claude/transcripts.js";
 import {
   AppServer,
   AppServerRpcError,
@@ -14,8 +14,8 @@ import {
   isAuthRequired,
   type AppServerSpawner,
   type SpawnedAppServer,
-} from "../src/llm-usage/codex/app-server.js";
-import { findNewestRollout, readNewestRollout, RolloutWatcher } from "../src/llm-usage/codex/rollout.js";
+} from "../../server/codex/app-server.js";
+import { findNewestRollout, readNewestRollout, RolloutWatcher } from "../../server/codex/rollout.js";
 
 const NOW = Date.parse("2026-09-24T12:00:00Z");
 const TOKEN = "sk-ant-oat01-SECRET";

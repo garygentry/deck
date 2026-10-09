@@ -243,12 +243,12 @@ describe("the llm-usage web half", () => {
     vi.resetModules();
     // No shell module first: the pill's core slot is declared with the registry.
     await import("../src/features/portal/index.js");
-    await import("../src/features/llm-usage/index.js");
+    await import("../../../modules/llm-usage/web/index.js");
     const registry = await import("../src/registry/registry.js");
     const { LLM_USAGE_UI } = await import("@deck/contract/modules/llm-usage");
-    const { LlmUsageSummary } = await import("../src/features/llm-usage/LlmUsageSummary.js");
-    const { LlmUsagePortalCard } = await import("../src/features/llm-usage/LlmUsagePortalCard.js");
-    const { LlmUsagePage } = await import("../src/features/llm-usage/LlmUsagePage.js");
+    const { LlmUsageSummary } = await import("../../../modules/llm-usage/web/LlmUsageSummary.js");
+    const { LlmUsagePortalCard } = await import("../../../modules/llm-usage/web/LlmUsagePortalCard.js");
+    const { LlmUsagePage } = await import("../../../modules/llm-usage/web/LlmUsagePage.js");
 
     const ours = registry.getAllExtensions().filter(({ module }) => module === "llm-usage");
     const declared = LLM_USAGE_UI.contributes!;

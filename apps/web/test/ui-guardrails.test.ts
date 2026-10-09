@@ -17,10 +17,11 @@ import {
 import { describe, expect, it } from "vitest";
 
 /**
- * Library guardrails: static checks over `src/` that keep feature code on the
- * `@/ui` library. The rules live in `@deck/sdk/lint`, which `deck-module lint`
- * also runs on runtime modules, so deck and its modules keep one set of rules.
- * The allowlists below only shrink, and a stale entry fails the test.
+ * Library guardrails: static checks over `src/` and the built-in modules' web halves
+ * (`modules/<id>/web`) that keep feature code on the `@/ui` library. The rules live in
+ * `@deck/sdk/lint`, which `deck-module lint` also runs on runtime modules, so deck and its
+ * modules keep one set of rules. The allowlists below only shrink, and a stale entry fails the
+ * test.
  */
 
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -33,8 +34,19 @@ function walk(dir: string): string[] {
   });
 }
 
+// Built-in modules' web halves (modules/<id>/web) are compiled into the app: the same rules hold
+// there. Their rel paths read `modules/<id>/web/…`.
+const repoRoot = resolve(webRoot, "../..");
+const modulesRoot = resolve(repoRoot, "modules");
+const moduleWebDirs = readdirSync(modulesRoot)
+  .map((id) => join(modulesRoot, id, "web"))
+  .filter((dir) => statSync(dir, { throwIfNoEntry: false })?.isDirectory() === true);
+
 const read = (path: string) => ({ rel: relative(webRoot, path), text: readFileSync(path, "utf8") });
-const files = walk(srcRoot).filter((path) => /\.tsx?$/.test(path)).map(read);
+const files = [
+  ...walk(srcRoot).filter((path) => /\.tsx?$/.test(path)).map(read),
+  ...moduleWebDirs.flatMap(walk).filter((path) => /\.tsx?$/.test(path)).map((path) => ({ rel: relative(repoRoot, path), text: readFileSync(path, "utf8") })),
+];
 // deck's stylesheets: its own, and the token mapping it shares with runtime modules.
 const sdkTailwind = resolve(webRoot, "../../packages/sdk/tailwind");
 const css = [...walk(srcRoot), ...walk(sdkTailwind)].filter((path) => path.endsWith(".css")).map(read);
@@ -42,6 +54,16 @@ const tsx = files.filter(({ rel }) => rel.endsWith(".tsx"));
 const inLibrary = (rel: string): boolean => rel.startsWith("src/ui/");
 
 const shown = (offences: readonly Offence[]) => offences.map(formatOffence);
+
+describe("scope", () => {
+  it("covers every built-in module's web half", () => {
+    expect(moduleWebDirs.length).toBeGreaterThan(0);
+    for (const dir of moduleWebDirs) {
+      const rel = relative(repoRoot, dir);
+      expect(files.some((file) => file.rel.startsWith(`${rel}/`)), rel).toBe(true);
+    }
+  });
+});
 
 describe("imports: features use the @/ui barrel", () => {
   it("never deep-imports @/ui/* outside the library without a justification", () => {

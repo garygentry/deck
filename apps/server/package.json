@@ -10,7 +10,6 @@
   "exports": {
     ".": "./src/contract/index.ts",
     "./actions": "./src/actions/types.ts",
-    "./llm-usage": "./src/llm-usage/types.ts",
     "./portal": "./src/portal/types.ts",
     "./sources": "./src/sources/types.ts"
   },

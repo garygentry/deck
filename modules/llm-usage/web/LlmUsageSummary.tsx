@@ -1,7 +1,7 @@
 import type { JSX } from "react";
 import { FragmentBoundary, HealthPill } from "@/ui";
 
-import type { HealthSummary } from "../../shell/health-header/health-summary.js";
+import type { HealthSummary } from "@/shell/health-header/health-summary.js";
 import { SEVERITY_UI, worstBar } from "./status.js";
 import { useLlmUsage, usageStore, type UsageStore } from "./store.js";
 

@@ -69,7 +69,11 @@ function deckImportMap(): Plugin {
 export default defineConfig({
   plugins: [react(), tailwindcss(), prePaintTheme(), deckImportMap()],
   resolve: {
-    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // Test helpers, for built-in modules' web tests under modules/*/test/web.
+      "@web-test": fileURLToPath(new URL("./test", import.meta.url)),
+    },
   },
   server: {
     // Pin to IPv4 loopback (same reachability as Vite's default localhost bind).
@@ -90,6 +94,8 @@ export default defineConfig({
     // default discovery would otherwise collect. Keep the default unit run
     // (test:unit) browser-free; Playwright owns test/e2e via test:e2e.
     exclude: [...configDefaults.exclude, "test/e2e/**"],
+    // Built-in modules' web tests run here, under the host that compiles their web halves.
+    include: [...configDefaults.include, "../../modules/*/test/web/**/*.test.{ts,tsx}"],
     setupFiles: ["./test/support/setup.ts"],
     // Registration tests import a feature's whole module graph (now including
     // @/ui), which can pass 5s on a loaded host; 15s still catches real hangs.

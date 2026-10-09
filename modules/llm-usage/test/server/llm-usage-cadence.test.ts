@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { type CadenceState, ERROR_BACKOFF_MAX_MS, nextDelay, OAUTH_FLOOR_MS, pollMode } from "../src/llm-usage/cadence.js";
-import { LlmUsageConfigError, resolveLlmUsageSection } from "../src/llm-usage/config.js";
+import { type CadenceState, ERROR_BACKOFF_MAX_MS, nextDelay, OAUTH_FLOOR_MS, pollMode } from "../../server/cadence.js";
+import { LlmUsageConfigError, resolveLlmUsageSection } from "../../server/config.js";
 
 const now = 1_000_000_000_000;
 const state = (overrides: Partial<CadenceState> = {}): CadenceState => ({

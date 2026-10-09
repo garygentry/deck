@@ -10,7 +10,7 @@ describe("built-in module section types", () => {
     const generated = await generateModuleTypes();
     expect(generated.length).toBeGreaterThan(0);
     for (const { output, source } of generated) {
-      expect(readFileSync(fileURLToPath(new URL(`../src/${output}`, import.meta.url)), "utf8"), output).toBe(source);
+      expect(readFileSync(fileURLToPath(new URL(`../../../${output}`, import.meta.url)), "utf8"), output).toBe(source);
     }
   });
 });

@@ -1,23 +1,23 @@
 // @vitest-environment jsdom
-import type { LlmUsageResponse, UsageBar } from "@deck/server/llm-usage";
+import type { LlmUsageResponse, UsageBar } from "../../server/types.js";
 import { focusManager, type QueryClient } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TONES, type StatusMap } from "@/ui";
 
-import { LlmUsagePage } from "../src/features/llm-usage/LlmUsagePage.js";
-import { LlmUsagePortalCardContent } from "../src/features/llm-usage/LlmUsagePortalCard.js";
-import { LlmUsageSummaryContent } from "../src/features/llm-usage/LlmUsageSummary.js";
+import { LlmUsagePage } from "../../web/LlmUsagePage.js";
+import { LlmUsagePortalCardContent } from "../../web/LlmUsagePortalCard.js";
+import { LlmUsageSummaryContent } from "../../web/LlmUsageSummary.js";
 import {
   POLL_MODE_UI,
   SEVERITY_UI,
   SOURCE_STATE_UI,
   formatResetIn,
   worstBar,
-} from "../src/features/llm-usage/status.js";
-import { createUsageStore, llmUsageKey, type UsageStore, type UsageView } from "../src/features/llm-usage/store.js";
-import { createDeckQueryClient } from "../src/data/query-client.js";
-import { AA_TEXT_TOKENS } from "./support/tokens.js";
+} from "../../web/status.js";
+import { createUsageStore, llmUsageKey, type UsageStore, type UsageView } from "../../web/store.js";
+import { createDeckQueryClient } from "@/data/query-client.js";
+import { AA_TEXT_TOKENS } from "@web-test/support/tokens.js";
 
 const NOW = Date.parse("2026-09-24T12:00:00Z");
 const MIN = 60_000;

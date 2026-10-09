@@ -11,5 +11,5 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["vitest/globals"]
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "../../modules/*/server", "../../modules/*/test/server"]
 }

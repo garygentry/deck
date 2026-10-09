@@ -1,6 +1,6 @@
 /**
- * Wire types for the LLM usage feature (`GET /api/llm-usage`), consumed by apps/web via
- * `@deck/server/llm-usage` (types only). Every source normalizes into one flat
+ * Wire types for the LLM usage feature (`GET /api/llm-usage`), consumed by the module's web
+ * half (types only). Every source normalizes into one flat
  * {@link UsageBar}, so the UI never needs to know which CLI or method produced a number.
  */
 
@@ -145,7 +145,7 @@ export interface LlmUsageResponse {
   codex: CodexUsage | null;
 }
 
-declare module "../contract/api.js" {
+declare module "../../../apps/server/src/contract/api.js" {
   interface LegacyHealthFields {
     /** LLM usage collector state (the module's health `data`); present only when `modules.llm-usage` is configured. */
     llmUsage?: LlmUsageHealth;

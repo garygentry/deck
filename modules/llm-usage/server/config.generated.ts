@@ -1,4 +1,4 @@
-/* GENERATED from src/llm-usage/schema.json by src/scripts/gen-module-types.ts — do not edit; run `pnpm gen:module-types`. */
+/* GENERATED from modules/llm-usage/schema.json by apps/server/src/scripts/gen-module-types.ts — do not edit; run `pnpm gen:module-types`. */
 
 /**
  * Settings of the llm-usage module, at modules.llm-usage: subscription plan-usage limits for Claude Code and Codex accounts.

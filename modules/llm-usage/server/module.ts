@@ -6,7 +6,7 @@ import { resolveLlmUsageSection, type ResolvedLlmUsageConfig } from "./config.js
 import type { LlmUsage } from "./config.generated.js";
 import { LLM_USAGE_INVALID, llmUsageValues } from "./rule.js";
 import { registerLlmUsageRoutes } from "./routes.js";
-import schema from "./schema.json" with { type: "json" };
+import schema from "../schema.json" with { type: "json" };
 
 /**
  * The llm-usage module: Claude Code and Codex subscription plan-usage limits.

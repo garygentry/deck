@@ -85,7 +85,7 @@ describe("core widget options", () => {
         { type: "core/key-value", source: "ups", options: { layout: "inline", items: [{ field: "model" }] } },
         { type: "core/list", source: "ups", options: { titleField: "name", descriptionField: "host", metaField: "seen", metaFormat: "relative-time", statusField: "state", statusMap: "outlet", hrefField: "url", limit: 10 } },
         { type: "core/table", source: "ups", options: { columns: [{ field: "name", header: "Outlet" }, { field: "watts", format: "number", unit: "W", align: "end" }], limit: 50 } },
-        { type: "core/status-grid", source: "ups", options: { labelField: "name", statusField: "state", hrefField: "url", statusMap: "outlet" } },
+        { type: "core/status-grid", source: "ups", options: { labelField: "name", statusField: "state", hrefField: "url", statusMap: "outlet", limit: 100 } },
         { type: "core/link-tiles", options: { links: [{ title: "Hosts", href: "/hosts", icon: "server" }, { title: "Vendor", href: "https://vendor.example/x", description: "Status" }] } },
         { type: "core/markdown", options: { content: "**Hello**" } },
         { type: "core/health-pills", options: { pills: ["pill:drift/summary"] } },

@@ -3,6 +3,7 @@ import { CardGrid, ExternalLink, LinkTile, List, ListItem, isIconName, useNow } 
 
 import type { WidgetProps } from "../../registry/registry.js";
 import { ToneBadge, toneOf, useStatusMaps } from "./status-maps.js";
+import { Truncated } from "./Truncated.js";
 import { UnexpectedValue } from "./UnexpectedValue.js";
 import { formatValue, isRecord, isScalar, linkOf, readField, type ValueFormat } from "./values.js";
 
@@ -29,11 +30,6 @@ interface ListOptions {
   statusMap?: string;
   hrefField?: string;
   limit?: number;
-}
-
-/** Below the rows when the list was cut to its limit. */
-function Truncated({ shown, total }: { shown: number; total: number }) {
-  return shown < total ? <p className="mt-2 text-xs text-muted-foreground">Showing the first {shown} of {total}.</p> : null;
 }
 
 /**
@@ -79,6 +75,7 @@ interface StatusGridOptions {
   statusField?: string;
   hrefField?: string;
   statusMap?: string;
+  limit?: number;
 }
 
 /**
@@ -99,17 +96,21 @@ export function StatusGridWidget({ value, options, widget }: WidgetProps<StatusG
       ? Object.entries(value).map(([label, status]) => ({ label, status, link: undefined }))
       : undefined;
   if (entries === undefined) return <UnexpectedValue type={widget.type} expected="a list of objects, or an object of names and states" value={value} />;
+  const shown = entries.slice(0, options.limit ?? 48);
   return (
-    <CardGrid aria-label={widget.title ?? widget.type}>
-      {entries.map((entry, index) => (
-        <LinkTile
-          key={`${entry.label ?? ""}#${index}`}
-          title={entry.label ?? `Item ${index + 1}`}
-          status={<ToneBadge text={isScalar(entry.status) ? String(entry.status) : "Unknown"} presentation={isScalar(entry.status) ? tone(entry.status) : undefined} />}
-          {...(entry.link === undefined ? {} : { href: entry.link.href, external: entry.link.external })}
-        />
-      ))}
-    </CardGrid>
+    <>
+      <CardGrid aria-label={widget.title ?? widget.type}>
+        {shown.map((entry, index) => (
+          <LinkTile
+            key={`${entry.label ?? ""}#${index}`}
+            title={entry.label ?? `Item ${index + 1}`}
+            status={<ToneBadge text={isScalar(entry.status) ? String(entry.status) : "Unknown"} presentation={isScalar(entry.status) ? tone(entry.status) : undefined} />}
+            {...(entry.link === undefined ? {} : { href: entry.link.href, external: entry.link.external })}
+          />
+        ))}
+      </CardGrid>
+      <Truncated shown={shown.length} total={entries.length} noun="states" />
+    </>
   );
 }
 

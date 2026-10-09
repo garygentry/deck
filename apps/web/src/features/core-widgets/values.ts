@@ -6,7 +6,10 @@ export type ValueFormat = "text" | "number" | "bytes" | "percent" | "duration" |
 
 /** The options every value-showing descriptor shares: where it is and how it reads. */
 export interface FieldOptions {
+  /** A key, or keys joined by dots; read as one key when `direct`. */
   field: string;
+  /** The field is a key the widget enumerated itself, read as is (`load.avg` is one key then). */
+  direct?: boolean;
   label?: string;
   format?: ValueFormat;
   unit?: string;
@@ -36,7 +39,17 @@ export function readField(item: unknown, field: string): unknown {
   return current;
 }
 
+/**
+ * An item's value for a descriptor: an enumerated key read as is, a configured field as a path.
+ * Only own properties are read.
+ */
+export function readItem(item: Record<string, unknown>, options: Pick<FieldOptions, "field" | "direct">): unknown {
+  if (options.direct === true) return Object.hasOwn(item, options.field) ? item[options.field] : undefined;
+  return readField(item, options.field);
+}
+
 const NUMBER = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+const PERCENT = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
 const BYTE_UNITS = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"] as const;
 
 function bytes(n: number): string {
@@ -79,7 +92,8 @@ export function formatValue(value: unknown, format: ValueFormat | undefined, uni
 function formatBare(value: unknown, format: ValueFormat, now: number): string {
   if (format === "relative-time") {
     if (typeof value === "string") return formatRelative(value, now);
-    if (typeof value === "number" && Number.isFinite(value)) return formatRelative(new Date(value).toISOString(), now);
+    // Epoch milliseconds a Date can hold (±8.64e15); anything else reads as given.
+    if (typeof value === "number" && Number.isFinite(new Date(value).getTime())) return formatRelative(new Date(value).toISOString(), now);
   }
   const n = numberOf(value);
   if (n !== undefined) {
@@ -89,7 +103,7 @@ function formatBare(value: unknown, format: ValueFormat, now: number): string {
       case "bytes":
         return bytes(n);
       case "percent":
-        return `${NUMBER.format(Math.round(n * 10) / 10)}%`;
+        return `${PERCENT.format(n)}%`;
       case "duration":
         return duration(n);
       default:
@@ -101,7 +115,10 @@ function formatBare(value: unknown, format: ValueFormat, now: number): string {
   return JSON.stringify(value);
 }
 
-/** A link a widget may render from data: an http(s) URL or an absolute path in deck; else none. */
+/**
+ * A link a widget may render from data: an http(s) URL, or an absolute path that stays in deck
+ * once a browser parses it (`isSafeHref`: never with a space, a control or a backslash); else none.
+ */
 export function linkOf(value: unknown): { href: string; external: boolean } | undefined {
   if (typeof value !== "string" || !isSafeHref(value)) return undefined;
   return { href: value, external: isExternalHref(value) };

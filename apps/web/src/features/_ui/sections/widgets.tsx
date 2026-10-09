@@ -1,6 +1,6 @@
 import type { StatusMapData, UiWidgetInstance } from "@deck/module-sdk";
-import type { ComponentType } from "react";
-import { Section } from "@/ui";
+import { Suspense, type ComponentType } from "react";
+import { LoadingState, Section } from "@/ui";
 import type { WidgetProps } from "../../../registry/registry.js";
 import { coreWidgetsWebModule } from "../../core-widgets/index.js";
 import { StatusMapsOverride } from "../../core-widgets/status-maps.js";
@@ -43,7 +43,10 @@ function Demo({ component, type, title, value, options = {} }: { component: stri
   const Widget = COMPONENTS[component]!;
   return (
     <Section variant="card" level={3} title={title} className="w-full max-w-md">
-      <Widget value={value} options={options} freshness={null} widget={instance(type, title, options)} />
+      {/* As WidgetHost does: core/table and core/markdown load on first use. */}
+      <Suspense fallback={<LoadingState label="Loading widget…" preset="lines" rows={2} />}>
+        <Widget value={value} options={options} freshness={null} widget={instance(type, title, options)} />
+      </Suspense>
     </Section>
   );
 }

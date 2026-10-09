@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatValue, linkOf, readField } from "../src/features/core-widgets/values.js";
+import { formatValue, linkOf, readField, readItem } from "../src/features/core-widgets/values.js";
 
 const NOW = Date.parse("2026-01-15T12:00:00Z");
 
@@ -15,7 +15,34 @@ describe("readField", () => {
   });
 });
 
+describe("readItem (B)", () => {
+  it("reads an enumerated key as one key, and a configured field as a path", () => {
+    const both = { "load.avg": 42, load: { avg: 99 } };
+    expect(readItem(both, { field: "load.avg", direct: true })).toBe(42);
+    expect(readItem(both, { field: "load.avg" })).toBe(99);
+    expect(readItem({ "load.avg": 42 }, { field: "load.avg", direct: true })).toBe(42);
+    expect(readItem({}, { field: "toString", direct: true })).toBeUndefined();
+  });
+});
+
 describe("formatValue", () => {
+  it("reads a time past a Date's range as given, never throwing (C)", () => {
+    expect(formatValue(8.64e15, "relative-time", undefined, NOW)).toMatch(/ago$|just now/);
+    expect(formatValue(-8.64e15, "relative-time", undefined, NOW)).toMatch(/ago$/);
+    expect(formatValue(8.64e15 + 1, "relative-time", undefined, NOW)).toBe("8640000000000001");
+    expect(formatValue(-8.64e15 - 1, "relative-time", undefined, NOW)).toBe("-8640000000000001");
+    expect(formatValue(1e308, "relative-time", undefined, NOW)).toBe("1e+308");
+    expect(formatValue("not a time", "relative-time", undefined, NOW)).toBe("not a time");
+  });
+
+  it("keeps a huge percent finite (E)", () => {
+    for (const value of [1e308, -1e308]) {
+      const text = formatValue(value, "percent", undefined, NOW);
+      expect(text).not.toContain("∞");
+      expect(text).toMatch(/^-?[\d,]+%$/);
+    }
+  });
+
   it.each([
     [1234567.891, "number", undefined, "1,234,567.89"],
     [512, "bytes", undefined, "512 B"],
@@ -49,5 +76,15 @@ describe("linkOf", () => {
     expect(linkOf("//evil.example")).toBeUndefined();
     expect(linkOf("relative/path")).toBeUndefined();
     expect(linkOf(42)).toBeUndefined();
+  });
+
+  it("refuses a path the browser would turn into another origin, and any whitespace or control", () => {
+    expect(linkOf("/\t/evil.example")).toBeUndefined();
+    expect(linkOf("/\n/evil.example")).toBeUndefined();
+    expect(linkOf("/\r\n/evil.example")).toBeUndefined();
+    expect(linkOf("https://ok.example/\tx")).toBeUndefined();
+    expect(linkOf("/hosts\u0000")).toBeUndefined();
+    expect(linkOf("/hosts name")).toBeUndefined();
+    expect(linkOf("/hosts?q=a%20b#x")).toEqual({ href: "/hosts?q=a%20b#x", external: false });
   });
 });

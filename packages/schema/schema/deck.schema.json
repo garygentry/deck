@@ -60,7 +60,7 @@
         "lte": { "type": "number", "description": "The value is a number, or text that is one, at most this." },
         "gt": { "type": "number", "description": "The value is a number, or text that is one, above this." },
         "gte": { "type": "number", "description": "The value is a number, or text that is one, at least this." },
-        "eq": { "anyOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }], "description": "The value equals this (a number also matches its text, such as \"42\")." },
+        "eq": { "anyOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }], "description": "The value has this text, compared both ways as values keys are (42 matches \"42\", and \"42\" matches 42)." },
         "tone": { "$ref": "#/$defs/UiTone", "description": "The tone a value matching the rule takes." }
       }
     },

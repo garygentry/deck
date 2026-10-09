@@ -62,6 +62,10 @@ test.describe("visual baselines", () => {
         await page.setViewportSize({ width, height: 900 });
         await page.goto("/_ui");
         await expect(workbench(page)).toBeVisible();
+        // The widget demos that load on first use (core/table, core/markdown) have rendered.
+        await expect(workbench(page).locator('#widgets [data-slot="data-table"], #widgets table').first()).toBeVisible();
+        await expect(workbench(page).locator('#widgets [data-slot="prose"]')).toBeVisible();
+        await expect(workbench(page).getByText("Loading widget…")).toHaveCount(0);
         await page.addStyleTag({ content: HIDE_SHELL });
         await expect(page.getByRole("navigation", { name: "Primary" })).toBeHidden();
         await page.evaluate(() => document.fonts.ready);

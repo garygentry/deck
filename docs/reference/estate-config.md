@@ -535,12 +535,12 @@ number or text; this widget's value is a list."), so a wrong `select` is easy to
 | Type | Shows | Options |
 | --- | --- | --- |
 | `core/stat` | One number or short text, large. | `label`, `format`, `unit`, `statusMap` |
-| `core/stat-grid` | Values of an object, each a stat. | `items`: `{field, label?, format?, unit?, statusMap?}`, 1–24; default every number, text and boolean of the object |
+| `core/stat-grid` | Values of an object, each a stat. | `items`: `{field, label?, format?, unit?, statusMap?}`, 1–24; default the object's numbers, text and booleans, by key (the first 24) |
 | `core/meter` | A number against a maximum, as a bar with its value as text. | `label`, `max` (default 100), `format` (default: the percentage of `max`), `unit`, `statusMap` |
-| `core/key-value` | An object's values as label/value pairs; a value with a `statusMap` as a status badge. | `items` as for `core/stat-grid`, 1–48 (default every key); `layout`: `grid` (default), `stacked`, `inline` |
+| `core/key-value` | An object's values as label/value pairs; a value with a `statusMap` as a status badge. | `items` as for `core/stat-grid`, 1–48 (default the object's keys, the first 48); `layout`: `grid` (default), `stacked`, `inline` |
 | `core/list` | A list's items as rows. An item that is text or a number is its own title. | `titleField` (default `name`), `descriptionField`, `metaField`, `metaFormat`, `statusField` and `statusMap` (a status badge), `hrefField` (a link), `limit` (1–100, default 25) |
 | `core/table` | A list of objects as a table; the first column's cells are row headers. | `columns` (required, 1–12): `{field, header?, format?, unit?, align?: start\|end, statusMap?}`; `limit` (1–500, default 100) |
-| `core/status-grid` | Named states as tiles, each with a status badge. The value is a list of objects, or an object of name → state. | `labelField` (default `name`), `statusField` (default `status`), `hrefField`, `statusMap` |
+| `core/status-grid` | Named states as tiles, each with a status badge. The value is a list of objects, or an object of name → state. | `labelField` (default `name`), `statusField` (default `status`), `hrefField`, `statusMap`, `limit` (1–200, default 48) |
 | `core/link-tiles` | Links as tiles. | `links`: `{title, href, description?, icon?}`, 1–48; without it, the value, a list of objects with those keys |
 | `core/markdown` | Markdown, rendered and sanitised as the docs view does it. | `content`; without it, the value, which must be text |
 | `core/health-pills` | The top bar's health pills, in its order. Reads no source. | `pills`: extension ids (`pill:drift/summary`) to show only those |
@@ -584,7 +584,7 @@ A map's name is lowercase letters, digits and `-`. A map has `values`, `rules` o
 | Key | Type | Description |
 | --- | --- | --- |
 | `values` | object of value → tone | Exact values. Numbers and booleans compare as their text, so `404: warn` matches the number 404. Tried first. |
-| `rules` | array, 1–32 | Tried in order; the first whose every condition holds gives the tone. `lt`, `lte`, `gt` and `gte` hold for a number, or text that is wholly one (`"42"`, not `"42%"`); `eq` holds for an equal value (a number also equals its text). A rule with only a `tone` matches any value, so put it last. |
+| `rules` | array, 1–32 | Tried in order; the first whose every condition holds gives the tone. `lt`, `lte`, `gt` and `gte` hold for a number, or text that is wholly one (`"42"`, not `"42%"`); `eq` holds for a value with the same text, compared both ways (`42` matches `"42"` and `"42"` matches `42`). A rule with only a `tone` matches any value, so put it last. |
 
 A tone is one of `ok`, `warn`, `danger`, `info`, `pending` and `neutral`; anything else is a
 schema error. A value no entry or rule matches shows untoned. A core widget naming a map that

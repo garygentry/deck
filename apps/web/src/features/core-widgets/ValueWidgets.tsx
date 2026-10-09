@@ -4,7 +4,8 @@ import { EmptyValue, KeyValueList, Meter, StatGrid, StatTile, VisuallyHidden, us
 import type { WidgetProps } from "../../registry/registry.js";
 import { ToneBadge, toneOf, useStatusMaps } from "./status-maps.js";
 import { UnexpectedValue } from "./UnexpectedValue.js";
-import { formatValue, isRecord, isScalar, readField, type FieldOptions, type ValueFormat } from "./values.js";
+import { Truncated } from "./Truncated.js";
+import { formatValue, isRecord, isScalar, readItem, type FieldOptions, type ValueFormat } from "./values.js";
 
 interface ScalarOptions {
   label?: string;
@@ -40,36 +41,66 @@ export function StatWidget({ value, options, widget }: WidgetProps<ScalarOptions
   );
 }
 
-/** The fields to show of an object: the configured ones, else every scalar key, in key order. */
-function fieldsOf(value: Record<string, unknown>, items: readonly FieldOptions[] | undefined, scalarsOnly: boolean): FieldOptions[] {
-  if (items !== undefined) return [...items];
-  return Object.keys(value)
-    .filter((key) => !scalarsOnly || isScalar(value[key]))
-    .map((field) => ({ field }));
+/**
+ * The fields to show of an object: the configured ones (paths), else its keys in key order (each
+ * read as one key, dots and all), scalars only when `scalarsOnly`, the first `cap` of them.
+ */
+function fieldsOf(
+  value: Record<string, unknown>,
+  items: readonly FieldOptions[] | undefined,
+  scalarsOnly: boolean,
+  cap: number,
+): { fields: FieldOptions[]; total: number } {
+  if (items !== undefined) return { fields: [...items], total: items.length };
+  const keys = Object.keys(value).filter((key) => !scalarsOnly || isScalar(value[key]));
+  return { fields: keys.slice(0, cap).map((field) => ({ field, direct: true })), total: keys.length };
 }
+
+/** Whether a field holds nothing to show (and so takes no tone). */
+const isMissing = (value: unknown): value is null | undefined => value === undefined || value === null;
 
 /** `core/stat-grid`: several values of an object, each a stat tile. */
 export function StatGridWidget({ value, options, widget }: WidgetProps<{ items?: FieldOptions[] }>) {
   const maps = useStatusMaps();
   const now = useNowFor((options.items ?? []).map((item) => item.format));
   if (!isRecord(value)) return <UnexpectedValue type={widget.type} expected="an object" value={value} />;
+  const { fields, total } = fieldsOf(value, options.items, true, 24);
   return (
-    <StatGrid>
-      {fieldsOf(value, options.items, true).map((item) => {
-        const field = readField(value, item.field);
-        const presentation = toneOf(maps, item.statusMap)(field);
-        return (
-          <StatTile
-            key={item.field}
-            label={item.label ?? item.field}
-            value={field === undefined || field === null ? <EmptyValue>No value</EmptyValue> : formatValue(field, item.format, item.unit, now)}
-            tone={presentation?.tone ?? "neutral"}
-            {...(presentation === undefined ? {} : { icon: presentation.icon })}
-          />
-        );
-      })}
-    </StatGrid>
+    <>
+      <StatGrid>
+        {fields.map((item, index) => {
+          const field = readItem(value, item);
+          // A missing value is "No value", never toned (a catch-all rule would otherwise colour it).
+          const presentation = isMissing(field) ? undefined : toneOf(maps, item.statusMap)(field);
+          return (
+            <StatTile
+              key={`${index}:${item.field}`}
+              label={item.label ?? item.field}
+              value={isMissing(field) ? <EmptyValue>No value</EmptyValue> : formatValue(field, item.format, item.unit, now)}
+              tone={presentation?.tone ?? "neutral"}
+              {...(presentation === undefined ? {} : { icon: presentation.icon })}
+            />
+          );
+        })}
+      </StatGrid>
+      <Truncated shown={fields.length} total={total} noun="values" />
+    </>
   );
+}
+
+/**
+ * A meter's text: its `format` (a unit after it), else its `unit` after the number, else its
+ * percentage of `max`. Never clamped: a value past the bar reads as it is.
+ */
+function meterText(value: number, max: number, options: ScalarOptions, now: number): { text: string; sr: string } {
+  if (options.format === undefined && options.unit === undefined) {
+    const text = formatValue((value / max) * 100, "percent", undefined, now);
+    return { text, sr: text };
+  }
+  const format = options.format ?? "number";
+  const text = formatValue(value, format, options.unit, now);
+  // A percent reads on its own ("250%"); any other text against its maximum ("180 W of 200 W").
+  return { text, sr: format === "percent" ? text : `${text} of ${formatValue(max, format, options.unit, now)}` };
 }
 
 /** `core/meter`: a number against a maximum, as a bar with its value as text. */
@@ -79,7 +110,9 @@ export function MeterWidget({ value, options, widget }: WidgetProps<ScalarOption
   const number = numberOf(value);
   if (number === undefined) return <UnexpectedValue type={widget.type} expected="a number" value={value} />;
   const max = options.max ?? 100;
-  const presentation = toneOf(maps, options.statusMap)(number);
+  // The map reads the value as given ("01" can have its own entry), not the number it reads as.
+  const presentation = toneOf(maps, options.statusMap)(value);
+  const { text, sr } = meterText(number, max, options, now);
   return (
     <Meter
       label={labelOf(options, widget)}
@@ -87,8 +120,8 @@ export function MeterWidget({ value, options, widget }: WidgetProps<ScalarOption
       max={max}
       tone={presentation?.tone ?? "neutral"}
       {...(presentation === undefined ? {} : { icon: presentation.icon })}
-      {...(options.format === undefined ? {} : { valueText: formatValue(number, options.format, options.unit, now) })}
-      {...(options.format === undefined || max === 100 ? {} : { srValueText: `${formatValue(number, options.format, options.unit, now)} of ${formatValue(max, options.format, options.unit, now)}` })}
+      valueText={text}
+      srValueText={sr}
     />
   );
 }
@@ -98,25 +131,28 @@ export function KeyValueWidget({ value, options, widget }: WidgetProps<{ items?:
   const maps = useStatusMaps();
   const now = useNowFor((options.items ?? []).map((item) => item.format));
   if (!isRecord(value)) return <UnexpectedValue type={widget.type} expected="an object" value={value} />;
+  const { fields, total } = fieldsOf(value, options.items, false, 48);
   return (
-    <KeyValueList
-      layout={options.layout ?? "grid"}
-      items={fieldsOf(value, options.items, false).map((item) => {
-        const field = readField(value, item.field);
-        const text = formatValue(field, item.format, item.unit, now);
-        return {
-          id: item.field,
-          label: item.label ?? item.field,
-          value:
-            field === undefined || field === null ? (
+    <>
+      <KeyValueList
+        layout={options.layout ?? "grid"}
+        items={fields.map((item, index) => {
+          const field = readItem(value, item);
+          const text = formatValue(field, item.format, item.unit, now);
+          return {
+            id: `${index}:${item.field}`,
+            label: item.label ?? item.field,
+            value: isMissing(field) ? (
               <EmptyValue>No value</EmptyValue>
             ) : item.statusMap === undefined ? (
               text
             ) : (
               <ToneBadge text={text} presentation={toneOf(maps, item.statusMap)(field)} />
             ),
-        };
-      })}
-    />
+          };
+        })}
+      />
+      <Truncated shown={fields.length} total={total} noun="values" />
+    </>
   );
 }

@@ -97,6 +97,9 @@ async function openPower(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Power and services"], { timeout: 15_000 });
   await expect(region(page, "Load")).toContainText("72%", { timeout: 30_000 });
   await expect(region(page, "Outlets").getByRole("table")).toBeVisible({ timeout: 15_000 });
+  // Both widgets that load on first use have rendered.
+  await expect(region(page, "Notes").locator('[data-slot="prose"]')).toBeVisible({ timeout: 15_000 });
+  await expect(main(page).getByText("Loading widget…")).toHaveCount(0);
   await expect(main(page).locator("[aria-busy='true']")).toHaveCount(0, { timeout: 30_000 });
 }
 

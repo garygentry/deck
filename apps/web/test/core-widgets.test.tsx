@@ -21,6 +21,9 @@ import type { WidgetProps } from "../src/registry/registry.js";
 const MAPS: Record<string, StatusMapData> = {
   load: { rules: [{ lt: 60, tone: "ok" }, { lt: 85, tone: "warn" }, { tone: "danger" }] },
   state: { values: { running: "ok", stopped: "danger" } },
+  // An exact entry for "01", and a rule every other value falls back to.
+  code: { values: { "01": "warn" }, rules: [{ tone: "ok" }] },
+  any: { rules: [{ tone: "danger" }] },
 };
 
 function widget(type: string, title?: string): UiWidgetInstance {
@@ -247,5 +250,107 @@ describe("core/markdown", () => {
     cleanup();
     show(MarkdownWidget, "core/markdown", { a: 1 });
     expect(unexpected()).toHaveTextContent("shows markdown text");
+  });
+});
+
+describe("round 1 fixes", () => {
+  it("A: never links a data value a browser would take off deck (http-json-shaped item)", () => {
+    // As an http-json provider might serve it: a tab, a line break, a backslash in the path.
+    const items = [
+      { name: "tab", url: "/\t/evil.example" },
+      { name: "newline", url: "/\n/evil.example" },
+      { name: "backslash", url: "/\\evil.example" },
+      { name: "ok", url: "/hosts" },
+    ];
+    show(ListWidget, "core/list", items, { hrefField: "url" }, "Links");
+    const list = screen.getByRole("list", { name: "Links" });
+    expect(within(list).getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual(["/hosts"]);
+    cleanup();
+    show(LinkTilesWidget, "core/link-tiles", items.map(({ name, url }) => ({ title: name, href: url })), {}, "Tiles");
+    expect(within(screen.getByRole("list", { name: "Tiles" })).getAllByRole("link").map((link) => link.textContent)).toEqual(["ok"]);
+  });
+
+  it("B: enumerates a dotted key as one key, never as a path", () => {
+    show(StatGridWidget, "core/stat-grid", { "load.avg": 42, load: { avg: 99 } });
+    expect(screen.getAllByRole("term").map((term) => term.textContent)).toEqual(["load.avg"]);
+    expect(screen.getByRole("definition")).toHaveTextContent("42");
+    cleanup();
+    show(KeyValueWidget, "core/key-value", { "load.avg": 42 });
+    expect(screen.getByRole("definition")).toHaveTextContent("42");
+  });
+
+  it("D: tones a meter by the value as given, not the number it reads as", () => {
+    const { container } = show(MeterWidget, "core/meter", "01", { statusMap: "code" });
+    expect(container.querySelector('[data-slot="meter"]')).toHaveAttribute("data-tone", "warn");
+    cleanup();
+    const other = show(MeterWidget, "core/meter", 1, { statusMap: "code" });
+    expect(other.container.querySelector('[data-slot="meter"]')).toHaveAttribute("data-tone", "ok");
+  });
+
+  it("F: puts markdown headings (and raw HTML ones) below the card's h3", () => {
+    show(MarkdownWidget, "core/markdown", null, { content: "# One\n\n## Two\n\n<h1 id=x>Raw</h1>\n\n#### Four" });
+    const levels = screen.getAllByRole("heading").map((heading) => [heading.textContent, heading.tagName]);
+    expect(levels).toEqual([["One", "H4"], ["Two", "H5"], ["Raw", "H4"], ["Four", "H6"]]);
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Raw" })).toHaveAttribute("id", "x");
+  });
+
+  it("G: caps status tiles at their limit and enumerated fields at the schema's maxima, and says so", () => {
+    const states = Array.from({ length: 60 }, (_, index) => ({ name: `s${index}`, status: "running" }));
+    show(StatusGridWidget, "core/status-grid", states, {}, "States");
+    expect(within(screen.getByRole("list", { name: "States" })).getAllByRole("listitem")).toHaveLength(48);
+    expect(screen.getByText("Showing the first 48 of 60 states.")).toBeInTheDocument();
+    cleanup();
+    show(StatusGridWidget, "core/status-grid", states, { limit: 5 }, "States");
+    expect(within(screen.getByRole("list", { name: "States" })).getAllByRole("listitem")).toHaveLength(5);
+    cleanup();
+    const wide = Object.fromEntries(Array.from({ length: 30 }, (_, index) => [`k${index}`, index]));
+    show(StatGridWidget, "core/stat-grid", wide);
+    expect(screen.getAllByRole("term")).toHaveLength(24);
+    expect(screen.getByText("Showing the first 24 of 30 values.")).toBeInTheDocument();
+    cleanup();
+    show(KeyValueWidget, "core/key-value", Object.fromEntries(Array.from({ length: 50 }, (_, index) => [`k${index}`, index])));
+    expect(screen.getAllByRole("term")).toHaveLength(48);
+    expect(screen.getByText("Showing the first 48 of 50 values.")).toBeInTheDocument();
+  });
+
+  it("H: says when a table cut rows or left out items that are not objects", () => {
+    show(TableWidget, "core/table", [{ name: "a" }, "stray", 3, { name: "b" }, { name: "c" }], { columns: [{ field: "name" }], limit: 2 }, "T");
+    expect(within(screen.getByRole("table", { name: "T" })).getAllByRole("rowheader").map((cell) => cell.textContent)).toEqual(["a", "b"]);
+    expect(screen.getByText("Showing the first 2 of 3 rows.")).toBeInTheDocument();
+    expect(screen.getByText("2 items are not an object, so not a row.")).toBeInTheDocument();
+    cleanup();
+    show(TableWidget, "core/table", ["x", "y"], { columns: [{ field: "name" }] });
+    expect(unexpected()).toHaveTextContent("shows a list of objects");
+  });
+
+  it("I: leaves a missing value untoned, even under a catch-all rule", () => {
+    const { container } = show(StatGridWidget, "core/stat-grid", { a: 1 }, { items: [{ field: "a", statusMap: "any" }, { field: "gone", statusMap: "any" }] });
+    const tiles = [...container.querySelectorAll('[data-slot="stat-tile"]')];
+    expect(tiles.map((tile) => tile.getAttribute("data-tone"))).toEqual(["danger", "neutral"]);
+    expect(tiles[1]!.querySelector("svg")).toBeNull();
+  });
+
+  it("K: reads a meter's value as it is, past the bar too, with its unit, and says it the same way", () => {
+    show(MeterWidget, "core/meter", 150, { label: "Over" });
+    expect(screen.getByRole("meter", { name: "Over" })).toHaveAttribute("aria-valuetext", "150%");
+    expect(screen.getByText("150%")).toBeInTheDocument();
+    cleanup();
+    show(MeterWidget, "core/meter", 180, { label: "Draw", max: 200, unit: "W" });
+    expect(screen.getByText("180 W")).toBeInTheDocument();
+    expect(screen.getByRole("meter", { name: "Draw" })).toHaveAttribute("aria-valuetext", "180 W of 200 W");
+    cleanup();
+    show(MeterWidget, "core/meter", 250, { label: "Pct", max: 500, format: "percent" });
+    expect(screen.getByRole("meter", { name: "Pct" })).toHaveAttribute("aria-valuetext", "250%");
+    cleanup();
+    show(MeterWidget, "core/meter", 50, { label: "Half", max: 200 });
+    expect(screen.getByRole("meter", { name: "Half" })).toHaveAttribute("aria-valuetext", "25%");
+  });
+
+  it("L: renders a field configured twice without a duplicate key", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    show(StatGridWidget, "core/stat-grid", { a: 1 }, { items: [{ field: "a", label: "One" }, { field: "a", label: "Again" }] });
+    show(KeyValueWidget, "core/key-value", { a: 1 }, { items: [{ field: "a" }, { field: "a" }] });
+    expect(error.mock.calls.flat().join(" ")).not.toMatch(/same key/);
   });
 });

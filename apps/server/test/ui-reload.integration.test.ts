@@ -487,8 +487,12 @@ describe("ui hot reload of the embed gate", () => {
     expect(shut.ui.findings).toEqual([]);
     expect(shut.ui.pages.find((entry) => entry.id === "page:ui/lab")?.layout?.sections.flatMap((section) => ("widgets" in section ? section.widgets : []))[0]?.type).toBe("core/embed");
 
-    // Removing the key shuts it too; setting it again opens it.
+    // Setting it again opens it; then removing the key shuts it too, and setting it reopens it.
+    cfg.writeOverlay(overlay({ allowUnsafeEmbeds: true, pages: [page] }));
+    await waitFor(async () => expect((await manifest(request)).ui.allowUnsafeEmbeds).toBe(true));
     cfg.writeOverlay(overlay({ pages: [page] }));
+    await waitFor(async () => expect("allowUnsafeEmbeds" in (await manifest(request)).ui).toBe(false));
+    expect((await manifest(request)).ui.findings).toEqual([]);
     cfg.writeOverlay(overlay({ allowUnsafeEmbeds: true, pages: [page] }));
     await waitFor(async () => expect((await manifest(request)).ui.allowUnsafeEmbeds).toBe(true));
   });

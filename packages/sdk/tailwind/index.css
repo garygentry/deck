@@ -1,0 +1,30 @@
+/*
+ * @deck/sdk/tailwind: the Tailwind v4 preset for a runtime module's own styles. Import it,
+ * with a prefix of the module's own, as the whole of the module's Tailwind setup:
+ *
+ *   @import "@deck/sdk/tailwind" prefix(hello);
+ *
+ * and write utilities with that prefix (`hello:flex hello:gap-2 hello:text-muted-foreground`).
+ *
+ * - Utilities only. deck's page already has Tailwind's Preflight and base styles, so a module
+ *   adds neither.
+ * - deck's tokens only. Colours, corner radii and fonts are deck's (theme.css, the file deck's
+ *   own stylesheet uses): `hello:bg-card` follows the operator's theme preset and light/dark
+ *   mode, and Tailwind's default palette (`bg-red-500`) and its off-scale radii do not exist.
+ *   Spacing, type sizes and breakpoints are Tailwind's defaults, as in deck.
+ * - The prefix keeps the module's classes apart from deck's. The module's stylesheet loads
+ *   after deck's, into the same `utilities` layer, so an unprefixed `p-4` there would beat
+ *   deck's own `md:p-6` on deck's elements.
+ */
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme {
+  --color-*: initial;
+  --font-*: initial;
+  --radius-*: initial;
+}
+
+@import "./theme.css";

@@ -2,6 +2,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
+import { IMPORT_MAP_SPECIFIERS } from "@deck/sdk/lint";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import { injectImportMap, SHARED_MODULES } from "../src/sdk/import-map.js";
@@ -42,6 +44,18 @@ describe("@deck/sdk", () => {
     // Nor does it import them by path.
     const specifiers = [...readFileSync(fromWeb("src/sdk/index.ts"), "utf8").matchAll(/from "([^"]+)"/g)].map((match) => match[1]);
     expect(new Set(specifiers)).toEqual(new Set(["../data/index.js", "@/ui", "@deck/module-sdk"]));
+  });
+
+  it("is typed for module authors by @deck/sdk's index.d.ts, which declares every one of these values", async () => {
+    const sdk = await import("../src/sdk/index.js");
+    const types = ts.createSourceFile("index.d.ts", readFileSync(fromWeb("../../packages/sdk/index.d.ts"), "utf8"), ts.ScriptTarget.Latest);
+    const exported = types.statements.flatMap((statement) =>
+      ts.isExportDeclaration(statement) && !statement.isTypeOnly && statement.exportClause !== undefined && ts.isNamedExports(statement.exportClause)
+        ? statement.exportClause.elements.filter((element) => !element.isTypeOnly).map((element) => element.name.text)
+        : [],
+    );
+    // The bundle also re-exports types by name (ColumnDef, Tone, …): every runtime value is declared.
+    expect(Object.keys(sdk).filter((name) => !exported.includes(name))).toEqual([]);
   });
 
   it("shares each React entry point whole: every export of the package, by name, plus its default", async () => {
@@ -91,8 +105,9 @@ describe("injectImportMap", () => {
     expect(Object.keys((JSON.parse(json) as { imports: object }).imports)).toEqual(["</script><script>alert(1)//"]);
   });
 
-  it("maps exactly react, react-dom, react/jsx-runtime and @deck/sdk", () => {
+  it("maps exactly react, react-dom, react/jsx-runtime and @deck/sdk: what deck-module lint lets a built web.js import", () => {
     expect(Object.keys(SHARED_MODULES).sort()).toEqual(["@deck/sdk", "react", "react-dom", "react/jsx-runtime"]);
+    expect(Object.keys(SHARED_MODULES).sort()).toEqual([...IMPORT_MAP_SPECIFIERS].sort());
   });
 
   it("refuses a page without a head", () => {

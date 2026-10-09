@@ -13,8 +13,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  */
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const OUT = join(ROOT, "dist/hello");
-const manifest = JSON.parse(readFileSync(join(ROOT, "deck-module.json"), "utf8")) as Record<string, unknown>;
+const manifest = JSON.parse(readFileSync(join(ROOT, "deck-module.json"), "utf8")) as Record<string, unknown> & { id: string };
+/** The build's module directory, named by the module's id. */
+const OUT = join(ROOT, "dist", manifest.id);
+/** The module's Tailwind prefix, as web.css imports the preset with it. */
+const PREFIX = /@deck\/sdk\/tailwind"\s+prefix\((\w+)\)/.exec(readFileSync(join(ROOT, "src/web/web.css"), "utf8"))![1]!;
 
 const run = (command: string, args: string[], cwd = ROOT) => spawnSync(command, args, { cwd, encoding: "utf8" });
 
@@ -55,14 +58,18 @@ describe("the build", () => {
     const css = readFileSync(join(OUT, "web.css"), "utf8");
     const classes = [...css.matchAll(/\.([\w\\:-]+)\{/g)].map((match) => match[1]!);
     expect(classes.length).toBeGreaterThan(5);
-    expect(classes.filter((name) => !name.startsWith("hello\\:"))).toEqual([]);
-    expect(css).toContain(".hello\\:bg-muted{background-color:var(--muted)}");
-    expect(css).toContain(".hello\\:rounded-md{border-radius:var(--corner-md)}");
+    expect(classes.filter((name) => !name.startsWith(`${PREFIX}\\:`))).toEqual([]);
+    expect(css).toContain(`.${PREFIX}\\:bg-muted{background-color:var(--muted)}`);
+    expect(css).toContain(`.${PREFIX}\\:rounded-md{border-radius:var(--corner-md)}`);
     expect(css).not.toMatch(/@layer base\s*\{|box-sizing/);
   });
 });
 
 describe("deck-module lint", () => {
+  it("passes the module directory the build wrote, as it is installed", () => {
+    expect(lintModule(OUT)).toEqual([]);
+  });
+
   it("passes the template, built", () => {
     expect(lintModule(ROOT)).toEqual([]);
     const cli = run("pnpm", ["run", "--silent", "lint"]);
@@ -71,12 +78,12 @@ describe("deck-module lint", () => {
   });
 
   it("fails a copy of the template with a seeded violation, naming each offence", () => {
-    const copy = mkdtempSync(join(tmpdir(), "deck-module-hello-"));
+    const copy = mkdtempSync(join(tmpdir(), `deck-module-${manifest.id}-`));
     temps.push(copy);
     for (const name of ["deck-module.json", "package.json", "src", "dist"]) cpSync(join(ROOT, name), join(copy, name), { recursive: true });
     appendFileSync(
       join(copy, "src/web/HelloPill.tsx"),
-      '\nimport { createRoot } from "react-dom/client";\nexport const Seeded = () => <p className="hello:rounded" style={{ color: "#ff0000" }} />;\n',
+      `\nimport { createRoot } from "react-dom/client";\nexport const Seeded = () => <p className="${PREFIX}:rounded" style={{ color: "#ff0000" }} />;\n`,
     );
     appendFileSync(join(copy, "src/web/web.css"), '@import "tailwindcss";\n');
 

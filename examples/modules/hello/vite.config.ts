@@ -38,7 +38,9 @@ const web: UserConfig = {
     copyPublicDir: false,
     target: "es2022",
     lib: { entry: "src/web/index.tsx", formats: ["es"], fileName: () => "web.js", cssFileName: "web" },
-    rollupOptions: { external: DECK_SHARED },
+    // One file: deck serves web.js and nothing beside it, so a dynamic import() is inlined
+    // rather than split into a chunk.
+    rollupOptions: { external: DECK_SHARED, output: { inlineDynamicImports: true } },
   },
 };
 

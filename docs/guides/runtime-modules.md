@@ -184,7 +184,8 @@ The template builds inside a deck checkout: it is a package of deck's workspace,
    `package.json`.
 2. Rename the module from `hello` to your id: the `id` in `deck-module.json`, the module part of
    every contribution id (`page:<id>/main`) and icon name (`<id>/wave`), the provider id, the
-   CSS prefix in `web.css` and the classes that use it, and `OUT_DIR` in `vite.config.ts`.
+   CSS prefix in `web.css` and the classes that use it, and `OUT_DIR` in `vite.config.ts`. The
+   template's test reads the id from `deck-module.json` and the prefix from `web.css`.
 3. Run `pnpm install` at the repository root to link the new package.
 4. Run `pnpm --filter <name> build`. It writes `dist/<id>/`: `deck-module.json`, `server.mjs`,
    `web.js` and `web.css`.
@@ -202,7 +203,7 @@ The template builds inside a deck checkout: it is a package of deck's workspace,
   `react`, `react-dom`, `react/jsx-runtime` and `@deck/sdk` are fixed externals: deck's
   import map provides exactly these, so the build leaves those imports as they are. Never
   bundle them, and don't change the list: a second copy of React breaks every hook. Everything
-  else the web half imports is bundled into `web.js`.
+  else the web half imports, a dynamic `import()` included, is bundled into `web.js`.
 - **`vite build --mode server`** bundles the server half, `src/server.ts`, and every
   dependency it has into `server.mjs`. It imports only types from `@deck/module-sdk`, so it
   imports nothing from deck at runtime.
@@ -250,15 +251,18 @@ also checks the built `web.js`:
 | --- | --- |
 | `colour-literal` | A hex, `rgb()` or `oklch()` colour, in scripts or CSS. Use tokens. |
 | `radius-scale` | `rounded`, `rounded-2xl`…`4xl` or `rounded-[4px]`, prefixed or not. Use `rounded-xs`…`xl`, `rounded-full` or `rounded-none`. |
-| `inline-style` | `style={…}`, except in a file allowlisted for dynamic geometry. |
+| `inline-style` | `style={…}` (or a `style:` prop in plain JavaScript), except in a file allowlisted for dynamic geometry. |
 | `data-icon` | A `data-icon` attribute. Use `<Icon name>`. |
 | `legacy-token` | deck's removed `--inventory-*`, `--freshness-*` and `--l-*` tokens. |
 | `module-import` | A React entry point other than `react`, `react-dom` and `react/jsx-runtime` (it would bundle a second React); a deck package other than `@deck/sdk`, or `@deck/module-sdk` other than `import type`; `radix-ui`, `@radix-ui/*` or `lucide-react` (use the patterns and `<Icon>`); an `import()` of a computed name. |
-| `module-css-import` | `tailwindcss` itself, or `@deck/sdk/tailwind` without a prefix. |
+| `module-css-import` | `tailwindcss` itself or an `@tailwind` directive, or `@deck/sdk/tailwind` without a prefix. |
 | `built-web-import` | A built `web.js` (`dist/<id>/web.js`, or a `web.js` beside the manifest) that imports anything but the four import-mapped specifiers and its own `./deck-module.json`. Nothing else resolves in the browser. |
 
 It prints each offence as `file:line rule: message` and exits 1 when there is one, 0 when there
-is none, and 2 when the directory has no `deck-module.json`. To let a file set an inline style
+is none, and 2 when the directory has no `deck-module.json` or its `package.json` cannot be
+read. It says so when a module with sources has no built `web.js` to check yet. It also checks a
+built module directory as you install it (`deck-module lint dist/<id>`), where it treats the
+compiled `web.css` as build output. To let a file set an inline style
 (a width computed from a value, say), allowlist it in the module's `package.json`:
 
 ```json

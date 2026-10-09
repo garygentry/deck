@@ -81,8 +81,14 @@ export const OFF_SCALE_RADIUS = /(?<![\w-])rounded(?:-[trblse]{1,2})?(?:(?=["'`\
 export const offScaleRadii = (files: readonly LintFile[]): Offence[] =>
   files.flatMap((file) => lineOffences(file, OFF_SCALE_RADIUS, "radius-scale", "round corners from the radius scale (rounded-sm, rounded-md, …)"));
 
-/** Whether `file` sets an inline `style={…}`. */
-export const usesInlineStyle = (file: LintFile): boolean => /\bstyle=\{/.test(stripComments(file.text));
+/**
+ * Whether `file` sets an inline style: `style={…}` in JSX, or a `style:` prop in plain
+ * JavaScript (`jsx("p", { style: … })`, as a module with no build step writes it).
+ */
+export const usesInlineStyle = (file: LintFile): boolean => {
+  const text = stripComments(file.text);
+  return /\bstyle=\{/.test(text) || (/\.m?js$/.test(file.rel) && /\bstyle\s*:/.test(text));
+};
 
 /**
  * Inline styles outside `allowlist` (file → why): they are for dynamic geometry only, and every
@@ -176,7 +182,9 @@ function importSites({ rel, text }: LintFile): ImportSite[] {
       const typeOnly = clause !== undefined && (clause.isTypeOnly || (clause.name === undefined && named !== undefined && named.length > 0 && named.every((element) => element.isTypeOnly)));
       sites.push({ specifier: node.moduleSpecifier.text, line: at(node), typeOnly });
     } else if (ts.isExportDeclaration(node) && node.moduleSpecifier !== undefined && ts.isStringLiteral(node.moduleSpecifier)) {
-      sites.push({ specifier: node.moduleSpecifier.text, line: at(node), typeOnly: node.isTypeOnly });
+      const named = node.exportClause !== undefined && ts.isNamedExports(node.exportClause) ? node.exportClause.elements : undefined;
+      const typeOnly = node.isTypeOnly || (named !== undefined && named.length > 0 && named.every((element) => element.isTypeOnly));
+      sites.push({ specifier: node.moduleSpecifier.text, line: at(node), typeOnly });
     } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       const [argument] = node.arguments;
       sites.push({ specifier: argument !== undefined && ts.isStringLiteralLike(argument) ? argument.text : "<computed>", line: at(node), typeOnly: false });
@@ -216,26 +224,28 @@ export const moduleImports = (scripts: readonly LintFile[]): Offence[] =>
 
 /**
  * A module's CSS takes Tailwind only through `@deck/sdk/tailwind`, with a `prefix(…)` of the
- * module's own: plain `tailwindcss` would bring a second Preflight and a palette that is not
- * deck's tokens, and unprefixed utilities would re-declare deck's own classes after deck's
- * stylesheet, overriding its responsive variants.
+ * module's own: plain `tailwindcss` (or an `@tailwind` directive) would bring a second Preflight
+ * and a palette that is not deck's tokens, and unprefixed utilities would re-declare deck's own
+ * classes after deck's stylesheet, overriding its responsive variants.
  */
 export const moduleCssImports = (css: readonly LintFile[]): Offence[] =>
-  css.flatMap((file) =>
-    stripComments(file.text)
-      .split("\n")
-      .flatMap((line, index) => {
-        const match = /@import\s+(?:url\()?\s*["']([^"']+)["']\s*\)?([^;]*)/.exec(line);
-        if (match === null) return [];
-        const [, specifier, rest] = match as unknown as [string, string, string];
-        const offence = (message: string): Offence[] => [{ rule: "module-css-import", file: file.rel, line: index + 1, message }];
-        if (/^tailwindcss(\/|$)/.test(specifier)) return offence(`import @deck/sdk/tailwind with your module's prefix, not ${specifier}`);
-        if (specifier === "@deck/sdk/tailwind" && !/\bprefix\(\s*[a-z][a-z0-9]*\s*\)/.test(rest)) {
-          return offence('import @deck/sdk/tailwind with a prefix of your module\'s own, e.g. `@import "@deck/sdk/tailwind" prefix(hello);`');
-        }
-        return [];
-      }),
-  );
+  css.flatMap((file) => {
+    const text = stripComments(file.text);
+    const lineAt = (index: number) => text.slice(0, index).split("\n").length;
+    const offences: Offence[] = [];
+    const offence = (index: number, message: string) => offences.push({ rule: "module-css-import", file: file.rel, line: lineAt(index), message });
+    // Every @import, wherever it sits on a line or however it wraps: "x", 'x', url("x") or url(x).
+    for (const match of text.matchAll(/@import\s+(?:url\(\s*)?(?:"([^"]*)"|'([^']*)'|([^\s"');]+))\s*\)?([^;]*)/g)) {
+      const specifier = match[1] ?? match[2] ?? match[3] ?? "";
+      const rest = match[4] ?? "";
+      if (/^tailwindcss(\/|$)/.test(specifier)) offence(match.index, `import @deck/sdk/tailwind with your module's prefix, not ${specifier}`);
+      else if (specifier === "@deck/sdk/tailwind" && !/\bprefix\(\s*[a-z][a-z0-9]*\s*\)/.test(rest)) {
+        offence(match.index, 'import @deck/sdk/tailwind with a prefix of your module\'s own, e.g. `@import "@deck/sdk/tailwind" prefix(hello);`');
+      }
+    }
+    for (const match of text.matchAll(/@tailwind\b/g)) offence(match.index, "take Tailwind through @deck/sdk/tailwind with your module's prefix, not an @tailwind directive");
+    return offences.sort((a, b) => a.line - b.line);
+  });
 
 /**
  * The `web.js` deck serves imports only the import-mapped specifiers (and, as a JSON module,
@@ -283,11 +293,14 @@ export function moduleWebSources(dir: string): LintFile[] {
       return (SCRIPT.test(name) || name.endsWith(".css")) && !/^server\.[^.]+$/.test(name) && !/\.config\.[^.]+$/.test(name) && !/\.(test|spec)\./.test(name) && !name.endsWith(".d.ts");
     })
     .map((path) => ({ rel: slashed(relative(dir, path)), text: readFileSync(path, "utf8") }))
+    // A built module directory (what dist/<id> holds) carries Tailwind's compiled web.css: build
+    // output, with Tailwind's own fallbacks in it, not the module's source.
+    .filter(({ rel, text }) => !(rel.endsWith(".css") && text.startsWith("/*! tailwindcss")))
     .sort((a, b) => a.rel.localeCompare(b.rel));
 }
 
 /** The module's built `web.js`, if any: `web.js` beside its manifest, or `dist/<id>/web.js`. */
-function builtWebJs(dir: string): LintFile | undefined {
+export function builtWebJs(dir: string): LintFile | undefined {
   const candidates = ["web.js"];
   try {
     const { id } = JSON.parse(readFileSync(join(dir, "deck-module.json"), "utf8")) as { id?: unknown };

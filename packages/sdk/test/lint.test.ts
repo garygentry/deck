@@ -68,6 +68,11 @@ describe("the guardrail rules", () => {
     expect(where(inlineStyles(files, { "b.tsx": "dynamic geometry", "c.tsx": "gone" }))).toEqual(["inline-style a.tsx:0", "stale-style-allowlist c.tsx:0"]);
   });
 
+  it("finds a style prop in plain JavaScript, where a no-build web half writes jsx() calls", () => {
+    const files = [file("web.js", 'jsx("p", { style: { width } })'), file("a.tsx", "const theme = { style: 1 };")];
+    expect(where(inlineStyles(files))).toEqual(["inline-style web.js:0"]);
+  });
+
   it("finds data-icon attributes and legacy tokens", () => {
     expect(where(dataIconAttributes([file("a.tsx", '<span data-icon="x" />')]))).toEqual(["data-icon a.tsx:1"]);
     expect(where(legacyTokens([file("a.css", ".x {\n  color: var(--inventory-ok);\n}")]))).toEqual(["legacy-token a.css:2"]);
@@ -93,6 +98,7 @@ describe("what a module's web half may import", () => {
       'import manifest from "../../deck-module.json";',
       'import { formatDistance } from "date-fns";',
       'export type { Tone } from "@deck/sdk";',
+      'export { type ServerModule } from "@deck/module-sdk";',
       'type T = import("@deck/contract").ProviderEnvelope;',
     ].join("\n");
     expect(moduleImports([file("src/web/a.tsx", source)])).toEqual([]);
@@ -117,6 +123,14 @@ describe("what a module's web half may import", () => {
   it("takes Tailwind only through @deck/sdk/tailwind, with a prefix", () => {
     const css = file("src/web/web.css", '@import "tailwindcss";\n@import "@deck/sdk/tailwind";\n@import "@deck/sdk/tailwind" prefix(hello);\n@import "./extra.css";');
     expect(where(moduleCssImports([css]))).toEqual(["module-css-import src/web/web.css:1", "module-css-import src/web/web.css:2"]);
+  });
+
+  it("finds Tailwind however the CSS pulls it in: @tailwind, several imports on a line, a wrapped or unquoted import", () => {
+    const css = file(
+      "web.css",
+      ['@import "./a.css"; @import "tailwindcss";', "@tailwind utilities;", "@import", '  "tailwindcss/utilities.css";', "@import url(tailwindcss);", '@import url("@deck/sdk/tailwind") prefix(hello);'].join("\n"),
+    );
+    expect(where(moduleCssImports([css]))).toEqual(["module-css-import web.css:1", "module-css-import web.css:2", "module-css-import web.css:3", "module-css-import web.css:5"]);
   });
 
   it("refuses a built web.js that imports anything but the import map and its own manifest", () => {
@@ -152,6 +166,14 @@ describe("lintModule", () => {
     expect(where(lintModule(dir, { styleAllowlist: { "src/web/Page.tsx": "dynamic geometry" } }))).not.toContain("inline-style src/web/Page.tsx:0");
   });
 
+  it("passes a built module directory as installed, whose web.css is Tailwind's compiled output", () => {
+    const dir = moduleDir({
+      "web.js": 'import{jsx as e}from"react/jsx-runtime";import{PageHeader as t}from"@deck/sdk";export default e(t,{title:"x"});',
+      "web.css": "/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */@supports (color:rgb(from red r g b)){*{--tw-x:0}}",
+    });
+    expect(lintModule(dir)).toEqual([]);
+  });
+
   it("checks the built web.js in dist/<id>/, and a no-build web.js beside the manifest", () => {
     const built = moduleDir({ "src/web/index.ts": 'export { x } from "./x.js";', "dist/probe/web.js": 'import "react-dom/client";' });
     expect(where(lintModule(built))).toEqual(["built-web-import dist/probe/web.js:1"]);
@@ -184,6 +206,22 @@ describe("deck-module lint", () => {
     expect(run("lint", dir).status).toBe(1);
     writeFileSync(join(dir, "package.json"), JSON.stringify({ deckModule: { lint: { styleAllowlist: { "src/web/Bar.tsx": "fill width from the value" } } } }));
     expect(run("lint", dir).status).toBe(0);
+  });
+
+  it("exits 2 on a package.json it cannot read options from", () => {
+    const dir = moduleDir({ "package.json": "{ not json" });
+    const broken = run("lint", dir);
+    expect(broken.status).toBe(2);
+    expect(broken.stderr).toContain("is not valid JSON");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ deckModule: { lint: { styleAllowlist: ["src/a.tsx"] } } }));
+    expect(run("lint", dir).status).toBe(2);
+  });
+
+  it("says when a module with sources has no built web.js to check", () => {
+    const dir = moduleDir({ "src/web/index.tsx": "export {};" });
+    const result = run("lint", dir);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("no built web.js found");
   });
 
   it("exits 2 on bad usage or a directory with no manifest", () => {

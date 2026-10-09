@@ -22,6 +22,7 @@ import { HTTP_JSON_MANIFEST } from "../../src/providers/http-json/module.js";
 import { LINK_MANIFEST } from "../../src/providers/link/module.js";
 import { MARKDOWN_TREE_MANIFEST } from "../../src/providers/markdown-tree/module.js";
 import { PROMETHEUS_MANIFEST } from "../../src/providers/prometheus/module.js";
+import { REMOTE_MANIFEST } from "../../src/providers/remote/module.js";
 import { SNAPSHOT_MANIFEST } from "../../src/providers/snapshot/module.js";
 import { createModuleHost, type ModuleHostOptions } from "../../src/modules/host.js";
 import { PORTAL_MANIFEST } from "../../src/portal/module.js";
@@ -66,6 +67,7 @@ export const BUILTIN_MANIFESTS: ReadonlySet<ModuleManifest> = new Set([
   MONITORING_MANIFEST,
   PORTAL_MANIFEST,
   PROMETHEUS_MANIFEST,
+  REMOTE_MANIFEST,
   SNAPSHOT_MANIFEST,
   SOURCES_MANIFEST,
 ]);

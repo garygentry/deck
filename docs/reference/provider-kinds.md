@@ -1,6 +1,6 @@
 # Provider kinds reference
 
-deck ships ten provider kinds.
+deck ships eleven provider kinds.
 A provider polls one backend (or serves static or source data) on a schedule and
 caches the latest result as an envelope the web app reads.
 This page lists each kind and its configuration.
@@ -11,7 +11,7 @@ A provider is registered from one of four config surfaces, depending on its kind
 
 | Surface | Kinds | Where it is declared |
 | --- | --- | --- |
-| Integration | `docker`, `gatus`, `prometheus`, `alertmanager`, `http-json` | `integrations[]` entry |
+| Integration | `docker`, `gatus`, `prometheus`, `alertmanager`, `http-json`, `remote` | `integrations[]` entry |
 | Binding | `http-health`, `link` | `bindings` map on a host or service |
 | Source | `file-tree`, `markdown-tree` | `sources[]` entry |
 | Runtime | `snapshot` | `DECK_SNAPSHOT_SOURCE`, not the estate config |
@@ -19,12 +19,12 @@ A provider is registered from one of four config surfaces, depending on its kind
 For the `docker`, `gatus`, `prometheus` and `alertmanager` integrations, deck registers at
 most one provider per kind: the first integration of each kind is registered under a fixed id
 equal to the kind, and any later same-kind integration is skipped by the poller. Every
-`http-json` integration is registered under its own `id`.
+`http-json` and `remote` integration is registered under its own `id`.
 A binding-backed provider is registered per host/service binding, and a
 source-backed provider is registered per declared source.
 
-`link`, `http-health`, `http-json`, `docker`, `gatus`, `prometheus`, `alertmanager` and
-`snapshot` are each a data-source module that owns its kind: the module declares the kind and
+`link`, `http-health`, `http-json`, `remote`, `docker`, `gatus`, `prometheus`, `alertmanager`
+and `snapshot` are each a data-source module that owns its kind: the module declares the kind and
 turns its bindings and integration instances into providers. A `docker` or
 `gatus` binding registers no provider of its own; it selects entries from the
 integration's provider for the portal's card status. A kind that is `bindable` and
@@ -269,6 +269,38 @@ Each `card.summaries` entry:
 A summary with no threshold is classified `neutral`.
 Invalid summary entries are dropped at load without failing boot; the provider is
 unhealthy only when every query is unreachable.
+
+## remote
+
+A sidecar: a small service, in any language, that deck polls at `<url>/deck/v1/data`. It
+answers `{ "data": <any JSON>, "observedAt"?: "<RFC 3339 time>" }`; the provider's data is
+`data`, and `observedAt` shows in the provider's health detail. A body without `data`, or with
+an `observedAt` that is not an RFC 3339 time, fails the poll. Backed by an integration; each
+instance is its own provider, registered under its `id`.
+
+The request goes through `http-json`'s hardening (above): the credential comes only from the
+`credentialEnv` variable and is sent as `auth` says, an authenticated request never follows a
+redirect off the configured origin, and a response over the size cap, nested past 64 levels or
+containing the credential is refused, with the same failure messages.
+
+| Key | Required | Notes |
+| --- | --- | --- |
+| `id` | yes | Lowercase letters, digits and `-`, at most 64 characters; the provider id. Taking the fixed provider id of another integration in the estate is `REMOTE_ID_RESERVED`. |
+| `title` | yes | Display title. |
+| `url` | yes | The sidecar's `http://` or `https://` base URL, with no query, fragment or `user:password@`; deck requests `/deck/v1/data` under it. One the runtime cannot parse is `REMOTE_URL_INVALID`. |
+| `credentialEnv`, `auth` | no | As for `http-json`. |
+| `pollIntervalMs`, `ttlMs`, `timeoutMs`, `maxBytes` | no | As for `http-json`. |
+| `deepLink` | no | A link to the sidecar's own UI. |
+
+```yaml
+integrations:
+  - id: ups
+    kind: remote
+    title: UPS
+    url: http://nut-ups:9000
+    credentialEnv: UPS_SIDECAR_TOKEN
+    auth: { scheme: bearer }
+```
 
 ## snapshot
 

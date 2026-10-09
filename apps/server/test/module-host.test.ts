@@ -215,19 +215,19 @@ describe("module host planning", () => {
   });
 
   it("ships the built-in modules, and they plan cleanly against the kernel routes", () => {
-    expect(BUILTIN_MODULES.map(({ manifest }) => manifest.id)).toEqual(["actions", "alertmanager", "docker", "drift", "file-tree", "gatus", "http-health", "http-json", "inventory", "link", "llm-usage", "markdown-tree", "metrics", "monitoring", "portal", "prometheus", "snapshot", "sources"]);
+    expect(BUILTIN_MODULES.map(({ manifest }) => manifest.id)).toEqual(["actions", "alertmanager", "docker", "drift", "file-tree", "gatus", "http-health", "http-json", "inventory", "link", "llm-usage", "markdown-tree", "metrics", "monitoring", "portal", "prometheus", "remote", "snapshot", "sources"]);
     const { host } = testHost([...BUILTIN_MODULES], { kernelRoutes: planningRouteTable(), reservedRootPaths: RESERVED_ROOT_PATHS });
     expect(host.findings).toEqual([]);
     expect(host.plan).toEqual([
       // drift and inventory depend on snapshot, so they follow it.
-      ...["alertmanager", "docker", "file-tree", "gatus", "http-health", "http-json", "link", "llm-usage", "markdown-tree", "monitoring", "portal", "prometheus", "snapshot", "drift", "inventory", "sources"].map((id) => ({ id, enabled: true })),
+      ...["alertmanager", "docker", "file-tree", "gatus", "http-health", "http-json", "link", "llm-usage", "markdown-tree", "monitoring", "portal", "prometheus", "remote", "snapshot", "drift", "inventory", "sources"].map((id) => ({ id, enabled: true })),
       { id: "actions", enabled: false, reason: "not enabled: DECK_ACTIONS_ENABLED is not true", gates: [{ env: "DECK_ACTIONS_ENABLED" }] },
       { id: "metrics", enabled: false, reason: "not enabled: DECK_METRICS_ENABLED is not true", gates: [{ env: "DECK_METRICS_ENABLED" }] },
     ]);
     const on = testHost([...BUILTIN_MODULES], { env: { DECK_ACTIONS_ENABLED: "1", DECK_METRICS_ENABLED: "1" }, kernelRoutes: planningRouteTable(), reservedRootPaths: RESERVED_ROOT_PATHS });
     expect(on.host.findings).toEqual([]);
     // metrics uses the snapshot module's snapshot/content service, so it follows snapshot too.
-    expect(on.host.plan).toEqual(["actions", "alertmanager", "docker", "file-tree", "gatus", "http-health", "http-json", "link", "llm-usage", "markdown-tree", "monitoring", "portal", "prometheus", "snapshot", "drift", "inventory", "metrics", "sources"].map((id) => ({ id, enabled: true })));
+    expect(on.host.plan).toEqual(["actions", "alertmanager", "docker", "file-tree", "gatus", "http-health", "http-json", "link", "llm-usage", "markdown-tree", "monitoring", "portal", "prometheus", "remote", "snapshot", "drift", "inventory", "metrics", "sources"].map((id) => ({ id, enabled: true })));
   });
 });
 

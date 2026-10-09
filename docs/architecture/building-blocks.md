@@ -38,10 +38,10 @@ rather than a half-configured server.
 Monitoring and inventory data is served through a provider registry
 (`apps/server/src/providers/registry.ts`).
 `registerAllProviders` translates estate declarations — integrations, host and service bindings,
-and declared document sources — and the runtime snapshot source into providers of one of ten kinds:
+and declared document sources — and the runtime snapshot source into providers of one of eleven kinds:
 `alertmanager`, `docker`, `file-tree`, `gatus`, `http-health`, `http-json`, `link`,
-`markdown-tree`, `prometheus`, and `snapshot`.
-Every kind is owned by a data-source module (`link`, `http-health`, `http-json`, `docker`, `gatus`,
+`markdown-tree`, `prometheus`, `remote`, and `snapshot`.
+Every kind is owned by a data-source module (`link`, `http-health`, `http-json`, `remote`, `docker`, `gatus`,
 `prometheus`, `alertmanager`, `markdown-tree`, `file-tree`, `snapshot`) and handled by that
 module's kind handler: the kernel loops over host and service bindings and `integrations[]` /
 `sources[]` instances and registers the providers each handler offers, so it names no kind

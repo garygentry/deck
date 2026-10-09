@@ -52,11 +52,12 @@ export const HTTP_JSON_MANIFEST: ModuleManifest = {
   ],
 };
 
-/** What config validation reports for one instance beyond its schema. Pure. */
-function validateInstance(instance: JsonObject, { document, fixedIds }: InstanceRuleContext): ConfigRuleFinding[] {
+/**
+ * A finding when `id` is the fixed provider id of a kind with an instance in the estate. A
+ * fixed id clashes only when an instance of its kind is there to register it. Pure.
+ */
+export function fixedIdFindings(id: unknown, { document, fixedIds }: InstanceRuleContext, code: string): ConfigRuleFinding[] {
   const findings: ConfigRuleFinding[] = [];
-  const { id, url, body, headers } = instance;
-  // A fixed id clashes only when an instance of its kind is there to register it.
   for (const [kind, fixedId] of fixedIds) {
     if (id !== fixedId) continue;
     const holds = ["integrations", "sources"].some((list) => {
@@ -64,9 +65,16 @@ function validateInstance(instance: JsonObject, { document, fixedIds }: Instance
       return Array.isArray(instances) && instances.some((other) => other !== null && typeof other === "object" && (other as JsonObject).kind === kind);
     });
     if (holds) {
-      findings.push({ code: "HTTP_JSON_ID_RESERVED", path: "/id", message: `id "${id}" is the fixed provider id of the ${kind} integration in this estate; boot would fail when both register.` });
+      findings.push({ code, path: "/id", message: `id "${id}" is the fixed provider id of the ${kind} integration in this estate; boot would fail when both register.` });
     }
   }
+  return findings;
+}
+
+/** What config validation reports for one instance beyond its schema. Pure. */
+function validateInstance(instance: JsonObject, context: InstanceRuleContext): ConfigRuleFinding[] {
+  const { id, url, body, headers } = instance;
+  const findings = fixedIdFindings(id, context, "HTTP_JSON_ID_RESERVED");
   for (const name of credentialHeaderNames(headers)) {
     findings.push({ code: "HTTP_JSON_LITERAL_CREDENTIAL", path: `/headers/${name.replaceAll("~", "~0").replaceAll("/", "~1")}`, message: `header "${name}" names a credential; config may not hold one.`, hint: "Use credentialEnv with auth: { scheme: header, header: ... }." });
   }
@@ -83,7 +91,7 @@ function validateInstance(instance: JsonObject, { document, fixedIds }: Instance
   return findings;
 }
 
-function auth(value: unknown): HttpJsonAuth | undefined {
+export function auth(value: unknown): HttpJsonAuth | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const { scheme, header } = value as { scheme?: unknown; header?: unknown };
   if (scheme === "bearer" || scheme === "basic") return { scheme };
@@ -101,11 +109,11 @@ function headers(value: unknown): Record<string, string> | undefined {
   return entries.length === 0 ? undefined : Object.fromEntries(entries);
 }
 
-const integer = (value: unknown): number | undefined =>
+export const integer = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 
 /** The provider timing an instance sets. Freshness defaults to its poll interval, not deck's. */
-function timing(instance: JsonObject): ProviderTiming | undefined {
+export function timing(instance: JsonObject): ProviderTiming | undefined {
   const pollIntervalMs = integer(instance.pollIntervalMs);
   const timeoutMs = integer(instance.timeoutMs);
   const ttlMs = integer(instance.ttlMs) ?? pollIntervalMs;

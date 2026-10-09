@@ -132,7 +132,7 @@ example dashboard's provider table shows kinds and details for this reason.
 Options shape how the value reads: `format` (`number`, `bytes`, `percent`, `duration`,
 `relative-time`), `unit`, labels, and the columns or fields to show. A field (`field`,
 `titleField`, …) is a key or dotted keys (`power.watts`), never a query: shape the data in
-`select`. The [widget table](../reference/estate-config.md#ui) lists every type and option.
+`select`. The [widget types reference](../reference/widget-types.md) lists every type and option.
 
 If a widget gets a value it cannot show, it says so (`core/stat shows a number or text; this
 widget's value is a list.`), so a wrong `select` is easy to spot.
@@ -293,7 +293,7 @@ ui:
   `/start`.
 - To keep the built-in portal and change only part of it, hide pieces by id instead. For
   example, `widget:portal/overview.groups: false` hides its groups, and `pill:portal/endpoints:
-  false` hides its top-bar pill. `GET /api/ui` lists every id.
+  false` hides its top-bar pill. `GET /api/ui` lists the ids of what is showing.
 
 ## Try the example
 

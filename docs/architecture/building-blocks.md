@@ -43,12 +43,21 @@ Every feature and data source is a module on one contract, `@deck/module-sdk`
 - **Runtime modules first.** `runtime.ts` reads every `deck-module.json` under
   `DECK_MODULES_DIR`. It imports a module's server entry only while `DECK_MODULES_ENABLED` is on
   and the module would run, and disables one that fails to load.
-- **Composition.** `config.ts` composes the config contract from the modules' contributions, so
-  config is validated against what is installed.
+- **Composition.** `config.ts` composes the config contract from every installed module's
+  contributions, switched on or not, so config is validated against what is installed.
 - **Planning.** `host.ts` plans the modules from their manifests alone. It validates each
-  manifest, works out which are switched on, orders them by `dependsOn`, and refuses
-  incompatible, dependency-less or conflicting ones with a finding. Module env names, routes and
-  root paths are checked against the kernel's (`routes.ts`).
+  manifest, works out which are switched on, and orders them by `dependsOn`. Module env names,
+  routes and root paths are checked against the kernel's (`routes.ts`). A module's own defect
+  switches off just that module with a finding: a runtime module's unusable manifest or
+  `deckApi`, a missing dependency, a failing kind handler. Boot fails fast (exit 2) on:
+  - a built-in's unusable manifest;
+  - two modules that cannot coexist (`MODULE_MANIFEST_CONFLICT`);
+  - a runtime import that does not finish;
+  - an invalid config section that is present;
+  - an `init` that throws.
+
+  [Kernel and modules](../explanation/kernel-and-modules.md#how-modules-start) has the full
+  list.
 - **Starting.** It hands the enabled modules' kind handlers to provider registration. It then
   runs each `init` in order with a context (`context.ts`) that injects only what the module
   declared, and later mounts each module's sub-app at `/api/m/<id>`.
@@ -123,7 +132,8 @@ The server decides what the web shell renders ([ADR-006](./decisions/adr-006-con
 overrides and pages, and the pages a `remote` sidecar describes at runtime
 (`runtime-pages.ts`), into the UI manifest served at `GET /api/ui` (`resolve.ts`, a pure
 function). Resolving also sets each provider's projections: the `select` of every widget
-that reads it, evaluated on the server when the provider's data changes. `live.ts` watches the
+that reads it, evaluated on the server when the provider's data changes, and over the cached
+envelopes at once when a reload changes the set of selects. `live.ts` watches the
 config directory, and when only `ui` changed, swaps the manifest in place without a restart.
 
 ### Request and poll flow

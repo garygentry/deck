@@ -80,7 +80,8 @@ not have. In the section model, DOM order is reading order, which keeps the page
 - `core` provides the generic types: `core/stat`, `core/table`, `core/list`, `core/markdown`,
   `core/embed` and the rest. They are pure renderers over `@/ui` patterns.
 - `select` is a JMESPath expression evaluated **on the server**, under step, size and depth
-  budgets, each time the provider's data changes. The results travel in the provider's envelope
+  budgets. The server evaluates it each time the provider's data changes, and over the cached
+  data at once when the set of projections changes (a `ui` reload). The results travel in the provider's envelope
   (`projections`), so the browser never runs the query engine.
 
 The portal itself is a module page with a default dashboard (its summary slot, then one
@@ -103,7 +104,8 @@ requested.
 
 - **No fork for most customisation.** An operator can rebrand, re-theme and rearrange the
   sidebar, hide or move any pill, card, section or page, choose the home page and build
-  dashboards in YAML. `GET /api/ui` lists every id they can address.
+  dashboards in YAML. `GET /api/ui` lists the ids of everything enabled, and each module's
+  manifest declares its defaults.
 - **Built-ins have no special path.** They place their UI with the same manifest data a runtime
   module or a sidecar uses (ADR-007). `apps/web/test/extension-ids.test.ts` and the server's
   `/api/ui` goldens hold the built-in ids and placements stable.
@@ -113,10 +115,12 @@ requested.
   reports and boot refuses, as for any other config.
 - **The shell depends on the manifest.** Until it loads, the sidebar and slots are empty. If it
   cannot be read, the shell falls back to what the web registry declares. A boot object written
-  into `index.html` (brand, theme mode, home) prevents a flash of the wrong theme or home page.
+  into `index.html` (brand, theme, home) prevents a flash of the wrong theme or home page.
 - **Data stays on the server.** `select` runs where the data is, bounded, so a widget cannot make
-  the browser load or evaluate untrusted queries. The cost is that a new projection needs a
-  server poll before it shows.
+  the browser load or evaluate untrusted queries. A changed `select` is re-evaluated over the
+  cached data as soon as the reload lands, with no upstream poll. The browser sees it at its
+  next refetch: the manifest on focus or within a minute, and the provider on the shell's poll
+  interval.
 - **The palette is limited.** Operators get a fixed set of presets. A new preset is cheap to add
   to `theme.css`, but it must pass the contrast tests in both themes.
 

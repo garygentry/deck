@@ -82,20 +82,42 @@ reads any provider. So a new kind needs no change to either.
 
 At boot, the module host:
 
-1. Reads every manifest, built-in and runtime, and refuses any that is malformed.
-2. Works out which modules are switched on: by their config section, by an env var, or always.
-3. Orders them by `dependsOn` (ties by id), and switches off a module whose module API range
-   deck does not meet, whose dependency is off, or that sits in a dependency cycle.
-4. Composes the config schema from the modules that will run, and validates the estate.
+1. Reads every manifest, built-in and runtime. A runtime module's server entry is imported only
+   while runtime modules are switched on and the module would run.
+2. Composes the config schema from every installed module, switched on or not, and validates
+   the estate. A section for a switched-off module is still checked: `deck validate` reports
+   its problems at their real severity, and boot as advisory.
+3. Works out which modules are switched on: by their config section, by an env var, or always.
+4. Orders them by `dependsOn` (ties by id), and switches off a module whose dependency is off or
+   that sits in a dependency cycle.
 5. Registers the providers each data-source module offers, then runs each module's `init` in
    order.
 6. Starts the scheduled tasks and mounts each module's routes.
 
-A module that cannot run is switched off with a finding, and the rest of deck starts.
-`GET /api/ui` lists it with the reason and with the setting that would switch it on. Two
-failures still stop boot:
+A module whose problem is its own is switched off with a finding, and the rest of deck starts:
 
-- a module whose own config section is invalid, because you asked for it and it cannot work;
+- a runtime module with a malformed manifest (`MODULE_MANIFEST_INVALID`), a module API range
+  deck does not meet (`MODULE_API_INCOMPATIBLE`), a load failure or collision (`MODULE_LOAD_FAILED`) or a
+  config rule that throws (`MODULE_RULE_FAILED`);
+- any module whose kind handler fails while providers register (`MODULE_KIND_HANDLER_FAILED`);
+- any module whose dependency is missing or switched off (`MODULE_DEPENDENCY_MISSING`), or that
+  sits in a dependency cycle (`MODULE_DEPENDENCY_CYCLE`).
+
+`GET /api/ui` lists such a module with the reason and with the setting that would switch it on.
+Boot stops instead, with exit code 2, when the problem is deck's or the deployment's:
+
+- a built-in module whose manifest, contributions, module API range or config contribution is
+  unusable (`MODULE_MANIFEST_INVALID`); built-ins ship with deck, so this is a deck defect;
+- two modules that cannot coexist (`MODULE_MANIFEST_CONFLICT`): a shared id, finding code,
+  provider kind, health key or data directory, for example. A runtime module that claims what
+  another module has is refused when it loads (`MODULE_LOAD_FAILED`, `collision`) instead, so
+  it never gets this far;
+- a runtime module's server entry that does not finish importing within 10 seconds, since its
+  code may still be running;
+- a config section that is present and invalid, for a module that runs or a runtime module that
+  failed to load: you asked for the module and it cannot work;
+- a built-in kind handler that reports a deployment setting deck cannot start with (a malformed
+  `DECK_SNAPSHOT_SOURCE`, say);
 - an `init` that throws, because the module may have done half its work.
 
 ## How the UI is assembled

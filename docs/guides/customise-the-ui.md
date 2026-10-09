@@ -14,7 +14,10 @@ pages of your own, see [Build a dashboard without code](build-a-dashboard.md).
 
 Every page, nav entry, pill, card and section in deck has an id of the form
 `<kind>:<module>/<name>`, such as `page:inventory/hosts` or `pill:drift/summary`. Config
-addresses them by id. Ask a running deck for them:
+addresses them by id. `GET /api/ui` lists the ids of everything that is enabled and showing.
+Something switched off by its module or by an override is not listed; the defaults are in each
+module's manifest (see the [module manifest reference](../reference/module-manifest.md)).
+Ask a running deck:
 
 ```bash
 curl -s localhost:8080/api/ui | jq -r '.pages[].id, .nav[].id, .extensions[].id'
@@ -27,6 +30,7 @@ The built-in modules contribute these:
 | What | Ids |
 | --- | --- |
 | Pages | `page:portal/overview`, `page:inventory/hosts`, `page:inventory/services`, `page:drift/overview`, `page:monitoring/overview`, `page:sources/docs`, `page:sources/configs`, `page:actions/overview`, `page:llm-usage/overview` |
+| Detail pages (routed, with path parameters, never in the sidebar and never valid as `home`) | `page:inventory/host-detail` (`/hosts/:name`), `page:inventory/service-detail` (`/services/:host/:name`) |
 | Top-bar pills (`app/topbar.status`) | `pill:monitoring/alerts` (order 10), `pill:monitoring/metrics` (20), `pill:llm-usage/summary` (40), `pill:drift/summary`, `pill:portal/endpoints` (100) |
 | Top-bar controls (`app/topbar.actions`) | `action:core/theme-menu` |
 | Portal summary cards (`portal/summary`) | `card:llm-usage/portal` |

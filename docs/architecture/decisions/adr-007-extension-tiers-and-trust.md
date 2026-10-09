@@ -47,7 +47,8 @@ needs never leave.
 - Links pass one check (`isSafeHref`), and markdown is sanitised by DOMPurify.
 - `core/embed`, the one widget that shows another site's page, is off unless
   `ui.allowUnsafeEmbeds` is `true`. Its frame is always sandboxed, and the page's CSP
-  `frame-src` names only the embedded origins, never deck's own.
+  `frame-src` names only the embedded origins and those `ui.frameSources` lists, never deck's
+  own.
 - `http-json` takes its credential only from the variable `credentialEnv` names. It caps
   response size, depth and time, never sends the credential off its origin, and refuses a
   response that echoes the credential.
@@ -84,17 +85,26 @@ deck does not have, at a large cost in complexity. The safeguards instead are:
 - the env gate, off by default;
 - a `deckApi` semver check;
 - an optional `moduleIntegrity` digest, checked just before each import;
-- load failures disable only the module, reported as fixed categories and never the module's
-  own error text;
+- a runtime module's own load failure (an unreadable or invalid manifest, a pin mismatch, an
+  entry that throws) disables only that module, reported as a fixed category and never the
+  module's own error text, and so does a runtime module that claims what another module
+  already has (`collision`). Deck still stops booting for an entry that does not finish
+  importing within 10 seconds, and for an `init` that throws
+  ([Kernel and modules](../../explanation/kernel-and-modules.md#how-modules-start));
 - an error boundary around every runtime component (a "failed" tile, not a white page);
 - deck's Content-Security-Policy on `web.js` (scripts from deck's origin only, no `eval`,
   requests to deck only);
 - icons rebuilt from an element and attribute allowlist;
-- CSS confined to the module's own Tailwind prefix;
-- `deck-module lint`, which applies the web app's own UI guardrails to a module.
+- a CSS prefix per module: deck refuses a second runtime module whose prefix collides with one
+  it loaded (`collision`);
+- `deck-module lint`, which applies the web app's own UI guardrails to a module and checks
+  that its CSS selects only its own prefixed classes. That confinement is a lint rule the
+  author runs, not something deck enforces when it serves `web.css`.
 
 The trust model is stated plainly in [Security & access posture](../../security.md#trust-tiers):
-in-process code has every privilege deck has.
+in-process code has every privilege deck has. A module's `ctx.env` only filters what deck
+hands it ([ADR-005](./adr-005-module-contract-and-kernel.md)); the module can still read
+`process.env`, deck's files and the network directly.
 
 ## Consequences
 
@@ -106,16 +116,19 @@ in-process code has every privilege deck has.
   is a built-in's. Each step up hands more trust to the author, and the docs say so at each
   step.
 - **The declarative surface is a security boundary that must stay small.**
-  - The sidecar widget allowlist, the `select` budgets, the link check and the markdown policy
-    are enforced on the server and again in the browser where they render.
+  - The sidecar widget allowlist and the `select` budgets are enforced on the server only. The
+    link check and the markdown policy are enforced on the server and again in the browser
+    where links and markdown render.
   - A new declarative widget type is a review of what it lets an untrusted describe do.
   - Adding `core/embed` to the sidecar allowlist would hand frame control to the sidecar.
 - **Runtime modules are only as safe as the operator's review.** A pin protects the module's
   files at rest. It does not stop someone who can write the module directory while deck
   starts. Operators are told to mount it read-only and pin every module.
 - **Compatibility is explicit.** A module built for another `deckApi` is refused, not half-run.
-  A web half that imports a name `@deck/sdk` does not export, or whose manifest differs from the
-  server's copy, shows as "incompatible" instead of failing silently.
+  A web half shows as "incompatible" when it imports a name `@deck/sdk` or React does not
+  export, or when its id, version or `deckApi` differ from the server's. It shows as "failed"
+  when it declares other contributions than the server's manifest or lacks a component it
+  names. Either way it never fails silently.
 - **One shared React is a hard rule.** A runtime module that bundles its own React breaks every
   hook. The template's build keeps the import-mapped names external, and `deck-module lint`
   refuses a build that bundles them.

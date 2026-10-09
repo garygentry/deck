@@ -85,7 +85,8 @@ a built-in needs something the contract lacks, the contract grows; there is no p
 *instances* (`integrations[]`, `sources[]`) stay top-level, because many places refer to them by id.
 
 **The schema is composed at boot.** `composeConfig` (`packages/schema/src/compose`) takes the
-kernel schema (`deck.schema.json`, kernel keys only) and the enabled modules' contributions. It
+kernel schema (`deck.schema.json`, kernel keys only) and the contributions of every installed
+module, switched on or not, so a section for a switched-off module is still checked. It
 builds `modules.properties` from their section schemas, and adds per-kind instance schemas for
 `integrations[]` and `sources[]`. It also registers their ownership, identity, references and
 finding codes. The root and `modules` stay closed, so an unknown key or module is still
@@ -110,18 +111,42 @@ manifest as JSON (`deck-module.json`).
   `builtin.ts`, and a runtime module or a sidecar touches nothing, unless it needs a new kernel
   capability. `kernel-touch.ts` measures this, and `apps/server/test/kernel-names.test.ts` fails if boot,
   the app skeleton or the provider registry names any built-in module or provider kind.
-- **A broken module is contained.** A malformed manifest (`MODULE_MANIFEST_INVALID`), an
-  incompatible `deckApi` (`MODULE_API_INCOMPATIBLE`), a missing dependency
-  (`MODULE_DEPENDENCY_MISSING`) or a failing kind handler (`MODULE_KIND_HANDLER_FAILED`)
-  disables that module with a finding, and boot continues. Two exceptions fail fast:
-  - a module whose own config section is invalid, as before;
-  - an `init` that throws, because its side effects cannot be undone.
+- **A module's own defect is contained; a broken deployment is not.** These disable just the
+  module with a finding, and boot continues:
+  - a runtime module whose manifest is malformed (`MODULE_MANIFEST_INVALID`), whose `deckApi`
+    deck does not satisfy (`MODULE_API_INCOMPATIBLE`), or that fails to load
+    (`MODULE_LOAD_FAILED`);
+  - a runtime module whose config rule throws (`MODULE_RULE_FAILED`);
+  - any module whose kind handler fails while providers register (`MODULE_KIND_HANDLER_FAILED`);
+  - any module whose dependency is missing or switched off (`MODULE_DEPENDENCY_MISSING`).
+
+  Boot stops instead (exit 2) when:
+  - a built-in module's manifest, contributions, `deckApi` or config contribution are unusable
+    (a schema that does not compile, or a config rule that fails): `MODULE_MANIFEST_INVALID`;
+  - two modules cannot coexist (`MODULE_MANIFEST_CONFLICT`: a shared id, finding code or
+    provider kind, for example). A colliding runtime module is refused at load instead;
+  - a runtime module's server entry does not finish importing within 10 seconds;
+  - a config section that is present is invalid, for a module that runs or a runtime module
+    that failed to load;
+  - an `init` throws, because its side effects cannot be undone.
+
+  [Kernel and modules](../../explanation/kernel-and-modules.md#how-modules-start) keeps the
+  full list.
 - **Config is checked against what is installed.** A section for an unknown module is
   rejected. A section for a module that is installed but switched off is the advisory
   `MODULE_SECTION_DISABLED`, not silently ignored.
-- **Ownership is explicit.** Env var names, finding codes, provider kinds, routes and root paths
-  each belong to one module, and the host refuses a module that claims another's. Secrets
-  reach only the module that declares them.
+- **Ownership is explicit.** Finding codes, provider kinds, routes, root paths and the env var
+  names in a manifest's `env` each belong to one module, and the host refuses a module that
+  claims another's.
+- **`ctx.env` is a filter, not isolation.** `ctx.env.get` returns only:
+  - the module's own `env` names and its `sharedEnv` names;
+  - the names its own config holds at its `envFromConfig` pointers. These are not owned, so
+    two modules may each be allowed the same one, though never a kernel setting or a name
+    another module owns in `env`.
+
+  That keeps a well-behaved module from reading another's secret by mistake. It does not
+  isolate anything: an in-process module runs with deck's full privileges and can read
+  `process.env` directly ([ADR-007](./adr-007-extension-tiers-and-trust.md)).
 - **The first releases on the contract were mostly invisible.** Moving every built-in onto it
   added no user feature. Parity goldens (`apps/server/test/golden/parity`) held the providers,
   health, routes, findings and rendered config of a migrated v1 estate unchanged throughout.

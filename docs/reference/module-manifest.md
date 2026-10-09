@@ -17,8 +17,14 @@ Where the manifest lives:
   half registers. A built-in has no `module.json`.
 - **A runtime module** ships it as `deck-module.json` in its directory under
   `DECK_MODULES_DIR`. The file is at most 64 KiB and nested at most 32 levels, and its `id`
-  must be the directory's name. Its server entry's `manifest` and its web half's manifest must
-  both equal it.
+  must be the directory's name. Its server entry's `manifest` must equal it, or the module fails
+  to load (`import error`). Its web half's manifest must match it more loosely:
+  - the same `id` and `version`, and a `deckApi` this deck satisfies, or the web half is
+    "incompatible";
+  - the same pages, nav entries, slots, extensions and widget types (by id), with a component
+    for each one the server's manifest names, or the web half "failed to load".
+
+  The server's copy decides where everything goes.
 
 A manifest the host refuses disables its module with `MODULE_MANIFEST_INVALID`, and deck keeps
 booting. Exceptions: two modules that cannot coexist fail boot (`MODULE_MANIFEST_CONFLICT`, or a
@@ -33,9 +39,9 @@ duplicate id), and so does a built-in module with an unusable manifest.
 | `deckApi` | string | yes | The module API range the module was written for: an exact `M.m.p`, or `^M`, `^M.m` or `^M.m.p`. deck's module API is `0.1.0` (`DECK_API_VERSION`). On `0.x` the minor is the breaking part, so `^0.1` matches `0.1.*` only. A range deck does not satisfy disables the module (`MODULE_API_INCOMPATIBLE`). |
 | `dependsOn` | array of module ids | no | Modules that must be enabled and started first. A missing or disabled dependency disables this module (`MODULE_DEPENDENCY_MISSING`); a cycle disables the modules in it (`MODULE_DEPENDENCY_CYCLE`). |
 | `enabledBy` | `{ config?: true, env?: string }` | no | When the module runs. `config: true`: its `modules.<id>` section is present. `env`: the named variable is `true` or `1` (any case). With both, both must hold. Absent: always on. |
-| `env` | array of names | no | Environment variables the module owns and may read through `ctx.env` (`^[A-Z][A-Z0-9_]*$`). A name belongs to one module: built-ins claim first, then other modules by id. A deployment setting the kernel reads (`DECK_DATA_DIR`, `DECK_PORT`, …) is refused. Put secrets here. |
+| `env` | array of names | no | Environment variables the module owns and may read through `ctx.env` (`^[A-Z][A-Z0-9_]*$`). A name belongs to one module: built-ins claim first, then other modules by id. A deployment setting the kernel reads (`DECK_DATA_DIR`, `DECK_PORT`, …) is refused. Put secrets here: `ctx.env.get` returns a name only to modules allowed it. That is a filter on what deck hands the module, not isolation, because an in-process module can read `process.env` directly. |
 | `sharedEnv` | array of names | no | Non-secret variables any module may read and none owns (`TZ`, `HTTPS_PROXY`). Never a kernel setting, a name some module owns, or a name also in `env`. |
-| `envFromConfig` | array of JSON Pointers | no | Pointers into the module's own section whose string values name further variables it may read, such as `"/claude/statusLine/credentialEnv"`. A resolved name must match the env pattern, and may not be a kernel setting (unless listed in `env`) or another module's name. |
+| `envFromConfig` | array of JSON Pointers | no | Pointers into the module's own section whose string values name further variables it may read, such as `"/claude/statusLine/credentialEnv"`. A resolved name must match the env pattern, and may not be a kernel setting (unless listed in `env`) or a name another module owns in `env`. Names resolved this way are not owned: two modules may each be allowed the same one. |
 | `config` | object | no | The module's config section, `modules.<id>`; see [config](#config). |
 | `providerKinds` | array | no | Provider kinds the module owns; see [providerKinds](#providerkinds). |
 | `services` | `{ provides?, uses? }` | no | In-process services; see [services](#services). |
@@ -83,7 +89,8 @@ modules declaring it fail boot (`MODULE_MANIFEST_CONFLICT`).
 
 - `provider`: `binding` reads the provider the kind's binding handler registers under the
   binding's own id (`http-health`). `fixed` reads the kind's `fixedId` instance, shared by every
-  binding (`docker`); it is honoured for built-in modules only.
+  binding (`docker`). It is for built-in modules only: on any other module it makes the
+  manifest invalid (`MODULE_MANIFEST_INVALID`).
 - `match` (optional): `{ list, key, binding }` finds the bound item. It is the element of the
   list at key path `list` whose `key` field equals the binding's `binding` field (`{ list:
   "containers", key: "name", binding: "container" }`). Without `match`, the provider's data is
@@ -135,7 +142,7 @@ number, and an omitted one counts as 100.
 | `title` | string | yes | The page's heading and, by default, its nav label. |
 | `icon` | icon name | no | Shown beside its nav entry. |
 | `component` | string | yes | The name of the component in the web half's table. `ConfigPage` is the kernel's. |
-| `layout` | `{ sections }` | no | The page's default dashboard, which its component renders with the shell's layout helpers. 1–16 sections, each `{ slot }` (a `widget` slot the module hosts) or `{ widgets }`: 1–24 `{ id, type }`, of the module's own widget types or core's, with no options or source. A type whose options schema refuses `{}` is refused. Each widget is `widget:<module>/<page name>.<id>`, which an override can switch off. |
+| `layout` | `{ sections }` | no | The page's default dashboard, which its component renders with the shell's layout helpers. Up to 16 sections, each `{ slot }` (a `widget` slot the module hosts) or `{ widgets }`: 1–24 `{ id, type }`, of the module's own widget types or core's, with no options or source. A type whose options schema refuses `{}` is refused. Each widget is `widget:<module>/<page name>.<id>`, which an override can switch off. |
 
 ### nav
 
@@ -197,7 +204,7 @@ The [widget types reference](widget-types.md) lists the types deck and its built
 | --- | --- | --- |
 | `legacyAliases` | array of paths | Extra prefixes the module's `/api/m/<id>` sub-app is also mounted at, for paths that predate the module (`/api/llm-usage`). Literal paths (`A-Z a-z 0-9 . _ ~ - /`) under `/api/`, outside `/api/m`, overlapping no other prefix or kernel route. |
 | `rootPaths` | array of paths | Exact literal paths outside `/api` the module serves with `ctx.rootRoute` (`/metrics`). The web app's fallback never answers them, even while the module is off. A root path a built-in declares, or one a built-in or kernel page path matches, is refused. |
-| `whenDisabled` | array of `{ method, path, status, body }` | Fixed JSON answers at the module's prefixes while it is installed but not running, so a client can learn the capability is off. `method` is `GET`, `POST`, `PUT`, `PATCH` or `DELETE`; `path` is `""` or `/`-separated literal and `:param` segments; `status` 200–599. No module code runs for them. Without them, those paths answer 404. |
+| `whenDisabled` | array of `{ method, path, status, body }` | Fixed JSON answers at the module's prefixes while it is installed but not running, so a client can learn the capability is off. `method` is `GET`, `POST`, `PUT`, `PATCH` or `DELETE`; `path` is `""` or `/`-separated literal and `:param` segments; `status` 200–599, except 204, 205 and 304, which cannot carry a body. No module code runs for them. Without them, those paths answer 404. |
 
 ## Example
 

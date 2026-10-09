@@ -64,9 +64,11 @@ minutes by default (`describeIntervalMs`), and backs off after a failure:
   `core/key-value`, `core/list`, `core/table`, `core/status-grid`, `core/link-tiles`,
   `core/markdown` and `core/json`. A sidecar cannot frame a page (`core/embed`) or use a
   module's widget types.
-- `links` become tiles under the widgets, and `nav` entries become sidebar links beside the
-  sidecar's page. Every link is an `http(s)` URL or a path in deck. Markdown may link only to
-  `http(s)` URLs.
+- `links` become tiles under the widgets. A link is an `http(s)` URL, which always opens in a
+  new tab, or an absolute path in deck.
+- `nav` entries become sidebar links beside the sidecar's page. They take `http(s)` URLs only,
+  never a path.
+- Markdown may link only to absolute `http(s)` URLs.
 
 Deck checks the whole document and refuses all of it if any part is wrong. Until one succeeds,
 the page shows a placeholder. After that, the last good describe keeps rendering.
@@ -100,12 +102,20 @@ def read_disks():
     disks = []
     for path in PATHS:
         usage = shutil.disk_usage(path)
-        disks.append({"path": path, "used_pct": round(100 * usage.used / usage.total, 1), "free": usage.free})
+        used_pct = round(100 * usage.used / usage.total, 1) if usage.total else 0.0
+        disks.append({"path": path, "used_pct": used_pct, "free": usage.free})
     return {"fullest_pct": max(disk["used_pct"] for disk in disks), "disks": disks}
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if TOKEN and not hmac.compare_digest(self.headers.get("Authorization", ""), f"Bearer {TOKEN}"):
+        try:
+            self.answer()
+        except Exception:  # never leave deck's request hanging
+            self.reply(500, {"error": "internal error"})
+
+    def answer(self):
+        sent = self.headers.get("Authorization", "").encode("utf-8", "replace")
+        if TOKEN and not hmac.compare_digest(sent, f"Bearer {TOKEN}".encode()):
             return self.reply(401, {"error": "unauthorised"})
         if self.path == "/deck/v1/describe":
             return self.reply(200, DESCRIBE)
@@ -191,8 +201,9 @@ integrations:
 
 Check the config with `deck validate`, then restart deck: a new integration is not picked up by
 hot reload. The page is `page:remote/disks` at `/disks`, and each widget is
-`widget:remote/disks.<widget id>`, so the [`ui` config](customise-the-ui.md) can hide or move
-them like any other. The sidecar's data is also an ordinary provider: a `ui.pages` dashboard can
+`widget:remote/disks.<widget id>`. The [`ui` config](customise-the-ui.md) can hide the page or
+any widget by id (`widget:remote/disks.fullest: false`), but cannot move them: widgets take only
+`enabled`, and the page's path and sidebar place come from the integration's `page`. The sidecar's data is also an ordinary provider: a `ui.pages` dashboard can
 read it with `source: disks`.
 
 ## Check that it works

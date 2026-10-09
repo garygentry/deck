@@ -143,6 +143,8 @@ describe("checkDescribe: declarative only, the config's own descriptors", () => 
     ["a relative markdown link", { widgets: [{ id: "w", type: "core/markdown", options: { content: "see [health](/api/health)" } }] }, /content links somewhere/],
     ["a raw HTML link into deck", { widgets: [{ id: "w", type: "core/markdown", options: { content: '<a href="/api/health">x</a>' } }] }, /content links somewhere/],
     ["a markdown reference link to another scheme", { widgets: [{ id: "w", type: "core/markdown", options: { content: "[x][r]\n\n[r]: javascript:alert(1)" } }] }, /content links somewhere/],
+    ["a raw image map area into deck", { widgets: [{ id: "w", type: "core/markdown", options: { content: '<area href="/api/actions">' } }] }, /content links somewhere/],
+    ["a raw button formaction into deck", { widgets: [{ id: "w", type: "core/markdown", options: { content: "<button formaction=/api/run>x</button>" } }] }, /content links somewhere/],
     ["a markdown image with a relative src", { widgets: [{ id: "w", type: "core/markdown", options: { content: "![x](img.png)" } }] }, /content links somewhere/],
   ])("refuses %s", (_label, patch, problem) => {
     const result = checkDescribe({ ...DESCRIBE, ...patch }, "ups");

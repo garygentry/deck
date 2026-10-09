@@ -135,14 +135,15 @@ function unsafeOptionHref(options: JsonObject | undefined): string | null {
 
 /**
  * Link and resource targets in markdown text: inline links and images, reference definitions,
- * autolinks, and raw HTML `href`/`src`/`action` attributes. Broad on purpose: the web enforces
+ * autolinks, and raw HTML attributes that navigate, submit or fetch (`href`, `src`, `srcset`,
+ * `action`, `formaction`, `poster`, …). Broad on purpose: the web enforces
  * the same policy where it renders; this refuses a document that tries early.
  */
 const MARKDOWN_TARGETS: readonly RegExp[] = [
   /\]\(\s*<?([^)\s>]*)/g,
   /^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*<?([^\s>]*)/gm,
   /<([A-Za-z][A-Za-z0-9+.-]*:[^\s>]*)>/g,
-  /\b(?:href|src|action|formaction|xlink:href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,
+  /\b(?:href|xlink:href|src|srcset|action|formaction|poster|background|cite|longdesc|data|ping)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,
 ];
 
 /**

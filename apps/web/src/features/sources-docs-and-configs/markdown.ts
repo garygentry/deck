@@ -160,21 +160,37 @@ export function renderMarkdown(
   }
 }
 
+/** Attributes that fetch or submit: under the external-only policy each keeps only an absolute http(s) URL. */
+const RESOURCE_ATTRIBUTES = ["src", "action", "formaction", "poster", "background", "cite", "longdesc", "data"] as const;
+
+/** Whether a URL may stay under the external-only policy: an absolute http(s) URL `isSafeHref` accepts. */
+function isExternalOnly(url: string | null): url is string {
+  return url !== null && isExternalHref(url) && isSafeHref(url);
+}
+
 /**
- * The external-only link policy, on one sanitised node: an anchor keeps its href only when it is
- * an absolute http(s) URL `isSafeHref` accepts, and then opens as an external link (new tab, safe
- * `rel`, a "(opens in new tab)" note and its marker). Any other anchor (a path, a fragment, a
- * protocol-relative `//host`, another scheme) loses its href and every link attribute, so it
- * reads as plain text.
+ * The external-only link policy, on one sanitised node of any kind (an `a`, an image map's
+ * `area`, an SVG link, an image or a button): every attribute that navigates, submits or fetches
+ * keeps only an absolute http(s) URL `isSafeHref` accepts, and `srcset` and `ping` go. A link
+ * (`a`, `area`) that keeps its href opens as an external link (new tab, safe `rel`, and for an
+ * `a` its marker and a "(opens in new tab)" note); one that loses it reads as plain text. So no
+ * markdown from outside deck (a path, a fragment, a protocol-relative `//host`, another scheme)
+ * can point into deck.
  */
 function externalLinksOnly(node: Element): void {
-  if (node.nodeName.toLowerCase() !== "a") return;
-  const href = node.getAttribute("href");
-  for (const name of ["href", "xlink:href", "target", "rel", "ping", "download"]) node.removeAttribute(name);
-  if (href === null || !isExternalHref(href) || !isSafeHref(href)) return;
+  const name = node.nodeName.toLowerCase();
+  const isLink = name === "a" || name === "area";
+  const href = node.getAttribute("href") ?? node.getAttribute("xlink:href");
+  for (const attribute of ["href", "xlink:href", "target", "rel", "srcset", "ping", "download"]) node.removeAttribute(attribute);
+  for (const attribute of RESOURCE_ATTRIBUTES) {
+    if (node.hasAttribute(attribute) && !isExternalOnly(node.getAttribute(attribute))) node.removeAttribute(attribute);
+  }
+  if (!isExternalOnly(href)) return;
   node.setAttribute("href", href);
+  if (!isLink) return;
   node.setAttribute("target", "_blank");
   node.setAttribute("rel", "noopener noreferrer");
+  if (name !== "a") return;
   const marker = node.ownerDocument.createElement("span");
   marker.setAttribute("aria-hidden", "true");
   marker.textContent = " ↗";

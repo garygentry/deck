@@ -285,6 +285,22 @@ describe("core/markdown from a sidecar (linkPolicy external)", () => {
     expect(container.innerHTML).not.toContain('href="/api/health"');
   });
 
+  it("covers every element and attribute that navigates or fetches, not only <a>", () => {
+    const { container } = sidecarWidget(null, {
+      content: [
+        '<map name="m"><area shape="rect" coords="0,0,1,1" href="/api/actions" alt="area"></map>',
+        '<img src="/api/health" alt="internal"><img src="https://cdn.example/x.png" srcset="/a.png 1x" alt="external">',
+        '<svg><a xlink:href="/api/config"><text>svg link</text></a></svg>',
+        '<button formaction="/api/actions/run">go</button>',
+      ].join(""),
+    });
+    expect(container.querySelector("area")?.hasAttribute("href")).toBe(false);
+    expect(container.querySelector('img[alt="internal"]')?.hasAttribute("src")).toBe(false);
+    expect(container.querySelector('img[alt="external"]')?.getAttribute("src")).toBe("https://cdn.example/x.png");
+    expect(container.querySelector('img[alt="external"]')?.hasAttribute("srcset")).toBe(false);
+    expect(container.innerHTML).not.toContain("/api/");
+  });
+
   it("applies the policy to markdown from its source's data too", () => {
     sidecarWidget("see [the API](/api/config) or [docs](https://docs.example/)");
     expect(screen.getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual(["https://docs.example/"]);

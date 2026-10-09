@@ -11,7 +11,8 @@
     "./snapshot.schema.json": "./schema/snapshot.schema.json",
     "./select": "./src/select.ts",
     "./embed": "./src/embed.ts",
-    "./provider-ids": "./src/provider-ids.ts"
+    "./provider-ids": "./src/provider-ids.ts",
+    "./remote-describe.schema.json": "./schema/remote-describe.schema.json"
   },
   "files": [
     "schema",
@@ -23,7 +24,8 @@
     "test": "vitest run",
     "types:build": "bun scripts/build-types.ts",
     "fixtures:build": "bun scripts/build-fixtures.ts",
-    "denylist:add": "bun scripts/denylist-add.ts"
+    "denylist:add": "bun scripts/denylist-add.ts",
+    "describe:build": "bun scripts/build-remote-describe.ts"
   },
   "dependencies": {
     "ajv": "^8.20.0"

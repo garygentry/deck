@@ -3,6 +3,7 @@ import { DECK_API_VERSION, defineWebModule } from "@deck/module-sdk";
 import { lazy } from "react";
 
 import { registerWebModule } from "../../registry/web-module.js";
+import { EmbedWidget } from "./EmbedWidget.js";
 import { HealthPillsWidget } from "./HealthPillsWidget.js";
 import { JsonWidget } from "./JsonWidget.js";
 import { LinkTilesWidget, ListWidget, StatusGridWidget } from "./ListWidgets.js";
@@ -27,6 +28,7 @@ export const coreWidgetsWebModule = defineWebModule(
       StatusGridWidget,
       LinkTilesWidget,
       MarkdownWidget,
+      EmbedWidget,
       HealthPillsWidget,
       JsonWidget,
     },

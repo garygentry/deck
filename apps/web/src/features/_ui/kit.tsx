@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 /**
  * One catalogue group on the workbench. `id` is the in-page anchor; `catalogue`
- * is the group letter (A–G) the section covers, or omitted for the primitives.
+ * is the group letter (A–H) the section covers, or omitted for the primitives.
  */
 export interface WorkbenchSectionDef {
   id: string;

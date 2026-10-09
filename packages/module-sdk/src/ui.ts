@@ -1,5 +1,5 @@
 import type { JsonObject } from "./json.js";
-import type { ExtensionId, SlotDecl } from "./manifest.js";
+import type { ExtensionId, SlotDecl, StatusMapData } from "./manifest.js";
 
 /**
  * The resolved UI manifest served at `GET /api/ui`: which modules are installed, and which of
@@ -45,6 +45,11 @@ export interface UiManifest {
    * page's widget may name. An older server does not send it.
    */
   widgetTypes?: UiWidgetType[];
+  /**
+   * The ui config's status maps (`ui.statusMaps`), by name: what a widget's `statusMap` option
+   * names, read with `statusTone`. Absent when the config declares none.
+   */
+  statusMaps?: Record<string, StatusMapData>;
   /** Problems found while resolving; none of them stops the UI from rendering. */
   findings: UiFinding[];
 }

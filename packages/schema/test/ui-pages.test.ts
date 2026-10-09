@@ -397,7 +397,7 @@ describe("@deck/schema/select", () => {
 
 describe("the library's default composition", () => {
   it("includes the kernel's widget types", () => {
-    expect([...composeDefault().widgetTypes]).toEqual(["core/json"]);
+    expect([...composeDefault().widgetTypes]).toContain("core/json");
     const document = withPages([page([{ type: "core/json", options: { wrap: "yes" } }])]);
     expect(located(validate(document))).toEqual([{ code: "SCHEMA_INVALID", path: "/ui/pages/0/sections/0/widgets/0/options/wrap", severity: "error" }]);
     expect(validate(withPages([page([{ type: "core/json" }])])).findings).toEqual([]);

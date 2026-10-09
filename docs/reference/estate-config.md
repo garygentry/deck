@@ -392,6 +392,7 @@ ui:
 | `nav` | object | Sidebar group order, labels and icons, and extra nav entries. |
 | `extensions` | object | Overrides by extension, page, nav entry or widget id. |
 | `pages` | array | Config-defined pages (dashboards): sections of widgets. |
+| `statusMaps` | object | Named maps from widget values to status tones, which widgets name in their `statusMap` option. |
 
 `brand`:
 
@@ -504,7 +505,7 @@ A page:
 | --- | --- | --- |
 | `id` | string, lowercase letters, digits and `-` | The page's name. Its id is `page:ui/<id>`, which `home` and `extensions` take. Unique (`ID_DUPLICATE`); pages merge across overlays by `id`. |
 | `path` | string | The page's path, such as `/lab`: literal segments only. A path under `/api`, a path the server answers (`/metrics`), or one a module's page already has, leaves the page unrouted and is reported in `GET /api/ui` (`UI_INVALID_PAGE`, `UI_PAGE_PATH_COLLISION`). |
-| `title` | string, 1–80 characters | The page's heading (its one `h1`), its nav label and the document title. |
+| `title` | string, 1–80 characters | The page's heading (its one `h1`), and its name in the sidebar, the top bar and the document title unless `nav.label` relabels it there. |
 | `icon` | icon name | Shown beside its nav entry. |
 | `nav` | `{group, label?, order?}` | Its sidebar entry, `nav:ui/<id>`, in `group` (built in or new) at `order` (default 100), labelled `label` (default `title`). Without `nav` the page is routed but not listed. |
 | `sections` | array, at least one | The page's sections, in reading order. |
@@ -518,7 +519,7 @@ A widget:
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `type` | `<module>/<name>` | The widget type, provided by a module or by deck itself (`core/json`: the value as formatted JSON; option `wrap: true` soft-wraps long lines). A type no module provides is `UI_WIDGET_TYPE_UNKNOWN`, and one whose module is off `UI_WIDGET_TYPE_DISABLED`; the widget then shows as unavailable and reads no data. |
+| `type` | `<module>/<name>` | The widget type, provided by a module or by deck itself (the `core/…` types below). A type no module provides is `UI_WIDGET_TYPE_UNKNOWN`, and one whose module is off `UI_WIDGET_TYPE_DISABLED`; the widget then shows as unavailable and reads no data. |
 | `id` | string, lowercase letters, digits and `-` | A stable name, unique on its page (`ID_DUPLICATE`). The widget's id is `widget:ui/<page>.<id>`. Without one it is positional, `widget:ui/<page>.s<N>w<M>` (section N, widget M, from 1), which **changes when sections or widgets move**: give a widget an `id` before you override it. An `id` may not take the positional form (`s1w2`). |
 | `title` | string | The widget's heading; default its type. |
 | `source` | provider id, or `{kind}` | The provider it reads, as `GET /api/providers` lists them; `{kind: snapshot}` takes the first provider of that kind by id. A source that names no provider, or one of a kind the widget type cannot render, is reported in `GET /api/ui` (`UI_WIDGET_SOURCE_UNKNOWN`, `UI_WIDGET_SOURCE_KIND`) and the widget shows the problem. |
@@ -526,6 +527,69 @@ A widget:
 | `options` | object | The widget type's options. Each type declares their schema. |
 | `span` | 1–4 | Columns the widget spans from `md` up; default 1. More than its section's columns is clamped, with `UI_WIDGET_SPAN`. |
 | `rows` | 1–6 | Rows the widget spans from `md` up; default 1. |
+
+Deck's own widget types show the widget's value: its `select` result, or the provider's data
+whole. Each shows what it got when the value is of a kind it cannot show ("core/stat shows a
+number or text; this widget's value is a list."), so a wrong `select` is easy to spot.
+
+| Type | Shows | Options |
+| --- | --- | --- |
+| `core/stat` | One number or short text, large. | `label`, `format`, `unit`, `statusMap` |
+| `core/stat-grid` | Values of an object, each a stat. | `items`: `{field, label?, format?, unit?, statusMap?}`, 1–24; default the object's numbers, text and booleans, by key (the first 24) |
+| `core/meter` | A number against a maximum, as a bar with its value as text. | `label`, `max` (default 100), `format` (default: the percentage of `max`), `unit`, `statusMap` |
+| `core/key-value` | An object's values as label/value pairs; a value with a `statusMap` as a status badge. | `items` as for `core/stat-grid`, 1–48 (default the object's keys, the first 48); `layout`: `grid` (default), `stacked`, `inline` |
+| `core/list` | A list's items as rows. An item that is text or a number is its own title. | `titleField` (default `name`), `descriptionField`, `metaField`, `metaFormat`, `statusField` and `statusMap` (a status badge), `hrefField` (a link), `limit` (1–100, default 25) |
+| `core/table` | A list of objects as a table; the first column's cells are row headers. | `columns` (required, 1–12): `{field, header?, format?, unit?, align?: start\|end, statusMap?}`; `limit` (1–500, default 100) |
+| `core/status-grid` | Named states as tiles, each with a status badge. The value is a list of objects, or an object of name → state. | `labelField` (default `name`), `statusField` (default `status`), `hrefField`, `statusMap`, `limit` (1–200, default 48) |
+| `core/link-tiles` | Links as tiles. | `links`: `{title, href, description?, icon?}`, 1–48; without it, the value, a list of objects with those keys |
+| `core/markdown` | Markdown, rendered and sanitised as the docs view does it. | `content`; without it, the value, which must be text |
+| `core/health-pills` | The top bar's health pills, in its order. Reads no source. | `pills`: extension ids (`pill:drift/summary`) to show only those |
+| `core/json` | The value as formatted JSON, for looking at what a source and `select` give. | `wrap: true` soft-wraps long lines |
+
+- A **field** (`field`, `titleField`, …) is a key of an item, or keys joined by dots
+  (`load.avg`). It is never a query: shape the data with the widget's `select`, such as
+  `outlets[].{name: name, watts: power.watts}`.
+- A **format** is one of `text` (as given, the default), `number` (grouped digits, at most two
+  decimals), `bytes` (1024-based: `1.5 GiB`), `percent` (a number of 100: `42.3%`), `duration`
+  (seconds: `1h 31m`) and `relative-time` (an ISO time or epoch milliseconds: `6m ago`). A value
+  the format cannot read shows as given. `unit` follows the value (`61.5 W`).
+- A **link** (`hrefField`, `links[].href`) is an `http(s)` URL, which opens in a new tab, or an
+  absolute path in deck (`/hosts/nas-01`). A value from data that is neither is shown unlinked.
+- A **`statusMap`** names one of `ui.statusMaps`, below.
+
+`statusMaps` maps a widget's values to status tones by name. A widget shows a toned value with
+the tone's icon and the value's own text, never by colour alone, and config never names a
+colour:
+
+```yaml
+ui:
+  statusMaps:
+    ups-load: { rules: [ { lt: 60, tone: ok }, { lt: 85, tone: warn }, { tone: danger } ] }
+    outlet:   { values: { on: ok, off: neutral, fault: danger } }
+  pages:
+    - id: power
+      path: /power
+      title: Power
+      sections:
+        - title: UPS
+          columns: 2
+          widgets:
+            - { type: core/stat, title: Load, source: ups, select: load_pct, options: { format: percent, statusMap: ups-load } }
+            - { type: core/table, title: Outlets, source: ups, select: outlets,
+                options: { columns: [ { field: name }, { field: watts, format: number, unit: W, align: end }, { field: state, statusMap: outlet } ] } }
+```
+
+A map's name is lowercase letters, digits and `-`. A map has `values`, `rules` or both:
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `values` | object of value → tone | Exact values. Numbers and booleans compare as their text, so `404: warn` matches the number 404. Tried first. |
+| `rules` | array, 1–32 | Tried in order; the first whose every condition holds gives the tone. `lt`, `lte`, `gt` and `gte` hold for a number, or text that is wholly one (`"42"`, not `"42%"`); `eq` holds for an equal value, either way round: as numbers when either side is a number and both read as one (`0` matches `"0.0"`, `"404"` matches `404`), else as text (`true` matches `"true"`). A rule with only a `tone` matches any value, so put it last. |
+
+A tone is one of `ok`, `warn`, `danger`, `info`, `pending` and `neutral`; anything else is a
+schema error. A value no entry or rule matches shows untoned. A core widget naming a map that
+`statusMaps` does not declare is `UI_STATUS_MAP_UNKNOWN` (a warning), and its values show
+untoned.
 
 A widget option its type does not accept (an unknown option, or a value of the wrong type) is a
 schema error at its path, like any other invalid config: `deck validate` reports it, and deck

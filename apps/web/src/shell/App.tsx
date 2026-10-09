@@ -11,7 +11,7 @@ import { useBrandTitle } from "./manifest-slot.js";
 import { ModuleNotEnabledPage } from "./ModuleNotEnabledPage.js";
 import { NotFoundPage } from "./NotFoundPage.js";
 import { ReloadNotice } from "./ReloadNotice.js";
-import { HOME_PATH, resolveRoutes, routeForPath, type ResolvedRoutes } from "./routes.js";
+import { HOME_PATH, resolveRoutes, routeForPath, routeLabel, type ResolvedRoutes } from "./routes.js";
 import { useConfig, useUiManifest, type UiManifestState } from "../data/index.js";
 
 export function App({ url }: { url?: string } = {}) {
@@ -33,7 +33,8 @@ function Shell() {
   const { path } = useLocation();
   const config = useConfig();
   const pending = awaitingConfigPage(manifest, routes, path, bootHome());
-  const title = pending ? "Loading" : routeForPath(routes, path)?.label;
+  const route = routeForPath(routes, path);
+  const title = pending ? "Loading" : route === undefined ? undefined : routeLabel(manifest, route);
   useDocumentTitle(title ?? "Not found", useBrandTitle());
 
   return (

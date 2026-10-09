@@ -89,13 +89,13 @@ const md: MarkdownIt = new MarkdownIt({
 /** Rewrite `link_open` hrefs: external links open in a new tab with a safe `rel`; relative
  *  inter-doc links become in-app `/docs?source=…&path=…` routes (06 §5.3). */
 md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
-  const context = env as MarkdownRenderContext;
+  const context = env as Partial<MarkdownRenderContext>;
   const token = tokens[idx];
   const href = token.attrGet("href") ?? "";
   if (isExternal(href)) {
     token.attrSet("target", "_blank");
     token.attrSet("rel", "noopener noreferrer");
-  } else if (!href.startsWith("#")) {
+  } else if (!href.startsWith("#") && context.sourceId !== undefined && context.docPath !== undefined) {
     const { path, hash } = splitHash(href);
     const resolved = resolveRelative(context.docPath, path);
     token.attrSet(
@@ -108,10 +108,10 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
 
 /** Rewrite relative image `src` to the confined raw route; absolute URLs pass through (06 §5.4). */
 md.renderer.rules.image = (tokens, idx, options, env, self) => {
-  const context = env as MarkdownRenderContext;
+  const context = env as Partial<MarkdownRenderContext>;
   const token = tokens[idx];
   const src = token.attrGet("src") ?? "";
-  if (!isExternal(src)) {
+  if (!isExternal(src) && context.sourceId !== undefined && context.docPath !== undefined) {
     token.attrSet("src", rawAssetUrl(context.sourceId, resolveRelative(context.docPath, src)));
   }
   return self.renderToken(tokens, idx, options);
@@ -132,11 +132,48 @@ const SANITIZE_CONFIG: DOMPurifyConfig = {
  * rewritten (§5.3/§5.4); embedded raw HTML/scripts stripped by DOMPurify BEFORE the string is
  * returned (the XSS boundary). Pure and synchronous; safe to call in render.
  *
+ * Without a context (a dashboard's markdown widget, which belongs to no source) links and images
+ * keep their targets as written; external links still open in a new tab, and DOMPurify still
+ * sanitizes everything.
+ *
  * @param markdown  the raw document body (`FileReadResult.content`).
- * @param context   the source id + doc path used for relative rewriting.
+ * @param context   the source id + doc path used for relative rewriting, if any.
+ * @param options   how the caller embeds it (a heading offset for a dashboard widget).
  * @returns a sanitized HTML string containing no executable script or event-handler attrs.
  */
-export function renderMarkdown(markdown: string, context: MarkdownRenderContext): string {
-  const html = md.render(markdown, { ...context });
+export function renderMarkdown(
+  markdown: string,
+  context?: MarkdownRenderContext,
+  options: MarkdownRenderOptions = {},
+): string {
+  const rendered = md.render(markdown, { ...context });
+  const html = options.headingOffset === undefined ? rendered : demoteHeadings(rendered, options.headingOffset);
+  // The sanitiser runs last: nothing parses, changes or re-serialises its output.
   return DOMPurify.sanitize(html, SANITIZE_CONFIG) as string;
+}
+
+/** How a caller embeds the rendered document. */
+export interface MarkdownRenderOptions {
+  /**
+   * Levels to move every heading down (at most `h6`), raw HTML headings included: a dashboard
+   * widget's markdown sits under its card's `h3`. The docs view leaves headings as written.
+   */
+  headingOffset?: number;
+}
+
+/**
+ * Rendered (not yet sanitised) HTML with every heading `by` levels lower. It parses into an
+ * inert template (no script runs, no resource loads), renames the heading elements keeping their
+ * attributes and children, and serialises; DOMPurify then sanitises the result.
+ */
+function demoteHeadings(html: string, by: number): string {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  for (const heading of template.content.querySelectorAll("h1, h2, h3, h4, h5, h6")) {
+    const demoted = document.createElement(`h${Math.min(6, Number(heading.tagName.slice(1)) + by)}`);
+    for (const { name, value } of heading.attributes) demoted.setAttribute(name, value);
+    demoted.append(...heading.childNodes);
+    heading.replaceWith(demoted);
+  }
+  return template.innerHTML;
 }

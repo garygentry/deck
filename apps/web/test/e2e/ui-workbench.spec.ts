@@ -12,7 +12,7 @@ import { seedTheme } from "./theme-seed.js";
 const VISUALS = Boolean(process.env.CI || process.env.UPDATE_VISUALS);
 const WIDTHS = [375, 768, 1280] as const;
 const THEMES = ["light", "dark"] as const;
-const CATALOGUE_GROUPS = ["A", "B", "C", "D", "E", "F", "G"] as const;
+const CATALOGUE_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"] as const;
 // Any live timestamp renders against this instant, so snapshots are stable.
 const FROZEN_NOW = new Date("2026-01-15T12:00:00Z");
 
@@ -62,6 +62,10 @@ test.describe("visual baselines", () => {
         await page.setViewportSize({ width, height: 900 });
         await page.goto("/_ui");
         await expect(workbench(page)).toBeVisible();
+        // The widget demos that load on first use (core/table, core/markdown) have rendered.
+        await expect(workbench(page).locator('#widgets [data-slot="data-table"], #widgets table').first()).toBeVisible();
+        await expect(workbench(page).locator('#widgets [data-slot="prose"]')).toBeVisible();
+        await expect(workbench(page).getByText("Loading widget…")).toHaveCount(0);
         await page.addStyleTag({ content: HIDE_SHELL });
         await expect(page.getByRole("navigation", { name: "Primary" })).toBeHidden();
         await page.evaluate(() => document.fonts.ready);
@@ -69,6 +73,8 @@ test.describe("visual baselines", () => {
           fullPage: true,
           animations: "disabled",
           caret: "hide",
+          // The health-pills widget demo shows the live pills; their visuals are covered elsewhere.
+          mask: [workbench(page).locator('[data-slot="health-pills"]')],
         });
       });
     }

@@ -76,6 +76,10 @@ const LAB = {
   ],
 };
 
+/** The kernel's widget types as the manifest lists them, and their names. */
+const CORE_TYPE_NAMES = CORE_WIDGET_TYPES.map(({ type }) => type as string);
+const CORE_TYPES = [...CORE_TYPE_NAMES].sort().map((type) => ({ type, module: "core" }));
+
 const pageOf = (manifest: UiManifest, id: string) => manifest.pages.find((page) => page.id === id);
 const codes = (manifest: UiManifest) => manifest.findings.map(({ code, severity, id }) => ({ code, severity, id }));
 
@@ -139,7 +143,7 @@ describe("config pages in the UI manifest", () => {
   });
 
   it("lists the kernel's widget types, and those of enabled modules", () => {
-    expect(resolveWith({}).widgetTypes).toEqual([{ type: "core/json", module: "core" }]);
+    expect(resolveWith({}).widgetTypes).toEqual(CORE_TYPES);
   });
 
   it("reports a source that names no registered provider, and leaves the widget without one", () => {
@@ -254,7 +258,7 @@ describe("a module's widget types", () => {
 
   it("compose their option schemas next to the kernel's, so a bad option fails validation", () => {
     const { composed } = composeModules([...BUILTIN_MODULES, gauges], context);
-    expect([...composed.widgetTypes].sort()).toEqual(["core/json", "gauges/dial"]);
+    expect([...composed.widgetTypes].sort()).toEqual([...CORE_TYPE_NAMES, "gauges/dial"].sort());
     expect(validate(document({ max: 5 }), { composed }).findings).toEqual([]);
     expect(validate(document({ max: "five" }), { composed }).findings).toContainEqual(
       expect.objectContaining({ code: "SCHEMA_INVALID", path: "/ui/pages/0/sections/0/widgets/0/options/max" }),
@@ -269,7 +273,7 @@ describe("a module's widget types", () => {
 
   it("are listed in the UI manifest with their sources", () => {
     const manifest = resolveUiManifest({ modules: [{ manifest: gauges.manifest, enabled: true }], kernelFeatures: KERNEL_FEATURES });
-    expect(manifest.widgetTypes).toEqual([{ type: "core/json", module: "core" }, { type: "gauges/dial", module: "gauges", sources: ["http-json"] }]);
+    expect(manifest.widgetTypes).toEqual([...CORE_TYPES, { type: "gauges/dial", module: "gauges", sources: ["http-json"] }]);
   });
 
   it("refuse a source of a kind they do not render", () => {
@@ -302,7 +306,69 @@ describe("a module's widget types", () => {
   it("from a module that takes a kernel id do not break composition", () => {
     const impostor = testModule({ id: "core", contributes: { widgetTypes: [{ type: "core/json", optionsSchema: {} }] } });
     const { composed } = composeModules([...BUILTIN_MODULES, impostor], context);
-    expect([...composed.widgetTypes]).toEqual(["core/json"]);
+    expect([...composed.widgetTypes]).toEqual(CORE_TYPE_NAMES);
+  });
+});
+
+describe("status maps in the UI manifest", () => {
+  const MAPS = {
+    outlet: { values: { on: "ok", off: "neutral" } },
+    "ups-load": { rules: [{ lt: 60, tone: "ok" }, { tone: "danger" }] },
+  };
+
+  it("publishes ui.statusMaps by name, copied", () => {
+    const ui = { statusMaps: MAPS };
+    const manifest = resolveWith(ui);
+    expect(manifest.statusMaps).toEqual(MAPS);
+    expect(Object.keys(manifest.statusMaps ?? {})).toEqual(["outlet", "ups-load"]);
+    expect(manifest.statusMaps?.outlet).not.toBe(MAPS.outlet);
+  });
+
+  it("leaves the field out when the config declares none, so a manifest without them is unchanged", () => {
+    expect("statusMaps" in resolveWith({})).toBe(false);
+    expect("statusMaps" in resolveWith({ statusMaps: {} })).toBe(false);
+  });
+
+  it("reads the config leniently: malformed names, tones and conditions are dropped", () => {
+    const manifest = resolveWith({
+      statusMaps: {
+        "Bad Name": { values: { on: "ok" } },
+        mixed: { values: { on: "ok", off: "green", bad: 3 }, rules: [{ lt: 5, tone: "ok" }, { lt: "5", tone: "warn" }, { tone: "red" }, { eq: { a: 1 }, tone: "info" }, { gte: Infinity, tone: "info" }, { eq: "x", tone: "pending" }] },
+        empty: { values: { on: "green" } },
+        notAMap: "ok",
+      },
+    });
+    expect(manifest.statusMaps).toEqual({
+      empty: { values: {} },
+      mixed: { values: { on: "ok" }, rules: [{ lt: 5, tone: "ok" }, { eq: "x", tone: "pending" }] },
+    });
+  });
+
+  it("serves the overlay's maps in /api/ui beside the widgets that name them", async () => {
+    const layers = layersDir({
+      "00-base.yaml": { schemaVersion: 2, estate: { name: "dash-estate" }, hosts: [{ name: "nas", kind: "vm", purpose: "Storage" }] },
+      "10-overlay.yaml": {
+        schemaVersion: 2,
+        hosts: [{ name: "nas", bindings: { link: { id: "nas-wiki", href: "https://wiki.example.net/nas", label: "Wiki" } } }],
+        ui: {
+          statusMaps: MAPS,
+          pages: [{ id: "lab", path: "/lab", title: "Lab", sections: [{ title: "S", widgets: [{ type: "core/stat", source: "nas-wiki", select: "label", options: { statusMap: "outlet" } }] }] }],
+        },
+      },
+    });
+    let ui = {} as UiManifest;
+    try {
+      const projection = await capture({ id: "ui-status-maps", dir: layers.dir }, {
+        onApp: async (app) => {
+          ui = (await (await app.request("/api/ui")).json()) as UiManifest;
+        },
+      });
+      expect(projection.validate).toMatchObject({ exitClass: 0 });
+    } finally {
+      layers.cleanup();
+    }
+    expect(ui.statusMaps).toEqual(MAPS);
+    expect(pageOf(ui, "page:ui/lab")?.layout?.sections[0]?.widgets[0]?.options).toEqual({ statusMap: "outlet" });
   });
 });
 
@@ -430,7 +496,7 @@ describe("config pages through a booted deck", () => {
       source: { id: "nas-wiki", kind: "link" },
       projection: "widget:ui/lab.wiki",
     });
-    expect(ui.widgetTypes).toEqual([{ type: "core/json", module: "core" }]);
+    expect(ui.widgetTypes).toEqual(CORE_TYPES);
     expect(envelope.projections).toEqual({ "widget:ui/lab.wiki": { value: "https://wiki.example.net/nas" } });
   });
 

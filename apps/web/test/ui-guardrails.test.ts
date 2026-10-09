@@ -44,6 +44,30 @@ describe("imports: features use the @/ui barrel", () => {
   });
 });
 
+/** Static, re-export, bare and dynamic specifiers of the umbrella package or a subpath of it. */
+const RADIX_UMBRELLA = /(?:\bfrom\s*|\bimport\s*\(?\s*)["']radix-ui(?:\/[^"']*)?["']/g;
+
+function umbrellaImports({ rel, text }: { rel: string; text: string }): string[] {
+  const src = code(text);
+  return [...src.matchAll(RADIX_UMBRELLA)].map((m) => `${rel}:${src.slice(0, m.index).split("\n").length}`);
+}
+
+describe("imports: Radix through its scoped packages", () => {
+  it("the rule fires on synthetic umbrella imports and ignores scoped ones", () => {
+    const at = (text: string): string[] => umbrellaImports({ rel: "src/ui/primitives/demo.tsx", text });
+    expect(at('import { Dialog as DialogPrimitive } from "radix-ui"')).toEqual(["src/ui/primitives/demo.tsx:1"]);
+    expect(at('\nexport { Slot } from "radix-ui";')).toEqual(["src/ui/primitives/demo.tsx:2"]);
+    expect(at("import 'radix-ui/internal';")).toHaveLength(1);
+    expect(at('const m = await import("radix-ui");')).toHaveLength(1);
+    expect(at('import * as DialogPrimitive from "@radix-ui/react-dialog"')).toEqual([]);
+    expect(at('// was: import { Slot } from "radix-ui"')).toEqual([]);
+  });
+
+  it('no module imports the "radix-ui" umbrella (use "@radix-ui/react-*")', () => {
+    expect(files.flatMap(umbrellaImports), "import Radix from its scoped @radix-ui/react-* package").toEqual([]);
+  });
+});
+
 describe("styling: tokens, not literals", () => {
   it("has no hex, rgb() or oklch() colour literals in TSX", () => {
     const literal = /#[0-9a-fA-F]{3,8}\b(?![-\w])|\brgba?\(|\boklch\(/;

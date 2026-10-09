@@ -152,6 +152,16 @@ export function renderMarkdown(
   // The sanitiser runs last: nothing parses, changes or re-serialises its output. The link
   // policy runs inside it, on the very nodes it returns, for this call only (it is synchronous).
   if (options.externalLinksOnly !== true) return DOMPurify.sanitize(html, SANITIZE_CONFIG) as string;
+  // The policy checks the DOM the sanitiser built, but the page parses the string it returns.
+  // So the output is checked again as the page will parse it: if a parser difference left a
+  // link or URL behind, it is sanitised again, and if that does not settle it, only its text
+  // is kept (fail closed).
+  let safe = sanitizeExternalLinksOnly(html);
+  for (let pass = 0; pass < 2 && breaksExternalLinksOnly(safe); pass += 1) safe = sanitizeExternalLinksOnly(safe);
+  return breaksExternalLinksOnly(safe) ? (DOMPurify.sanitize(safe, { ALLOWED_TAGS: [], KEEP_CONTENT: true }) as string) : safe;
+}
+
+function sanitizeExternalLinksOnly(html: string): string {
   DOMPurify.addHook("afterSanitizeAttributes", externalLinksOnly);
   try {
     return DOMPurify.sanitize(html, EXTERNAL_LINKS_ONLY_CONFIG) as string;
@@ -161,13 +171,43 @@ export function renderMarkdown(
 }
 
 /**
+ * Whether sanitised HTML, parsed as the page parses it (into an element, as `innerHTML` does),
+ * holds anything the external-only policy removes: a forbidden element, an inline style, a
+ * `url()`, or a link or resource attribute that is not an absolute http(s) URL.
+ */
+function breaksExternalLinksOnly(html: string): boolean {
+  // A div's innerHTML, as the page sets it, in a document with no browsing context: it runs no
+  // script and loads nothing.
+  const host = document.implementation.createHTMLDocument("").createElement("div");
+  host.innerHTML = html;
+  for (const element of host.querySelectorAll("*")) {
+    if (EXTERNAL_ONLY_FORBIDDEN_TAGS.has(element.nodeName.toLowerCase())) return true;
+    for (const { name, value } of element.attributes) {
+      if (name === "style" || name === "srcset" || name === "ping" || /url\s*\(/i.test(value)) return true;
+      if ((name === "href" || name === "xlink:href" || (RESOURCE_ATTRIBUTES as readonly string[]).includes(name)) && !isExternalOnly(value)) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * The sanitiser config under the external-only policy: also no inline `style` (CSS `url()`
  * fetches), and none of the SVG elements that set a link or fetch by reference rather than
  * through an attribute the policy checks (animations that rewrite `href`, `use`, `feImage`).
  */
+const EXTERNAL_ONLY_FORBIDDEN_TAGS: ReadonlySet<string> = new Set([
+  ...(SANITIZE_CONFIG.FORBID_TAGS ?? []),
+  "animate",
+  "animatemotion",
+  "animatetransform",
+  "set",
+  "use",
+  "feimage",
+]);
+
 const EXTERNAL_LINKS_ONLY_CONFIG: DOMPurifyConfig = {
   ...SANITIZE_CONFIG,
-  FORBID_TAGS: [...(SANITIZE_CONFIG.FORBID_TAGS ?? []), "animate", "animatemotion", "animatetransform", "set", "use", "feimage"],
+  FORBID_TAGS: [...EXTERNAL_ONLY_FORBIDDEN_TAGS],
   FORBID_ATTR: [...(SANITIZE_CONFIG.FORBID_ATTR ?? []), "style"],
 };
 

@@ -5,7 +5,7 @@
 // pure markdown.ts string→sanitized-HTML pipeline (the enforced XSS boundary, SC-08) — it is
 // not a component render test.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   renderMarkdown,
@@ -172,5 +172,29 @@ describe("markdown.ts — heading offset (dashboard widgets)", () => {
     const doc = new DOMParser().parseFromString(html, "text/html");
     expect([...doc.querySelectorAll("h1, h2, h3, h4, h5, h6")].map((node) => node.tagName)).toEqual(["H4", "H6", "H5"]);
     expect(attr(html, "h5", "onclick")).toBeNull();
+  });
+});
+
+describe("renderMarkdown: external links only, checked as the page parses it", () => {
+  it("fails closed to text when the sanitised output still breaks the policy (a parser difference)", async () => {
+    const DOMPurify = (await import("dompurify")).default;
+    const real = DOMPurify.sanitize.bind(DOMPurify);
+    // Stand in for a parser difference: the policy pass keeps returning a link into deck.
+    const spy = vi.spyOn(DOMPurify, "sanitize").mockImplementation(((html: string, config?: { ALLOWED_TAGS?: unknown }) =>
+      Array.isArray(config?.ALLOWED_TAGS) && config.ALLOWED_TAGS.length === 0 ? real(html, config as never) : '<a href="/api/actions">run</a>') as never);
+    try {
+      const html = renderMarkdown("[run](https://ok.example/)", undefined, { externalLinksOnly: true });
+      expect(html).toBe("run");
+      // Policy pass, two re-checks, then the text-only pass.
+      expect(spy).toHaveBeenCalledTimes(4);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("returns the policy pass's output when the page's parse agrees", () => {
+    const html = renderMarkdown("[ok](https://ok.example/) and [no](/api/x)", undefined, { externalLinksOnly: true });
+    expect(html).toContain('href="https://ok.example/"');
+    expect(html).not.toContain("/api/x");
   });
 });

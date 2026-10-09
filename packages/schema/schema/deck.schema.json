@@ -39,6 +39,11 @@
         },
         "pages": { "type": "array", "items": { "$ref": "#/$defs/UiPage" }, "description": "Config-defined pages (dashboards): sections of widgets, each page routed as page:ui/<id>." },
         "allowUnsafeEmbeds": { "type": "boolean", "description": "Let core/embed widgets show other sites' pages in sandboxed frames; default false, when each shows that embeds are off." },
+        "frameAncestors": {
+          "type": "array", "maxItems": 32, "uniqueItems": true,
+          "items": { "type": "string", "maxLength": 255, "pattern": "^https?://(\\*\\.)?[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*(:[0-9]{1,5})?$" },
+          "description": "Origins besides deck's own that may show deck in a frame (Content-Security-Policy frame-ancestors), such as https://ha.example.net or https://*.example.net; no path. Default none: only deck's own origin may frame it."
+        },
         "statusMaps": {
           "type": "object", "description": "Named maps from a widget's values to status tones, which widget options reference by name (statusMap).",
           "propertyNames": { "pattern": "^[a-z0-9][a-z0-9-]*$", "maxLength": 64 },

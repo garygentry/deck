@@ -24,12 +24,15 @@ export function deckBootOf(manifest: UiManifest | undefined, config: unknown): D
 /**
  * The web shell's `index.html` with the boot object written in: its `<title>` is the brand
  * title, and the empty boot element carries {@link deckBootOf}. A template without them (a
- * build that predates the channel) is served with only what it has.
+ * build that predates the channel) is served with only what it has. With `nonce`, every
+ * `<script>` element carries it, so the page's inline scripts (the import map, the pre-paint
+ * theme script) run under the policy that names it.
  */
-export function renderIndexHtml(template: string, boot: DeckBoot): string {
-  return template
+export function renderIndexHtml(template: string, boot: DeckBoot, nonce?: string): string {
+  const html = template
     .replace(/<title>[^<]*<\/title>/, () => `<title>${escapeHtml(boot.brand.title)}</title>`)
     .replace(BOOT_PLACEHOLDER, () => `<script type="application/json" id="${BOOT_ELEMENT_ID}">${serializeDeckBoot(boot)}</script>`);
+  return nonce === undefined ? html : html.replace(/<script\b/gi, `<script nonce="${escapeHtml(nonce)}"`);
 }
 
 function escapeHtml(text: string): string {

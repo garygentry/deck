@@ -24,6 +24,13 @@ export interface DeckBoot {
    * flashes the portal first. Absent when the server resolved no UI manifest.
    */
   home?: string | null;
+  /**
+   * The origins the page's Content-Security-Policy lets it frame (`frame-src`): those of the
+   * `core/embed` widgets the manifest held when the page was served. A widget whose origin a
+   * `ui` hot reload added later asks for a reload instead of showing a refused frame. Absent
+   * when the page carries no policy (the dev server).
+   */
+  frameOrigins?: string[];
 }
 
 /**
@@ -71,6 +78,8 @@ export function readDeckBoot(doc: { getElementById(id: string): { textContent: s
   theme: DeckBootTheme;
   /** Absent when the page carries no boot object (the dev server) or no valid `home`. */
   home?: string | null;
+  /** Absent when the page carries no boot object (the dev server) or no valid list. */
+  frameOrigins?: string[];
 } {
   let value: unknown;
   try {
@@ -78,13 +87,15 @@ export function readDeckBoot(doc: { getElementById(id: string): { textContent: s
   } catch {
     value = undefined;
   }
-  const boot = (typeof value === "object" && value !== null ? value : {}) as { brand?: { title?: unknown }; theme?: unknown; home?: unknown };
+  const boot = (typeof value === "object" && value !== null ? value : {}) as { brand?: { title?: unknown }; theme?: unknown; home?: unknown; frameOrigins?: unknown };
   const title = boot.brand?.title;
   const home = boot.home;
+  const frameOrigins = boot.frameOrigins;
   return {
     ...(typeof title === "string" && title.trim() !== "" ? { brand: { title } } : {}),
     theme: deckBootTheme(boot.theme),
     ...(home === null || (typeof home === "string" && home !== "") ? { home } : {}),
+    ...(Array.isArray(frameOrigins) && frameOrigins.every((origin) => typeof origin === "string") ? { frameOrigins: frameOrigins as string[] } : {}),
   };
 }
 

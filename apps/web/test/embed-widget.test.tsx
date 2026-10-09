@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { queryKeys } from "../src/data/queries.js";
 import { getQueryClient, resetQueryClient } from "../src/data/query-client.js";
-import { EmbedWidget, embedTarget, sandboxOf, type EmbedOptions } from "../src/features/core-widgets/EmbedWidget.js";
+import { EmbedWidget, embedTarget, frameAllowed, sandboxOf, type EmbedOptions } from "../src/features/core-widgets/EmbedWidget.js";
 
 /**
  * `core/embed` against its gate and its frame: it frames nothing unless the UI manifest says
@@ -30,14 +30,14 @@ function widget(title: string | null): UiWidgetInstance {
 }
 
 /** Serve /api/ui as `ui` (a manifest, an HTTP status, or never), then render the widget (`null`: untitled). */
-function show(ui: UiManifest | number | "never", options: Partial<EmbedOptions> = {}, title: string | null = "UPS graph") {
+function show(ui: UiManifest | number | "never", options: Partial<EmbedOptions> = {}, title: string | null = "UPS graph", frameOrigins?: readonly string[]) {
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
     if (String(input) !== "/api/ui") return new Response(null, { status: 404 });
     if (ui === "never") return new Promise<Response>(() => undefined);
     return typeof ui === "number" ? new Response(null, { status: ui }) : Response.json(ui);
   }));
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
-  return render(<EmbedWidget value={null} options={{ url: URL_, ...options }} freshness={null} widget={widget(title)} />);
+  return render(<EmbedWidget value={null} options={{ url: URL_, ...options }} freshness={null} widget={widget(title)} frameOrigins={frameOrigins} />);
 }
 
 const allowed: UiManifest = { ...golden, allowUnsafeEmbeds: true };
@@ -163,5 +163,31 @@ describe("core/embed's frame", () => {
     for (const url of ["https://grafana.lab./", "http://my_grafana:3000/", "https://bücher.lab/", "http://[::1]:3000/", "http://10.0.0.5/"]) {
       expect(embedTarget(url, "http://deck.lab"), url).toHaveProperty("url");
     }
+  });
+});
+
+describe("core/embed under the page's frame policy", () => {
+  it("frames the page when the page's policy names its origin", async () => {
+    const { container } = show(allowed, {}, "UPS graph", ["https://grafana.example.net"]);
+    expect(await screen.findByTitle("UPS graph")).toBe(frame(container));
+  });
+
+  it("asks for a reload, with fixed text and no URL, when the origin was allowed after the page loaded", async () => {
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, origin: window.location.origin, reload });
+    const { container } = show(allowed, {}, "UPS graph", ["https://other.example"]);
+    expect(await screen.findByText("Reload to show this page")).toBeInTheDocument();
+    expect(screen.getByText("Embeds changed after this page loaded.")).toBeInTheDocument();
+    expect(frame(container)).toBeNull();
+    expect(container.textContent).not.toContain("grafana");
+    act(() => screen.getByRole("button", { name: "Reload" }).click());
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("frameAllowed: any origin without a page policy (the dev server); else only a named one", () => {
+    expect(frameAllowed("https://a.example", undefined)).toBe(true);
+    expect(frameAllowed("https://a.example", ["https://a.example"])).toBe(true);
+    expect(frameAllowed("https://a.example", [])).toBe(false);
+    expect(frameAllowed("https://a.example:8443", ["https://a.example"])).toBe(false);
   });
 });

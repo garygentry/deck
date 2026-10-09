@@ -463,6 +463,7 @@ ui:
 | `pages` | array | Config-defined pages (dashboards): sections of widgets. |
 | `statusMaps` | object | Named maps from widget values to status tones, which widgets name in their `statusMap` option. |
 | `allowUnsafeEmbeds` | boolean | Lets `core/embed` widgets show other sites' pages in sandboxed frames. Default `false`. |
+| `frameAncestors` | array of string | Origins besides deck's own that may show deck in a frame, such as a Home Assistant panel: `https://ha.example.net`, or `https://*.example.net` for its subdomains. Each is an `http(s)` origin with an optional port and no path; at most 32. Default none: only deck's own origin may frame it. See [Security](../security.md#browser-policy). |
 
 `brand`:
 

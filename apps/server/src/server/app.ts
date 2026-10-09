@@ -20,6 +20,7 @@ import { requestLogger } from "../log/logger.js";
 import { etagMatches, etagOf, type LiveUi } from "../ui/live.js";
 import type { RuntimeWebAssets } from "../modules/runtime.js";
 import { deckBootOf, renderIndexHtml } from "./index-html.js";
+import { frameAncestorsOf, frameOriginsOf, scriptNonce, securityHeaders, shellPolicy } from "./security-headers.js";
 import { mountModuleAssets } from "./module-assets.js";
 import { RESERVED_ROOT_PATHS } from "./reserved-paths.js";
 
@@ -133,6 +134,8 @@ export function createApp(deps: AppDeps): Hono {
     deps.live?.() ?? staticUi ?? { config: deps.config };
 
   app.use("*", requestLogger(deps.logger));
+  // Who may frame deck, on every response (the shell's own policy also names it).
+  app.use("*", securityHeaders(() => frameAncestorsOf(current().config)));
 
   app.get("/api/config", (context) => context.json(current().config));
 
@@ -218,10 +221,14 @@ export function createApp(deps: AppDeps): Hono {
       if (context.req.path.startsWith("/api/") || reserved.has(context.req.path)) return next();
       const template = await indexTemplate();
       if (template === undefined) return next();
-      // Rendered per request from the current manifest and config: it carries their brand.
+      // Rendered per request from the current manifest and config: it carries their brand, and
+      // a fresh script nonce its policy names, so a cached copy is always revalidated.
       context.header("Cache-Control", "no-cache");
       const { ui, config } = current();
-      return context.html(renderIndexHtml(template, deckBootOf(ui, config)));
+      const nonce = scriptNonce();
+      const frameOrigins = frameOriginsOf(ui);
+      context.header("Content-Security-Policy", shellPolicy({ nonce, frameOrigins, frameAncestors: frameAncestorsOf(config) }));
+      return context.html(renderIndexHtml(template, { ...deckBootOf(ui, config), frameOrigins }, nonce));
     });
   }
 

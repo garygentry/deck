@@ -219,8 +219,12 @@ ui:
   `title`, so give every embed one.
 - The URL must be an absolute `http(s)` URL with a host and no `user:password@`, on another
   origin than deck's. deck does not frame its own pages; put their widgets on a dashboard
-  instead. This checks the URL you configure only: if that site redirects, or its page
-  navigates, to one of deck's pages, deck does not stop it. Embed only sites that won't.
+  instead. deck's page may frame only the origins of its `core/embed` URLs (its
+  Content-Security-Policy `frame-src`), never its own, so a framed site that redirects or
+  navigates to one of deck's pages, or to any other site, gets a refused frame.
+- An embed whose site you add, or embeds you turn on, while a viewer has deck open shows
+  "Reload to show this page" until that viewer reloads: the page's policy is fixed when it
+  loads. An IP-literal IPv6 URL cannot be named in that policy; use a host name.
 - Many sites refuse to be framed (`X-Frame-Options` or a CSP `frame-ancestors`), and the frame
   then stays blank. Allow deck's origin in that site's settings (Grafana: `allow_embedding`),
   or use the **Open** link under the frame, which opens the page in a new tab.

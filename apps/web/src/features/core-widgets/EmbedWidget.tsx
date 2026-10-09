@@ -1,10 +1,20 @@
 import { EMBED_SANDBOX } from "@deck/contract/modules/widgets";
 // The one url rule (dependency-free), which config validation runs too.
 import { embedUrlProblem } from "@deck/schema/embed";
-import { EmptyState, ErrorState, ExternalLink, LoadingState, cn } from "@/ui";
+import { Button, EmptyState, ErrorState, ExternalLink, Icon, LoadingState, cn } from "@/ui";
 
 import { useUiManifest } from "../../data/index.js";
+import { bootFrameOrigins } from "../../shell/boot.js";
 import type { WidgetProps } from "../../registry/registry.js";
+
+/**
+ * Whether this page's Content-Security-Policy lets it frame `origin`: the origins the server
+ * named when it served the page (`frameOrigins`), or any while the page carries none (the dev
+ * server).
+ */
+export function frameAllowed(origin: string, frameOrigins: readonly string[] | undefined): boolean {
+  return frameOrigins === undefined || frameOrigins.includes(origin);
+}
 
 export interface EmbedOptions {
   url: string;
@@ -53,8 +63,10 @@ export function embedTarget(raw: unknown, ownOrigin: string): { url: URL } | { p
  * (for a site that refuses to be framed). It frames nothing unless the UI manifest says the ui
  * config allows embeds (`ui.allowUnsafeEmbeds: true`); until the manifest arrives it waits, and
  * when the manifest cannot be read it stays off. The frame sends no referrer and loads lazily.
+ * A page served before embeds of its origin were allowed (a `ui` hot reload since) cannot frame
+ * it under its policy, so the widget asks for a reload instead.
  */
-export function EmbedWidget({ options, widget }: WidgetProps<EmbedOptions>) {
+export function EmbedWidget({ options, widget, frameOrigins = bootFrameOrigins() }: WidgetProps<EmbedOptions> & { frameOrigins?: readonly string[] | undefined }) {
   const manifest = useUiManifest();
   const target = embedTarget(options.url, window.location.origin);
   if ("problem" in target) return <ErrorState compact title="Cannot embed this page" message={target.problem} />;
@@ -66,6 +78,23 @@ export function EmbedWidget({ options, widget }: WidgetProps<EmbedOptions>) {
   if (manifest.status === "loading") return <LoadingState label="Loading widget…" preset="lines" rows={2} />;
   if (manifest.status !== "ready" || manifest.manifest.allowUnsafeEmbeds !== true) {
     return <EmptyState compact icon="eye-off" title="Embeds are off" description="Set ui.allowUnsafeEmbeds: true to show this page here." action={open} />;
+  }
+  if (!frameAllowed(target.url.origin, frameOrigins)) {
+    // Fixed text: the URL is not repeated here.
+    return (
+      <EmptyState
+        compact
+        icon="refresh-cw"
+        title="Reload to show this page"
+        description="Embeds changed after this page loaded."
+        action={(
+          <Button type="button" variant="outline" size="sm" onClick={() => window.location.reload()}>
+            <Icon name="refresh-cw" size={14} />
+            Reload
+          </Button>
+        )}
+      />
+    );
   }
   const sandbox = sandboxOf(options.sandbox);
   return (

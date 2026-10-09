@@ -183,9 +183,12 @@ The template builds inside a deck checkout: it is a package of deck's workspace,
 1. Copy `examples/modules/hello` to `examples/modules/<id>`, and set `name` in its
    `package.json`.
 2. Rename the module from `hello` to your id: the `id` in `deck-module.json`, the module part of
-   every contribution id (`page:<id>/main`) and icon name (`<id>/wave`), the provider id, the
-   CSS prefix in `web.css` and the classes that use it, and `OUT_DIR` in `vite.config.ts`. The
-   template's test reads the id from `deck-module.json` and the prefix from `web.css`.
+   every contribution id (`page:<id>/main`) and icon name (`<id>/wave`) and the provider id.
+   Then set the CSS prefix, in `web.css` and in the classes that use it, to your module's
+   prefix: its id lowercased, with every character that is not a letter removed (Tailwind
+   prefixes are letters only). For `hello-world` that is `helloworld:`, and for `hello2`,
+   `hello:`. `vite.config.ts` names the output directory from the id, and the template's test
+   reads both the id and the prefix itself.
 3. Run `pnpm install` at the repository root to link the new package.
 4. Run `pnpm --filter <name> build`. It writes `dist/<id>/`: `deck-module.json`, `server.mjs`,
    `web.js` and `web.css`.
@@ -222,7 +225,8 @@ given (`ServerModuleContext`) and the rest from `@deck/module-sdk`, with `import
 ### Style with deck's tokens
 
 Build from `@deck/sdk`'s patterns first: they need no styles of your own. For the layout they
-don't cover, `web.css` imports deck's Tailwind preset, with a prefix of the module's own:
+don't cover, `web.css` imports deck's Tailwind preset, with the module's prefix (its id's
+letters, lowercased; see [Start from the template](#start-from-the-template)):
 
 ```css
 @import "@deck/sdk/tailwind" prefix(hello);
@@ -243,26 +247,42 @@ Every class then carries the prefix: `hello:flex hello:gap-6 hello:bg-muted hell
 ### Check it with `deck-module lint`
 
 `deck-module lint [dir]` holds a module to the same UI rules deck's own web app is tested
-against. It checks the module's web sources: everything under `src/`, or under the module
-directory for a module with no build step, except the server entry, tests and config files. It
-also checks the built `web.js`:
+against. It checks two kinds of file:
+
+- **Sources:** every script (`.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`) and
+  stylesheet in the module, wherever it sits, except the server entry deck loads
+  (`server.js`, `server.mjs` or `server.ts` beside `deck-module.json`), dependencies and
+  `dist/`. Tests and tool config (`test/`, `*.test.*`, `*.config.*`) are left out unless a
+  source imports them.
+- **Build output:** the `web.js` and `web.css` beside a `deck-module.json`, in the module
+  directory itself (a module with no build step, or one installed as built) or in
+  `dist/<id>/`. These are what deck serves, so they get the build-output rules only. A bundle
+  carries its dependencies' code, which the source rules are not about.
+
+The source rules:
 
 | Rule | What it refuses |
 | --- | --- |
-| `colour-literal` | A hex, `rgb()` or `oklch()` colour, in scripts or CSS. Use tokens. |
+| `colour-literal` | A hex colour or a colour function (`rgb()`, `hsl()`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`, `color()`) in scripts or CSS, an arbitrary colour utility (`hello:bg-[red]`, `text-[#f00]`), or a named colour in a CSS value. Use tokens. |
 | `radius-scale` | `rounded`, `rounded-2xl`…`4xl` or `rounded-[4px]`, prefixed or not. Use `rounded-xs`…`xl`, `rounded-full` or `rounded-none`. |
 | `inline-style` | `style={…}` (or a `style:` prop in plain JavaScript), except in a file allowlisted for dynamic geometry. |
 | `data-icon` | A `data-icon` attribute. Use `<Icon name>`. |
 | `legacy-token` | deck's removed `--inventory-*`, `--freshness-*` and `--l-*` tokens. |
-| `module-import` | A React entry point other than `react`, `react-dom` and `react/jsx-runtime` (it would bundle a second React); a deck package other than `@deck/sdk`, or `@deck/module-sdk` other than `import type`; `radix-ui`, `@radix-ui/*` or `lucide-react` (use the patterns and `<Icon>`); an `import()` of a computed name. |
-| `module-css-import` | `tailwindcss` itself or an `@tailwind` directive, or `@deck/sdk/tailwind` without a prefix. |
-| `built-web-import` | A built `web.js` (`dist/<id>/web.js`, or a `web.js` beside the manifest) that imports anything but the four import-mapped specifiers and its own `./deck-module.json`. Nothing else resolves in the browser. |
+| `module-import` | A React entry point other than `react`, `react-dom` and `react/jsx-runtime` (it would bundle a second React); a deck package other than `@deck/sdk`, or `@deck/module-sdk` other than `import type`; `radix-ui`, `@radix-ui/*` or `lucide-react` (use the patterns and `<Icon>`); an `import()` of a computed name; `require()` or `import x = require()`. |
+| `module-css-import` | `tailwindcss` itself (by name or by a path into it) or an `@tailwind` directive, or `@deck/sdk/tailwind` without the module's prefix. |
+
+The build-output rules:
+
+| Rule | What it refuses |
+| --- | --- |
+| `built-web-import` | A `web.js` that imports anything but the four import-mapped specifiers and its own `./deck-module.json` (as a JSON module, `with { type: "json" }`); one that calls `require()`; one that bundles its own React or React DOM. Nothing else resolves in the browser. |
+| `built-web-css` | A `web.css` rule that styles a class outside the module's prefix (`hello:…` from the preset, or `hello-…` by hand); base styles such as Tailwind's Preflight; Tailwind's palette variables. |
 
 It prints each offence as `file:line rule: message` and exits 1 when there is one, 0 when there
 is none, and 2 when the directory has no `deck-module.json` or its `package.json` cannot be
-read. It says so when a module with sources has no built `web.js` to check yet. It also checks a
-built module directory as you install it (`deck-module lint dist/<id>`), where it treats the
-compiled `web.css` as build output. To let a file set an inline style
+read. It says so when a module with sources has no built `web.js` to check yet. Run it on a
+built module directory as you install it (`deck-module lint dist/<id>`) to check just what deck
+will serve. To let a file set an inline style
 (a width computed from a value, say), allowlist it in the module's `package.json`:
 
 ```json

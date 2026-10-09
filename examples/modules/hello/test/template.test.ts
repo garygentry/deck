@@ -4,20 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { lintModule } from "@deck/sdk/lint";
+import { lintModule, modulePrefix } from "@deck/sdk/lint";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
- * The template builds a module directory deck can load (dist/hello/), and `deck-module lint`
- * passes it and fails a seeded violation.
+ * The template builds a module directory deck can load (dist/<id>/; here, a fresh temporary
+ * directory of the test's own), and `deck-module lint` passes it and fails a seeded violation.
  */
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const manifest = JSON.parse(readFileSync(join(ROOT, "deck-module.json"), "utf8")) as Record<string, unknown> & { id: string };
-/** The build's module directory, named by the module's id. */
-const OUT = join(ROOT, "dist", manifest.id);
-/** The module's Tailwind prefix, as web.css imports the preset with it. */
-const PREFIX = /@deck\/sdk\/tailwind"\s+prefix\((\w+)\)/.exec(readFileSync(join(ROOT, "src/web/web.css"), "utf8"))![1]!;
+/** The module's Tailwind prefix: its id's letters, lowercased. */
+const PREFIX = modulePrefix(manifest.id);
 
 const run = (command: string, args: string[], cwd = ROOT) => spawnSync(command, args, { cwd, encoding: "utf8" });
 
@@ -29,9 +27,22 @@ afterAll(() => {
   for (const dir of temps) rmSync(dir, { recursive: true, force: true });
 });
 
+/** A fresh temporary directory, removed after the tests. */
+function temp(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  temps.push(dir);
+  return dir;
+}
+
+/** The build's module directory, named by the module's id, in a directory of the test's own. */
+const OUT = join(temp(`deck-module-${manifest.id}-build-`), manifest.id);
+
 beforeAll(() => {
-  const built = run("pnpm", ["run", "build"]);
-  expect(built.status, built.stderr).toBe(0);
+  // `pnpm build`'s two passes, into OUT rather than the shared dist/.
+  for (const args of [["build"], ["build", "--mode", "server"]]) {
+    const built = run("pnpm", ["exec", "vite", ...args, "--outDir", OUT]);
+    expect(built.status, built.stderr).toBe(0);
+  }
 }, 120_000);
 
 describe("the build", () => {
@@ -55,6 +66,7 @@ describe("the build", () => {
   });
 
   it("styles with deck's tokens under the module's prefix, adding no Preflight", () => {
+    expect(readFileSync(join(ROOT, "src/web/web.css"), "utf8")).toContain(`@import "@deck/sdk/tailwind" prefix(${PREFIX});`);
     const css = readFileSync(join(OUT, "web.css"), "utf8");
     const classes = [...css.matchAll(/\.([\w\\:-]+)\{/g)].map((match) => match[1]!);
     expect(classes.length).toBeGreaterThan(5);
@@ -70,7 +82,7 @@ describe("deck-module lint", () => {
     expect(lintModule(OUT)).toEqual([]);
   });
 
-  it("passes the template, built", () => {
+  it("passes the template's sources", () => {
     expect(lintModule(ROOT)).toEqual([]);
     const cli = run("pnpm", ["run", "--silent", "lint"]);
     expect(cli.stdout).toContain("deck-module lint: no offences");
@@ -78,9 +90,9 @@ describe("deck-module lint", () => {
   });
 
   it("fails a copy of the template with a seeded violation, naming each offence", () => {
-    const copy = mkdtempSync(join(tmpdir(), `deck-module-${manifest.id}-`));
-    temps.push(copy);
-    for (const name of ["deck-module.json", "package.json", "src", "dist"]) cpSync(join(ROOT, name), join(copy, name), { recursive: true });
+    const copy = temp(`deck-module-${manifest.id}-`);
+    for (const name of ["deck-module.json", "package.json", "src"]) cpSync(join(ROOT, name), join(copy, name), { recursive: true });
+    cpSync(OUT, join(copy, "dist", manifest.id), { recursive: true });
     appendFileSync(
       join(copy, "src/web/HelloPill.tsx"),
       `\nimport { createRoot } from "react-dom/client";\nexport const Seeded = () => <p className="${PREFIX}:rounded" style={{ color: "#ff0000" }} />;\n`,

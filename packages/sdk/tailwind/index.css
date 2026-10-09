@@ -1,6 +1,7 @@
 /*
  * @deck/sdk/tailwind: the Tailwind v4 preset for a runtime module's own styles. Import it,
- * with a prefix of the module's own, as the whole of the module's Tailwind setup:
+ * with the module's prefix (its id lowercased, with every non-letter removed: `hello-world` →
+ * `helloworld`), as the whole of the module's Tailwind setup:
  *
  *   @import "@deck/sdk/tailwind" prefix(hello);
  *

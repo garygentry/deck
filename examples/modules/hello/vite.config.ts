@@ -1,28 +1,37 @@
 import { copyFileSync } from "node:fs";
+import { join } from "node:path";
 
+import { IMPORT_MAP_SPECIFIERS } from "@deck/sdk/lint";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, type Plugin, type UserConfig } from "vite";
 
+import manifest from "./deck-module.json" with { type: "json" };
+
 /**
- * The module directory the build writes: `dist/hello/`, named by the module's id, holding
+ * The module directory the build writes: `dist/<id>/`, named by the module's id, holding
  * deck-module.json, server.mjs, web.js and web.css. Copy it into DECK_MODULES_DIR (or point
- * DECK_MODULES_DIR at dist/).
+ * DECK_MODULES_DIR at dist/). `vite build --outDir <dir>` writes it elsewhere.
  */
-const OUT_DIR = "dist/hello";
+const OUT_DIR = `dist/${manifest.id}`;
 
 /**
- * The fixed externals: deck's import map provides exactly these to a web half, so they are
- * never bundled. They are deck's, not the module's to change: bundling another copy of React
- * breaks hooks, and any other bare import would not resolve in the browser.
+ * The fixed externals: deck's import map provides exactly these to a web half (react,
+ * react-dom, react/jsx-runtime and @deck/sdk), so they are never bundled. They are deck's, not
+ * the module's to change: bundling another copy of React breaks hooks, and any other bare
+ * import would not resolve in the browser.
  */
-const DECK_SHARED = ["react", "react-dom", "react/jsx-runtime", "@deck/sdk"];
+const DECK_SHARED = [...IMPORT_MAP_SPECIFIERS];
 
-/** Copy the manifest beside the built entries. */
+/** Copy the manifest beside the built entries, wherever the build writes them. */
 function copyManifest(): Plugin {
+  let outDir = OUT_DIR;
   return {
     name: "deck-module-manifest",
+    configResolved(config) {
+      outDir = config.build.outDir;
+    },
     writeBundle() {
-      copyFileSync("deck-module.json", `${OUT_DIR}/deck-module.json`);
+      copyFileSync("deck-module.json", join(outDir, "deck-module.json"));
     },
   };
 }

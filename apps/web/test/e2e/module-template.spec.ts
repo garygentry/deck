@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,8 +11,8 @@ import { seedTheme } from "./theme-seed.js";
 
 /**
  * The module template, end to end, as an author ships it: `examples/modules/hello` is built
- * (`pnpm build`), its `dist/hello` directory is dropped into a DECK_MODULES_DIR of its own, and
- * a spec-local real API loads it with DECK_MODULES_ENABLED. Its server half answers (provider,
+ * (`pnpm build`'s two passes) straight into a fresh DECK_MODULES_DIR of the spec's own, never
+ * the template's shared dist/, and a spec-local real API loads it with DECK_MODULES_ENABLED. Its server half answers (provider,
  * route, health) and its web half renders inside deck's page, on deck's React, with styles of
  * its own built from the @deck/sdk/tailwind preset.
  */
@@ -39,10 +39,11 @@ test.describe("the module template, built and dropped into DECK_MODULES_DIR", ()
 
   test.beforeAll(async () => {
     test.setTimeout(READY_TIMEOUT_MS * 2 + 120_000);
-    const built = spawnSync("pnpm", ["run", "build"], { cwd: TEMPLATE, encoding: "utf8" });
-    expect(built.status, `pnpm build in examples/modules/hello failed:\n${built.stderr}`).toBe(0);
     modulesDir = mkdtempSync(join(tmpdir(), "deck-e2e-modules-"));
-    cpSync(join(TEMPLATE, "dist/hello"), join(modulesDir, "hello"), { recursive: true });
+    for (const args of [["build"], ["build", "--mode", "server"]]) {
+      const built = spawnSync("pnpm", ["exec", "vite", ...args, "--outDir", join(modulesDir, "hello")], { cwd: TEMPLATE, encoding: "utf8" });
+      expect(built.status, `vite ${args.join(" ")} in examples/modules/hello failed:\n${built.stderr}`).toBe(0);
+    }
     api = await startSpecApi("module-template", { DECK_MODULES_DIR: modulesDir, DECK_MODULES_ENABLED: "true" });
   });
 

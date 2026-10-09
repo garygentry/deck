@@ -4,12 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { validateActionParams } from "@deck/contract/actions";
 import type { ParamError } from "@deck/contract/actions";
-import type { Action } from "@deck/server/actions";
+import type { Action } from "../../server/types.js";
 
 import {
   ParamForm,
   initialParamValues,
-} from "../src/features/governed-actions/components/ParamForm.js";
+} from "../../web/components/ParamForm.js";
 
 afterEach(cleanup);
 

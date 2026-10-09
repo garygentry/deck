@@ -5,7 +5,7 @@ import {
   shouldPreventActionDefault,
   type ActionKeyEvent,
   type ActionKeyIntent,
-} from "../src/features/governed-actions/keyboard.js";
+} from "../../web/keyboard.js";
 
 function key(
   k: string,

@@ -14,8 +14,8 @@ import { composeDefault } from "@deck/schema";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import * as actionsModuleExports from "../src/actions/module.js";
-import { ACTIONS_MANIFEST, actionsModule, createActionsModule } from "../src/actions/module.js";
+import * as actionsModuleExports from "../../../modules/actions/server/module.js";
+import { ACTIONS_MANIFEST, actionsModule, createActionsModule } from "../../../modules/actions/server/module.js";
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { ModuleInitError } from "../src/modules/host.js";
 import { ACTIONS_FIXTURES_DIR, actionsApp } from "./util/actions-module.js";

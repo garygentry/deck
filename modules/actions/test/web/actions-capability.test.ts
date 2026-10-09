@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchActionsEnabled } from "../src/features/governed-actions/client.js";
+import { fetchActionsEnabled } from "../../web/client.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

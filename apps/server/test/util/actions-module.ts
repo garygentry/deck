@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { Logger } from "pino";
 import { vi } from "vitest";
 
-import { createActionsModule, type ActionsModuleOptions } from "../../src/actions/module.js";
+import { createActionsModule, type ActionsModuleOptions } from "../../../../modules/actions/server/module.js";
 import type { DeckConfig } from "../../src/contract/index.js";
 import { createApp, planningRouteTable, RESERVED_ROOT_PATHS } from "../../src/server/app.js";
 import { testHost } from "./modules.js";

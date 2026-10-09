@@ -5,14 +5,14 @@ import type {
   AuditListItem,
   AuditOutputSink,
   AuditStore,
-} from "../src/actions/audit.js";
-import type { ActionRunEvent } from "../src/actions/events.js";
+} from "../../server/audit.js";
+import type { ActionRunEvent } from "../../server/events.js";
 import {
   createActionExecutor,
   type ActionExecutorOptions,
   type ResolvedInvocation,
-} from "../src/actions/executor.js";
-import { createFakeSpawner, type FakeSpawnerScript } from "./util/fake-spawner.js";
+} from "../../server/executor.js";
+import { createFakeSpawner, type FakeSpawnerScript } from "../../../../apps/server/test/util/fake-spawner.js";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 

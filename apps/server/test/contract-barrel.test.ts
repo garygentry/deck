@@ -48,9 +48,9 @@ describe("the @deck/server barrel (contract/index.ts)", () => {
   });
 
   it("flags a feature re-export (guard self-test)", () => {
-    const feature = 'export type { Action } from "../actions/config.generated.js";\nexport type { X } from "@deck/drift";';
+    const feature = 'export type { Action } from "../../../../modules/actions/server/config.generated.js";\nexport type { X } from "@deck/drift";';
     expect(reExportTargets(feature, BARREL).filter((target) => !isKernelPath(target))).toEqual([
-      "apps/server/src/actions/config.generated.ts",
+      "modules/actions/server/config.generated.ts",
       "unknown package:@deck/drift",
     ]);
   });

@@ -14,8 +14,8 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_KILL_GRACE_MS, DEFAULT_PUMP_DRAIN_MS } from "../src/actions/executor.js";
-import { ACTIONS_STOP_TIMEOUT_MS } from "../src/actions/module.js";
+import { DEFAULT_KILL_GRACE_MS, DEFAULT_PUMP_DRAIN_MS } from "../../../modules/actions/server/executor.js";
+import { ACTIONS_STOP_TIMEOUT_MS } from "../../../modules/actions/server/module.js";
 import { DEFAULT_SHUTDOWN_DEADLINE_MS, installShutdown } from "../src/server/shutdown.js";
 import { DEFAULT_STOP_TIMINGS, resolveStopTimings, SHUTDOWN_MARGIN_MS, stopBudgetMs } from "../src/server/stop-timings.js";
 

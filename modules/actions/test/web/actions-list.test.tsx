@@ -2,12 +2,12 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Action } from "@deck/server/actions";
+import type { Action } from "../../server/types.js";
 
 import {
   ActionList,
   groupActions,
-} from "../src/features/governed-actions/components/ActionList.js";
+} from "../../web/components/ActionList.js";
 
 afterEach(cleanup);
 

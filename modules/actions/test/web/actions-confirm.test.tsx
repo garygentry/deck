@@ -3,12 +3,12 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResolvedParams } from "@deck/contract/actions";
-import type { Action } from "@deck/server/actions";
+import type { Action } from "../../server/types.js";
 
 import {
   ConfirmStep,
   isRunArmed,
-} from "../src/features/governed-actions/components/ConfirmStep.js";
+} from "../../web/components/ConfirmStep.js";
 
 afterEach(cleanup);
 

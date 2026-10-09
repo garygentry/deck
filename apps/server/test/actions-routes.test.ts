@@ -6,11 +6,11 @@ import { Hono } from "hono";
 import type { Logger } from "pino";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import { createActionExecutor, type ActionExecutor } from "../src/actions/executor.js";
-import { createAuditStore, type AuditStore } from "../src/actions/audit.js";
-import { registerActionRoutes } from "../src/actions/route.js";
-import type { Action } from "../src/actions/config.generated.js";
-import type { ActionsDeps, ActionsRuntime } from "../src/actions/runtime.js";
+import { createActionExecutor, type ActionExecutor } from "../../../modules/actions/server/executor.js";
+import { createAuditStore, type AuditStore } from "../../../modules/actions/server/audit.js";
+import { registerActionRoutes } from "../../../modules/actions/server/route.js";
+import type { Action } from "../../../modules/actions/server/config.generated.js";
+import type { ActionsDeps, ActionsRuntime } from "../../../modules/actions/server/runtime.js";
 import { createApp, type AppDeps, type ProviderReader } from "../src/server/app.js";
 import type { DeckConfig } from "../src/contract/index.js";
 import { actionsApp } from "./util/actions-module.js";

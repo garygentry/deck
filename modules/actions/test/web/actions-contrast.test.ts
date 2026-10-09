@@ -2,12 +2,12 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { createElement as h } from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ActionOutcome } from "@deck/server/actions";
+import type { ActionOutcome } from "../../server/types.js";
 import { TONES, isIconName } from "@/ui";
 
-import { RunOutput } from "../src/features/governed-actions/components/RunOutput.js";
-import { OUTCOME_UI } from "../src/features/governed-actions/status.js";
-import type { RunState } from "../src/features/governed-actions/run-store.js";
+import { RunOutput } from "../../web/components/RunOutput.js";
+import { OUTCOME_UI } from "../../web/status.js";
+import type { RunState } from "../../web/run-store.js";
 
 // ---------------------------------------------------------------------------
 // Governed-actions status convention: icon + text, NEVER colour-only. Every

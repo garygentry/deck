@@ -10,7 +10,7 @@
  * focus to the row.
  */
 
-import type { AuditDetail, AuditListItem } from "@deck/server/actions";
+import type { AuditDetail, AuditListItem } from "../../server/types.js";
 import type { JSX, KeyboardEvent, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import {

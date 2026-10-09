@@ -6,7 +6,7 @@ import {
   ACTION_RUN_MESSAGES,
   ActionRunFailure,
   normalizeActionFailure,
-} from "../src/actions/errors.js";
+} from "../../server/errors.js";
 
 describe("error tables", () => {
   it("has a message and outcome mapping for every code", () => {

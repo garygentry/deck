@@ -6,7 +6,7 @@ import {
   isPreRunOutcome,
   type ActionOutcome,
   type ActionRunEvent,
-} from "../src/actions/events.js";
+} from "../../server/events.js";
 
 describe("ACTION_OUTCOMES", () => {
   it("lists all six outcomes exactly once", () => {

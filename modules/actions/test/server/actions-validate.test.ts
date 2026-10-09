@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import type { Action, ActionParam } from "../src/actions/config.generated.js";
+import type { Action, ActionParam } from "../../server/config.generated.js";
 
 import {
   validateActionParams,
   type ParamError,
   type ValidateResult,
-} from "../src/actions/validate.js";
+} from "../../server/validate.js";
 
 /** Build a minimal Action wrapping the given params. */
 function actionWith(params: ActionParam[]): Action {

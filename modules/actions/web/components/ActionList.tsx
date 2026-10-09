@@ -9,7 +9,7 @@
  * host/service detail pages.
  */
 
-import type { Action } from "@deck/server/actions";
+import type { Action } from "../../server/types.js";
 import type { JSX } from "react";
 import { EmptyState, Icon, List, ListGroup, ListItem } from "@/ui";
 import { targetLabel } from "../status.js";

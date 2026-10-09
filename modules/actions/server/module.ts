@@ -7,7 +7,7 @@ import { createActionExecutor } from "./executor.js";
 import { ACTION_REFUSAL_CODES, ACTION_REFUSAL_STATUS, registerActionRoutes } from "./route.js";
 import { ACTIONS_ENV, resolveActionsRuntime } from "./runtime.js";
 import { createBunRunnerSpawner, type RunnerSpawner } from "./spawn.js";
-import schema from "./schema.json" with { type: "json" };
+import schema from "../schema.json" with { type: "json" };
 
 /** What every action route but the probe answers while the capability is off. */
 const DISABLED_REFUSAL = {

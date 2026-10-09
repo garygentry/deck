@@ -10,7 +10,7 @@
  */
 
 import type { ParamError } from "@deck/contract/actions";
-import type { Action, ActionParam } from "@deck/server/actions";
+import type { Action, ActionParam } from "../../server/types.js";
 import type { JSX } from "react";
 import { Checkbox, Icon, Input, Label, cn } from "@/ui";
 

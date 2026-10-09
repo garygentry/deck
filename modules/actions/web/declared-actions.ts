@@ -5,8 +5,8 @@
  * action-shaped objects therefore lists nothing rather than breaking the page.
  */
 
-import type { DeckConfig } from "@deck/server";
-import type { Action } from "@deck/server/actions";
+import type { DeckConfig } from "../../../apps/server/src/contract/index.js";
+import type { Action } from "../server/types.js";
 
 const CONFIRM_POLICIES: ReadonlySet<unknown> = new Set(["none", "confirm", "typed-confirm"]);
 const PARAM_TYPES: ReadonlySet<unknown> = new Set(["string", "number", "boolean", "enum"]);

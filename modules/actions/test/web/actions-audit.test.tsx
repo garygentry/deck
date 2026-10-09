@@ -2,9 +2,9 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AuditDetail, AuditListItem } from "@deck/server/actions";
+import type { AuditDetail, AuditListItem } from "../../server/types.js";
 
-import { AuditHistory } from "../src/features/governed-actions/components/AuditHistory.js";
+import { AuditHistory } from "../../web/components/AuditHistory.js";
 
 // The list load + detail load are effect-driven; loaders are injected so no HTTP
 // is involved. Async states are awaited with Testing Library's `find*` queries.

@@ -16,7 +16,7 @@ import type {
   ActionsCapabilityResponse,
   AuditDetail,
   AuditListItem,
-} from "@deck/server/actions";
+} from "../server/types.js";
 import { applyRunEvent, beginRun, failRun } from "./run-store.js";
 import type { RunRefusal } from "./run-store.js";
 

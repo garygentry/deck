@@ -113,7 +113,7 @@ over those stores. A source of a kind no running module serves is unknown to the
 
 ### Actions runtime
 
-The actions subsystem (`apps/server/src/actions/**`) executes governed actions through an
+The actions subsystem (`modules/actions/server/**`) executes governed actions through an
 allowlisted runner, with parameter validation, confirmation, an execution timeout, and an audit
 store.
 It is off by default: unless `DECK_ACTIONS_ENABLED` is set and the required data directory and

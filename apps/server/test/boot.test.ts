@@ -5,12 +5,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { load } from "../src/config/load.js";
 import { boot, failFast } from "../src/index.js";
 import { read, stopScheduler } from "../src/providers/registry.js";
+import { stubBun, unstubBun } from "./util/stub-bun.js";
 import { makeConfigDir } from "./util/tmp-config.js";
 
 const cleanup: Array<() => void> = [];
 
 afterEach(() => {
   stopScheduler();
+  unstubBun();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   delete process.env.DECK_SNAPSHOT_SOURCE;
@@ -37,7 +39,7 @@ describe("server boot", () => {
   it("boots the clean primary directory and returns a stoppable handle", async () => {
     const stop = vi.fn(async () => undefined);
     const serve = vi.fn(() => ({ stop }));
-    vi.stubGlobal("Bun", { serve });
+    stubBun({ serve });
     const handle = await boot({ configDir: dirname(primary.paths.base), port: 0 });
 
     expect(serve).toHaveBeenCalledOnce();
@@ -49,7 +51,7 @@ describe("server boot", () => {
   it("registers no snapshot provider when DECK_SNAPSHOT_SOURCE is absent", async () => {
     delete process.env.DECK_SNAPSHOT_SOURCE;
     const stop = vi.fn(async () => undefined);
-    vi.stubGlobal("Bun", { serve: vi.fn(() => ({ stop })) });
+    stubBun({ serve: vi.fn(() => ({ stop })) });
     const handle = await boot({ configDir: dirname(primary.paths.base), port: 0 });
     cleanup.push(() => void handle.stop());
 
@@ -65,7 +67,7 @@ describe("server boot", () => {
       return true;
     });
     const stop = vi.fn(async () => undefined);
-    vi.stubGlobal("Bun", { serve: vi.fn(() => ({ stop })) });
+    stubBun({ serve: vi.fn(() => ({ stop })) });
 
     const handle = await boot({ configDir: dirname(primary.paths.base), port: 0 });
     cleanup.push(() => void handle.stop());
@@ -83,7 +85,7 @@ describe("server boot", () => {
       throw new Error(`exit:${code}`);
     }) as typeof process.exit);
     const serve = vi.fn();
-    vi.stubGlobal("Bun", { serve });
+    stubBun({ serve });
 
     await expect(boot({ configDir: dirname(primary.paths.base), port: 0 })).rejects.toThrow("exit:2");
     const written = stderr.mock.calls.map(([text]) => String(text)).join("");

@@ -95,10 +95,19 @@ describe("DockerProvider", () => {
     });
   });
 
+  // The parse error's wording is the runtime's own (V8: "Unexpected token …", Bun: "Failed to
+  // parse JSON"), and the envelope passes it through verbatim, so expect what this runtime says.
+  const jsonParseMessage = () => new Response("not-json").json().then(
+    () => "",
+    (error: Error) => error.message,
+  );
+
   it.each([
-    ["transport rejection", () => Promise.reject(new Error("connection refused")), "connection refused"],
-    ["malformed JSON", () => Promise.resolve(new Response("not-json", { status: 200 })), "Unexpected token"],
-  ])("throws on %s and publishes unreachable while retaining prior data", async (_label, failure, message) => {
+    ["transport rejection", () => Promise.reject(new Error("connection refused")), async () => "connection refused"],
+    ["malformed JSON", () => Promise.resolve(new Response("not-json", { status: 200 })), jsonParseMessage],
+  ])("throws on %s and publishes unreachable while retaining prior data", async (_label, failure, expectedMessage) => {
+    const message = await expectedMessage();
+    expect(message).not.toBe("");
     // Persistent failure so the second poll fails deterministically; health() is now non-I/O.
     const fetchStub = vi.fn()
       .mockResolvedValueOnce(Response.json([{ Names: ["/cached"], State: "running", Status: "Up (healthy)" }]))

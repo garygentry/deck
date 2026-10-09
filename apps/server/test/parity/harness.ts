@@ -46,6 +46,7 @@ import { runValidate } from "../../src/cli/validate.js";
 import { listMetrics, stopScheduler } from "../../src/providers/registry.js";
 import { boot } from "../../src/server/boot.js";
 import { POLL_DEFAULTS } from "../../src/contract/index.js";
+import { stubBun, unstubBun } from "../util/stub-bun.js";
 import { setUpstreamOffline, upstreamFetch } from "./upstream.js";
 
 /** The frozen wall clock every capture runs at. */
@@ -349,7 +350,7 @@ export async function capture(parityCase: ParityCase, options: CaptureOptions = 
   // Intervals are faked too, so the scheduler polls only when a capture advances the clock.
   vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"], now: FIXED_NOW });
   vi.stubGlobal("fetch", upstreamFetch);
-  vi.stubGlobal("Bun", {
+  stubBun({
     serve: () => ({ stop: async () => undefined }),
     spawn: () => {
       throw new Error("process spawn disabled in parity harness");
@@ -398,6 +399,7 @@ export async function capture(parityCase: ParityCase, options: CaptureOptions = 
     stopScheduler();
     setUpstreamOffline(false);
     vi.useRealTimers();
+    unstubBun();
     vi.unstubAllGlobals();
     restoreEnv();
     logger.level = logLevel;

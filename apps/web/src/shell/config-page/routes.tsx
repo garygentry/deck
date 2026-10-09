@@ -32,7 +32,7 @@ function configPagesOf(manifest: UiManifestState): UiPage[] {
       typeof page.path === "string" &&
       typeof page.title === "string" &&
       Array.isArray(page.layout?.sections) &&
-      page.layout.sections.every((section) => Array.isArray(section?.widgets)),
+      page.layout.sections.every((section) => section !== null && typeof section === "object" && ("slot" in section ? typeof section.slot === "string" : Array.isArray(section.widgets))),
   );
 }
 

@@ -2,7 +2,7 @@ import { POLL_DEFAULTS } from "@deck/contract";
 import type { ProviderEnvelope } from "@deck/contract";
 import type { DeckConfig } from "@deck/server";
 import type { UiManifest } from "@deck/module-sdk";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
 
 import { getQueryClient } from "./query-client.js";
@@ -148,6 +148,56 @@ export function useProvider<T>(
   if (resolved === undefined) return { envelope: null, loading: true };
   if (id === null) return { envelope: null, loading: false };
   return { envelope: query.data ?? null, loading: query.status === "pending" };
+}
+
+export interface ProvidersState<T> {
+  /** Each asked provider's latest envelope, by id; `null` when it is not configured or unreadable. */
+  envelopes: ReadonlyMap<string, ProviderEnvelope<T> | null>;
+  /** True until every read settles (or each is known not to be configured). */
+  loading: boolean;
+}
+
+/**
+ * Poll several providers by id, as {@link useProvider} polls one: the same shared query per
+ * provider, so a page and a pill reading one provider make one request per tick. Unlisted
+ * providers are not polled. The ids may change between renders.
+ */
+export function useProviders<T>(ids: readonly string[], options: { intervalMs?: number } = {}): ProvidersState<T> {
+  const manifest = useUiManifest();
+  const intervalMs = options.intervalMs ?? POLL_DEFAULTS.pollIntervalMs;
+  const resolved = ids.map((id) => resolveProvider(id, manifest)?.id ?? null);
+  const results = useQueries(
+    {
+      queries: resolved.map((id) => ({
+        ...providerQuery<T>(id ?? "", intervalMs),
+        enabled: id !== null,
+        refetchInterval: intervalMs,
+        refetchIntervalInBackground: true,
+      })),
+    },
+    getQueryClient(),
+  );
+  const pending = manifest.status === "loading";
+  const envelopes = new Map<string, ProviderEnvelope<T> | null>();
+  let loading = pending;
+  ids.forEach((id, index) => {
+    const result = results[index]!;
+    const listed = resolved[index] !== null;
+    envelopes.set(id, pending || !listed ? null : (result.data ?? null));
+    if (listed && result.status === "pending") loading = true;
+  });
+  // The same answer as last render keeps its identity, so readers can memoise on it.
+  const last = useRef<ProvidersState<T> | null>(null);
+  if (last.current === null || last.current.loading !== loading || !sameEnvelopes(last.current.envelopes, envelopes)) {
+    last.current = { envelopes, loading };
+  }
+  return last.current;
+}
+
+function sameEnvelopes<T>(a: ReadonlyMap<string, T>, b: ReadonlyMap<string, T>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [id, value] of a) if (!b.has(id) || b.get(id) !== value) return false;
+  return true;
 }
 
 /**

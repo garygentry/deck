@@ -1,21 +1,8 @@
 import type { Service } from "@deck/schema";
 import type { GroupItem, LinkItem, ServiceItem } from "@deck/server/portal";
 import type { FreshnessStamp, ProviderEnvelope } from "@deck/contract";
+import type { StatusConditionDecl, UiStatusKind } from "@deck/module-sdk";
 import type { DeckConfig } from "@deck/server";
-
-export type DockerRunState = "running" | "exited" | "paused" | "restarting";
-export type DockerHealth = "healthy" | "unhealthy" | "starting" | "none";
-
-export interface DockerContainer {
-  name: string;
-  state: DockerRunState;
-  health: DockerHealth;
-  status: string;
-}
-
-export interface DockerResult {
-  containers: DockerContainer[];
-}
 
 export interface GatusEndpoint {
   key: string;
@@ -52,30 +39,6 @@ export function statusBucket(status: CardStatus): LiveStatusBucket | null {
   }
 }
 
-export interface DockerBinding {
-  container: string;
-}
-
-export interface GatusBinding {
-  endpoint: string;
-}
-
-export function isDockerBinding(value: unknown): value is DockerBinding {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as Record<string, unknown>).container === "string"
-  );
-}
-
-export function isGatusBinding(value: unknown): value is GatusBinding {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as Record<string, unknown>).endpoint === "string"
-  );
-}
-
 export interface CardViewModel {
   item: GroupItem;
   resolvedService?: Service;
@@ -86,48 +49,90 @@ export interface CardViewModel {
 
 export interface PortalData {
   config: DeckConfig | null;
-  docker: ProviderEnvelope<DockerResult> | null;
-  gatus: ProviderEnvelope<GatusResult> | null;
+  /** The provider kinds whose bindings give a card its status (the UI manifest's `statusKinds`). */
+  statusKinds: readonly UiStatusKind[];
+  /** The envelope of each provider a card reads, by id; `null` when it is not configured or unreadable. */
+  envelopes: ReadonlyMap<string, ProviderEnvelope | null>;
   loading: boolean;
 }
 
 export type CardItem = ServiceItem | LinkItem;
 
-export interface CardEnvelopes {
-  docker: ProviderEnvelope<DockerResult> | null;
-  gatus: ProviderEnvelope<GatusResult> | null;
+/** A service's status binding: the kind that gives it a status, the provider it reads, and the binding itself. */
+export interface StatusBinding {
+  kind: UiStatusKind;
+  providerId: string;
+  value: Readonly<Record<string, unknown>>;
 }
 
-export type ResolvedBinding =
-  | { kind: "docker"; binding: DockerBinding }
-  | { kind: "gatus"; binding: GatusBinding };
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
-export function resolveServiceBinding(service: Service): ResolvedBinding | null {
-  const bindings = service.bindings;
-  if (isDockerBinding(bindings?.docker)) {
-    return { kind: "docker", binding: bindings.docker };
+/** The value at a key path (`a.b`) of `value`, through own keys of plain objects only. */
+export function readPath(value: unknown, path: string): unknown {
+  let current = value;
+  for (const key of path.split(".")) {
+    if (!isRecord(current) || !Object.hasOwn(current, key)) return undefined;
+    current = current[key];
   }
-  if (isGatusBinding(bindings?.gatus)) {
-    return { kind: "gatus", binding: bindings.gatus };
+  return current;
+}
+
+/** The binding's own id, else the id the server gives it (`<kind>:service:<host>:<name>`). */
+function bindingProviderId(kind: string, service: Service, value: Readonly<Record<string, unknown>>): string {
+  return typeof value.id === "string" ? value.id : `${kind}:service:${service.host}:${service.name}`;
+}
+
+/**
+ * The binding that gives a service its card status: of the status kinds it binds, the first
+ * by kind name whose binding is usable (an object, naming the item when the kind matches one in
+ * a list). `null` when it binds none, so its card is static.
+ */
+export function resolveServiceBinding(service: Service, kinds: readonly UiStatusKind[]): StatusBinding | null {
+  const bindings = service.bindings as Record<string, unknown> | undefined;
+  for (const kind of [...kinds].sort((a, b) => (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0))) {
+    const value = bindings?.[kind.kind];
+    if (!isRecord(value)) continue;
+    const match = kind.status.match;
+    if (match !== undefined && !isKey(readPath(value, match.binding))) continue;
+    const providerId = kind.status.provider === "fixed" ? kind.fixedId : bindingProviderId(kind.kind, service, value);
+    if (providerId === undefined) continue;
+    return { kind, providerId, value };
   }
   return null;
 }
 
-export function dockerContainerStatus(container: DockerContainer): CardStatus {
-  return container.state === "running" &&
-    (container.health === "healthy" || container.health === "none")
-    ? "bound-up"
-    : "bound-down";
+function isKey(value: unknown): value is string | number {
+  return typeof value === "string" || typeof value === "number";
 }
 
-export function gatusEndpointStatus(endpoint: GatusEndpoint): CardStatus {
-  return endpoint.up ? "bound-up" : "bound-down";
+/** The item a binding reads in its provider's data, or `undefined` when there is none. */
+export function boundItem(data: unknown, binding: StatusBinding): unknown {
+  const match = binding.kind.status.match;
+  if (match === undefined) return data;
+  const list = readPath(data, match.list);
+  if (!Array.isArray(list)) return undefined;
+  const key = readPath(binding.value, match.binding);
+  return list.find((entry) => readPath(entry, match.key) === key);
 }
 
+/** Whether every condition holds on the item. */
+export function isUp(item: unknown, conditions: readonly StatusConditionDecl[]): boolean {
+  return conditions.every(({ field, in: values }) => values.includes(readPath(item, field) as string | number | boolean));
+}
+
+/**
+ * A card's status: a link is static; a service item naming no declared service is a broken
+ * reference; a service with no status binding is static; otherwise its binding's provider says
+ * whether it is unreachable (no envelope, an error, unreachable freshness or no data), the item
+ * is not found, or the item is up or down by its kind's conditions.
+ */
 export function deriveCardStatus(
   item: CardItem,
   resolvedService: Service | undefined,
-  envelopes: CardEnvelopes,
+  kinds: readonly UiStatusKind[],
+  envelopes: ReadonlyMap<string, ProviderEnvelope | null>,
 ): CardStatus {
   if (item.type === "link") {
     return "static";
@@ -135,29 +140,11 @@ export function deriveCardStatus(
   if (resolvedService === undefined) {
     return "broken-reference";
   }
-
-  const resolvedBinding = resolveServiceBinding(resolvedService);
-  if (resolvedBinding === null) {
+  const binding = resolveServiceBinding(resolvedService, kinds);
+  if (binding === null) {
     return "static";
   }
-
-  if (resolvedBinding.kind === "docker") {
-    const envelope = envelopes.docker;
-    if (
-      envelope === null ||
-      envelope.error !== null ||
-      envelope.freshness.state === "unreachable" ||
-      envelope.data === null
-    ) {
-      return "unreachable";
-    }
-    const container = envelope.data.containers.find(
-      ({ name }) => name === resolvedBinding.binding.container,
-    );
-    return container === undefined ? "not-found" : dockerContainerStatus(container);
-  }
-
-  const envelope = envelopes.gatus;
+  const envelope = envelopes.get(binding.providerId) ?? null;
   if (
     envelope === null ||
     envelope.error !== null ||
@@ -166,8 +153,7 @@ export function deriveCardStatus(
   ) {
     return "unreachable";
   }
-  const endpoint = envelope.data.endpoints.find(
-    ({ key }) => key === resolvedBinding.binding.endpoint,
-  );
-  return endpoint === undefined ? "not-found" : gatusEndpointStatus(endpoint);
+  const target = boundItem(envelope.data, binding);
+  if (target === undefined) return "not-found";
+  return isUp(target, binding.kind.status.up) ? "bound-up" : "bound-down";
 }

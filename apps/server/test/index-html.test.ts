@@ -36,7 +36,7 @@ const manifest = (title: string, home: UiManifest["home"] = { page: "page:invent
 
 /** The boot object as the shell reads it, from served HTML. */
 function bootIn(html: string) {
-  const match = /<script type="application\/json" id="deck-boot">([^<]*)<\/script>/.exec(html);
+  const match = /<script\b[^>]*\bid="deck-boot">([^<]*)<\/script>/.exec(html);
   return readDeckBoot({ getElementById: () => ({ textContent: match?.[1] ?? null }) });
 }
 
@@ -56,7 +56,7 @@ describe("the served index.html", () => {
     expect(response.headers.get("cache-control")).toBe("no-cache");
     const html = await response.text();
     expect(html).toContain("<title>Gentry Lab</title>");
-    expect(bootIn(html)).toEqual({ brand: { title: "Gentry Lab" }, theme: { mode: "dark" }, home: "page:inventory/hosts" });
+    expect(bootIn(html)).toEqual({ brand: { title: "Gentry Lab" }, theme: { mode: "dark" }, home: "page:inventory/hosts", frameOrigins: [] });
   });
 
   it("passes static files and /api through", async () => {

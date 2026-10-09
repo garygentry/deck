@@ -500,25 +500,41 @@ describe("the /metrics root path", () => {
 
 // B2: built-in reservations come from snapshotted manifests only, never a live property read.
 describe("built-in root paths are read from snapshots", () => {
-  it("a built-in with a throwing contributes getter is refused without calling it, and the rest still plan", () => {
-    let calls = 0;
+  const trapModule = () => {
+    const counter = { calls: 0 };
     const manifest = { id: "trap", version: "1.0.0", deckApi: "^0.1" } as ModuleManifest;
     Object.defineProperty(manifest, "contributes", {
       enumerable: true,
       get() {
-        calls += 1;
+        counter.calls += 1;
         throw new Error("getter ran");
       },
     });
-    const trap = defineServerModule(manifest, () => {});
-    const pager = testModule({ id: "pager", contributes: { pages: [PAGER_PAGE] } });
-    const { host } = testHost([...BUILTIN_MODULES, trap, pager], {
+    return { trap: defineServerModule(manifest, () => {}), counter };
+  };
+
+  it("a built-in with a throwing contributes getter fails planning loudly, without calling it", () => {
+    const { trap, counter } = trapModule();
+    expect(() => testHost([...BUILTIN_MODULES, trap], {
       builtins: new Set([...BUILTIN_MODULES, trap]),
       env: { DECK_METRICS_ENABLED: "true" },
       kernelRoutes: planningRouteTable(),
       reservedRootPaths: RESERVED_ROOT_PATHS,
+    })).toThrow(expect.objectContaining({ code: "MODULE_MANIFEST_INVALID", moduleId: "trap" }));
+    expect(counter.calls).toBe(0);
+  });
+
+  it("another module with a throwing contributes getter is refused without calling it, and the rest still plan", () => {
+    const { trap, counter } = trapModule();
+    const calls = () => counter.calls;
+    const pager = testModule({ id: "pager", contributes: { pages: [PAGER_PAGE] } });
+    const { host } = testHost([...BUILTIN_MODULES, trap, pager], {
+      builtins: new Set(BUILTIN_MODULES),
+      env: { DECK_METRICS_ENABLED: "true" },
+      kernelRoutes: planningRouteTable(),
+      reservedRootPaths: RESERVED_ROOT_PATHS,
     });
-    expect(calls).toBe(0);
+    expect(calls()).toBe(0);
     expect(host.findings).toEqual([
       expect.objectContaining({ code: "MODULE_MANIFEST_INVALID", path: "/modules/trap" }),
       expect.objectContaining({ code: "MODULE_MANIFEST_INVALID", path: "/modules/pager", message: expect.stringContaining("reserved root path") }),

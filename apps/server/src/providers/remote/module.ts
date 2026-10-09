@@ -1,7 +1,6 @@
 import {
   defineServerModule,
   type ConfigRuleFinding,
-  type InstanceRuleContext,
   type JsonObject,
   type JsonSchema,
   type ModuleManifest,
@@ -10,7 +9,7 @@ import {
 import deckSchema from "@deck/schema/deck.schema.json" with { type: "json" };
 
 import { urlProblem } from "../http-json/literal.js";
-import { fixedIdFindings, instanceRequest, integer, sharedInstanceProperties as shared } from "../http-json/request-config.js";
+import { instanceRequest, integer, sharedInstanceProperties as shared } from "../http-json/request-config.js";
 import { RUNTIME_PAGES } from "../../ui/runtime-pages.js";
 import { RemoteDirectory, type RemotePageConfig } from "./directory.js";
 import { REMOTE_MODULE_ID } from "./pages.js";
@@ -86,19 +85,13 @@ export const REMOTE_MANIFEST: ModuleManifest = {
           summary: "A remote integration's url is not an http(s) URL the runtime can parse.",
           fix: "Give the sidecar's base URL, such as http://nut-sidecar:9000, with no user:password@.",
         },
-        {
-          code: "REMOTE_ID_RESERVED",
-          severity: "error",
-          summary: "A remote integration's id is the fixed provider id of another integration in the estate, so boot would fail.",
-          fix: "Choose another id.",
-        },
       ],
     },
   ],
 };
 
-function validateInstance(instance: JsonObject, context: InstanceRuleContext): ConfigRuleFinding[] {
-  const findings = fixedIdFindings(instance.id, context, "REMOTE_ID_RESERVED");
+function validateInstance(instance: JsonObject): ConfigRuleFinding[] {
+  const findings: ConfigRuleFinding[] = [];
   if (typeof instance.url === "string") {
     const problem = urlProblem(instance.url);
     if (problem !== null) findings.push({ code: "REMOTE_URL_INVALID", path: "/url", message: `url ${problem}.` });
@@ -120,7 +113,7 @@ function pageOf(id: string, page: unknown): RemotePageConfig {
 export const remoteModule = defineServerModule(REMOTE_MANIFEST, () => {}, {
   kinds: {
     remote: {
-      validate: (instance, context) => validateInstance(instance, context),
+      validate: (instance) => validateInstance(instance),
       instances: (instances, { envFor, logger, services }) => {
         const directory = new RemoteDirectory();
         services.provide(RUNTIME_PAGES, directory);

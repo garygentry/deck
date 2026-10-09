@@ -7,6 +7,7 @@ import { fixture as hostDuplicate } from "./host-duplicate.js";
 import { fixture as serviceDuplicate } from "./service-duplicate.js";
 import { fixture as idDuplicate } from "./id-duplicate.js";
 import { fixture as providerIdShared } from "./provider-id-shared.js";
+import { fixture as providerIdReserved } from "./provider-id-reserved.js";
 import { fixture as refHostUnresolved } from "./ref-host-unresolved.js";
 import { fixture as refServiceUnresolved } from "./ref-service-unresolved.js";
 import { fixture as layerOverlayKeyInBase } from "./layer-overlay-key-in-base.js";
@@ -22,6 +23,7 @@ import { fixture as uiWidgetSelectInvalid } from "./ui-widget-select-invalid.js"
 import { fixture as uiStatusMapUnknown } from "./ui-status-map-unknown.js";
 import { fixture as uiEmbedDisallowed } from "./ui-embed-disallowed.js";
 import { fixture as uiEmbedUrlInvalid } from "./ui-embed-url-invalid.js";
+import { fixture as uiEmbedNotFrameable } from "./ui-embed-not-frameable.js";
 import { fixture as secretValueSuspected } from "./secret-value-suspected.js";
 import { fixture as snapshotHostDuplicate } from "./snapshot-host-duplicate.js";
 import { fixture as snapshotServiceDuplicate } from "./snapshot-service-duplicate.js";
@@ -40,6 +42,7 @@ export const invalid: readonly InvalidFixture[] = [
   serviceDuplicate,
   idDuplicate,
   providerIdShared,
+  providerIdReserved,
   refHostUnresolved,
   refServiceUnresolved,
   layerOverlayKeyInBase,
@@ -55,6 +58,7 @@ export const invalid: readonly InvalidFixture[] = [
   uiStatusMapUnknown,
   uiEmbedDisallowed,
   uiEmbedUrlInvalid,
+  uiEmbedNotFrameable,
   secretValueSuspected,
   snapshotHostDuplicate,
   snapshotServiceDuplicate,

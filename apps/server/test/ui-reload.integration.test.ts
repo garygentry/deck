@@ -170,6 +170,38 @@ describe("ui hot reload", () => {
     expect(page).toContain('"mode":"dark"');
   });
 
+  it("applies an edited ui.frameAncestors and the embeds' frame origins without a restart", async () => {
+    const cfg = configDir({ brand: { title: "Lab" } });
+    const dist = mkdtempSync(join(tmpdir(), "deck-reload-dist-"));
+    cleanup.push(() => rmSync(dist, { recursive: true, force: true }));
+    writeFileSync(join(dist, "index.html"), `<html><head><title>Deck</title></head><body><script type="application/json" id="${BOOT_ELEMENT_ID}"></script></body></html>`);
+    const request = await bootOn(cfg.dir, { webDistDir: dist });
+    const before = await manifest(request);
+    const policy = async (path: string) => (await request(path)).headers.get("Content-Security-Policy") ?? "";
+    expect(await policy("/api/health")).toBe("frame-ancestors 'self'");
+    expect(await policy("/")).toContain("frame-src 'none'");
+
+    const page = { id: "lab", path: "/lab", title: "Lab", sections: [{ title: "Graphs", widgets: [{ id: "ups", type: "core/embed", options: { url: "https://grafana.example.net/d/ups" } }] }] };
+    cfg.writeOverlay(overlay({ brand: { title: "Lab" }, frameAncestors: ["https://ha.example.net"], allowUnsafeEmbeds: true, pages: [page] }));
+    await vi.waitFor(async () => expect((await manifest(request)).etag).not.toBe(before.etag), { timeout: 10_000, interval: 50 });
+    expect(await policy("/api/health")).toBe("frame-ancestors 'self' https://ha.example.net");
+    expect((await request("/api/health")).headers.get("X-Frame-Options")).toBeNull();
+    expect(await policy("/")).toContain("frame-src https://grafana.example.net;");
+
+    // Only ui.frameSources changes: the next page's frame-src and boot frameOrigins follow it.
+    const embeds = { brand: { title: "Lab" }, frameAncestors: ["https://ha.example.net"], allowUnsafeEmbeds: true, pages: [page] };
+    const shell = async () => {
+      const response = await request("/");
+      return { policy: response.headers.get("Content-Security-Policy") ?? "", html: await response.text() };
+    };
+    cfg.writeOverlay(overlay({ ...embeds, frameSources: ["https://auth.example.net"] }));
+    await vi.waitFor(async () => expect((await shell()).policy).toContain("frame-src https://auth.example.net https://grafana.example.net;"), { timeout: 10_000, interval: 50 });
+    expect((await shell()).html).toContain('"frameOrigins":["https://auth.example.net","https://grafana.example.net"]');
+    cfg.writeOverlay(overlay(embeds));
+    await vi.waitFor(async () => expect((await shell()).policy).toContain("frame-src https://grafana.example.net;"), { timeout: 10_000, interval: 50 });
+    expect((await shell()).html).toContain('"frameOrigins":["https://grafana.example.net"]');
+  });
+
   it("keeps the old UI and shows a finding for an invalid edit, then recovers", async () => {
     const cfg = configDir({ brand: { title: "Lab" } });
     const request = await bootOn(cfg.dir);

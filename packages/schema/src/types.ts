@@ -27,6 +27,12 @@ export interface ValidateOptions {
    * also sets the severity of PROVIDER_KIND_DISABLED (a kind only an off module provides).
    */
   disabledSections?: DisabledSections;
+  /**
+   * The environment deck runs with, for the checks that depend on it: a fixed provider id a
+   * variable registers (`snapshot` while `DECK_SNAPSHOT_SOURCE` is set) is reserved
+   * (PROVIDER_ID_RESERVED). Absent: no variable is set.
+   */
+  env?: Readonly<Record<string, string | undefined>>;
 }
 
 /** Per-severity counts in a validation result. */

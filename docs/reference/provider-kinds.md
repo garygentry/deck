@@ -136,7 +136,7 @@ Backed by an integration; each instance is its own provider, registered under it
 
 | Key | Required | Notes |
 | --- | --- | --- |
-| `id` | yes | Integration id, and the provider id (`GET /api/providers/<id>`). Taking the fixed provider id of another integration in the estate (`prometheus` beside a `prometheus` integration, say) is `HTTP_JSON_ID_RESERVED`. |
+| `id` | yes | Integration id, and the provider id (`GET /api/providers/<id>`). Taking the fixed provider id of another integration in the estate (`prometheus` beside a `prometheus` integration, say) is `PROVIDER_ID_RESERVED`. |
 | `title` | yes | Display title. |
 | `url` | yes | The `http://` or `https://` URL polled, as the runtime's URL parser reads it. Any other scheme, a URL carrying `user:password@`, or one it cannot parse (a bad IPv6 host, a port over 65535) is `HTTP_JSON_URL_INVALID`. A query parameter whose name looks like a credential (see `headers`) is `HTTP_JSON_LITERAL_CREDENTIAL`: use `auth.scheme: query`. |
 | `method` | no | `GET` (default) or `POST`. |

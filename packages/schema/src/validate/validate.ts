@@ -76,7 +76,7 @@ export function validate(
       ...uiWidgets(doc, composed, strict, layer),
       ...secrets(doc, context),
       // Module array identities: a duplicate the kernel rules already report is not repeated.
-      ...composed.runChecks(document as JsonObject, layer, { disabledSections: strict ? "strict" : "advisory" }).filter(
+      ...composed.runChecks(document as JsonObject, layer, { disabledSections: strict ? "strict" : "advisory", ...(options?.env === undefined ? {} : { env: options.env }) }).filter(
         (item) => item.code !== "ID_DUPLICATE" || !kernelIdentity.some((other) => other.code === item.code && other.path === item.path),
       ),
     ]);

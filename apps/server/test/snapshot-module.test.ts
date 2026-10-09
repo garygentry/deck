@@ -44,7 +44,7 @@ describe("the snapshot module owns its kind and variable", () => {
     expect(BUILTIN_MODULES).toContain(snapshotModule);
     expect(SNAPSHOT_MANIFEST.env).toEqual(["DECK_SNAPSHOT_SOURCE"]);
     expect(KERNEL_ENV_NAMES.has("DECK_SNAPSHOT_SOURCE")).toBe(false);
-    expect(SNAPSHOT_MANIFEST.providerKinds).toEqual([{ kind: "snapshot", fixedId: "snapshot", statusCapable: false }]);
+    expect(SNAPSHOT_MANIFEST.providerKinds).toEqual([{ kind: "snapshot", fixedId: "snapshot", fixedIdEnv: "DECK_SNAPSHOT_SOURCE", statusCapable: false }]);
   });
 
   it("leaves no snapshot name in the kernel files it used to touch", () => {
@@ -92,7 +92,7 @@ describe("BootFatalError is a built-in-only privilege", () => {
     const { host } = testHost([fatalModule(), steady]);
     expect(() => registerAllProviders(config, host.kindHandlers())).not.toThrow();
     expect(listProviders()).toEqual([{ id: "steady", kind: "steady" }]);
-    expect(host.plan).toContainEqual({ id: "fatal", enabled: false, reason: 'Module "fatal" was disabled: kind "feed": instances handler threw: feed source is malformed.' });
+    expect(host.plan).toContainEqual({ id: "fatal", enabled: false, reason: 'Module "fatal" was disabled: kind "feed": instances handler threw.' });
   });
 });
 

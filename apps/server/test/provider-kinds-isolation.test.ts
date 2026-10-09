@@ -135,9 +135,13 @@ describe("kind handlers are isolated and attributed (L4)", () => {
       () => { initRan = true; },
       { kinds: { feed: { instances: () => { throw new Error("no instances today"); } } } },
     );
-    const { host } = testHost([flaky]);
+    const { host, lines } = testHost([flaky]);
     registerAllProviders(config, host.kindHandlers());
-    expect(host.findings[0]!.message).toBe('Module "flaky" was disabled: kind "feed": instances handler threw: no instances today.');
+    // What the module's code threw is not public: health and findings name the failure only.
+    expect(host.findings[0]!.message).toBe('Module "flaky" was disabled: kind "feed": instances handler threw.');
+    expect(JSON.stringify(host.health())).not.toContain("no instances today");
+    expect(JSON.stringify(host.plan)).not.toContain("no instances today");
+    expect(lines).toContainEqual(expect.objectContaining({ event: "module.disabled", module: "flaky", code: "MODULE_KIND_HANDLER_FAILED", detail: "no instances today" }));
     // The live plan drives later reads: the failed module's kinds are gone.
     expect(host.kindHandlers().has("feed")).toBe(false);
     await host.start();
@@ -173,7 +177,7 @@ describe("offers are checked for kind and id (N2)", () => {
     expect(host.findings).toEqual([expect.objectContaining({
       code: "MODULE_KIND_HANDLER_FAILED",
       path: "/modules/squat",
-      message: 'Module "squat" was disabled: kind "squat": binding handler offered provider id "prometheus", which another provider already has.',
+      message: 'Module "squat" was disabled: kind "squat": binding handler offered a provider id another provider already has.',
     })]);
     expect(listProviders()).toEqual([{ id: "link:host:alpha", kind: "link" }, { id: "prometheus", kind: "prometheus" }]);
   });
@@ -182,15 +186,25 @@ describe("offers are checked for kind and id (N2)", () => {
     const host = probe(({ id }) => [{ provider: feedProvider(id, "prometheus") }]);
     expect(host.findings).toEqual([expect.objectContaining({
       code: "MODULE_KIND_HANDLER_FAILED",
-      message: expect.stringContaining('kind "squat": binding handler offered a provider of kind "prometheus" at index 0; a handler may offer only its own kind'),
+      message: expect.stringContaining('kind "squat": binding handler offered a provider of another kind at index 0; a handler may offer only its own kind'),
     })]);
     expect(listProviders().map(({ id }) => id)).toEqual(["link:host:alpha", "prometheus"]);
+  });
+
+  it("names what another module offered in the log only, bounded: never in health, the plan or findings", () => {
+    const planted = `sentinel-${"k".repeat(200)}-secret`;
+    const squat = kindModule({ id: "squat", providerKinds: [{ kind: "squat", bindable: true }] }, { squat: { binding: ({ id }) => [{ provider: feedProvider(id, planted) }] } });
+    const { host, lines } = testHost([...BUILTIN_MODULES, squat]);
+    registerAllProviders(base, host.kindHandlers());
+    for (const surface of [host.health(), host.plan, host.findings]) expect(JSON.stringify(surface)).not.toContain("sentinel-");
+    const detail = String(lines.find((line) => line.event === "module.disabled" && line.module === "squat")?.detail);
+    expect(detail).toBe(`offered kind ${JSON.stringify(planted.slice(0, 64))}`);
   });
 
   it("a module-chosen id that takes an estate id, or another module's, fails that module", () => {
     // The link binding's estate id is `link:host:alpha`.
     const host = probe(() => [{ provider: feedProvider("link:host:alpha", "squat") }]);
-    expect(host.findings).toEqual([expect.objectContaining({ code: "MODULE_KIND_HANDLER_FAILED", message: expect.stringContaining('provider id "link:host:alpha"') })]);
+    expect(host.findings).toEqual([expect.objectContaining({ code: "MODULE_KIND_HANDLER_FAILED", message: expect.stringContaining("offered a provider id another provider already has") })]);
     expect(listProviders().map(({ id }) => id)).toEqual(["link:host:alpha", "prometheus"]);
     stopScheduler();
 

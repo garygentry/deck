@@ -170,6 +170,12 @@ export interface ProviderKindDecl {
    * instance taking it apart. Honoured for built-in modules only.
    */
   fixedId?: string;
+  /**
+   * With `fixedId`: the environment variable whose non-empty value registers the fixed id with
+   * no instance in the estate (as `snapshot`'s `DECK_SNAPSHOT_SOURCE`). Config validation then
+   * reserves the id while the variable is set. Honoured for built-in modules only.
+   */
+  fixedIdEnv?: string;
 }
 
 /**

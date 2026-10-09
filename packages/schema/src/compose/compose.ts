@@ -8,7 +8,8 @@ import {
   type FindingCodeEntry,
 } from "../findings.js";
 import { IDENTITY, OWNERSHIP, resolveOwner, type IdentitySpec, type Owner } from "../ownership.js";
-import type { JsonObject, JsonValue, ValidateLayer } from "../types.js";
+import { estateBindings } from "../provider-ids.js";
+import type { DeckConfigDocument, JsonObject, JsonValue, ValidateLayer } from "../types.js";
 import { createAjv, relaxRequired } from "../validate/ajv.js";
 import { mapAjvErrors } from "../validate/shape.js";
 
@@ -40,6 +41,8 @@ export interface ContributedProviderKind {
   validate?: ContributedInstanceRule;
   /** The fixed provider id the kind's instances register under (a built-in's only). */
   fixedId?: string;
+  /** With `fixedId`: the variable whose non-empty value registers it with no instance. */
+  fixedIdEnv?: string;
 }
 
 /** A pure check over one `integrations[]` / `sources[]` instance of a contributed kind. */
@@ -56,6 +59,16 @@ export interface ContributedWidgetType {
   type: string;
   /** Schema of a widget's `options`; absent, any options object is accepted. */
   optionsSchema?: JsonObject;
+}
+
+/** How {@link ComposedConfig.runChecks} checks one document. */
+export interface RunCheckOptions {
+  disabledSections?: DisabledSections;
+  /**
+   * The environment deck runs with: a kind's `fixedIdEnv` set in it registers the kind's fixed
+   * id with no instance. Absent, only fixed ids of kinds with an instance are reserved.
+   */
+  env?: Readonly<Record<string, string | undefined>>;
 }
 
 /** Hooks composition takes from outside the library. */
@@ -192,9 +205,11 @@ export interface ComposedConfig {
    *   undeclared code yields MODULE_RULE_FAILED instead of failing the document;
    * - on the merged document, MODULE_SECTION_DISABLED for each disabled module's section,
    *   plus each problem its schema, rules, identities or references would report: at info
-   *   ("would fail when enabled") with `disabledSections: "advisory"`, else as reported.
+   *   ("would fail when enabled") with `disabledSections: "advisory"`, else as reported;
+   * - on the merged document, PROVIDER_ID_RESERVED for an instance whose id is another kind's
+   *   fixed provider id while that id registers (see {@link reservedIdFindings}).
    */
-  runChecks(document: JsonObject, layer: ValidateLayer, options?: { disabledSections?: DisabledSections }): Finding[];
+  runChecks(document: JsonObject, layer: ValidateLayer, options?: RunCheckOptions): Finding[];
 }
 
 /**
@@ -261,6 +276,7 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
   const identity: Record<string, IdentitySpec> = { ...IDENTITY };
   const catalog: Record<string, FindingCodeEntry> = { ...FINDING_CATALOG, ...MODULE_HOST_FINDING_CATALOG };
   const kindOwners = new Map<string, string>();
+  const kindLists = new Map<string, "integrations" | "sources">();
   const bindableKinds = new Set<string>();
   const disabledKinds = new Map<string, string>();
   const widgetOwners = new Map<string, string>();
@@ -273,6 +289,7 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
   const rules: Array<{ id: string; codes: ReadonlySet<string>; rule: ContributedRule }> = [];
   const instanceRules: Array<{ id: string; kind: string; list: "integrations" | "sources"; codes: ReadonlySet<string>; rule: ContributedInstanceRule }> = [];
   const fixedIds = new Map<string, string>();
+  const fixedIdEnvs = new Map<string, string>();
   const sectionRoots: Array<{ id: string; def: string }> = [];
   const disabled = new Map<string, DisabledSection>();
   const checkedIdentity: Array<[string, IdentitySpec]> = [];
@@ -353,6 +370,7 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
         throw new ComposeError("MODULE_MANIFEST_CONFLICT", id, `provider kind "${declared.kind}" is already declared by "${owner}"`);
       }
       kindOwners.set(declared.kind, id);
+      kindLists.set(declared.kind, declared.instanceList ?? "integrations");
       if (declared.bindable === true) bindableKinds.add(declared.kind);
       const kindCodes = new Set<string>();
       for (const { code, severity, summary, fix } of declared.findings ?? []) {
@@ -366,6 +384,7 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
         kindCodes.add(code);
       }
       if (declared.fixedId !== undefined) fixedIds.set(declared.kind, declared.fixedId);
+      if (declared.fixedId !== undefined && declared.fixedIdEnv !== undefined) fixedIdEnvs.set(declared.kind, declared.fixedIdEnv);
       if (declared.validate !== undefined) {
         instanceRules.push({ id, kind: declared.kind, list: declared.instanceList ?? "integrations", codes: kindCodes, rule: declared.validate });
       }
@@ -506,7 +525,7 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
     knownModuleIds: Object.freeze([...moduleIds, ...disabled.keys()].sort()),
     disabledModuleIds: new Set(disabled.keys()),
     strictModuleIds: new Set([...disabled].filter(([, section]) => section.strict).map(([id]) => id)),
-    runChecks(document: JsonObject, layer: ValidateLayer, options: { disabledSections?: DisabledSections } = {}): Finding[] {
+    runChecks(document: JsonObject, layer: ValidateLayer, options: RunCheckOptions = {}): Finding[] {
       const advisory = (options.disabledSections ?? "advisory") === "advisory";
       const sections = isObject(document.modules) ? document.modules : {};
       const findings: Finding[] = [...duplicateIdentities(document, checkedIdentity), ...duplicateIds(document, namespaces)];
@@ -543,6 +562,7 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
         }
       }
       if (layer === "merged") findings.push(...instanceFindings(document, layer, instanceRules, catalogued, moduleFinding, fixedIds));
+      if (layer === "merged") findings.push(...reservedIdFindings(document, { lists: kindLists, bindable: bindableKinds, fixedIds, fixedIdEnvs }, options.env ?? {}, catalogued));
       if (layer === "merged") {
         for (const [id, section] of disabled) {
           if (!Object.prototype.hasOwnProperty.call(sections, id)) continue;
@@ -589,6 +609,59 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
       return findings;
     },
   });
+}
+
+/**
+ * PROVIDER_ID_RESERVED for each id that would register beside a fixed provider id: an
+ * `integrations[]` / `sources[]` instance of an enabled kind without a fixed id, in that kind's
+ * list (an instance of a fixed-id kind registers under that id, never its own), or a host or
+ * service binding of an enabled, bindable kind without one. A fixed id registers while its kind
+ * has an instance in its list, or while its `fixedIdEnv` is set in `env`. Boot would fail on the
+ * pair with PROVIDER_DUPLICATE_ID, so validation reports it first. Ids nothing registers (an
+ * unknown or disabled kind's, an unsupported binding's) are left to their own findings.
+ */
+export function reservedIdFindings(
+  document: JsonObject,
+  kinds: { readonly lists: ReadonlyMap<string, "integrations" | "sources">; readonly bindable: ReadonlySet<string>; readonly fixedIds: ReadonlyMap<string, string>; readonly fixedIdEnvs: ReadonlyMap<string, string> },
+  env: Readonly<Record<string, string | undefined>>,
+  catalogued: Readonly<Record<string, FindingCodeEntry>>,
+): Finding[] {
+  const { lists, bindable, fixedIds, fixedIdEnvs } = kinds;
+  // The instances an enabled kind's handler is given: those of its kind in its own list.
+  const handled: Array<{ path: string; id: string; kind: string }> = [];
+  for (const list of ["integrations", "sources"] as const) {
+    const instances = Array.isArray(document[list]) ? (document[list] as unknown[]) : [];
+    instances.forEach((instance, index) => {
+      if (!isObject(instance) || typeof instance.kind !== "string" || lists.get(instance.kind) !== list) return;
+      handled.push({ path: `/${list}/${index}/id`, id: typeof instance.id === "string" ? instance.id : "", kind: instance.kind });
+    });
+  }
+  const kindsPresent = new Set(handled.map((instance) => instance.kind));
+  const registered = new Map<string, string>();
+  for (const [kind, id] of fixedIds) {
+    const variable = fixedIdEnvs.get(kind);
+    const viaEnv = variable !== undefined && Object.prototype.hasOwnProperty.call(env, variable) && (env[variable] ?? "") !== "";
+    if (kindsPresent.has(kind) || viaEnv) registered.set(id, kind);
+  }
+  const reserved = (path: string, id: string, owner: string): Finding => ({
+    code: "PROVIDER_ID_RESERVED",
+    severity: catalogued.PROVIDER_ID_RESERVED!.severity,
+    path,
+    message: `id "${id}" is a fixed provider id: ${kindsPresent.has(owner) ? `the ${owner} integration in this estate registers` : `${fixedIdEnvs.get(owner)} is set, so deck registers`} a provider under it, and boot would fail with PROVIDER_DUPLICATE_ID.`,
+    hint: "Choose another id.",
+  });
+  const findings: Finding[] = [];
+  for (const { path, id, kind } of handled) {
+    const owner = registered.get(id);
+    if (owner !== undefined && !fixedIds.has(kind)) findings.push(reserved(path, id, owner));
+  }
+  // A binding that registers a provider does so under its own id (or `<kind>:<owner>`, which
+  // never equals a fixed id), so it is checked the same way.
+  for (const binding of estateBindings(document as Pick<DeckConfigDocument, "hosts" | "services">)) {
+    const owner = registered.get(binding.id);
+    if (owner !== undefined && bindable.has(binding.kind) && !fixedIds.has(binding.kind)) findings.push(reserved(`${binding.path}/id`, binding.id, owner));
+  }
+  return findings;
 }
 
 /**

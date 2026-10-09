@@ -32,7 +32,7 @@ integrations:
 
 | Key | Required | Notes |
 | --- | --- | --- |
-| `id` | yes | Lowercase letters, digits and `-`, at most 64 characters. The provider id (`GET /api/providers/<id>`) and the name of its page (`page:remote/<id>`). Taking the fixed provider id of another integration in the estate is `REMOTE_ID_RESERVED`. |
+| `id` | yes | Lowercase letters, digits and `-`, at most 64 characters. The provider id (`GET /api/providers/<id>`) and the name of its page (`page:remote/<id>`). Taking the fixed provider id of another integration in the estate is `PROVIDER_ID_RESERVED`. |
 | `title` | yes | The page title, and its heading until the sidecar gives one. |
 | `url` | yes | The sidecar's `http://` or `https://` base URL, with no query, fragment or `user:password@`. Deck requests `/deck/v1/describe` and `/deck/v1/data` under it. A URL the runtime cannot parse is `REMOTE_URL_INVALID`. |
 | `credentialEnv`, `auth` | no | As for [`http-json`](provider-kinds.md#http-json): the credential comes only from the named variable, and is sent on both requests. |
@@ -45,9 +45,10 @@ integrations:
 
 Both are `GET`, answer `200` with a JSON body, and receive the credential when one is configured.
 Every request goes through the same hardening as `http-json`: the response size cap (1 MiB for
-data by default, 256 KiB for describe), a 64-level nesting limit, no redirect off the
-configured origin for an authenticated request, and refusal of any response that contains the
-credential.
+data by default, 256 KiB for describe), a 64-level nesting limit, and refusal of any response
+that contains the credential. A sidecar may redirect within its own origin only, with or without
+a credential: deck refuses a redirect to any other origin (its own API, another service on its
+network), so a sidecar cannot have deck fetch and publish someone else's data.
 
 ### `GET /deck/v1/data`
 

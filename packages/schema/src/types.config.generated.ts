@@ -504,6 +504,18 @@ pages?: UiPage[]
  */
 allowUnsafeEmbeds?: boolean
 /**
+ * Origins besides deck's own that may show deck in a frame (Content-Security-Policy frame-ancestors), such as https://ha.example.net or https://*.example.net; no path. Default none: only deck's own origin may frame it.
+ * 
+ * @maxItems 32
+ */
+frameAncestors?: string[]
+/**
+ * While ui.allowUnsafeEmbeds is true, origins besides the core/embed URLs' own that framed pages may load or redirect to (Content-Security-Policy frame-src), such as a sign-in page: https://auth.example.net; no path. Deck's own origin is never allowed.
+ * 
+ * @maxItems 32
+ */
+frameSources?: string[]
+/**
  * Named maps from a widget's values to status tones, which widget options reference by name (statusMap).
  */
 statusMaps?: {

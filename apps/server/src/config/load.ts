@@ -179,7 +179,7 @@ export function load(options: LoadOptions = {}): LoaderResult {
     }
   }
 
-  results.push(validate(accumulator, { layer: "merged", composed, disabledSections }));
+  results.push(validate(accumulator, { layer: "merged", composed, disabledSections, env: options.env ?? process.env }));
   // A refused instance credential: what boot logs as a warning, reported against the merged config.
   const boot = options.boot === true;
   const refused = [

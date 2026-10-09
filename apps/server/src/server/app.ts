@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { apiErrorBody, type UiManifest } from "@deck/module-sdk";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
+import { every } from "hono/combine";
 import type { Logger } from "pino";
 
 import type {
@@ -16,10 +17,11 @@ import type {
 } from "../contract/index.js";
 import type { ModuleHost } from "../modules/host.js";
 import type { ProviderSelects } from "../providers/registry.js";
-import { requestLogger } from "../log/logger.js";
+import { requestLogger, type FrameSourceDroppedEvent } from "../log/logger.js";
 import { etagMatches, etagOf, type LiveUi } from "../ui/live.js";
 import type { RuntimeWebAssets } from "../modules/runtime.js";
 import { deckBootOf, renderIndexHtml } from "./index-html.js";
+import { frameAncestorsOf, frameOriginsFor, requestOrigins, scriptNonce, securityHeaders, shellPolicy } from "./security-headers.js";
 import { mountModuleAssets } from "./module-assets.js";
 import { RESERVED_ROOT_PATHS } from "./reserved-paths.js";
 
@@ -132,7 +134,9 @@ export function createApp(deps: AppDeps): Hono {
   const current = (): { config: DeckConfig; ui?: UiManifest; etag?: string } =>
     deps.live?.() ?? staticUi ?? { config: deps.config };
 
-  app.use("*", requestLogger(deps.logger));
+  // One kernel middleware (the route table stays as it was): the request log, and who may frame
+  // deck on every response (the shell's own policy also names it).
+  app.use("*", every(requestLogger(deps.logger), securityHeaders(() => frameAncestorsOf(current().config))));
 
   app.get("/api/config", (context) => context.json(current().config));
 
@@ -213,15 +217,34 @@ export function createApp(deps: AppDeps): Hono {
       context.req.path === "/" || context.req.path === "/index.html" ? next() : serveStatic(context, next),
     );
     const indexTemplate = cachedText(join(deps.webDistDir, "index.html"));
+    // A ui.frameSources entry that covers deck itself is dropped whole: said once per config.
+    const warned = new WeakMap<object, Set<string>>();
+    const warnDropped = (config: DeckConfig, entries: readonly string[]) => {
+      let seen = warned.get(config);
+      if (seen === undefined) warned.set(config, (seen = new Set()));
+      for (const source of entries) {
+        if (seen.has(source)) continue;
+        seen.add(source);
+        deps.logger.warn({ event: "ui.frame-source-dropped", source } satisfies FrameSourceDroppedEvent, "ui.frameSources entry covers deck's own origin, so it is ignored; list hosts instead");
+      }
+    };
     app.get("/*", async (context, next) => {
       // Reserved root paths (a disabled module's, say) must 404, not serve the SPA shell.
       if (context.req.path.startsWith("/api/") || reserved.has(context.req.path)) return next();
       const template = await indexTemplate();
       if (template === undefined) return next();
-      // Rendered per request from the current manifest and config: it carries their brand.
+      // Rendered per request from the current manifest and config: it carries their brand, and
+      // a fresh script nonce its policy names, so a cached copy is always revalidated.
       context.header("Cache-Control", "no-cache");
       const { ui, config } = current();
-      return context.html(renderIndexHtml(template, deckBootOf(ui, config)));
+      const nonce = scriptNonce();
+      // Never deck's own origin, as this request reached it (directly or through the proxy).
+      const { allowed: frameOrigins, dropped } = frameOriginsFor(ui, config, requestOrigins(context.req.url, (name) => context.req.header(name)));
+      warnDropped(config, dropped.frameSources);
+      context.header("Content-Security-Policy", shellPolicy({ nonce, frameOrigins }));
+      // `frameSelf`: embeds of deck's own origin, which the widget says deck does not frame.
+      const boot = { ...deckBootOf(ui, config), frameOrigins, ...(dropped.embeds.length === 0 ? {} : { frameSelf: dropped.embeds }) };
+      return context.html(renderIndexHtml(template, boot, nonce));
     });
   }
 

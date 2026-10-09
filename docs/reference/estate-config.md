@@ -296,6 +296,13 @@ distinct: `deck validate` reports an id used in two collections, or by two bindi
 clash; when both declarations do register, boot fails with `PROVIDER_DUPLICATE_ID`. A repeat
 within `sources` or within `integrations` is an `ID_DUPLICATE` error.
 
+Some kinds register one provider under a fixed, public id the web reads by name: `prometheus`,
+`alertmanager`, `docker` and `gatus` once the estate has an integration of that kind, and
+`snapshot` while `DECK_SNAPSHOT_SOURCE` is set. An integration or source of any other kind with
+that id is a `PROVIDER_ID_RESERVED` error, since boot would fail with `PROVIDER_DUPLICATE_ID`.
+`deck validate` reads `DECK_SNAPSHOT_SOURCE` from its own environment, so run it with the
+variables the deployment sets.
+
 ### Source
 
 A Source object has no additional properties.
@@ -374,9 +381,9 @@ additional properties.
 
 The credential only ever comes from the variable `credentialEnv` names, under the rule above;
 config holds no secret. Beyond the schema, `deck validate` reports `HTTP_JSON_URL_INVALID` (a URL
-the runtime parser rejects), `HTTP_JSON_LITERAL_CREDENTIAL` (a credential-like query parameter
-or body key) and `HTTP_JSON_ID_RESERVED` (the fixed provider id of another integration in the estate), all
-errors. The credential variable must hold at least 8 characters, with no surrounding whitespace. See the [provider kinds reference](provider-kinds.md#http-json) for how
+the runtime parser rejects), and `HTTP_JSON_LITERAL_CREDENTIAL` (a credential-like query parameter
+or body key), both errors; like every integration, its id may not be a fixed provider id that
+registers (`PROVIDER_ID_RESERVED`, see [Sources, integrations, actions](#sources-integrations-actions)). The credential variable must hold at least 8 characters, with no surrounding whitespace. See the [provider kinds reference](provider-kinds.md#http-json) for how
 it is sent, how redirects and failures are handled, and an example.
 
 #### remote integrations
@@ -398,8 +405,8 @@ An integration of kind `remote` is a sidecar speaking the
 | `deepLink` | string | no | Link to the sidecar's own UI. |
 
 Beyond the schema, `deck validate` reports `REMOTE_URL_INVALID` (a URL the runtime parser
-rejects) and `REMOTE_ID_RESERVED` (the fixed provider id of another integration in the estate),
-both errors.
+rejects), an error; a fixed provider id that registers is `PROVIDER_ID_RESERVED`, as for every
+integration.
 
 ### Action
 
@@ -456,6 +463,8 @@ ui:
 | `pages` | array | Config-defined pages (dashboards): sections of widgets. |
 | `statusMaps` | object | Named maps from widget values to status tones, which widgets name in their `statusMap` option. |
 | `allowUnsafeEmbeds` | boolean | Lets `core/embed` widgets show other sites' pages in sandboxed frames. Default `false`. |
+| `frameSources` | array of string | While `allowUnsafeEmbeds` is `true`, origins besides the `core/embed` URLs' own that a framed page may load or redirect to, such as a sign-in portal (`https://auth.example.net`); same form as `frameAncestors`. deck's own origin is never allowed: a wildcard that covers it is ignored as a whole (logged as `ui.frame-source-dropped`), so list hosts. |
+| `frameAncestors` | array of string | Origins besides deck's own that may show deck in a frame, such as a Home Assistant panel: `https://ha.example.net`, or `https://*.example.net` for its subdomains. Each is an `http(s)` origin with an optional port (no leading zeros) and no path; at most 32. Default none: only deck's own origin may frame it. See [Security](../security.md#browser-policy). |
 
 `brand`:
 
@@ -645,12 +654,15 @@ With it on:
   65535, for example. The schema checks only the loose shape (`http(s)://`, then an authority
   without `@`, whitespace or backslashes). `deck validate` then reports a URL the parser refuses
   as `UI_EMBED_URL_INVALID` (an error), and the browser runs the same check before it frames
-  anything.
+  anything. While embeds are on, a valid URL whose origin deck's Content-Security-Policy cannot
+  name (an IPv6 literal, a host with `_`) is `UI_EMBED_NOT_FRAMEABLE` (a warning): the widget says
+  it can't be embedded.
 - The frame sends no referrer, loads lazily and is titled by the widget's `title` (default "Page
   from" its host).
 - A URL on deck's own origin is refused in the browser ("Deck does not frame its own pages"),
-  since such a page could lift its own sandbox. Only the configured URL is checked, not where
-  the framed site redirects or navigates afterwards.
+  since such a page could lift its own sandbox. Where the framed site redirects or navigates
+  afterwards is held by the page's Content-Security-Policy: only the embeds' origins and
+  `ui.frameSources`, never deck's own (see [Security](../security.md#browser-policy)).
 - A site that refuses to be framed (`X-Frame-Options`, CSP `frame-ancestors`) leaves the frame
   blank; the link under it opens the page in a new tab.
 

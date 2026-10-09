@@ -104,16 +104,17 @@ async function main(): Promise<void> {
   );
   process.env.DECK_SOURCES_CACHE_DIR = join(rootDir, "sources-cache");
 
-  // A spec booting its own API may set a `ui` section (JSON in DECK_E2E_UI) and add
-  // integrations (a JSON array in DECK_E2E_INTEGRATIONS, merged by id), written as the last
-  // overlay layer: both are overlay-owned.
-  if (process.env.DECK_E2E_UI !== undefined || process.env.DECK_E2E_INTEGRATIONS !== undefined) {
+  // A spec booting its own API may set a `ui` section (JSON in DECK_E2E_UI), add integrations
+  // (a JSON array in DECK_E2E_INTEGRATIONS, merged by id) and module sections (a JSON object in
+  // DECK_E2E_MODULES), written as the last overlay layer: all are overlay-owned.
+  if (process.env.DECK_E2E_UI !== undefined || process.env.DECK_E2E_INTEGRATIONS !== undefined || process.env.DECK_E2E_MODULES !== undefined) {
     await writeFile(
       join(runtime.configDir, "zzzz-ui.yaml"),
       JSON.stringify({
         schemaVersion: 2,
         ...(process.env.DECK_E2E_UI === undefined ? {} : { ui: JSON.parse(process.env.DECK_E2E_UI) }),
         ...(process.env.DECK_E2E_INTEGRATIONS === undefined ? {} : { integrations: JSON.parse(process.env.DECK_E2E_INTEGRATIONS) }),
+        ...(process.env.DECK_E2E_MODULES === undefined ? {} : { modules: JSON.parse(process.env.DECK_E2E_MODULES) }),
       }),
     );
   }
@@ -152,7 +153,9 @@ async function main(): Promise<void> {
   process.on("SIGTERM", shutdown);
 
   try {
-    handle = await boot({ configDir: runtime.configDir, port: API_PORT });
+    // DECK_E2E_WEB_DIST: serve a production build of the shell too (the page, its policy).
+    const webDistDir = process.env.DECK_E2E_WEB_DIST;
+    handle = await boot({ configDir: runtime.configDir, port: API_PORT, ...(webDistDir === undefined ? {} : { webDistDir }) });
   } catch {
     await cleanup();
     fail("Inventory E2E API failed to start.");

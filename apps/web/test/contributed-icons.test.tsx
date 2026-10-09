@@ -58,6 +58,14 @@ describe("sanitizeIconSvg", () => {
     ["an xlink:href <use> pointing outside", svg(`<use xlink:href="https://evil.example/s.svg#a"/>`, XLINK)],
     ["a url() fill pointing outside", svg(`<path fill="url(https://evil.example/x#g)" d="M0 0"/>`)],
     ["a url() in an attribute that takes none", svg(`<path d="url(#g)"/>`)],
+    ["image-set() in a <rect> mask", svg(`<rect width="4" height="4" mask="image-set('https://evil.example/x.png' 1x)"/>`)],
+    ["image-set() in a <g> fill", svg(`<g fill="image-set('https://evil.example/x.png' 1x)">${PATH}</g>`)],
+    ["cross-fade() in a mask", svg(`<rect mask="cross-fade(url(#a), url(#b), 50%)"/>`)],
+    ["-webkit-image-set() in a clip-path", svg(`<rect clip-path="-webkit-image-set('https://evil.example/x.png' 1x)"/>`)],
+    ["image() in a stroke", svg(`<path stroke="image('https://evil.example/x.png')" d="M0 0"/>`)],
+    ["a function in a stop-color", svg(`<linearGradient id="g"><stop stop-color="var(--x)"/></linearGradient>`)],
+    ["a function in a geometry attribute", svg(`<rect width="calc(1px + 2px)"/>`)],
+    ["an unknown function in a transform", svg(`<g transform="perspective(10px)">${PATH}</g>`)],
     ["a doctype (entities)", `<!DOCTYPE svg [<!ENTITY x "y">]>${svg()}`],
     ["markup that is not SVG", "<div>not an icon</div>"],
     ["an <svg> outside the SVG namespace", '<svg viewBox="0 0 1 1"><path d="M0 0"/></svg>'],
@@ -65,6 +73,26 @@ describe("sanitizeIconSvg", () => {
     ["markup over the size bound", svg(`<desc>${"x".repeat(MAX_ICON_BYTES)}</desc>`)],
   ])("refuses %s", (_label, markup) => {
     expect(sanitizeIconSvg(markup)).toBeNull();
+  });
+
+  it("keeps each attribute's allowed values: none, colours, local references and basic transforms", () => {
+    const icon = sanitizeIconSvg(
+      svg(
+        `<defs><linearGradient id="g"><stop stop-color="hsl(120deg 50% 50%)"/><stop stop-color="currentColor"/></linearGradient><mask id="m"/></defs>` +
+          `<rect fill="#abc" stroke="none" mask="none" width="4"/><path fill="rgb(1 2 3 / 50%)" stroke="currentColor" mask="url(#m)" transform="rotate(45 12 12) translate(1,2)" d="M0 0"/>`,
+      ),
+    )!;
+    expect(icon).not.toBeNull();
+    expect(icon.querySelector("path")!.getAttribute("fill")).toBe("rgb(1 2 3 / 50%)");
+    expect(icon.querySelector("path")!.getAttribute("transform")).toBe("rotate(45 12 12) translate(1,2)");
+    expect(icon.querySelector("rect")!.getAttribute("mask")).toBe("none");
+  });
+
+  it("stores local references canonically, whitespace trimmed", () => {
+    const icon = sanitizeIconSvg(svg(`<defs><linearGradient id="g"/></defs><path fill=" url( #g ) " clip-path="url(#g )" mask=" url(#g)" d="M0 0"/><use href=" #g "/>`))!;
+    const path = icon.querySelector("path")!;
+    expect([path.getAttribute("fill"), path.getAttribute("clip-path"), path.getAttribute("mask")]).toEqual(["url(#g)", "url(#g)", "url(#g)"]);
+    expect(icon.querySelector("use")!.getAttribute("href")).toBe("#g");
   });
 
   it("does not use DOMPurify (it stays off the shell's eager load path)", () => {
@@ -104,6 +132,15 @@ describe("Icon with contributed icons", () => {
       expect(icon.querySelector("path")!.getAttribute("clip-path")).toBe(`url(#${clip})`);
       expect(icon.querySelector("use")!.getAttribute("href")).toBe(`#${clip}`);
     }
+  });
+
+  it("rewrites references written with whitespace to the scoped ids too", () => {
+    act(() => setContributedIcons({ "mod/ws": svg(`<defs><linearGradient id="g"/></defs><path fill=" url( #g ) " clip-path=" url(#g)" mask="url(#g )" d="M0 0"/>`) }));
+    const { container } = render(<Icon name="mod/ws" />);
+    const id = container.querySelector("linearGradient")!.id;
+    expect(id).not.toBe("g");
+    const path = container.querySelector("path")!;
+    for (const name of ["fill", "clip-path", "mask"]) expect(path.getAttribute(name), name).toBe(`url(#${id})`);
   });
 
   it("renders the fallback icon for a refused or unknown contributed icon", () => {

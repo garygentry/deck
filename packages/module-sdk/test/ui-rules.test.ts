@@ -139,13 +139,21 @@ describe("contributedIconsProblem", () => {
     expect(contributedIconsProblem("mod", { "mod/x": "<svg xmlns='http://www.w3.org/2000/svg'/>" })).toBeNull();
   });
 
-  it.each([
+  it.each<readonly [string, string]>([
     ["a <style> element", `${OPEN}<style>body{display:none}</style></svg>`],
     ["a style attribute", `${OPEN}<path style="fill:red"/></svg>`],
     ["@import", `${OPEN}<desc>@import url(x)</desc></svg>`],
     ["a backslash (a CSS escape)", `${OPEN}<path fill="u\\72 l(https://x)"/></svg>`],
     ["an href to anything but a local #id", `${OPEN}<image href="https://evil.example/x.png"/></svg>`],
     ["an href to anything but a local #id", `${OPEN}<a xlink:href='javascript:alert(1)'/></svg>`],
+    ...[
+      `<rect width="4" height="4" mask="image-set('https://evil.example/x.png' 1x)"/>`,
+      `<g fill="IMAGE-SET('https://evil.example/x.png' 1x)"/>`,
+      `<rect mask="cross-fade(url(#a), url(#b), 50%)"/>`,
+      `<rect mask="-webkit-image-set('https://evil.example/x.png' 1x)"/>`,
+      `<rect fill="image('https://evil.example/x.png')"/>`,
+      `<rect fill="src('https://evil.example/x.png')"/>`,
+    ].map((inner) => ["a CSS image function (image-set, image(), cross-fade, -webkit-, src())", `${OPEN}${inner}</svg>`] as const),
   ])("refuses %s", (what, markup) => {
     expect(contributedIconsProblem("mod", { "mod/x": markup })).toBe(`icon "mod/x" must not contain ${what}`);
   });

@@ -66,6 +66,8 @@ const ICON_MARKERS: readonly (readonly [RegExp, string])[] = [
   [/@import/i, "@import"],
   [/\\/, "a backslash (a CSS escape)"],
   [/href\s*=\s*(["'])(?!#)/i, "an href to anything but a local #id"],
+  // CSS image functions, which fetch from attributes such as mask or fill.
+  [/image-set|image\s*\(|cross-fade|-webkit-|src\s*\(/i, "a CSS image function (image-set, image(), cross-fade, -webkit-, src())"],
 ];
 
 /** Bounds on a module's contributed icons (`contributes.icons`). */
@@ -77,7 +79,7 @@ export const MAX_ICON_BYTES = 16 * 1024;
  * named `<module>/<kebab-name>` and an SVG document of at most {@link MAX_ICON_BYTES} UTF-8
  * bytes whose root `<svg>` declares the SVG namespace. As defence in depth beside the web's
  * allowlist sanitiser, markup with styles (`<style`, `style=`, `@import`), a backslash (a CSS
- * escape) or an `href` to anything but a local `#id` is refused here too.
+ * escape), an `href` to anything but a local `#id`, or a CSS image function is refused here too.
  */
 export function contributedIconsProblem(moduleId: string, icons: unknown): Problem {
   if (icons === undefined) return null;

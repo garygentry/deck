@@ -25,11 +25,40 @@ const ATTRIBUTES: ReadonlySet<string> = new Set([
   "clipPathUnits", "maskUnits", "maskContentUnits",
 ]);
 
-/** Presentation attributes whose value may be a URL: only a local `url(#id)`. */
-const URL_ATTRIBUTES: ReadonlySet<string> = new Set(["fill", "stroke", "clip-path", "mask", "filter", "marker-start", "marker-mid", "marker-end"]);
+const LOCAL_ID = /^#([A-Za-z_][\w.-]*)$/;
+const LOCAL_URL = /^url\(\s*#([A-Za-z_][\w.-]*)\s*\)$/;
+/** A colour: a keyword (`currentColor`, `red`, `transparent`), hex, or `rgb()`/`hsl()` of plain numbers. */
+const COLOR = /^(?:[a-zA-Z]+|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgba?|hsla?)\([\d.%\s,/+-]*(?:deg)?[\d.%\s,/+-]*\))$/;
+/** A transform list of the basic functions over plain numbers. */
+const TRANSFORM = /^(?:\s*(?:matrix|translate|scale|rotate|skewX|skewY)\s*\([\d\s,.eE+-]*\)\s*,?)*\s*$/;
 
-const LOCAL_ID = /^#[A-Za-z_][\w.-]*$/;
-const LOCAL_URL = /^url\(#[A-Za-z_][\w.-]*\)$/;
+/** Attributes that may only name a local paint server, clip path or mask: `url(#id)` or `none`. */
+const REFERENCE_ONLY: ReadonlySet<string> = new Set(["clip-path", "mask", "filter", "marker-start", "marker-mid", "marker-end"]);
+/** Paint: `url(#id)`, `none` or a colour. */
+const PAINT: ReadonlySet<string> = new Set(["fill", "stroke"]);
+/** Colours only. */
+const COLOUR_ONLY: ReadonlySet<string> = new Set(["stop-color", "color"]);
+const TRANSFORMS: ReadonlySet<string> = new Set(["transform", "gradientTransform"]);
+
+/**
+ * An attribute's value as it is kept (trimmed; a local reference as the canonical `#id` or
+ * `url(#id)`), or null when its grammar refuses it. Every attribute has one: references and
+ * paint take only local references, `none` and colours; transforms the basic functions; every
+ * other attribute no function at all, so nothing such as `image-set()` or `url()` can fetch.
+ */
+function canonicalValue(name: string, raw: string): string | null {
+  const value = raw.trim();
+  const local = LOCAL_URL.exec(value);
+  if (name === "href") {
+    const id = LOCAL_ID.exec(value);
+    return id === null ? null : `#${id[1]}`;
+  }
+  if (REFERENCE_ONLY.has(name)) return value === "none" ? value : local === null ? null : `url(#${local[1]})`;
+  if (PAINT.has(name)) return local !== null ? `url(#${local[1]})` : COLOR.test(value) ? value : null;
+  if (COLOUR_ONLY.has(name)) return COLOR.test(value) ? value : null;
+  if (TRANSFORMS.has(name)) return TRANSFORM.test(value) ? value : null;
+  return value.includes("(") ? null : value;
+}
 
 /** Thrown inside the rebuild when the markup holds something an icon may never have. */
 class Refused extends Error {}
@@ -43,7 +72,8 @@ class Refused extends Error {}
  * - a `style` or event-handler attribute;
  * - an `href` or `xlink:href`, on any element, to anything but a local `#id`;
  * - a `url(` anywhere but a URL-valued presentation attribute holding exactly `url(#id)`;
- * - a backslash in any attribute (a CSS escape).
+ * - a backslash in any attribute (a CSS escape);
+ * - a kept attribute whose value its grammar refuses (see `canonicalValue`).
  * Other attributes outside the allowlist, comments and text outside `<title>`/`<desc>` are dropped.
  */
 export function sanitizeIconSvg(markup: string): SVGSVGElement | null {
@@ -66,13 +96,12 @@ function rebuild(source: Element): Element {
     const { localName: name, value } = attribute;
     if (attribute.prefix === "xmlns" || name === "xmlns") continue;
     if (name === "style" || /^on/i.test(name) || value.includes("\\")) throw new Refused();
-    if (name === "href") {
-      if (!LOCAL_ID.test(value.trim())) throw new Refused();
-      element.setAttribute("href", value.trim());
-      continue;
-    }
-    if (/url\s*\(/i.test(value) && !(URL_ATTRIBUTES.has(name) && LOCAL_URL.test(value.trim()))) throw new Refused();
-    if (attribute.namespaceURI === null && ATTRIBUTES.has(name)) element.setAttribute(name, value);
+    if (/url\s*\(/i.test(value) && !LOCAL_URL.test(value.trim())) throw new Refused();
+    const kept = name === "href" || (attribute.namespaceURI === null && ATTRIBUTES.has(name));
+    if (!kept) continue;
+    const canonical = canonicalValue(name, value);
+    if (canonical === null) throw new Refused();
+    element.setAttribute(name, canonical);
   }
   for (const child of Array.from(source.childNodes)) {
     if (child.nodeType === Node.ELEMENT_NODE) element.append(rebuild(child as Element));
@@ -91,8 +120,9 @@ export function scopeIconIds(svg: SVGSVGElement, prefix: string): SVGSVGElement 
   for (const element of [copy, ...Array.from(copy.querySelectorAll("*"))]) {
     for (const attribute of Array.from(element.attributes)) {
       if (attribute.name === "id") attribute.value = `${prefix}${attribute.value}`;
+      // References are stored canonical (`#id`, `url(#id)`) when sanitised.
       else if (attribute.name === "href") attribute.value = `#${prefix}${attribute.value.slice(1)}`;
-      else if (LOCAL_URL.test(attribute.value)) attribute.value = `url(#${prefix}${attribute.value.slice(5)}`;
+      else if (LOCAL_URL.test(attribute.value)) attribute.value = `url(#${prefix}${LOCAL_URL.exec(attribute.value)![1]})`;
     }
   }
   return copy;

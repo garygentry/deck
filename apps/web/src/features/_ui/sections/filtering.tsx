@@ -1,6 +1,8 @@
 import { useState, type ComponentProps } from "react";
 import {
   ActiveFilters,
+  Button,
+  CommandPalette,
   FacetFilter,
   FilterBar,
   ResultCount,
@@ -9,6 +11,7 @@ import {
   describeActiveFilters,
   facetCounts,
   useFacetFilters,
+  type CommandPaletteGroup,
   type FacetOption,
 } from "@/ui";
 import { Specimen, type WorkbenchSectionDef } from "../kit.js";
@@ -156,6 +159,40 @@ function SegmentedDemo({ disabled = false }: { disabled?: boolean }) {
   );
 }
 
+function PaletteDemo() {
+  const [open, setOpen] = useState(false);
+  const [last, setLast] = useState<string | null>(null);
+  const go = (label: string) => () => setLast(label);
+  const groups: CommandPaletteGroup[] = [
+    {
+      heading: "Pages",
+      items: [
+        { id: "page:portal", label: "Portal", icon: "layout-grid", onSelect: go("Portal") },
+        { id: "page:hosts", label: "Hosts", icon: "server", onSelect: go("Hosts") },
+      ],
+    },
+    {
+      heading: "Hosts",
+      items: HOSTS.map((host) => ({
+        id: `host:${host.name}`,
+        label: host.name,
+        hint: host.state,
+        keywords: [...host.tags],
+        onSelect: go(host.name),
+      })),
+    },
+  ];
+  return (
+    <div className="flex items-center gap-3">
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        Open command palette
+      </Button>
+      <span className="text-sm text-muted-foreground">{last === null ? "Nothing chosen yet" : `Chose ${last}`}</span>
+      <CommandPalette open={open} onOpenChange={setOpen} groups={groups} title="Go to" />
+    </div>
+  );
+}
+
 function Filtering() {
   return (
     <>
@@ -223,6 +260,9 @@ function Filtering() {
       <Specimen label="SegmentedControl: default / with disabled option">
         <SegmentedDemo />
         <SegmentedDemo disabled />
+      </Specimen>
+      <Specimen label="CommandPalette: data-driven groups, label / hint / keyword matching, focus returns to the opener">
+        <PaletteDemo />
       </Specimen>
     </>
   );

@@ -72,7 +72,8 @@ can't escalate:
 - **Runtime modules are off unless you switch them on, and run with full trust.** deck imports
   a runtime module's code from `DECK_MODULES_DIR` only while `DECK_MODULES_ENABLED` is on. That
   code runs in the deck process with all of deck's privileges: no sandbox separates it from
-  deck's environment, files or network. An optional `moduleIntegrity` pin stops a module
+  deck's environment, files or network. Its web half runs in the browser as deck itself, with
+  the viewer's session and every `/api` route. An optional `moduleIntegrity` pin stops a module
   directory that has changed since you pinned it from loading. See
   [Run a runtime module](guides/runtime-modules.md).
 - **The one write route has its own gate.** `POST /api/llm-usage/ingest` exists only when its

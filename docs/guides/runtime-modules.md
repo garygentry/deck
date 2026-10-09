@@ -2,26 +2,31 @@
 
 A runtime module adds a capability to deck without rebuilding it: you drop the module's directory
 into `DECK_MODULES_DIR`, switch runtime modules on, and restart deck. The module uses the same
-contract as deck's built-in modules. It can add pages, nav entries, header pills, provider data,
-HTTP routes under `/api/m/<id>`, health and a config section of its own.
+contract as deck's built-in modules. It can add pages, nav entries, header pills, icons,
+provider data, HTTP routes under `/api/m/<id>`, health and a config section of its own. Its
+server half runs in deck's process; its web half, the components its pages and pills render,
+runs in the browser inside deck's own page.
 
-Runtime modules are off by default. A runtime module's server code runs **inside the deck
-process, with every privilege deck has**: it can read deck's environment and files and make any
-network call deck can. Install only modules you would run as deck itself. For deck's wider
-posture, see [Security & access posture](../security.md).
+Runtime modules are off by default, and a module you switch on runs with deck's full trust:
+
+- Its server code runs **inside the deck process, with every privilege deck has**: it can read
+  deck's environment and files and make any network call deck can.
+- Its web half runs **in the browser as deck itself**: it is served from deck's origin, so it
+  can call every `/api` route and act with the session of whoever has deck open.
+
+Install only modules you would run as deck itself, and pin each one's contents (see
+[Pin the module's contents](#pin-the-modules-contents)) so deck refuses a module that has
+changed since you reviewed it. For deck's wider posture, see
+[Security & access posture](../security.md).
 
 This guide installs the example module in [`examples/modules/maintenance`](../../examples/modules/maintenance),
 which lists planned maintenance windows. It adds:
 
-- a page at `/maintenance`, with a nav entry in the Operate group;
-- a header pill;
+- a page at `/maintenance`, with a nav entry in the Operate group and an icon of its own;
+- a header pill that turns amber while a window is in progress;
 - a provider, `maintenance`, that says which window is in progress and which is next;
 - a route, `GET /api/m/maintenance/windows`;
 - a config section, `modules.maintenance`, with a schema and a config rule.
-
-This release loads a runtime module's server half only. The web shell skips pages, nav
-entries and pills whose components no loaded web code provides, and the page path shows "not
-found". Their declarations are still served in `GET /api/ui`.
 
 ## Lay out the modules directory
 
@@ -33,6 +38,8 @@ modules/
   maintenance/
     deck-module.json   # the manifest: required
     server.mjs         # the server entry: optional
+    web.js             # the web half: optional
+    web.css            # the web half's styles: optional
 ```
 
 - `deck-module.json` is the module's manifest, the same shape built-in modules declare: `id`,
@@ -46,7 +53,70 @@ modules/
 - The entry imports nothing from deck at runtime: everything it uses comes through the `ctx`
   passed to `init`, so `@deck/module-sdk` is imported for types only. Bundle any other
   dependency into the module directory.
+- The web half is `web.js`, with an optional `web.css`; see [Add a web half](#add-a-web-half).
 - Directories whose names start with `.` and plain files are ignored.
+
+## Add a web half
+
+The components a module's pages, pills and other extensions name live in `web.js`. It is one
+native ES module file, loaded by the browser as it is: bundle anything else it needs into it.
+Its default export is the web module, `defineWebModule(manifest, { components })`, the same
+shape built-in modules use. Its manifest must be the module's `deck-module.json`: the example
+imports it as a JSON module (`import manifest from "./deck-module.json" with { type: "json" }`),
+and a built module can inline it.
+
+```js
+import { jsx } from "react/jsx-runtime";
+import { defineWebModule, PageHeader, useProvider } from "@deck/sdk";
+import manifest from "./deck-module.json" with { type: "json" };
+
+function MaintenancePage() {
+  const { envelope } = useProvider("maintenance");
+  return jsx(PageHeader, { title: "Maintenance", description: `${envelope?.data?.count ?? 0} windows` });
+}
+
+export default defineWebModule(manifest, { components: { MaintenancePage } });
+```
+
+`web.js` imports only these bare specifiers, which deck's page maps to its own copies with an
+import map, so a module renders with deck's React and reads deck's data:
+
+| Specifier | What it is |
+| --- | --- |
+| `react`, `react-dom`, `react/jsx-runtime` | The React deck runs. A module must never bundle its own. |
+| `@deck/sdk` | deck's module API: `defineWebModule`; the data hooks `useProvider`, `useProviders`, `useConfig` and `useUiManifest`; `Icon`, the tones (`TONES`, `defineStatusMap`, `statusTone`); and deck's display patterns (`PageHeader`, `Section`, `KeyValueList`, `DataTable`, `StatusBadge`, `HealthPill`, `EmptyState`, `ErrorState`, `LoadingState` and the like). |
+
+`@deck/sdk` does not export deck's low-level UI primitives (its buttons, dialogs, menus and
+so on): build from the patterns, which carry deck's look and accessibility. For a module's own
+layout, `web.css` is linked before `web.js` runs. Use deck's theme tokens for colours
+(`var(--muted-foreground)`, for instance), so the module follows the operator's theme preset
+and light or dark mode.
+
+A module can contribute its own icons as SVG markup in `contributes.icons`, named
+`<id>/<name>`; its pages, nav entries and components then use that name wherever an icon goes.
+A module has at most 64 icons of at most 16 KiB each. deck sanitises each one in the browser
+and renders the fallback icon in place of one with a `<foreignObject>`, a `<use>` of anything
+but a local `#id`, or a `url(` in its styles.
+
+The browser needs JSON module imports for the example's manifest import: Chrome or Edge 123,
+Firefox 138 or Safari 17.2 and later. A module that inlines its manifest needs only import
+maps, which every current browser supports.
+
+deck serves a module's `web.js`, `web.css` and `deck-module.json` at `/modules/<id>/`, and
+nothing else of its directory: not its server entry. It serves them only for a module whose
+code it loaded, reading them when it loads the module, right after checking the module's pin;
+anything else under `/modules` is a 404. Restart deck to serve a changed web half.
+
+The page loads each module's web half once the UI manifest arrives, once per page load. Each
+of its components renders inside its own error boundary, so a component that throws shows a
+"failed" tile (or, for a page, an error) while the rest of deck keeps working. A web half that
+deck cannot use shows a tile and a page that say so, and the browser console says why:
+
+- "incompatible": its manifest's `deckApi` does not accept this deck's module API, or its id or
+  version differ from the `deck-module.json` the server loaded. Update the module and restart
+  deck.
+- "failed to load": `web.js` did not load, did not export a web module, or deck refused what it
+  declares. Reload the page to try again.
 
 ## Switch runtime modules on
 
@@ -170,4 +240,9 @@ failed to load. Then:
 curl -s localhost:8080/api/ui | jq '.modules[] | select(.id == "maintenance")'
 curl -s localhost:8080/api/providers/maintenance | jq .data
 curl -s localhost:8080/api/health | jq .modules.maintenance
+curl -s localhost:8080/api/ui | jq '.modules[] | select(.id == "maintenance") | .web'
+curl -sI localhost:8080/modules/maintenance/web.js
 ```
+
+Then open `/maintenance` in deck: the page, its nav entry and the header pill render from the
+module's web half.

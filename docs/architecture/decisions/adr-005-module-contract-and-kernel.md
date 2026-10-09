@@ -120,18 +120,19 @@ manifest as JSON (`deck-module.json`).
   - any module whose kind handler fails while providers register (`MODULE_KIND_HANDLER_FAILED`);
   - any module whose dependency is missing or switched off (`MODULE_DEPENDENCY_MISSING`).
 
-  Boot stops instead (exit 2) when:
-  - a built-in module's manifest, contributions, `deckApi` or config contribution are unusable
-    (a schema that does not compile, or a config rule that fails): `MODULE_MANIFEST_INVALID`;
-  - two modules cannot coexist (`MODULE_MANIFEST_CONFLICT`: a shared id, finding code or
-    provider kind, for example). A colliding runtime module is refused at load instead;
-  - a runtime module's server entry does not finish importing within 10 seconds;
-  - a config section that is present is invalid, for a module that runs or a runtime module
-    that failed to load;
-  - an `init` throws, because its side effects cannot be undone.
-
-  [Kernel and modules](../../explanation/kernel-and-modules.md#how-modules-start) keeps the
-  full list.
+  Boot stops instead in the cases
+  [Kernel and modules](../../explanation/kernel-and-modules.md#how-modules-start) lists in
+  full, including:
+  - with exit code 1, as `deck validate` would: a config section that is present and invalid,
+    for a module that runs or a runtime module that failed to load (a switched-off module's
+    invalid section is only advisory at boot);
+  - with exit code 2:
+    - a built-in module's unusable manifest, contributions, `deckApi` or config contribution
+      (`MODULE_MANIFEST_INVALID`);
+    - two modules that cannot coexist (`MODULE_MANIFEST_CONFLICT`);
+    - a runtime module's server entry that does not finish importing within 10 seconds;
+    - a built-in kind handler's `BootFatalError`, such as a malformed `DECK_SNAPSHOT_SOURCE`;
+    - an `init` that throws, because its side effects cannot be undone.
 - **Config is checked against what is installed.** A section for an unknown module is
   rejected. A section for a module that is installed but switched off is the advisory
   `MODULE_SECTION_DISABLED`, not silently ignored.

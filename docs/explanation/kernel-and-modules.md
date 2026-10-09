@@ -105,7 +105,15 @@ A module whose problem is its own is switched off with a finding, and the rest o
   sits in a dependency cycle (`MODULE_DEPENDENCY_CYCLE`).
 
 `GET /api/ui` lists such a module with the reason and with the setting that would switch it on.
-Boot stops instead, with exit code 2, when the problem is deck's or the deployment's:
+Boot stops instead when the problem is deck's or the deployment's. This is the full list.
+
+With exit code 1, the same class `deck validate` reports:
+
+- a config section that is present and invalid, for a module that runs or a runtime module that
+  failed to load: you asked for the module and it cannot work. The invalid section of a module
+  that is switched off is only advisory at boot (`MODULE_SECTION_DISABLED`).
+
+With exit code 2:
 
 - a built-in module whose manifest, contributions, module API range or config contribution is
   unusable (`MODULE_MANIFEST_INVALID`); built-ins ship with deck, so this is a deck defect;
@@ -115,10 +123,8 @@ Boot stops instead, with exit code 2, when the problem is deck's or the deployme
   it never gets this far;
 - a runtime module's server entry that does not finish importing within 10 seconds, since its
   code may still be running;
-- a config section that is present and invalid, for a module that runs or a runtime module that
-  failed to load: you asked for the module and it cannot work;
-- a built-in kind handler that reports a deployment setting deck cannot start with (a malformed
-  `DECK_SNAPSHOT_SOURCE`, say);
+- a built-in kind handler's `BootFatalError`: a deployment setting deck cannot start with (a
+  malformed `DECK_SNAPSHOT_SOURCE`, say);
 - an `init` that throws, because the module may have done half its work.
 
 ## How the UI is assembled

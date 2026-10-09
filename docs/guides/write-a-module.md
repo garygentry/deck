@@ -125,8 +125,11 @@ Everything the module may use arrives in `ctx`:
 
 The [`@deck/module-sdk` README](../../packages/module-sdk/README.md#server-module-context)
 describes each one. Register providers, tasks and routes in `init`, not later. A module that
-needs a credential lists the variable in `env` (or names it from config with `envFromConfig`):
-no other module can read it.
+needs a credential lists the variable in `env`, which that module then owns: no other module may
+declare it, and `ctx.env` hands it to no other module. A name read from config through
+`envFromConfig` is not exclusive: another module may be allowed the same name. Either way,
+`ctx.env` only filters what deck hands a module. It is not isolation, because in-process code can
+read `process.env` directly.
 
 Then add the module to the static list in `apps/server/src/modules/builtin.ts`: one import and
 one array entry. That list is a kernel file, and, with a new icon if you need one, it is the

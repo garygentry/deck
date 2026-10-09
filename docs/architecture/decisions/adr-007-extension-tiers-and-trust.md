@@ -88,9 +88,10 @@ deck does not have, at a large cost in complexity. The safeguards instead are:
 - a runtime module's own load failure (an unreadable or invalid manifest, a pin mismatch, an
   entry that throws) disables only that module, reported as a fixed category and never the
   module's own error text, and so does a runtime module that claims what another module
-  already has (`collision`). Deck still stops booting for an entry that does not finish
-  importing within 10 seconds, and for an `init` that throws
-  ([Kernel and modules](../../explanation/kernel-and-modules.md#how-modules-start));
+  already has (`collision`). Deck still stops booting in the cases
+  [Kernel and modules](../../explanation/kernel-and-modules.md#how-modules-start) lists in
+  full, including an entry that does not finish importing within 10 seconds, an `init` that
+  throws, and the invalid config section of a module that failed to load;
 - an error boundary around every runtime component (a "failed" tile, not a white page);
 - deck's Content-Security-Policy on `web.js` (scripts from deck's origin only, no `eval`,
   requests to deck only);
@@ -126,7 +127,8 @@ hands it ([ADR-005](./adr-005-module-contract-and-kernel.md)); the module can st
   starts. Operators are told to mount it read-only and pin every module.
 - **Compatibility is explicit.** A module built for another `deckApi` is refused, not half-run.
   A web half shows as "incompatible" when it imports a name `@deck/sdk` or React does not
-  export, or when its id, version or `deckApi` differ from the server's. It shows as "failed"
+  export, when its id or version differ from the server's, or when its `deckApi` range is not
+  satisfied by the running deck's module API. It shows as "failed"
   when it declares other contributions than the server's manifest or lacks a component it
   names. Either way it never fails silently.
 - **One shared React is a hard rule.** A runtime module that bundles its own React breaks every

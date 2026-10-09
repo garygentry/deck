@@ -49,15 +49,17 @@ Every feature and data source is a module on one contract, `@deck/module-sdk`
   manifest, works out which are switched on, and orders them by `dependsOn`. Module env names,
   routes and root paths are checked against the kernel's (`routes.ts`). A module's own defect
   switches off just that module with a finding: a runtime module's unusable manifest or
-  `deckApi`, a missing dependency, a failing kind handler. Boot fails fast (exit 2) on:
-  - a built-in's unusable manifest;
-  - two modules that cannot coexist (`MODULE_MANIFEST_CONFLICT`);
-  - a runtime import that does not finish;
-  - an invalid config section that is present;
-  - an `init` that throws.
-
-  [Kernel and modules](../explanation/kernel-and-modules.md#how-modules-start) has the full
-  list.
+  `deckApi`, a missing dependency, a failing kind handler. Boot fails fast in the cases
+  [Kernel and modules](../explanation/kernel-and-modules.md#how-modules-start) lists in full,
+  including:
+  - with exit code 1, an invalid config section that is present, for a module that runs or a
+    runtime module that failed to load;
+  - with exit code 2:
+    - a built-in's unusable manifest;
+    - two modules that cannot coexist (`MODULE_MANIFEST_CONFLICT`);
+    - a runtime import that does not finish;
+    - a built-in kind handler's `BootFatalError`;
+    - an `init` that throws.
 - **Starting.** It hands the enabled modules' kind handlers to provider registration. It then
   runs each `init` in order with a context (`context.ts`) that injects only what the module
   declared, and later mounts each module's sub-app at `/api/m/<id>`.

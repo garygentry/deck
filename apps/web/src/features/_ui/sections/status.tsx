@@ -1,8 +1,11 @@
 import {
   FreshnessBadge,
+  Gauge,
   HealthPill,
   RelativeTime,
+  Sparkline,
   StatusBadge,
+  StatusTimeline,
   TONES,
   defineStatusMap,
   type IconName,
@@ -41,6 +44,43 @@ const DEMO_MAP = defineStatusMap<"running" | "stopped" | "unknown">({
   stopped: { tone: "danger", icon: "circle-stop", label: "Stopped" },
   unknown: { tone: "neutral", icon: "circle-help", label: "Unknown" },
 });
+
+// Fixed series for the viz specimens.
+const TREND = [12, 14, 13, 18, 22, 21, 25, 24, 30, 28, 33, 35];
+const SAMPLES = [
+  { at: 0, value: 40 },
+  { at: 1, value: 42 },
+  { at: 2, value: 45 },
+  { at: 3, value: null },
+  { at: 4, value: null },
+  { at: 5, value: 38 },
+  { at: 6, value: null },
+  { at: 7, value: 41 },
+  { at: 8, value: 44 },
+  { at: 10, value: 47 },
+];
+const T0 = 0;
+const T1 = 24 * 60;
+const LANES = [
+  {
+    id: "web",
+    label: "web",
+    segments: [
+      { status: "running" as const, start: 0, end: 600 },
+      { status: "stopped" as const, start: 600, end: 690 },
+      { status: "running" as const, start: 690, end: T1 },
+    ],
+  },
+  {
+    id: "db",
+    label: "db",
+    segments: [
+      { status: "unknown" as const, start: 0, end: 120 },
+      { status: "running" as const, start: 120, end: T1 },
+    ],
+  },
+  { id: "cache", label: "cache", segments: [{ status: "running" as const, start: 0, end: T1 }] },
+];
 
 function ToneRow({ variant, size }: { variant: "soft" | "outline" | "dot"; size?: "sm" | "md" }) {
   return (
@@ -178,6 +218,26 @@ function Status() {
           count={2}
           href="#status"
         />
+      </Specimen>
+      <Specimen label="Sparkline — plain, status tone, timestamped samples with a gap and an isolated point">
+        <Sparkline values={TREND} ariaLabel="Requests per second, rising" />
+        <Sparkline values={TREND} status={DEMO_MAP.stopped} ariaLabel="Restarts, rising (stopped)" />
+        <Sparkline samples={SAMPLES} status={DEMO_MAP.running} ariaLabel="Latency with a collection gap" />
+      </Specimen>
+      <Specimen label="StatusTimeline — lanes of status intervals from a status map (24 h)">
+        <StatusTimeline
+          lanes={LANES}
+          domainStart={T0}
+          domainEnd={T1}
+          statusMap={DEMO_MAP}
+          width={280}
+          ariaLabel="Service state over the last 24 hours: web stopped once, db unknown at first"
+        />
+      </Specimen>
+      <Specimen label="Gauge — plain, with a status (tone on the arc, label under the value), clamped over max">
+        <Gauge value={42} ariaLabel="Disk 42%" label="42%" />
+        <Gauge value={87} label="87%" status={DEMO_MAP.stopped} />
+        <Gauge value={140} max={100} label="140%" status={DEMO_MAP.running} />
       </Specimen>
     </>
   );

@@ -100,9 +100,12 @@ export async function stopSpecApi(api: SpecApi): Promise<void> {
   rmSync(api.tmp, { recursive: true, force: true });
 }
 
-/** Send every `/api/*` request of the page to the spec-local API. */
+/**
+ * Send every `/api/*` request of the page to the spec-local API, and every `/modules/*` one
+ * (runtime modules' web halves, which the API serves).
+ */
 export async function useSpecApi(page: Page, port: number): Promise<void> {
-  await page.route("**/api/**", async (route) => {
+  await page.route((url) => url.pathname.startsWith("/api/") || url.pathname.startsWith("/modules/"), async (route) => {
     const url = new URL(route.request().url());
     try {
       const response = await route.fetch({ url: `http://127.0.0.1:${port}${url.pathname}${url.search}` });

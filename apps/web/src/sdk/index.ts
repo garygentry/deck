@@ -8,10 +8,14 @@
  * shadcn/Radix primitives or `cn`: they are implementation detail the host must stay free to
  * change, and a module that styles from them leaks the host's framework into its API. Adding
  * a name here makes it part of the module API (test/sdk.test.ts pins the list).
+ *
+ * Module authors type-check against packages/sdk/index.d.ts, generated from this file: after
+ * changing what it exports, run `pnpm --filter @deck/sdk types:build` (a lockstep test fails
+ * until the two agree).
  */
 
 // The module contract.
-export { defineWebModule, DECK_API_VERSION, satisfiesDeckApi, statusTone, type StatusMapData, type WebModule } from "@deck/module-sdk";
+export { defineWebModule, DECK_API_VERSION, satisfiesDeckApi, statusTone, type StatusMapData, type WebModule, type WebModuleManifest } from "@deck/module-sdk";
 
 // Data: provider envelopes, the config and the UI manifest, all from the shell's one query cache.
 export { useConfig, useProvider, useProviders, useUiManifest } from "../data/index.js";

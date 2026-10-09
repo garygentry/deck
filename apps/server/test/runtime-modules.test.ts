@@ -4,7 +4,7 @@
  * runtime-modules-boot.test.ts).
  */
 
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,6 +34,16 @@ function tempDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
+}
+
+/**
+ * A fresh modules root holding a copy of the maintenance example only (examples/modules also
+ * holds the module template's sources, which load only once built).
+ */
+function exampleRoot(): string {
+  const root = tempDir("deck-rt-mods-");
+  cpSync(join(EXAMPLES, "maintenance"), join(root, "maintenance"), { recursive: true });
+  return root;
 }
 
 const manifestOf = (id: string, extra: Record<string, unknown> = {}) => ({ id, version: "1.0.0", deckApi: "^0.1", ...extra });
@@ -82,7 +92,7 @@ describe("loadRuntimeModules", () => {
   });
 
   it("imports the example module's server entry and keeps its config rules", async () => {
-    const result = await loadRuntimeModules({ env: env(EXAMPLES), configDir: configWith({ modules: { maintenance: { windows: [] } } }) });
+    const result = await loadRuntimeModules({ env: env(exampleRoot()), configDir: configWith({ modules: { maintenance: { windows: [] } } }) });
     expect(result.loaded).toEqual(["maintenance"]);
     expect(result.loadProblems.size).toBe(0);
     expect(result.codeless.size).toBe(0);
@@ -249,11 +259,39 @@ describe("loadRuntimeModules", () => {
   });
 
   it("reads the manifests only for deck validate and render", () => {
-    const result = readRuntimeManifests({ env: env(EXAMPLES), configDir: configWith({ modules: { maintenance: { windows: [] } } }) });
+    const result = readRuntimeManifests({ env: env(exampleRoot()), configDir: configWith({ modules: { maintenance: { windows: [] } } }) });
     expect(ids(result)).toEqual(["maintenance"]);
     expect([...result.codeless]).toEqual(["maintenance"]);
     expect(result.loaded).toEqual([]);
     expect(result.planOnly).toBe(true);
+  });
+});
+
+describe("two runtime modules with one CSS prefix", () => {
+  for (const [first, second] of [["hello", "hello2"], ["a-b", "ab"]] as const) {
+    it(`refuses the later of ${first} and ${second} by id, at boot and in deck validate alike`, async () => {
+      const root = tempDir("deck-rt-");
+      // Written in the other order: the outcome follows the ids, not the directory listing.
+      writeModule(root, second, manifestOf(second));
+      writeModule(root, first, manifestOf(first));
+      const loaded = await loadRuntimeModules({ env: env(root), configDir: configWith({}) });
+      expect(loaded.loaded).toEqual([first]);
+      expect(loaded.loadProblems.get(second)).toBe("collision");
+      expect(loaded.loadDetails?.get(second)).toContain(`its CSS prefix "${first.replace(/[^a-z]/g, "")}" (its id's letters) is runtime module "${first}"'s`);
+      const read = readRuntimeManifests({ env: env(root), configDir: configWith({}) });
+      expect(read.loadProblems.get(second)).toBe("collision");
+      expect(read.loadProblems.has(first)).toBe(false);
+    });
+  }
+
+  it("lets a module whose manifest cannot be read claim no prefix", async () => {
+    const root = tempDir("deck-rt-");
+    writeModule(root, "a-b", "{ not json");
+    writeModule(root, "ab", manifestOf("ab"));
+    const loaded = await loadRuntimeModules({ env: env(root), configDir: configWith({}) });
+    // a-b sorts first, but its unreadable manifest claims nothing: ab keeps the prefix.
+    expect(loaded.loaded).toEqual(["ab"]);
+    expect(loaded.loadProblems.get("a-b")).toBe("bad manifest");
   });
 });
 

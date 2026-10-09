@@ -17,6 +17,7 @@
     "@deck/drift": "workspace:*",
     "@deck/module-sdk": "workspace:*",
     "@deck/schema": "workspace:*",
+    "@deck/sdk": "workspace:*",
     "@deck/server": "workspace:*",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",

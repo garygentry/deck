@@ -33,12 +33,13 @@ function windowValue(window, edge) {
 function MaintenancePage() {
   const { data, loading } = useWindows();
   const header = jsx(PageHeader, { title: "Maintenance", description: "Planned maintenance windows for this estate." });
-  if (loading) return jsxs("div", { "data-slot": "maintenance-page", children: [header, jsx(LoadingState, { label: "Loading windows…" })] });
+  if (loading) return jsxs("div", { "data-slot": "maintenance-page", className: "maintenance-page", children: [header, jsx(LoadingState, { label: "Loading windows…" })] });
   if (data === null || data.count === 0) {
-    return jsxs("div", { "data-slot": "maintenance-page", children: [header, jsx(EmptyState, { icon: "calendar-clock", title: "No maintenance windows", description: "Add windows under modules.maintenance in the estate config." })] });
+    return jsxs("div", { "data-slot": "maintenance-page", className: "maintenance-page", children: [header, jsx(EmptyState, { icon: "calendar-clock", title: "No maintenance windows", description: "Add windows under modules.maintenance in the estate config." })] });
   }
   return jsxs("div", {
     "data-slot": "maintenance-page",
+    className: "maintenance-page",
     children: [
       header,
       jsx(Section, {

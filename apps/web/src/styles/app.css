@@ -9,11 +9,11 @@
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 
-@custom-variant dark (&:where(.dark, .dark *));
-
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
 @import "./theme.css";
+/* The token utilities and the dark variant, shared with runtime modules' styles. */
+@import "@deck/sdk/tailwind/theme.css";
 @import "./hljs.css" layer(components);
 
 /*

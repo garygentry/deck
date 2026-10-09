@@ -104,6 +104,16 @@ async function json<T>(request: Request_, path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+/**
+ * A fresh modules root holding a copy of the maintenance example only (examples/modules also
+ * holds the module template's sources, which load only once built).
+ */
+function exampleRoot(): string {
+  const root = tempDir("deck-rtb-mods-");
+  cpSync(join(EXAMPLES, "maintenance"), join(root, "maintenance"), { recursive: true });
+  return root;
+}
+
 /** A broken runtime module directory under a fresh modules root, beside a copy of the example. */
 function modulesWithBroken(entry: string): string {
   const root = tempDir("deck-rtb-mods-");
@@ -123,7 +133,8 @@ function modulesWithBroken(entry: string): string {
 
 describe("a runtime module in DECK_MODULES_DIR", () => {
   it("adds a page, a nav entry, a pill, a provider, routes and health", async () => {
-    modulesEnv(EXAMPLES);
+    const root = exampleRoot();
+    modulesEnv(root);
     const request = await bootOn(configDir({ modules: { maintenance: { windows: WINDOWS } } }));
 
     const ui = await json<UiManifest>(request, "/api/ui");
@@ -144,11 +155,11 @@ describe("a runtime module in DECK_MODULES_DIR", () => {
     expect(await json(request, "/api/m/maintenance/windows")).toEqual({ windows: WINDOWS });
     const health = await json<{ modules: Record<string, unknown> }>(request, "/api/health");
     expect(health.modules.maintenance).toEqual({ state: "ok", detail: "2 window(s)" });
-    expect(logLines.find((line) => line.event === "modules.runtime")).toMatchObject({ dir: EXAMPLES, enabled: true, loaded: ["maintenance"], failed: [] });
+    expect(logLines.find((line) => line.event === "modules.runtime")).toMatchObject({ dir: root, enabled: true, loaded: ["maintenance"], failed: [] });
   });
 
   it("validates its section with its own schema and config rules: an invalid section fails boot", async () => {
-    modulesEnv(EXAMPLES);
+    modulesEnv(exampleRoot());
     const badRule = await bootFails(configDir({ modules: { maintenance: { windows: [{ name: "x", start: "tomorrow", durationMinutes: 5 }] } } }));
     expect(badRule.code).toBe("exit:1");
     expect(badRule.stderr).toContain("MAINTENANCE_START_INVALID");
@@ -160,7 +171,7 @@ describe("a runtime module in DECK_MODULES_DIR", () => {
   });
 
   it("is off, with its section ignored, while DECK_MODULES_ENABLED is unset", async () => {
-    modulesEnv(EXAMPLES, false);
+    modulesEnv(exampleRoot(), false);
     const request = await bootOn(configDir({ modules: { maintenance: { windows: WINDOWS } } }));
     const ui = await json<UiManifest>(request, "/api/ui");
     expect(ui.modules.find((module) => module.id === "maintenance")).toEqual({
@@ -179,7 +190,7 @@ describe("a runtime module in DECK_MODULES_DIR", () => {
   });
 
   it("is off, not unknown, without its section", async () => {
-    modulesEnv(EXAMPLES);
+    modulesEnv(exampleRoot());
     const request = await bootOn(configDir());
     const ui = await json<UiManifest>(request, "/api/ui");
     expect(ui.modules.find((module) => module.id === "maintenance")).toMatchObject({ enabled: false, enabledBy: [{ config: "modules.maintenance" }] });
@@ -314,7 +325,7 @@ describe("a runtime module that fails to load", () => {
   });
 
   it("rejects a malformed pin in config", async () => {
-    modulesEnv(EXAMPLES);
+    modulesEnv(exampleRoot());
     const failed = await bootFails(configDir({ moduleIntegrity: { maintenance: "sha1-nope" } }));
     expect(failed.code).toBe("exit:1");
     expect(failed.stderr).toContain("/moduleIntegrity/maintenance");
@@ -440,7 +451,7 @@ describe("round 2: failed and inert modules claim nothing", () => {
 
 describe("the deck CLI with DECK_MODULES_DIR", () => {
   it("validates a runtime module's section from its manifest, running none of its code", () => {
-    modulesEnv(EXAMPLES);
+    modulesEnv(exampleRoot());
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     expect(cli(["validate", configDir({ modules: { maintenance: { windows: WINDOWS } } })])).toBe(0);

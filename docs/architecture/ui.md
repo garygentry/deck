@@ -17,7 +17,9 @@ apps/web/src/
     index.ts      the public barrel: feature code imports from "@/ui"
   shell/          AppShell, AppSidebar, Topbar, ThemeMenu, NotFoundPage, the health header
   features/*/     one directory per feature; `index.ts` registers pages and fragments
-  styles/         app.css (Tailwind entry + base rules), theme.css (tokens), hljs.css
+  styles/         app.css (Tailwind entry + base rules), theme.css (tokens), hljs.css; the token
+                  utilities (`@theme inline`) are packages/sdk/tailwind/theme.css, shared with
+                  runtime modules' styles
 ```
 
 - **Primitives** are shadcn/ui components, copied into the repo rather than installed. They
@@ -465,7 +467,9 @@ Put it in `ui/patterns/<kebab-name>.tsx`, export it from `ui/index.ts`, and:
   a11y contract in `test/ui-<group>.test.tsx`.
 
 `test/ui-guardrails.test.ts` enforces the mechanical parts: barrel imports, no colour literals,
-the `style=` allowlist, `data-slot` roots, no `data-icon`, and no legacy tokens.
+the `style=` allowlist, `data-slot` roots, no `data-icon`, and no legacy tokens. The rules
+themselves live in `@deck/sdk/lint` (`packages/sdk/lint`), which `deck-module lint` also runs
+on a runtime module's web half, so deck and its modules are held to one set of rules.
 
 ## Testing and visual baselines
 

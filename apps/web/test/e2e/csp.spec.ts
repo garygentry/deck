@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -12,8 +12,9 @@ import { startSpecApi, stopSpecApi, type SpecApi } from "./spec-api.js";
 
 /**
  * The web shell under its Content-Security-Policy, as deck serves a production build: every
- * page the UI manifest routes, in light and dark, with a runtime module's web half (loaded
- * through the import map), framed pages, a markdown image and a brand logo, raises no CSP
+ * page the UI manifest routes, in light and dark, with runtime modules' web halves (loaded
+ * through the import map: the maintenance example, and the module template as its build
+ * writes it, with its own web.css), framed pages, a markdown image and a brand logo, raises no CSP
  * violation (neither a `securitypolicyviolation` event nor a console report). And the policy
  * holds: a framed page that redirects into deck's own origin is refused.
  *
@@ -30,6 +31,7 @@ let api: SpecApi;
 let helper: Server;
 let helperOrigin: string;
 let builtDist: string | undefined;
+let modulesDir: string | undefined;
 
 test.describe.configure({ mode: "serial", timeout: 600_000 });
 
@@ -39,6 +41,14 @@ test.beforeAll(async () => {
   if (dist === undefined) {
     builtDist = dist = mkdtempSync(join(tmpdir(), "deck-e2e-csp-dist-"));
     execFileSync("bunx", ["vite", "build", "--outDir", dist, "--emptyOutDir", "--logLevel", "error"], { cwd: webDir, stdio: "inherit" });
+  }
+
+  // A modules directory of the spec's own (examples/modules also holds the template's sources):
+  // the maintenance example, and the template built straight into it.
+  modulesDir = mkdtempSync(join(tmpdir(), "deck-e2e-csp-modules-"));
+  cpSync(join(examples, "maintenance"), join(modulesDir, "maintenance"), { recursive: true });
+  for (const args of [["build"], ["build", "--mode", "server"]]) {
+    execFileSync("pnpm", ["exec", "vite", ...args, "--outDir", join(modulesDir, "hello"), "--logLevel", "error"], { cwd: join(examples, "hello"), stdio: "inherit" });
   }
 
   // Another origin: the framed page, an image, and a redirect into deck's own origin.
@@ -85,7 +95,7 @@ test.beforeAll(async () => {
     DECK_E2E_WEB_DIST: dist,
     DECK_E2E_UI: JSON.stringify(ui),
     DECK_E2E_MODULES: JSON.stringify({ maintenance: { windows: [{ name: "Patch night", start: "2030-01-01T02:00:00Z", durationMinutes: 60 }] } }),
-    DECK_MODULES_DIR: examples,
+    DECK_MODULES_DIR: modulesDir,
     DECK_MODULES_ENABLED: "true",
   });
   deckOrigin = `http://127.0.0.1:${api.port}`;
@@ -95,6 +105,7 @@ test.afterAll(async () => {
   if (api !== undefined) await stopSpecApi(api);
   await new Promise((resolve) => helper?.close(resolve));
   if (builtDist !== undefined) rmSync(builtDist, { recursive: true, force: true });
+  if (modulesDir !== undefined) rmSync(modulesDir, { recursive: true, force: true });
 });
 
 interface Violation {
@@ -118,7 +129,7 @@ async function watchViolations(page: Page): Promise<{ events: () => Promise<Viol
 
 const origin = () => `http://127.0.0.1:${api.port}`;
 
-/** The paths the manifest routes (no parameters), plus the runtime module's page. */
+/** The paths the manifest routes (no parameters), the runtime modules' pages included. */
 async function routedPaths(): Promise<string[]> {
   const manifest = (await (await fetch(`${origin()}/api/ui`)).json()) as { pages: { path: string }[] };
   return [...new Set(["/", ...manifest.pages.map((page) => page.path).filter((path) => !path.includes(":"))])].filter((path) => path !== "/escape");
@@ -141,7 +152,7 @@ for (const colorScheme of ["light", "dark"] as const) {
       const page = await context.newPage();
       const violations = await watchViolations(page);
       const paths = await routedPaths();
-      expect(paths).toEqual(expect.arrayContaining(["/", "/csp", "/maintenance", "/hosts", "/docs"]));
+      expect(paths).toEqual(expect.arrayContaining(["/", "/csp", "/maintenance", "/hello", "/hosts", "/docs"]));
       for (const path of paths) {
         await page.goto(path);
         await expect(page.locator("main h1").first()).toBeVisible({ timeout: 30_000 });
@@ -157,6 +168,9 @@ for (const colorScheme of ["light", "dark"] as const) {
       // The runtime module's web half (an import-mapped ESM chunk) rendered its page.
       await page.goto("/maintenance");
       await expect(page.getByText("Patch night")).toBeVisible({ timeout: 30_000 });
+      // The template's built web half rendered its page, with its own stylesheet applied.
+      await page.goto("/hello");
+      await expect(page.locator('[data-slot="hello-greeting"]')).toHaveCSS("padding-top", "16px", { timeout: 30_000 });
       expect(await violations.events()).toEqual([]);
       expect(violations.console).toEqual([]);
     } finally {

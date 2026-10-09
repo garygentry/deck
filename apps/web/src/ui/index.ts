@@ -206,3 +206,6 @@ export {
   type SegmentedControlProps,
   type SegmentedOption,
 } from "./patterns/segmented-control";
+
+// Viz: dependency-free SVG charts
+export * from "./viz";

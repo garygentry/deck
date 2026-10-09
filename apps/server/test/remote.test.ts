@@ -359,7 +359,8 @@ describe("the remote kind in an estate", () => {
   const page = (ui: UiManifest, id: string) => ui.pages.find((candidate) => candidate.id === id);
 
   it("renders a sidecar's widgets on its page, each reading that integration; nav joins the page's group", async () => {
-    const { host, directory, manifest } = await boot([instance({ page: { nav: { group: "health" } } })]);
+    // A 1s poll: a describe that fails (a pooled socket the fixture closed, say) is asked again at the next poll.
+    const { host, directory, manifest } = await boot([instance({ pollIntervalMs: 1_000, page: { nav: { group: "health" } } })]);
     try {
       startScheduler();
       // The first poll starts the describe; a loaded CI runner can take a few seconds.

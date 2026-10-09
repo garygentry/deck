@@ -40,7 +40,10 @@ export interface TreeViewProps<T> {
   selectBranches?: boolean;
   /** The row glyph; default folder / open folder / file. Must be decorative (`aria-hidden`). */
   renderIcon?: (node: T, state: TreeNodeState) => ReactNode;
-  /** Trailing row content (a count, a badge). Decorative or plain text only; never interactive. */
+  /**
+   * Trailing row content (a count, a badge). Plain text or badges only; never interactive. It is
+   * the treeitem's accessible description, read after the label.
+   */
   renderMeta?: (node: T, state: TreeNodeState) => ReactNode;
   /**
    * Filter: text (case-insensitive substring of the label) or a predicate. A
@@ -52,6 +55,8 @@ export interface TreeViewProps<T> {
   empty?: ReactNode;
   "aria-label"?: string;
   "aria-labelledby"?: string;
+  /** The tree's description, e.g. the id of visible keyboard help. */
+  "aria-describedby"?: string;
   className?: string;
 }
 
@@ -215,12 +220,16 @@ export function TreeView<T>({
       const selectable = entry.leaf || selectBranches;
       const state: TreeNodeState = { leaf: entry.leaf, expanded: open, selected, depth };
       const labelId = byId.get(entry.id)?.labelId;
+      const meta = renderMeta?.(entry.node, state);
+      const hasMeta = meta !== undefined && meta !== null && meta !== false && meta !== "";
+      const metaId = hasMeta && labelId !== undefined ? `${labelId}-meta` : undefined;
       return (
         <li
           key={entry.id}
           role="treeitem"
           data-tree-id={entry.id}
           aria-labelledby={labelId}
+          aria-describedby={metaId}
           aria-level={depth + 1}
           aria-setsize={entries.length}
           aria-posinset={index + 1}
@@ -257,7 +266,11 @@ export function TreeView<T>({
             <span id={labelId} className="min-w-0 flex-1 truncate">
               {getLabel(entry.node)}
             </span>
-            {renderMeta?.(entry.node, state)}
+            {hasMeta ? (
+              <span id={metaId} className="contents">
+                {meta}
+              </span>
+            ) : null}
           </div>
           {open && entry.children.length > 0 ? (
             <ul role="group" className="m-0 list-none p-0">

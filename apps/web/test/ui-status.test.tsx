@@ -88,6 +88,24 @@ describe("StatusBadge", () => {
     expect(up).toHaveTextContent("3 checks");
     expect(up).not.toHaveAttribute("role");
   });
+
+  it("applies the map entry's variant via fromMap; a variant prop still wins", () => {
+    const MAP = defineStatusMap<"on" | "muted">({
+      on: { tone: "ok", icon: "circle-check", label: "On" },
+      muted: { tone: "neutral", icon: "circle-minus", label: "Muted", variant: "outline" },
+    });
+    renderUi(
+      <>
+        {StatusBadge.fromMap(MAP, "on")}
+        {StatusBadge.fromMap(MAP, "muted")}
+        {StatusBadge.fromMap(MAP, "muted", { label: "Muted (dot)", variant: "dot" })}
+      </>,
+    );
+    const badge = (text: string) => screen.getByText(text).closest('[data-slot="status-badge"]');
+    expect(badge("On")).toHaveAttribute("data-variant", "soft");
+    expect(badge("Muted")).toHaveAttribute("data-variant", "outline");
+    expect(badge("Muted (dot)")).toHaveAttribute("data-variant", "dot");
+  });
 });
 
 describe("RelativeTime", () => {

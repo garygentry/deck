@@ -43,7 +43,7 @@ export function FilterBar({
       {hasSecondRow ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0 flex-1">{activeFilters}</div>
-          {resultCount ? <div className="shrink-0 sm:ml-auto">{resultCount}</div> : null}
+          {resultCount ? <div className="min-w-0 sm:ml-auto">{resultCount}</div> : null}
         </div>
       ) : null}
     </div>

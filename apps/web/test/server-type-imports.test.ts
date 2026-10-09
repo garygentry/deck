@@ -1,19 +1,28 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-
-function walk(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name);
-    return statSync(path).isDirectory() ? walk(path) : [path];
-  });
-}
+import { REPO_ROOT, sourceRel, webSourceFiles } from "./support/source-roots.js";
 
 const SERVER = /^@deck\/server(?:\/|$)/;
+
+/** Whether a specifier is the server package (`@deck/server`, a subpath), for any importer. */
+const serverPackage = (specifier: string): boolean => SERVER.test(specifier);
+
+/**
+ * Whether a specifier, imported by `file`, loads server code: the server package, or a relative
+ * path into `apps/server/` or a module's server half (`modules/<id>/server/`), which a module's
+ * web half sits beside.
+ */
+export function serverCodeFrom(file: string, repo: string = REPO_ROOT): (specifier: string) => boolean {
+  return (specifier) => {
+    if (serverPackage(specifier)) return true;
+    if (!specifier.startsWith(".")) return false;
+    const target = relative(repo, resolve(dirname(file), specifier)).split(sep).join("/");
+    return target.startsWith("apps/server/") || /^modules\/[^/]+\/server(?:\/|$)/.test(target);
+  };
+}
 
 /** A statement's text as one line, without its trailing semicolon. */
 const oneLine = (node: ts.Node, file: ts.SourceFile) => node.getText(file).replace(/;\s*$/, "").replace(/\s+/g, " ");
@@ -23,14 +32,15 @@ const allTypeOnly = (elements: ts.NodeArray<ts.ImportSpecifier | ts.ExportSpecif
   elements.length > 0 && elements.every((element) => element.isTypeOnly);
 
 /**
- * Offending `@deck/server` imports in one file's source: anything but a type-only import. The
+ * Offending server imports in one file's source (`@deck/server`, or whatever `isServer` says is
+ * server code): anything but a type-only import. The
  * source is parsed, so comments, strings and statements without semicolons cannot mislead it.
  */
-export function runtimeServerImports(source: string): string[] {
+export function runtimeServerImports(source: string, isServer: (specifier: string) => boolean = serverPackage): string[] {
   const file = ts.createSourceFile("source.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const offenders: string[] = [];
   const visit = (node: ts.Node): void => {
-    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier) && SERVER.test(node.moduleSpecifier.text)) {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier) && isServer(node.moduleSpecifier.text)) {
       const specifier = node.moduleSpecifier.text;
       const clause = node.importClause;
       if (clause === undefined) {
@@ -40,12 +50,12 @@ export function runtimeServerImports(source: string): string[] {
         const typeOnly = clause.isTypeOnly || (clause.name === undefined && named !== null && allTypeOnly(named));
         if (!typeOnly) offenders.push(`${specifier}: ${oneLine(node, file)}`);
       }
-    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier !== undefined && ts.isStringLiteral(node.moduleSpecifier) && SERVER.test(node.moduleSpecifier.text)) {
+    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier !== undefined && ts.isStringLiteral(node.moduleSpecifier) && isServer(node.moduleSpecifier.text)) {
       const named = node.exportClause !== undefined && ts.isNamedExports(node.exportClause) ? node.exportClause.elements : null;
       if (!node.isTypeOnly && !(named !== null && allTypeOnly(named))) offenders.push(`${node.moduleSpecifier.text}: ${oneLine(node, file)}`);
     } else if (
       ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword &&
-      node.arguments[0] !== undefined && ts.isStringLiteralLike(node.arguments[0]) && SERVER.test(node.arguments[0].text)
+      node.arguments[0] !== undefined && ts.isStringLiteralLike(node.arguments[0]) && isServer(node.arguments[0].text)
     ) {
       // A type position (`typeof import("…")`) is an import type node, not a call.
       offenders.push(`${node.arguments[0].text}: dynamic import`);
@@ -57,16 +67,33 @@ export function runtimeServerImports(source: string): string[] {
 }
 
 describe("imports: the server package is types only", () => {
-  it("imports @deck/server and its subpaths only with `import type`, so no server code reaches the bundle", () => {
-    const files = walk(join(webRoot, "src")).filter((path) => /\.(ts|tsx)$/.test(path));
+  it("imports server code (@deck/server, a module's server half) only with `import type`, so none reaches the bundle", () => {
+    const files = webSourceFiles().filter((path) => /\.(ts|tsx)$/.test(path));
     const offenders = files.flatMap((path) =>
-      runtimeServerImports(readFileSync(path, "utf8")).map((offence) => `${relative(webRoot, path)}: ${offence}`),
+      runtimeServerImports(readFileSync(path, "utf8"), serverCodeFrom(path)).map((offence) => `${sourceRel(path)}: ${offence}`),
     );
     expect(offenders).toEqual([]);
-    // The check has something to hold: the web takes wire types from the server barrel and the
-    // portal feature takes its section types from the module.
+    // The check has something to hold: the web takes wire types from the server barrel, the
+    // portal feature takes its section types from the module, and a module's web half takes its
+    // wire types from its own server half.
     expect(files.some((path) => /from "@deck\/server"/.test(readFileSync(path, "utf8")))).toBe(true);
     expect(files.some((path) => /@deck\/server\/portal/.test(readFileSync(path, "utf8")))).toBe(true);
+    expect(files.map((path) => sourceRel(path))).toContain("modules/llm-usage/web/store.ts");
+    expect(readFileSync(join(REPO_ROOT, "modules/llm-usage/web/store.ts"), "utf8")).toMatch(/import type \{[^}]*\} from "\.\.\/server\/types\.js"/);
+  });
+
+  it("refuses a runtime import of a module's server half from its web half", () => {
+    const web = join(REPO_ROOT, "modules/llm-usage/web/Probe.tsx");
+    const isServer = serverCodeFrom(web);
+    expect(runtimeServerImports('import { LlmUsageCollector } from "../server/collector.js";', isServer)).toEqual([
+      '../server/collector.js: import { LlmUsageCollector } from "../server/collector.js"',
+    ]);
+    expect(runtimeServerImports('const m = await import("../../../apps/server/src/contract/index.js");', isServer)).toEqual([
+      "../../../apps/server/src/contract/index.js: dynamic import",
+    ]);
+    expect(runtimeServerImports('import type { LlmUsageResponse } from "../server/types.js";', isServer)).toEqual([]);
+    // A sibling of the web half, or the app's own code, is not server code.
+    expect(runtimeServerImports('import { x } from "./store.js";\nimport { y } from "@/ui";', isServer)).toEqual([]);
   });
 
   it.each([

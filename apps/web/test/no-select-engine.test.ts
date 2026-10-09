@@ -1,19 +1,10 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const repoRoot = resolve(webRoot, "../..");
-const srcRoot = join(webRoot, "src");
-
-function walk(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name);
-    return statSync(path).isDirectory() ? walk(path) : [path];
-  });
-}
+import { REPO_ROOT as repoRoot, webSourceFiles } from "./support/source-roots.js";
 
 /**
  * The modules a source file loads at runtime: static imports and re-exports that are not
@@ -44,8 +35,8 @@ export function runtimeSpecifiers(source: string): string[] {
 
 /** Workspace packages by name, with their directory and `exports` map. */
 const workspace = new Map(
-  ["packages", "apps"].flatMap((group) =>
-    readdirSync(join(repoRoot, group)).flatMap((name) => {
+  ["packages", "apps", "modules"].flatMap((group) =>
+    readdirSync(join(repoRoot, group), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).flatMap((name) => {
       const manifest = join(repoRoot, group, name, "package.json");
       if (!existsSync(manifest)) return [];
       const pkg = JSON.parse(readFileSync(manifest, "utf8")) as { name: string; exports?: Record<string, string> };
@@ -74,10 +65,14 @@ function resolveRelative(from: string, specifier: string): string | undefined {
   return candidates.find((candidate) => existsSync(candidate) && statSync(candidate).isFile());
 }
 
-/** Every file the web's sources load at runtime, across the workspace, with a path to each. */
-function runtimeGraph(): Map<string, string> {
+/**
+ * Every file the web's sources load at runtime, across the workspace, with a path to each. The
+ * walk starts from every web source: the app's own and each built-in module's web half (which
+ * the app loads through an import glob, not a specifier).
+ */
+function runtimeGraph(seeds: readonly string[] = webSourceFiles()): Map<string, string> {
   const reached = new Map<string, string>();
-  const queue = walk(srcRoot).filter((path) => /\.tsx?$/.test(path)).map((path) => [path, relative(repoRoot, path)] as const);
+  const queue = seeds.filter((path) => /\.tsx?$/.test(path)).map((path) => [path, relative(repoRoot, path)] as const);
   for (const [path] of queue) reached.set(path, relative(repoRoot, path));
   while (queue.length > 0) {
     const [file, via] = queue.shift()!;
@@ -94,17 +89,37 @@ function runtimeGraph(): Map<string, string> {
   return reached;
 }
 
+const ENGINE = [join(repoRoot, "packages/schema/src/select.ts"), join(repoRoot, "packages/schema/src/select/jmespath.js")];
+
+/** The import chains in `graph` that reach the select engine. */
+function engineChains(graph: Map<string, string>): string[] {
+  return [...graph].filter(([key]) => ENGINE.includes(key) || /^npm:(?:@jmespath-community\/)?jmespath(?:\/|$)/.test(key)).map(([, chain]) => chain);
+}
+
 // A widget's `select` is evaluated on the server: the browser never loads the JMESPath engine
 // (`@deck/schema/select` and the vendored engine it imports), at any depth.
 describe("the web bundle", () => {
   it("never loads the select engine, directly or through a workspace package", () => {
     const graph = runtimeGraph();
-    const engine = [join(repoRoot, "packages/schema/src/select.ts"), join(repoRoot, "packages/schema/src/select/jmespath.js")];
-    const offenders = [...graph].filter(([key]) => engine.includes(key) || /^npm:(?:@jmespath-community\/)?jmespath(?:\/|$)/.test(key)).map(([, chain]) => chain);
-    expect(offenders).toEqual([]);
+    expect(engineChains(graph)).toEqual([]);
+    // The walk starts from the built-in modules' web halves too.
+    expect(graph.has(join(repoRoot, "modules/llm-usage/web/index.ts"))).toBe(true);
+    expect(workspace.has("@deck/module-llm-usage")).toBe(true);
     // The walk does reach into the workspace packages.
     expect(graph.has(join(repoRoot, "packages/contract/src/modules/core.ts"))).toBe(true);
     expect(graph.has(join(repoRoot, "packages/module-sdk/src/index.ts"))).toBe(true);
+  });
+
+  it("would catch a module web half that loads the engine", () => {
+    const repo = mkdtempSync(join(tmpdir(), "no-select-"));
+    try {
+      const probe = join(repo, "modules/probe/web/index.ts");
+      mkdirSync(dirname(probe), { recursive: true });
+      writeFileSync(probe, 'import { evaluateSelect } from "@deck/schema/select";\nexport const x = evaluateSelect;\n');
+      expect(engineChains(runtimeGraph(webSourceFiles(repo)))).toEqual(expect.arrayContaining([expect.stringMatching(/modules\/probe\/web\/index\.ts → packages\/schema\/src\/select\.ts$/)]));
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 
   it("would catch a transitive import", () => {

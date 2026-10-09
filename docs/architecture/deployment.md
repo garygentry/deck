@@ -87,7 +87,10 @@ the dual Node/Bun nature of the build.
 `web-e2e` runs the Playwright suite sharded across runners (the suite is single-worker by design,
 so parallelism comes from cross-runner shards).
 `bun-parity` re-runs the unit tests under Bun, proving the code that ships in the runtime image
-behaves the same on the runtime engine.
+behaves the same on the runtime engine. Each workspace runs through `scripts/bun-parity-vitest.sh`,
+which starts `bunx --bun vitest run` (plain `bunx` follows vitest's `node` shebang and would test
+under Node). Its reporter prints the Bun version into the job log, and the step fails if the run
+was not under Bun or exited without reaching its end.
 `gates` runs the correctness guards: a golden `deck render` comparison and
 a bare-Bun boot smoke that boots the server and asserts a well-formed `/api/health` payload.
 Together they protect the invariant this deployment depends on — that the same source runs

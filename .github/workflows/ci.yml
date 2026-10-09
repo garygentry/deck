@@ -120,6 +120,9 @@ jobs:
     # One job, one step per workspace: a per-workspace matrix paid a runner
     # boot, Bun install and per-job minute round-up four times over. Each step
     # runs even if an earlier one fails, so every workspace still reports.
+    # scripts/bun-parity-vitest.sh runs `bunx --bun vitest run` (plain `bunx`
+    # follows vitest's node shebang and tests under Node), prints the Bun
+    # version, and fails a run that exits 0 without reaching its end.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -132,27 +135,27 @@ jobs:
         run: bun install
       - name: Vitest under Bun (packages/schema)
         working-directory: packages/schema
-        run: bunx vitest run
+        run: bash ../../scripts/bun-parity-vitest.sh
       - name: Vitest under Bun (packages/module-sdk)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         working-directory: packages/module-sdk
-        run: bunx vitest run
+        run: bash ../../scripts/bun-parity-vitest.sh
       - name: Vitest under Bun (packages/contract)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         working-directory: packages/contract
-        run: bunx vitest run
+        run: bash ../../scripts/bun-parity-vitest.sh
       - name: Vitest under Bun (packages/drift)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         working-directory: packages/drift
-        run: bunx vitest run
+        run: bash ../../scripts/bun-parity-vitest.sh
       - name: Vitest under Bun (apps/server)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         working-directory: apps/server
-        run: bunx vitest run
+        run: bash ../../scripts/bun-parity-vitest.sh
       - name: Vitest under Bun (apps/web)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         working-directory: apps/web
-        run: bunx vitest run
+        run: bash ../../scripts/bun-parity-vitest.sh
 
   kernel-touch:
     # Informational: lists the kernel files this branch changes (see scripts/kernel-touch.ts).

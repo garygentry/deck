@@ -7,7 +7,7 @@ The authoritative shape is the JSON Schema at
 [`packages/schema/schema/deck.schema.json`](../../packages/schema/schema/deck.schema.json)
 for the top-level keys, composed with one schema per module section, kept beside the server module
 that owns the section (such as
-[`apps/server/src/portal/schema.json`](../../apps/server/src/portal/schema.json) and
+[`modules/portal/schema.json`](../../modules/portal/schema.json) and
 [`apps/server/src/actions/schema.json`](../../apps/server/src/actions/schema.json)); the TypeScript
 types are generated from each schema, and this page mirrors them.
 For observed-reality data, see the [Snapshot contract reference](snapshot-contract.md).

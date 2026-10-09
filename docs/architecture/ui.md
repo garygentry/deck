@@ -432,7 +432,7 @@ and `h4` (subgroups `h5`) under a dashboard card's `h3`, with DOM ids namespaced
 manifest falls back to the declared one (`isRenderableLayout`, which also gates config pages).
 
 The portal page is this: its `PageHeader`, then the `portal/summary` slot, then one
-`portal/groups` widget (`features/portal/PortalGroupsWidget.tsx`: the filter bar and the
+`portal/groups` widget (`modules/portal/web/PortalGroupsWidget.tsx`: the filter bar and the
 groups of cards). A config page can place `portal/groups` too, in a card, with a `groups`
 option. A card's status comes from the UI manifest's `statusKinds`, the declarations of the
 bindable, status-capable provider kinds (`providerKinds[].status`): `card-status.ts` reads the

@@ -6,6 +6,7 @@ import { useUiManifest, type UiManifestState } from "../data/index.js";
 import type { Extension, ExtensionId, PageRegistration } from "../registry/registry-types.js";
 import { ModuleProblemPage, ModuleProblemTile } from "./ModuleProblem.js";
 import {
+  getRuntimeComponent,
   getRuntimeModuleState,
   getRuntimeModulesVersion,
   loadRuntimeWebModules,
@@ -67,9 +68,11 @@ function pageStandIn(id: string, module: string, title: string): ComponentType {
 }
 
 /**
- * Stand-in routes for a runtime module's pages the web has not registered (yet): loading while
- * its web half loads, the module-problem page once it cannot render. A page the module
- * registers replaces its stand-in, so a deep link never flashes "not found".
+ * The routes of runtime modules' pages, from the current UI manifest: each page at the path the
+ * manifest gives it, rendering its module's component once the module is ready, so a `ui` hot
+ * reload that moves a page or switches it on takes effect without loading the module again.
+ * Until then it stands in: loading while the web half loads, and the module-problem page once
+ * the module has settled without a component for it, so a deep link never flashes "not found".
  */
 export function runtimePageRegistrations(manifest: UiManifestState, registered: readonly PageRegistration[]): PageRegistration[] {
   const modules = runtimeModuleIds(manifest);
@@ -82,7 +85,7 @@ export function runtimePageRegistrations(manifest: UiManifestState, registered: 
       path: page.path,
       label: page.title,
       ...(page.icon === undefined ? {} : { icon: page.icon }),
-      component: pageStandIn(page.id, page.module, page.title),
+      component: runtimeComponent(page.module, page.component) ?? pageStandIn(page.id, page.module, page.title),
     }));
 }
 
@@ -100,15 +103,22 @@ function tileStandIn(module: string, state: "incompatible" | "failed"): Componen
   return component;
 }
 
+/** A ready module's component by name; undefined until it is ready, or if it has none. */
+function runtimeComponent(module: string, name: string): ComponentType | undefined {
+  return getRuntimeModuleState(module) === "ready" ? getRuntimeComponent(module, name) : undefined;
+}
+
 /**
- * What a slot renders for a manifest entry the web registered nothing for: the module-problem
- * tile once the entry's runtime module has settled without it; nothing while it loads, or for
- * a module that is not a runtime one.
+ * What a slot renders for a manifest entry of a runtime module, where and with what config the
+ * current manifest says: its module's component once ready; the module-problem tile once the
+ * module has settled without one; nothing while it loads, or for a module that is not a
+ * runtime one.
  */
 export function runtimeExtensionStandIn(entry: UiExtension, runtimeModules: ReadonlySet<string>): Extension | undefined {
   if (!runtimeModules.has(entry.module) || entry.component === undefined) return undefined;
+  const component = runtimeComponent(entry.module, entry.component);
   const state = terminalState(entry.module);
-  if (state === undefined) return undefined;
+  if (component === undefined && state === undefined) return undefined;
   return {
     id: entry.id as ExtensionId,
     kind: entry.kind,
@@ -116,6 +126,6 @@ export function runtimeExtensionStandIn(entry: UiExtension, runtimeModules: Read
     attachTo: { slot: entry.slot, order: entry.order },
     enabled: true,
     config: Object.freeze({ ...(entry.config ?? {}) }),
-    component: tileStandIn(entry.module, state),
+    component: component ?? tileStandIn(entry.module, state!),
   };
 }

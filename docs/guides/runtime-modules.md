@@ -103,6 +103,10 @@ wherever an icon goes. A module has at most 64 icons of at most 16 KiB each, and
 - They may not use styles (`<style>` or `style=`), scripts or event handlers, links, images,
   filters or `<foreignObject>`. Every `href` and every `url(…)` must point at an `#id` in the
   icon itself, and no attribute may hold a backslash.
+- Paint (`fill`, `stroke`) is `none`, a colour (a keyword such as `currentColor`, hex,
+  `rgb()` or `hsl()`) or `url(#id)`; `clip-path` and `mask` are `none` or `url(#id)`;
+  `transform` uses the basic functions (`translate`, `rotate` and so on); no other attribute
+  may hold a function, so CSS image functions such as `image-set()` are refused.
 
 `deck validate` and boot refuse a manifest whose icons break the plainest of these rules. In
 the browser, deck rebuilds each icon from that allowlist and renders the fallback icon in
@@ -120,7 +124,9 @@ changed web half.
 
 The server's manifest decides where a module's contributions go: the shell routes its pages
 at the paths, and attaches its extensions to the slots and orders, that `GET /api/ui` lists,
-whatever the web half says. The web half supplies the components.
+whatever the web half says. The web half supplies the components. A `ui` config reload that
+moves a page or switches an extension on or off takes effect at once, without loading the
+module again.
 
 The page loads each module's web half once the UI manifest arrives, once per page load. Each
 of its components renders inside its own error boundary, so a component that throws shows a

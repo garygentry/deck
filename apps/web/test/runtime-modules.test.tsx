@@ -66,19 +66,20 @@ async function fresh() {
   /** Load against `manifest`, with the server serving `served` as the module's deck-module.json. */
   const load = (importer: (url: string) => Promise<unknown>, manifest: UiManifest = MANIFEST, served: unknown = SERVED) =>
     runtime.loadRuntimeWebModules(manifest, { importer, fetchJson: async () => served });
-  /** The top bar's status slot as the shell places it: registered extensions, else stand-ins. */
-  const renderSlot = (manifest: UiManifest = MANIFEST) => {
+  /** The top bar's status slot as the shell places it from `manifest`: registered extensions, else runtime ones. */
+  const placed = (manifest: UiManifest = MANIFEST) => {
     const state: UiManifestState = { status: "ready", manifest };
     const ids = standIns.runtimeModuleIds(state);
-    const placed = placeExtensions("app/topbar.status", state, registry.getAllExtensions(), (entry) => standIns.runtimeExtensionStandIn(entry, ids));
-    return render(createElement("div", null, ...placed.map((extension) => createElement(extension.component as ComponentType, { key: extension.id }))));
+    return placeExtensions("app/topbar.status", state, registry.getAllExtensions(), (entry) => standIns.runtimeExtensionStandIn(entry, ids));
   };
+  const renderSlot = (manifest: UiManifest = MANIFEST) =>
+    render(createElement("div", null, ...placed(manifest).map((extension) => createElement(extension.component as ComponentType, { key: extension.id }))));
   /** What the router renders for a page: the registered page, else its stand-in. */
   const route = (id = "page:demo/main", manifest: UiManifest = MANIFEST) => {
     const pages = registry.getPages();
     return [...pages, ...standIns.runtimePageRegistrations({ status: "ready", manifest }, pages)].find((page) => page.id === id);
   };
-  return { registry, runtime, load, route, renderSlot };
+  return { registry, runtime, load, route, placed, renderSlot };
 }
 
 let errors: ReturnType<typeof vi.spyOn>;
@@ -109,10 +110,9 @@ describe("loading a runtime module's web half", () => {
   });
 
   it("shows a page that throws as the module-failed page, not a white screen", async () => {
-    const { registry, load } = await fresh();
+    const { load, route } = await fresh();
     await load(exporting(WEB_MANIFEST, { ...components, DemoPage: components.BrokenPill }));
-    const page = registry.getPages().find((candidate) => candidate.id === "page:demo/main")!;
-    render(createElement(page.component));
+    render(createElement(route()!.component));
     expect(screen.getByRole("heading", { level: 1, name: "Module failed to load" })).toBeInTheDocument();
   });
 
@@ -150,18 +150,21 @@ describe("loading a runtime module's web half", () => {
 
 describe("the server's declarations place a runtime module", () => {
   it("routes a page at the server's path, whatever path the web half declares", async () => {
-    const { registry, load } = await fresh();
+    const { load, route } = await fresh();
     const elsewhere = { ...WEB_MANIFEST, contributes: { ...WEB_MANIFEST.contributes, pages: [{ id: "page:demo/main", path: "/elsewhere", title: "Elsewhere", component: "DemoPage" }] } } as WebModuleManifest;
     await load(exporting(elsewhere));
-    expect(registry.getPages().map((page) => [page.id, page.path, page.label])).toEqual([["page:demo/main", "/demo", "Demo"]]);
+    const page = route()!;
+    expect([page.path, page.label]).toEqual(["/demo", "Demo"]);
+    render(createElement(page.component));
+    expect(screen.getByText("demo page body")).toBeInTheDocument();
   });
 
   it("attaches extensions where the UI manifest places them, and skips one an override switched off", async () => {
-    const { registry, runtime, load } = await fresh();
+    const { runtime, load, placed } = await fresh();
     const moved: UiManifest = { ...MANIFEST, extensions: [{ ...MANIFEST.extensions[1]!, order: 40 }] };
     await load(exporting(), moved);
     expect(runtime.getRuntimeModuleState("demo")).toBe("ready");
-    expect(registry.getAllExtensions().filter((extension) => extension.module === "demo" && extension.kind === "pill").map((extension) => [extension.id, extension.attachTo.order])).toEqual([["pill:demo/fine", 40]]);
+    expect(placed(moved).map((extension) => [extension.id, extension.attachTo.order])).toEqual([["pill:demo/fine", 40]]);
   });
 
   it("fails a web half that lacks a component the server's declarations name: the page says so, never loading forever", async () => {
@@ -172,22 +175,73 @@ describe("the server's declarations place a runtime module", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Module failed to load");
   });
 
+  it("registers the widget types of the manifest the server loaded", async () => {
+    const { registry, load } = await fresh();
+    const withType = { ...SERVED, contributes: { ...SERVED.contributes, widgetTypes: [{ type: "demo/stat", optionsSchema: {}, component: "FinePill" }] } } as ModuleManifest;
+    await load(exporting(withType), MANIFEST, withType);
+    expect(registry.getWidgetType("demo/stat")?.module).toBe("demo");
+  });
+
   it("fails a web half that declares contributions the server's module does not have", async () => {
-    const { registry, runtime, load } = await fresh();
+    const { runtime, load } = await fresh();
     const extra = { ...WEB_MANIFEST, contributes: { ...WEB_MANIFEST.contributes, extensions: [...WEB_MANIFEST.contributes!.extensions!, { id: "pill:demo/extra", kind: "pill", attachTo: { slot: "app/topbar.status" }, component: "FinePill" }] } } as WebModuleManifest;
     await load(exporting(extra));
     expect(runtime.getRuntimeModuleState("demo")).toBe("failed");
-    expect(registry.getAllExtensions().filter((extension) => extension.module === "demo")).toEqual([]);
+    expect(runtime.getRuntimeComponent("demo", "FinePill")).toBeUndefined();
     expect(String(errors.mock.calls[0]![1])).toContain("declares other extensions than the module the server loaded");
   });
 
-  it("shows a page the module settled without as failed, not loading", async () => {
+  it("shows a page whose component the loaded module lacks as failed, not loading", async () => {
     const { load, route } = await fresh();
     await load(exporting());
-    // The manifest refreshes with a page the loaded web half never registered.
-    const later: UiManifest = { ...MANIFEST, pages: [...MANIFEST.pages, { id: "page:demo/new", module: "demo", path: "/demo/new", title: "New", component: "DemoPage" }] };
+    // The manifest refreshes with a page naming a component the web half does not have.
+    const later: UiManifest = { ...MANIFEST, pages: [...MANIFEST.pages, { id: "page:demo/new", module: "demo", path: "/demo/new", title: "New", component: "NoSuchPage" }] };
     render(createElement(route("page:demo/new", later)!.component));
     expect(screen.getByRole("alert")).toHaveTextContent("Module failed to load");
+  });
+});
+
+describe("a ui hot reload moves a ready runtime module's contributions, without loading it again", () => {
+  // Loaded while an override had switched its page and its fine pill off.
+  const OFF: UiManifest = { ...MANIFEST, pages: [], extensions: [MANIFEST.extensions[0]!] };
+
+  it("an override switched off, then on: the page routes and renders its component", async () => {
+    const { load, route } = await fresh();
+    const importer = exporting();
+    await load(importer, OFF);
+    expect(route("page:demo/main", OFF)).toBeUndefined();
+    await load(importer, MANIFEST);
+    render(createElement(route()!.component));
+    expect(screen.getByText("demo page body")).toBeInTheDocument();
+    expect(importer).toHaveBeenCalledOnce();
+  });
+
+  it("an override switched off, then on: the slot extension renders where the manifest now places it", async () => {
+    const { load, placed, renderSlot } = await fresh();
+    const importer = exporting();
+    await load(importer, OFF);
+    expect(placed(OFF).map((extension) => extension.id)).toEqual(["pill:demo/broken"]);
+    const on: UiManifest = { ...MANIFEST, extensions: [MANIFEST.extensions[0]!, { ...MANIFEST.extensions[1]!, order: 0 }] };
+    await load(importer, on);
+    expect(placed(on).map((extension) => extension.id)).toEqual(["pill:demo/fine", "pill:demo/broken"]);
+    renderSlot(on);
+    expect(screen.getByText("fine pill")).toBeInTheDocument();
+    expect(importer).toHaveBeenCalledOnce();
+  });
+
+  it("a page's path changes: it routes at the new path, with the same component", async () => {
+    const { load, route } = await fresh();
+    const importer = exporting();
+    await load(importer);
+    const before = route()!;
+    const moved: UiManifest = { ...MANIFEST, pages: [{ ...MANIFEST.pages[0]!, path: "/maintenance-windows" }] };
+    await load(importer, moved);
+    const after = route("page:demo/main", moved)!;
+    expect(after.path).toBe("/maintenance-windows");
+    expect(after.component).toBe(before.component);
+    render(createElement(after.component));
+    expect(screen.getByText("demo page body")).toBeInTheDocument();
+    expect(importer).toHaveBeenCalledOnce();
   });
 });
 
@@ -201,7 +255,8 @@ describe("a runtime module whose web half cannot run", () => {
       const { runtime, registry, load, route, renderSlot } = await fresh();
       await load(exporting(manifest));
       expect(runtime.getRuntimeModuleState("demo")).toBe("incompatible");
-      expect(registry.getAllExtensions().filter((extension) => extension.module === "demo" || extension.module === "other")).toEqual([]);
+      expect(runtime.getRuntimeComponent("demo", "FinePill")).toBeUndefined();
+      expect(registry.hasWidgetType("demo/stat")).toBe(false);
 
       renderSlot();
       expect(screen.getAllByText("demo: incompatible")).toHaveLength(2);

@@ -2,25 +2,27 @@ import { satisfiesDeckApi, type ModuleManifest, type UiManifest, type UiModule, 
 import type { ComponentType } from "react";
 import { FragmentBoundary } from "@/ui";
 
-import { isComponent } from "../registry/registry.js";
-import { registerWebModule } from "../registry/web-module.js";
+import { isComponent, registerWidgetType, type WidgetProps } from "../registry/registry.js";
 import { ModuleProblemPage, ModuleProblemTile } from "./ModuleProblem.js";
 
 /**
  * Where a runtime module's web half stands in this page load:
  * - `pending`: being loaded; its pages show a loading state and its extensions nothing;
- * - `ready`: registered, so its components render where the UI manifest places them;
+ * - `ready`: its components are loaded, and render wherever the current UI manifest places
+ *   its pages and extensions (so a `ui` hot reload moves them without loading it again);
  * - `incompatible`: its web half was built for another deck module API (`deckApi`), for
  *   another build of the module (id or version differ from the server's), or imports a name
  *   deck's `@deck/sdk` or React does not export;
  * - `failed`: it did not load, did not export a web module, declares other contributions than
- *   the module the server loaded, lacks a component the server's declarations name, or the
- *   registry refused it.
+ *   the module the server loaded, lacks a component the server's manifest names, or the
+ *   registry refused one of its widget types.
  * A module is loaded at most once per page load: a failure is not retried until a reload.
  */
 export type RuntimeModuleState = "pending" | "ready" | "incompatible" | "failed";
 
 const states = new Map<string, RuntimeModuleState>();
+/** Each ready module's components by name, each already inside its error boundary. */
+const tables = new Map<string, ReadonlyMap<string, ComponentType<any>>>();
 let version = 0;
 const listeners = new Set<() => void>();
 
@@ -32,6 +34,11 @@ function setState(id: string, state: RuntimeModuleState): void {
 
 export function getRuntimeModuleState(id: string): RuntimeModuleState | undefined {
   return states.get(id);
+}
+
+/** A ready runtime module's component, inside its error boundary; undefined if it has none by that name. */
+export function getRuntimeComponent(module: string, name: string): ComponentType<any> | undefined {
+  return tables.get(module)?.get(name);
 }
 
 export function subscribeRuntimeModules(listener: () => void): () => void {
@@ -82,7 +89,7 @@ export function runtimeWebModulesOf(manifest: UiManifest): RuntimeWebModule[] {
  */
 export function loadRuntimeWebModules(manifest: UiManifest, loaders: Partial<Loaders> = {}): Promise<void> {
   const use = { ...NATIVE, ...loaders };
-  return Promise.all(runtimeWebModulesOf(manifest).filter((module) => !states.has(module.id)).map((module) => loadOne(module, manifest, use))).then(() => undefined);
+  return Promise.all(runtimeWebModulesOf(manifest).filter((module) => !states.has(module.id)).map((module) => loadOne(module, use))).then(() => undefined);
 }
 
 /** A web half deck cannot run: incompatible, or failed, with the cause for the console. */
@@ -95,7 +102,7 @@ class Unusable extends Error {
   }
 }
 
-async function loadOne(module: RuntimeWebModule, manifest: UiManifest, loaders: Loaders): Promise<void> {
+async function loadOne(module: RuntimeWebModule, loaders: Loaders): Promise<void> {
   setState(module.id, "pending");
   const link = module.web.styles === undefined ? undefined : linkStyles(module.id, module.web.styles);
   try {
@@ -114,8 +121,11 @@ async function loadOne(module: RuntimeWebModule, manifest: UiManifest, loaders: 
     }
     const drift = contributionDrift(web.manifest, served);
     if (drift !== null) throw new Unusable("failed", `its web half declares other ${drift} than the module the server loaded`);
-    const declared = declarationsOf(manifest, served);
-    registerWebModule({ manifest: declared, components: guarded(module.id, declared, web) });
+    const table = guarded(module.id, served, web);
+    for (const type of served.contributes?.widgetTypes ?? []) {
+      if (type.component !== undefined) registerWidgetType({ type: type.type, module: module.id, component: table.get(type.component) as ComponentType<WidgetProps<any>> });
+    }
+    tables.set(module.id, table);
     setState(module.id, "ready");
   } catch (cause) {
     const state = cause instanceof Unusable ? cause.state : "failed";
@@ -159,40 +169,6 @@ function contributionDrift(web: WebModuleManifest, served: ModuleManifest): stri
   return Object.keys(ours).find((kind) => ours[kind] !== theirs[kind]) ?? null;
 }
 
-/**
- * What the shell registers for a module: its pages, nav entries, slots and extensions as the
- * UI manifest admitted and placed them (paths, slots and orders are the server's, never the
- * web half's), and the widget types of the manifest the server loaded.
- */
-function declarationsOf(manifest: UiManifest, served: ModuleManifest): WebModuleManifest {
-  const id = served.id;
-  const pages = (manifest.pages ?? []).filter((page) => page.module === id);
-  const pageIds = new Set<string>(pages.map((page) => page.id));
-  const nav = (manifest.nav ?? []).filter(
-    (item) => item.module === id && item.page !== undefined && pageIds.has(item.page) && item.id === `nav:${item.page.slice("page:".length)}`,
-  );
-  return {
-    id,
-    version: served.version,
-    deckApi: served.deckApi,
-    contributes: {
-      pages: pages.map((page) => ({ id: page.id, path: page.path, title: page.title, component: page.component, ...(page.icon === undefined ? {} : { icon: page.icon }) })),
-      nav: nav.filter((item, index) => nav.findIndex((other) => other.page === item.page) === index).map((item) => ({ id: item.id, page: item.page!, group: item.group, order: item.order })),
-      slots: (manifest.slots ?? []).filter((slot) => slot.module === id).map((slot) => ({ id: slot.id, accepts: slot.accepts })),
-      extensions: (manifest.extensions ?? [])
-        .filter((extension) => extension.module === id && extension.component !== undefined)
-        .map((extension) => ({
-          id: extension.id,
-          kind: extension.kind as never,
-          attachTo: { slot: extension.slot, order: extension.order },
-          component: extension.component!,
-          ...(extension.config === undefined ? {} : { config: extension.config }),
-        })),
-      widgetTypes: (served.contributes?.widgetTypes ?? []).filter((type) => type.component !== undefined),
-    },
-  };
-}
-
 /** How long a module's stylesheet may hold up its script. */
 const STYLES_WAIT_MS = 5_000;
 
@@ -214,28 +190,26 @@ function linkStyles(moduleId: string, href: string): { element: HTMLLinkElement;
 }
 
 /**
- * The components the declarations name, each inside an error boundary of its own: a page that
- * throws renders the module-failed page, any other extension the module-failed tile, and the
- * rest of the shell (and the module's other extensions) keep rendering. Components nothing
- * names are left out (an override may have switched their extension off); a named entry that
- * is not a component, or is missing, is left for the registry to refuse.
+ * The module's components, each inside an error boundary of its own: a page that throws
+ * renders the module-failed page, any other extension the module-failed tile, and the rest of
+ * the shell (and the module's other extensions) keep rendering. Every component the server's
+ * manifest names must be there; others are kept, unused.
  */
-function guarded(moduleId: string, declared: WebModuleManifest, web: WebModule): Record<string, unknown> {
-  const contributes = declared.contributes ?? {};
+function guarded(moduleId: string, served: ModuleManifest, web: WebModule): ReadonlyMap<string, ComponentType<any>> {
+  const contributes = served.contributes ?? {};
   const pages = new Set((contributes.pages ?? []).map((page) => page.component));
-  const named = new Set([
+  const named = [
     ...pages,
-    ...(contributes.extensions ?? []).map((extension) => extension.component!),
+    ...(contributes.extensions ?? []).flatMap((extension) => (extension.component === undefined ? [] : [extension.component])),
     ...(contributes.widgetTypes ?? []).flatMap((type) => (type.component === undefined ? [] : [type.component])),
-  ]);
-  return Object.fromEntries(
-    Object.entries(web.components)
-      .filter(([name]) => named.has(name))
-      .map(([name, component]) => [
-        name,
-        isComponent(component) ? guard(component as ComponentType<Record<string, unknown>>, moduleId, pages.has(name)) : component,
-      ]),
-  );
+  ];
+  const table = new Map<string, ComponentType<any>>();
+  for (const [name, component] of Object.entries(web.components)) {
+    if (isComponent(component)) table.set(name, guard(component as ComponentType<Record<string, unknown>>, moduleId, pages.has(name)));
+  }
+  const missing = named.find((name) => !table.has(name));
+  if (missing !== undefined) throw new Unusable("failed", `its web half has no component "${missing}", which its manifest names`);
+  return table;
 }
 
 function guard(Component: ComponentType<Record<string, unknown>>, moduleId: string, page: boolean): ComponentType<Record<string, unknown>> {

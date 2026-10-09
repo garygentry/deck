@@ -133,6 +133,20 @@ export interface ModuleDisabledEvent {
   code?: string;
 }
 
+export interface RuntimeModulesEvent {
+  /**
+   * The runtime modules directory was read: which modules' server code was imported, and
+   * which failed to load (each also logs `module.disabled`). Imported code runs inside deck
+   * with all of its privileges.
+   */
+  event: "modules.runtime";
+  dir: string;
+  /** Whether DECK_MODULES_ENABLED is on; when off, no runtime module code is loaded. */
+  enabled: boolean;
+  loaded: string[];
+  failed: string[];
+}
+
 export function createLogger(options: LoggerOptions = {}): Logger {
   return pino({
     level: options.level ?? process.env.DECK_LOG_LEVEL ?? "info",

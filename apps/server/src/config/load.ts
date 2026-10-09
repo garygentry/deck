@@ -17,6 +17,7 @@ import type { DeckConfig } from "../contract/config.js";
 import type { ServerModule } from "@deck/module-sdk";
 import { builtinComposition, composeModules, credentialEnvFindings, type CredentialOwners } from "../modules/config.js";
 import { ModuleManifestError } from "../modules/host.js";
+import type { RuntimeModulePlan } from "../modules/runtime.js";
 import { planningRouteTable, RESERVED_ROOT_PATHS } from "../server/app.js";
 import { resolveConfigDir } from "./resolve-dir.js";
 
@@ -60,6 +61,8 @@ export interface LoadOptions {
   composed?: ComposedConfig;
   /** The server modules config is composed for; default: the built-in modules. */
   modules?: readonly ServerModule<any>[];
+  /** How the runtime modules among `modules` loaded (see `loadRuntimeModules`). */
+  runtime?: RuntimeModulePlan;
   /**
    * How a section for a module that will not run is checked. `advisory` (default, what boot
    * uses: a switched-off module never blocks boot): its problems are info findings.
@@ -137,6 +140,7 @@ export function load(options: LoadOptions = {}): LoaderResult {
         env: options.env ?? process.env,
         kernelRoutes: planningRouteTable(),
         reservedRootPaths: RESERVED_ROOT_PATHS,
+        ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
       };
       const composition = options.modules === undefined
         ? builtinComposition(context)

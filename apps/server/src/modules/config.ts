@@ -142,7 +142,7 @@ function widgetTypeContributions(types: readonly WidgetTypeDecl[]): ConfigContri
  */
 export function composeModules(
   modules: readonly ServerModule<any>[],
-  context: Pick<PlanOptions, "sectionOf" | "env" | "kernelRoutes" | "reservedRootPaths">,
+  context: Pick<PlanOptions, "sectionOf" | "env" | "kernelRoutes" | "reservedRootPaths" | "runtime">,
   cache?: Map<string, ComposedConfig>,
 ): ModuleComposition {
   const invalid = new Map<string, string>();
@@ -154,7 +154,8 @@ export function composeModules(
     // A module-local kind defect (a kind declared twice, say) disables the module, as the
     // host would, rather than surfacing as a conflict from composition.
     // Its declared kinds are kept, so config validation can name their owner as off.
-    const kindProblem = moduleKindsProblem(module);
+    // A runtime module present by its manifest only has no handlers, and never runs.
+    const kindProblem = context.runtime?.codeless.has(id) === true ? null : moduleKindsProblem(module);
     if (kindProblem !== null) {
       invalid.set(id, kindProblem);
       try {
@@ -196,10 +197,15 @@ export function composeModules(
     if (RESERVED_MODULE_IDS.has(entry.id)) continue;
     const contribution = contributions.get(entry.id);
     if (entry.enabled && contribution !== undefined) composedModules.push(contribution);
-    // Off, but with a contribution that composes: its section is still checked, at info.
-    else composedModules.push({ ...(contribution ?? { id: entry.id }), disabled: entry.reason ?? "not enabled" });
+    // Off, but with a contribution that composes: its section is still checked, at info,
+    // except for a module that was meant to run but failed to load: its section is config the
+    // operator wrote for it, checked at its real severity.
+    else {
+      const strict = context.runtime?.loadProblems.has(entry.id) === true;
+      composedModules.push({ ...(contribution ?? { id: entry.id }), disabled: entry.reason ?? "not enabled", ...(strict ? { strictSection: true } : {}) });
+    }
   }
-  const key = JSON.stringify(composedModules.map(({ id, disabled }) => [id, disabled ?? null]));
+  const key = JSON.stringify(composedModules.map(({ id, disabled, strictSection }) => [id, disabled ?? null, strictSection ?? false]));
   let composed = cache?.get(key);
   if (composed === undefined) {
     // Always with the select check: every server validation goes through this composition.

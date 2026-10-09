@@ -29,6 +29,7 @@ import { logger as kernelLogger, type ModuleDisabledEvent, type ModuleInitEvent,
 import { listStats, register as registryRegister } from "../providers/registry.js";
 import { settlesWithin } from "../server/settle.js";
 import { ServiceRegistry } from "./services.js";
+import type { RuntimeModulePlan } from "./runtime.js";
 import {
   createModuleContext,
   credentialEnvRefusal,
@@ -125,6 +126,11 @@ export interface ModuleHostOptions {
   manifestProblems?: ReadonlyMap<string, string>;
   /** Deck's built-in modules: they claim env names before any other module. */
   builtins?: ReadonlySet<ServerModule<any>>;
+  /**
+   * The runtime modules' load outcome: load failures (disabled with MODULE_LOAD_FAILED), the
+   * kernel switch each also needs on, and those present by manifest only (no kind handlers).
+   */
+  runtime?: RuntimeModulePlan;
   /** The estate's `integrations[]` / `sources[]` lists, read through `ctx.instances` (default: empty). */
   instancesOf?: (list: "integrations" | "sources") => readonly unknown[];
   /** Upper bound on waiting for a module's in-flight runs at shutdown (default 5s). */
@@ -239,8 +245,11 @@ const findingPath = (id: string) => `/modules/${id.replace(/~/g, "~0").replace(/
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === "string");
 
-/** Why a manifest is unusable on its own terms, or null. Cross-module checks come later. */
-function manifestProblem(manifest: ModuleManifest, reservedPagePaths: readonly string[]): string | null {
+/**
+ * Why a manifest is unusable on its own terms (MODULE_MANIFEST_INVALID), or null; cross-module
+ * checks come later. `reservedPagePaths` are root paths no page may sit on.
+ */
+export function manifestProblem(manifest: ModuleManifest, reservedPagePaths: readonly string[]): string | null {
   if (typeof manifest.id !== "string" || !MODULE_ID_PATTERN.test(manifest.id)) return "id must be lowercase kebab-case";
   if (RESERVED_MODULE_IDS.has(manifest.id)) return `id "${manifest.id}" is reserved for the kernel`;
   if (typeof manifest.version !== "string") return "version must be a string";
@@ -637,7 +646,7 @@ export interface ModulePlanning {
 
 export type PlanOptions = Pick<
   ModuleHostOptions,
-  "modules" | "sectionOf" | "env" | "manifestProblems" | "kernelRoutes" | "reservedRootPaths" | "builtins"
+  "modules" | "sectionOf" | "env" | "manifestProblems" | "kernelRoutes" | "reservedRootPaths" | "builtins" | "runtime"
 >;
 
 /**
@@ -685,7 +694,13 @@ export function planModules(options: PlanOptions): ModulePlanning {
   const usable = new Map<string, UsableModule>();
   const builtinIds = new Set<string>();
   for (const { module, id, manifest, builtin } of snapshots) {
-    const kinds = snapshotKinds(module);
+    const loadProblem = options.runtime?.loadProblems.get(id);
+    if (loadProblem !== undefined) {
+      refuse(id, "MODULE_LOAD_FAILED", `Module "${id}" failed to load: ${loadProblem}.`);
+      continue;
+    }
+    // A module present by its manifest only has no handlers to check (it never runs).
+    const kinds = options.runtime?.codeless.has(id) === true ? { kinds: {} } : snapshotKinds(module);
     const problem = manifestProblem(manifest, reservedPagePaths)
       // Only a built-in has data that predates modules.
       ?? (manifest.dataDir !== undefined && !builtin ? "dataDir.legacyPath is reserved for built-in modules" : null)
@@ -738,6 +753,9 @@ export function planModules(options: PlanOptions): ModulePlanning {
   const unmetSwitches = (manifest: ModuleManifest): ModuleGate[] => {
     const { id, enabledBy } = manifest;
     const unmet: ModuleGate[] = [];
+    // A kernel switch the module needs as well (runtime modules: DECK_MODULES_ENABLED).
+    const kernelGate = options.runtime?.envGates.get(id);
+    if (kernelGate !== undefined && !parseBool(options.env[kernelGate], false)) unmet.push({ env: kernelGate });
     if (enabledBy?.config === true && options.sectionOf(id) === undefined) unmet.push({ config: `modules.${id}` });
     if (enabledBy?.env !== undefined && !parseBool(options.env[enabledBy.env], false)) unmet.push({ env: enabledBy.env });
     return unmet;
@@ -801,6 +819,13 @@ export function planModules(options: PlanOptions): ModulePlanning {
       }
       if (!isDeckApiRange(manifest.deckApi) || !satisfiesDeckApi(manifest.deckApi)) {
         refuse(id, "MODULE_API_INCOMPATIBLE", `Module "${id}" requires deckApi ${manifest.deckApi}; this deck provides ${DECK_API_VERSION}.`);
+        continue;
+      }
+      // A runtime module whose code was not loaded cannot run, even when nothing else stops it
+      // (the config or env it was loaded against changed). Planning for manifest-only
+      // validation is the exception: there it stands for the module boot would run.
+      if (options.runtime?.codeless.has(id) === true && options.runtime.planOnly !== true) {
+        refuse(id, "MODULE_LOAD_FAILED", `Module "${id}" failed to load: its code was not loaded.`);
         continue;
       }
       const missing = (manifest.dependsOn ?? []).filter((dep) => !usable.has(dep) || excluded.has(dep) || disabled.has(dep));

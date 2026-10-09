@@ -811,7 +811,9 @@ export function planModules(options: PlanOptions): ModulePlanning {
       const unique = [...new Map(switches.map((entry) => [JSON.stringify(entry), entry])).values()];
       if (unique.length > 0) gates.set(id, { reason, gates: unique });
     };
-    const candidates = manifests.filter((manifest) => !excluded.has(manifest.id));
+    // Inert runtime modules are not planned at all: their dependency and service edges never
+    // touch an active module (they are added back as off, for their switch, below).
+    const candidates = manifests.filter((manifest) => !excluded.has(manifest.id) && !inert(manifest.id));
     const { order, stuck } = topoOrder(candidates);
     for (const id of order) {
       const { manifest } = usable.get(id)!;
@@ -837,19 +839,19 @@ export function planModules(options: PlanOptions): ModulePlanning {
         refuse(id, "MODULE_API_INCOMPATIBLE", `Module "${id}" requires deckApi ${manifest.deckApi}; this deck provides ${DECK_API_VERSION}.`);
         continue;
       }
-      // A runtime module whose code was not loaded cannot run, even when nothing else stops it
-      // (the config or env it was loaded against changed). Planning for manifest-only
-      // validation is the exception: there it stands for the module boot would run.
-      if (options.runtime?.codeless.has(id) === true && options.runtime.planOnly !== true) {
-        refuse(id, "MODULE_LOAD_FAILED", `Module "${id}" failed to load: its code was not loaded.`);
-        continue;
-      }
       const missing = (manifest.dependsOn ?? []).filter((dep) => !usable.has(dep) || excluded.has(dep) || disabled.has(dep));
       if (missing.length > 0) {
         const message = `Module "${id}" depends on ${missing.map((dep) => `"${dep}"`).join(", ")}, which ${missing.length === 1 ? "is" : "are"} not available.`;
         refuse(id, "MODULE_DEPENDENCY_MISSING", message);
         const fromDependencies = dependencySwitches(manifest);
         if (fromDependencies !== null) gate(id, message, fromDependencies);
+        continue;
+      }
+      // A runtime module whose code was not loaded cannot run, even when nothing else stops it
+      // (the config or env it was loaded against changed). Planning for manifest-only
+      // validation is the exception: there it stands for the module boot would run.
+      if (options.runtime?.codeless.has(id) === true && options.runtime.planOnly !== true) {
+        refuse(id, "MODULE_LOAD_FAILED", `Module "${id}" failed to load: its code was not loaded.`);
       }
     }
     for (const id of stuck) {
@@ -918,7 +920,7 @@ export function planModules(options: PlanOptions): ModulePlanning {
   findings.push(...resolved.findings);
   for (const [id, reason] of resolved.disabled) disabled.set(id, reason);
   const { order } = resolved;
-  for (const id of inertUnusable) {
+  for (const id of [...inertUnusable, ...[...usable.keys()].filter(inert)]) {
     const gate = options.runtime!.envGates.get(id)!;
     const reason = `not enabled: ${gate} is not true`;
     disabled.set(id, reason);

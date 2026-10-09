@@ -34,7 +34,7 @@ vi.mock("../src/log/logger.js", async (importOriginal) => {
   };
 });
 
-const ENV_NAMES = ["DECK_MODULES_DIR", "DECK_MODULES_ENABLED"] as const;
+const ENV_NAMES = ["DECK_MODULES_DIR", "DECK_MODULES_ENABLED", "DECK_METRICS_ENABLED"] as const;
 const cleanup: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
   while (cleanup.length) await cleanup.pop()!();
@@ -330,6 +330,83 @@ describe("runtime modules that collide with built-ins", () => {
       expect(event).toMatchObject({ level: 40, rejected: [{ id: "portal" }] });
     });
   }
+});
+
+describe("round 2: failed and inert modules claim nothing", () => {
+  /** A module directory with a manifest and, unless null, a server entry. */
+  function writeRuntime(root: string, id: string, manifest: Record<string, unknown> | string, entry: string | null = null): void {
+    mkdirSync(join(root, id));
+    writeFileSync(join(root, id, "deck-module.json"), typeof manifest === "string" ? manifest : JSON.stringify({ id, version: "1.0.0", deckApi: "^0.1", ...manifest }));
+    if (entry !== null) writeFileSync(join(root, id, "server.mjs"), entry);
+  }
+
+  it("a colliding module's present, invalid section still fails boot", async () => {
+    const root = tempDir("deck-rtb-mods-");
+    writeRuntime(root, "thief", { providerKinds: [{ kind: "prometheus" }], config: { schema: { type: "object", additionalProperties: false, properties: { size: { type: "integer" } } } } });
+    modulesEnv(root);
+    const failed = await bootFails(configDir({ modules: { thief: { size: "big" } } }));
+    expect(failed.code).toBe("exit:1");
+    expect(failed.stderr).toContain("/modules/thief/size");
+  });
+
+  it("a module whose manifest is unknown leaves its section exempt: a base-layer section does not stop boot", async () => {
+    const root = tempDir("deck-rtb-mods-");
+    writeRuntime(root, "garbled", "{ not json");
+    modulesEnv(root);
+    const base = tempDir("deck-rtb-cfg-");
+    writeFileSync(join(base, "00-base.yaml"), stringify({ schemaVersion: 2, estate: { name: "lab" }, modules: { garbled: { anything: 1 } } }));
+    const request = await bootOn(base);
+    expect((await json<UiManifest>(request, "/api/ui")).modules.find((module) => module.id === "garbled")).toMatchObject({ enabled: false, reason: 'Module "garbled" failed to load: bad manifest.' });
+  });
+
+  it("an inert module's dependency and service edges never reach an active module", async () => {
+    const root = tempDir("deck-rtb-mods-");
+    writeRuntime(root, "cycle", { dependsOn: ["metrics"], services: { provides: ["snapshot/content"] } });
+    modulesEnv(root, false);
+    process.env.DECK_METRICS_ENABLED = "true";
+    const request = await bootOn(configDir());
+    const ui = await json<UiManifest>(request, "/api/ui");
+    expect(ui.modules.find((module) => module.id === "metrics")).toMatchObject({ enabled: true });
+    expect(ui.modules.find((module) => module.id === "cycle")).toMatchObject({ enabled: false, reason: "not enabled: DECK_MODULES_ENABLED is not true", enabledBy: [{ env: "DECK_MODULES_ENABLED" }] });
+  });
+
+  it("uses an overlay's fresh pin over a stale base pin for the same module", async () => {
+    const root = tempDir("deck-rtb-mods-");
+    cpSync(join(EXAMPLES, "maintenance"), join(root, "maintenance"), { recursive: true });
+    modulesEnv(root);
+    const dir = tempDir("deck-rtb-cfg-");
+    writeFileSync(join(dir, "00-base.yaml"), stringify({ schemaVersion: 2, estate: { name: "lab" }, moduleIntegrity: { maintenance: `sha256-${"A".repeat(43)}=` } }));
+    writeFileSync(join(dir, "10-overlay.yaml"), stringify({ schemaVersion: 2, moduleIntegrity: { maintenance: moduleDigest(join(root, "maintenance")) }, modules: { maintenance: { windows: WINDOWS } } }));
+    const request = await bootOn(dir);
+    expect((await json<UiManifest>(request, "/api/ui")).modules.find((module) => module.id === "maintenance")).toMatchObject({ enabled: true });
+  });
+
+  it("boot, validate and render fail the same modules (a dependant of a failed one is never loaded)", async () => {
+    const root = tempDir("deck-rtb-mods-");
+    const entry = `import manifest from "./deck-module.json" with { type: "json" };\nexport default { manifest, init() {} };\n`;
+    writeRuntime(root, "aaa", {}, entry);
+    writeRuntime(root, "bbb", { dependsOn: ["aaa"], config: { schema: { type: "object", properties: { size: { type: "integer" } } } } }, entry);
+    modulesEnv(root);
+    const stale = `sha256-${"A".repeat(43)}=`;
+    const config = configDir({ moduleIntegrity: { aaa: stale, bbb: stale }, modules: { bbb: { size: "big" } } });
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    // Boot goes on: aaa fails to load, bbb is off for its dependency, so its section is advisory.
+    const request = await bootOn(config);
+    const reasons = Object.fromEntries((await json<UiManifest>(request, "/api/ui")).modules.filter((module) => ["aaa", "bbb"].includes(module.id)).map((module) => [module.id, module.reason]));
+    expect(reasons).toEqual({ aaa: 'Module "aaa" failed to load: pin mismatch.', bbb: 'Module "bbb" depends on "aaa", which is not available.' });
+    expect(logLines.find((line) => line.event === "module.disabled" && line.module === "bbb")).toMatchObject({ code: "MODULE_DEPENDENCY_MISSING" });
+
+    // Render loads as boot does.
+    expect(cli(["render", config, "--out", join(tempDir("deck-rtb-out-"), "out.json")])).toBe(0);
+    // Validate reports the same load failure (aaa only) as a warning, so it exits 1.
+    stderr.mockClear();
+    expect(cli(["validate", config])).toBe(1);
+    const printed = stderr.mock.calls.map(([text]) => String(text)).join("");
+    expect(printed).toContain('Module "aaa" failed to load: pin mismatch.');
+    expect(printed).not.toContain('Module "bbb" failed to load');
+  });
 });
 
 describe("the deck CLI with DECK_MODULES_DIR", () => {

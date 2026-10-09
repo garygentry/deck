@@ -20,6 +20,8 @@ import {
   readRuntimeManifests,
   type RuntimeModules,
 } from "../src/modules/runtime.js";
+import { BUILTIN_MODULES } from "../src/modules/builtin.js";
+import { planModules } from "../src/modules/host.js";
 
 const EXAMPLES = fileURLToPath(new URL("../../../examples/modules", import.meta.url));
 
@@ -255,6 +257,51 @@ describe("loadRuntimeModules", () => {
   });
 });
 
+describe("a module that fails to load claims nothing", () => {
+  it("lets a later healthy module take the provider kind a failed one declared", async () => {
+    const root = tempDir("deck-rt-");
+    const kinds = { providerKinds: [{ kind: "feed" }] };
+    writeModule(root, "a-broken", manifestOf("a-broken", kinds), { "server.js": ENTRY, "server.mjs": ENTRY });
+    writeModule(root, "b-healthy", manifestOf("b-healthy", kinds), {});
+    const result = await loadRuntimeModules({ env: env(root), configDir: configWith({}) });
+    expect(result.loadProblems.get("a-broken")).toBe("bad manifest");
+    expect(result.loadProblems.has("b-healthy")).toBe(false);
+    expect(result.loaded).toEqual(["b-healthy"]);
+    // The failed module keeps its section's schema, and nothing else.
+    expect(result.modules.find((module) => module.manifest.id === "a-broken")!.manifest).toEqual({ id: "a-broken", version: "1.0.0", deckApi: "^0.1" });
+  });
+});
+
+describe("one loading order for boot and for deck validate", () => {
+  /** bbb depends on aaa; both pinned with a stale pin. */
+  function dependentPair() {
+    const root = tempDir("deck-rt-");
+    writeModule(root, "aaa", manifestOf("aaa"));
+    writeModule(root, "bbb", manifestOf("bbb", { dependsOn: ["aaa"], config: { schema: { type: "object", properties: { size: { type: "integer" } } } } }));
+    const stale = `sha256-${"A".repeat(43)}=`;
+    return { root, configDir: configWith({ moduleIntegrity: { aaa: stale, bbb: stale } }) };
+  }
+
+  it("fails the same modules either way, and a dependant of a failed one is MODULE_DEPENDENCY_MISSING", async () => {
+    const { root, configDir } = dependentPair();
+    const booted = await loadRuntimeModules({ env: env(root), configDir });
+    const planned = readRuntimeManifests({ env: env(root), configDir });
+    expect([...booted.loadProblems]).toEqual([["aaa", "pin mismatch"]]);
+    expect([...planned.loadProblems]).toEqual([["aaa", "pin mismatch"]]);
+    for (const runtime of [booted, planned]) {
+      const { findings } = planModules({
+        modules: [...BUILTIN_MODULES, ...runtime.modules],
+        sectionOf: () => undefined,
+        env: env(root),
+        builtins: new Set(BUILTIN_MODULES),
+        runtime,
+      });
+      expect(findings.find((finding) => finding.path === "/modules/bbb")?.code).toBe("MODULE_DEPENDENCY_MISSING");
+      expect(findings.find((finding) => finding.path === "/modules/aaa")?.code).toBe("MODULE_LOAD_FAILED");
+    }
+  });
+});
+
 describe("collisions never abort boot", () => {
   /** A modules directory with modules that collide with built-ins, the kernel, or one another. */
   function collidingModules(): string {
@@ -311,19 +358,22 @@ describe("integrity pins", () => {
     expect(moduleDigest(join(links, "parent", "pinned"))).toBe(digest);
   });
 
-  it("reads pins from the layers merged as config loading merges them", async () => {
+  it("merges pins per module id across layers, the later layer winning", async () => {
     const root = tempDir("deck-rt-");
-    const pin = moduleDigest(writeModule(root, "pinned", manifestOf("pinned")));
+    const pinA = moduleDigest(writeModule(root, "a-mod", manifestOf("a-mod")));
+    const dirB = writeModule(root, "b-mod", manifestOf("b-mod"));
+    const pinB = moduleDigest(dirB);
     const stale = `sha256-${"A".repeat(43)}=`;
-    // An overlay's pin alone is used.
-    expect((await loadRuntimeModules({ env: env(root), configDir: configWith({}, { moduleIntegrity: { pinned: pin } }) })).loaded).toEqual(["pinned"]);
-    // Pinned in both layers, the earlier layer's pin is the one used (ownership `both`), as in
-    // the validated config: a stale base pin under a fresh overlay one does not match.
-    const staleBase = await loadRuntimeModules({ env: env(root), configDir: configWith({ moduleIntegrity: { pinned: stale } }, { moduleIntegrity: { pinned: pin } }) });
-    expect(staleBase.loadProblems.get("pinned")).toBe("pin mismatch");
-    expect(staleBase.pins.get("pinned")).toBe(stale);
-    const freshBase = await loadRuntimeModules({ env: env(root), configDir: configWith({ moduleIntegrity: { pinned: pin } }, { moduleIntegrity: { pinned: stale } }) });
-    expect(freshBase.loaded).toEqual(["pinned"]);
+    // base {a} + overlay {b}: both are pinned; b's directory then changes and it fails alone.
+    writeFileSync(join(dirB, "extra.mjs"), "export {};\n");
+    const split = await loadRuntimeModules({ env: env(root), configDir: configWith({ moduleIntegrity: { "a-mod": pinA } }, { moduleIntegrity: { "b-mod": pinB } }) });
+    expect(split.loaded).toEqual(["a-mod"]);
+    expect(split.pins).toEqual(new Map([["a-mod", pinA], ["b-mod", pinB]]));
+    expect(split.loadProblems.get("b-mod")).toBe("pin mismatch");
+    // base {a: stale} + overlay {a: fresh}: the fresh pin is used.
+    const fresh = await loadRuntimeModules({ env: env(root), configDir: configWith({ moduleIntegrity: { "a-mod": stale } }, { moduleIntegrity: { "a-mod": pinA } }) });
+    expect(fresh.loaded).toContain("a-mod");
+    expect(fresh.pins.get("a-mod")).toBe(pinA);
   });
 
   it("imports nothing from a directory that does not match its pin", async () => {
@@ -367,6 +417,7 @@ describe("integrity pins", () => {
     });
     expect(result.loadDetails!.get("malformed")).toContain("integrity pin is not a sha256-<base64> digest");
     expect(result.loadDetails!.get("linked")).toContain('"data.txt" is not a regular file or directory');
+    expect(result.loadProblems.get("linked")).toBe("unreadable");
     expect(importer).not.toHaveBeenCalled();
   });
 
@@ -379,6 +430,7 @@ describe("integrity pins", () => {
     const importer = vi.fn();
     const result = await loadRuntimeModules({ env: env(root), configDir: configWith({ moduleIntegrity: { locked: `sha256-${"A".repeat(43)}=` } }), importer });
     expect(result.loadDetails!.get("locked")).toContain("its directory cannot be read");
+    expect(result.loadProblems.get("locked")).toBe("unreadable");
     expect(importer).not.toHaveBeenCalled();
   });
 

@@ -4,15 +4,15 @@ import { join, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import type { ModuleManifest, ServerModule } from "@deck/module-sdk";
-import { ComposeError, merge, type JsonObject } from "@deck/schema";
+import { merge, type JsonObject } from "@deck/schema";
 import { parse as parseYaml } from "yaml";
 
 import { parseBool } from "../config/env.js";
 import { resolveConfigDir } from "../config/resolve-dir.js";
 import { planningRouteTable, RESERVED_ROOT_PATHS } from "../server/app.js";
 import { BUILTIN_MODULES } from "./builtin.js";
-import { composeModules } from "./config.js";
-import { ModuleManifestError, planModules } from "./host.js";
+import { compositionConflict } from "./config.js";
+import { planModules } from "./host.js";
 
 /** The directory runtime modules are loaded from: one subdirectory per module, named by its id. */
 export const MODULES_DIR_ENV = "DECK_MODULES_DIR";
@@ -34,7 +34,7 @@ export const MAX_MANIFEST_DEPTH = 32;
  * Why a runtime module failed to load, as the HTTP API may show it: a fixed category, never
  * the module's own error text or a file path (those go to the log only).
  */
-export type LoadCategory = "bad manifest" | "outside DECK_MODULES_DIR" | "collision" | "pin mismatch" | "import error";
+export type LoadCategory = "bad manifest" | "unreadable" | "outside DECK_MODULES_DIR" | "collision" | "pin mismatch" | "import error";
 
 /**
  * What config loading and the module host need to know about runtime modules beside the
@@ -132,7 +132,7 @@ export function moduleDigest(dir: string): string {
       const rel = relative(root, path).split(sep).join("/");
       if (stats.isDirectory()) walk(path);
       else if (stats.isFile()) outer.update(`${rel}\0${createHash("sha256").update(readFileSync(path)).digest("hex")}\n`);
-      else throw new LoadError("pin mismatch", `"${rel}" is not a regular file or directory, so the integrity digest cannot cover it`);
+      else throw new LoadError("unreadable", `"${rel}" is not a regular file or directory, so the integrity digest cannot cover it`);
     }
   };
   walk(root);
@@ -178,14 +178,21 @@ function examine(root: string, id: string): Candidate | null {
   let file: string;
   try {
     file = realpathSync(join(dir, RUNTIME_MANIFEST_FILE));
-  } catch {
-    return failed("bad manifest", `${RUNTIME_MANIFEST_FILE} is missing`);
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return failed("bad manifest", `${RUNTIME_MANIFEST_FILE} is missing`);
+    return failed("unreadable", `${RUNTIME_MANIFEST_FILE} cannot be read: ${(cause as Error).message}`);
   }
   if (!inside(dir, file)) return failed("outside DECK_MODULES_DIR", `${RUNTIME_MANIFEST_FILE} resolves to ${file}, outside ${dir}`);
   if (statSync(file).size > MAX_MANIFEST_BYTES) return failed("bad manifest", `${RUNTIME_MANIFEST_FILE} is larger than ${MAX_MANIFEST_BYTES} bytes`);
+  let text: string;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch (cause) {
+    return failed("unreadable", `${RUNTIME_MANIFEST_FILE} cannot be read: ${(cause as Error).message}`);
+  }
   let manifest: unknown;
   try {
-    manifest = JSON.parse(readFileSync(file, "utf8"));
+    manifest = JSON.parse(text);
   } catch (cause) {
     return failed("bad manifest", `${RUNTIME_MANIFEST_FILE} is not valid JSON: ${(cause as Error).message}`);
   }
@@ -214,7 +221,7 @@ function discover(root: string): Candidate[] {
       const candidate = examine(root, id);
       if (candidate !== null) candidates.push(candidate);
     } catch (cause) {
-      candidates.push({ id, dir: join(root, id), manifest: null, problem: new LoadError("bad manifest", `it cannot be read: ${(cause as Error)?.message ?? String(cause)}`), entry: null });
+      candidates.push({ id, dir: join(root, id), manifest: null, problem: new LoadError("unreadable", `it cannot be read: ${(cause as Error)?.message ?? String(cause)}`), entry: null });
     }
   }
   return candidates;
@@ -247,6 +254,32 @@ export function readConfigHints(configDir: string | undefined, env: Readonly<Rec
 /** A manifest-only stand-in for a runtime module whose code is not loaded; its init never runs. */
 function standIn(manifest: ModuleManifest): ServerModule {
   return Object.freeze({ manifest, init: () => {} });
+}
+
+/**
+ * The stand-in for a module that failed to load but whose manifest is known: its config
+ * section alone (schema, ownership, identities, references), so config written for it is still
+ * checked, and nothing it would claim (provider kinds, finding codes, keys, routes, paths, nav,
+ * services, env names) can collide with another module.
+ */
+function sectionOnly(manifest: ModuleManifest): ServerModule {
+  const { id, config } = manifest;
+  const version = typeof manifest.version === "string" ? manifest.version : "unknown";
+  const deckApi = typeof manifest.deckApi === "string" ? manifest.deckApi : "0";
+  if (config === null || typeof config !== "object" || config.schema === undefined) return standIn(Object.freeze({ id, version, deckApi }));
+  const { schema, ownership, identity, unique, references } = config;
+  return standIn(deepFreeze({
+    id,
+    version,
+    deckApi,
+    config: {
+      schema,
+      ...(ownership === undefined ? {} : { ownership }),
+      ...(identity === undefined ? {} : { identity }),
+      ...(unique === undefined ? {} : { unique }),
+      ...(references === undefined ? {} : { references }),
+    },
+  }));
 }
 
 /** The stand-in for a module none of whose manifest may be used: its id alone. */
@@ -314,10 +347,13 @@ class Loading {
     readonly hints: ReturnType<typeof readConfigHints>,
   ) {}
 
+  /** Disable a module that failed to load: it keeps only its config section (see {@link sectionOnly}). */
   fail(id: string, problem: LoadError): void {
     this.loadProblems.set(id, problem.category);
     this.loadDetails.set(id, `${this.candidates.get(id)?.dir ?? id}: ${problem.message}`);
     this.codeless.add(id);
+    const manifest = this.candidates.get(id)?.manifest;
+    this.modules.set(id, manifest == null ? idOnly(id) : sectionOnly(manifest));
   }
 
   private context() {
@@ -330,13 +366,6 @@ class Loading {
     };
   }
 
-  /**
-   * Compose config for the built-ins and `modules` as boot will (throws when they cannot
-   * coexist), keeping what the module plan needs from it.
-   */
-  private compose(modules: readonly ServerModule<any>[]): void {
-    this.invalid = composeModules([...BUILTIN_MODULES, ...modules], this.context()).invalid;
-  }
 
   /** The module plan from manifests, as boot will plan it, with modules not yet loaded standing in. */
   plan() {
@@ -363,42 +392,45 @@ class Loading {
       this.candidates.set(id, candidate);
       this.envGates.set(id, MODULES_ENABLED_ENV);
       this.codeless.add(id);
+      this.modules.set(id, candidate.manifest === null || candidate.problem !== null ? idOnly(id) : standIn(candidate.manifest));
       // Off, runtime modules are inert: a problem only reduces the module to its id.
       if (candidate.problem !== null && this.on) this.fail(id, candidate.problem);
-      this.modules.set(id, candidate.manifest === null || (candidate.problem !== null && !this.on) ? idOnly(id) : standIn(candidate.manifest));
     }
     // Usually nothing collides, and one composition of them all settles it.
     if (this.collides([...this.modules.values()]) === null) return;
     const modules = new Map(this.modules);
     this.modules.clear();
     for (const { id, dir } of admitted) {
-      let module = modules.get(id)!;
+      const module = modules.get(id)!;
       const collision = this.collides([...this.modules.values(), module]);
       if (collision !== null) {
-        module = idOnly(id);
-        // Not even its id can be planned (a kernel-reserved one, say): leave the directory out.
-        if (this.collides([...this.modules.values(), module]) !== null) {
+        // A collision keeps only its config section (when on) or its id (when off, inert).
+        const reduced = this.on && this.candidates.get(id)!.manifest !== null ? sectionOnly(this.candidates.get(id)!.manifest!) : idOnly(id);
+        // Not even that can be planned (a kernel-reserved id, say): leave the directory out.
+        if (this.collides([...this.modules.values(), reduced]) !== null) {
           this.rejected.push({ id, detail: `${dir}: ${collision}` });
           for (const set of [this.candidates, this.envGates, this.loadProblems, this.loadDetails]) set.delete(id);
           this.codeless.delete(id);
           continue;
         }
+        this.modules.set(id, reduced);
         if (this.on) this.fail(id, new LoadError("collision", collision));
+        continue;
       }
       this.modules.set(id, module);
     }
     // The composition of every module admitted, for the plan.
-    this.compose([...this.modules.values()]);
+    this.collides([...this.modules.values()]);
   }
 
+  /**
+   * Why `modules` cannot be composed with the built-ins as boot will compose them, or null
+   * (then what the plan needs from the composition is kept). No schema is compiled.
+   */
   private collides(modules: readonly ServerModule<any>[]): string | null {
-    try {
-      this.compose(modules);
-      return null;
-    } catch (cause) {
-      if (cause instanceof ComposeError || cause instanceof ModuleManifestError) return cause.message;
-      throw cause;
-    }
+    const { conflict, invalid } = compositionConflict([...BUILTIN_MODULES, ...modules], this.context());
+    if (conflict === null) this.invalid = invalid;
+    return conflict;
   }
 
   /** Check a module's directory against its pin, now; throws a LoadError when it does not match. */
@@ -411,16 +443,24 @@ class Loading {
     try {
       digest = moduleDigest(this.candidates.get(id)!.dir);
     } catch (cause) {
-      throw cause instanceof LoadError ? cause : new LoadError("pin mismatch", `its directory cannot be read: ${(cause as Error).message}`);
+      throw cause instanceof LoadError ? cause : new LoadError("unreadable", `its directory cannot be read: ${(cause as Error).message}`);
     }
     if (digest !== pin) throw new LoadError("pin mismatch", `its directory digest ${digest} does not match the pinned ${pin}`);
   }
 
-  /** The runtime modules the plan enables that are neither loaded nor attempted, in init order. */
-  pending(attempted: ReadonlySet<string>): string[] {
-    return this.plan()
-      .filter((entry) => entry.enabled && this.candidates.has(entry.id) && this.codeless.has(entry.id) && !this.loadProblems.has(entry.id) && !attempted.has(entry.id))
-      .map((entry) => entry.id);
+  /**
+   * The one loading order, for boot and for manifest-only planning alike: each runtime module
+   * the plan enables that is not yet loaded or attempted, in init order, with the plan worked
+   * out again after every step (a step that fails a module drops its dependants).
+   */
+  *toLoad(): Generator<string> {
+    const attempted = new Set<string>();
+    for (;;) {
+      const next = this.plan().find((entry) => entry.enabled && this.candidates.has(entry.id) && this.codeless.has(entry.id) && !this.loadProblems.has(entry.id) && !attempted.has(entry.id));
+      if (next === undefined) return;
+      attempted.add(next.id);
+      yield next.id;
+    }
   }
 
   result(planOnly: boolean): RuntimeModules {
@@ -483,10 +523,7 @@ export async function loadRuntimeModules(options: LoadRuntimeOptions): Promise<R
   if (!loading.on || loading.hints === null) return loading.result(false);
   const importer = options.importer ?? ((url: string) => import(url));
   const timeoutMs = options.importTimeoutMs ?? DEFAULT_IMPORT_TIMEOUT_MS;
-  const attempted = new Set<string>();
-  for (let next = loading.pending(attempted); next.length > 0; next = loading.pending(attempted)) {
-    const id = next[0]!;
-    attempted.add(id);
+  for (const id of loading.toLoad()) {
     const candidate = loading.candidates.get(id)!;
     try {
       // Immediately before the import, so an earlier module's import cannot change it unseen.
@@ -495,7 +532,12 @@ export async function loadRuntimeModules(options: LoadRuntimeOptions): Promise<R
         // No server code: a module of manifest contributions only.
         loading.modules.set(id, standIn(candidate.manifest!));
       } else {
-        const entry = realpathSync(candidate.entry);
+        let entry: string;
+        try {
+          entry = realpathSync(candidate.entry);
+        } catch (cause) {
+          throw new LoadError("unreadable", `its server entry cannot be read: ${(cause as Error).message}`);
+        }
         if (!inside(candidate.dir, entry)) throw new LoadError("outside DECK_MODULES_DIR", `its server entry resolves to ${entry}, outside the module directory`);
         const namespace = await importWithin(id, entry, timeoutMs, importer);
         loading.modules.set(id, asServerModule((namespace as { default?: unknown } | null)?.default, candidate.manifest!, entry.split(sep).pop()!));
@@ -532,7 +574,8 @@ export function readRuntimeManifests(options: Pick<LoadRuntimeOptions, "env" | "
   const loading = start(options);
   if (loading === null) return NO_RUNTIME_MODULES;
   if (loading.on && loading.hints !== null) {
-    for (const id of loading.pending(new Set())) {
+    // As boot loads, but a module whose pin matches is not imported: it stays a stand-in.
+    for (const id of loading.toLoad()) {
       try {
         loading.checkPin(id);
       } catch (cause) {

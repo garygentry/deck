@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import {
   Button,
   CardGrid,
@@ -11,6 +11,7 @@ import {
   ListItem,
   TreeView,
   type ColumnDef,
+  type DataTableHandle,
 } from "@/ui";
 import { Specimen, type WorkbenchSectionDef } from "../kit.js";
 
@@ -173,6 +174,47 @@ function SelectableList() {
   );
 }
 
+interface EventRow {
+  id: string;
+  host: string;
+  message: string;
+}
+
+// 1,000 generated rows: past the default threshold (300), so the table virtualizes.
+const EVENTS: EventRow[] = Array.from({ length: 1000 }, (_, i) => ({
+  id: `event-${i + 1}`,
+  host: HOSTS[i % HOSTS.length]!.name,
+  message: i % 7 === 3 ? "Collector timed out; retried with a longer deadline and succeeded" : "Collected",
+}));
+
+const EVENT_COLUMNS: ColumnDef<EventRow>[] = [
+  { accessorKey: "id", header: "Event" },
+  { accessorKey: "host", header: "Host" },
+  { accessorKey: "message", header: "Message" },
+];
+
+function VirtualizedDemo() {
+  const tableRef = useRef<DataTableHandle>(null);
+  return (
+    <div className="flex w-full min-w-0 flex-col gap-2">
+      <div>
+        <Button variant="outline" size="sm" onClick={() => tableRef.current?.scrollToIndex(899, { align: "center" })}>
+          Scroll to event 900
+        </Button>
+      </div>
+      <DataTable
+        ref={tableRef}
+        caption="Collector events (1,000 rows, virtualized)"
+        columns={EVENT_COLUMNS}
+        data={EVENTS}
+        getRowId={(r) => r.id}
+        virtualize
+        className="max-h-64"
+      />
+    </div>
+  );
+}
+
 function Demo() {
   return (
     <div className="grid gap-4">
@@ -207,6 +249,10 @@ function Demo() {
         <div className="w-full max-w-md min-w-0">
           <DataTable caption="Addresses" columns={ADDRESS_COLUMNS} data={ADDRESSES} getRowId={(r) => r.id} className="max-h-40" />
         </div>
+      </Specimen>
+
+      <Specimen label="DataTable · virtualized (renders only the rows in view; scrollToIndex handle)">
+        <VirtualizedDemo />
       </Specimen>
 
       <Specimen label="List · plain, static, with leading / meta / actions">

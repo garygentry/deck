@@ -154,11 +154,22 @@ export function renderMarkdown(
   if (options.externalLinksOnly !== true) return DOMPurify.sanitize(html, SANITIZE_CONFIG) as string;
   DOMPurify.addHook("afterSanitizeAttributes", externalLinksOnly);
   try {
-    return DOMPurify.sanitize(html, SANITIZE_CONFIG) as string;
+    return DOMPurify.sanitize(html, EXTERNAL_LINKS_ONLY_CONFIG) as string;
   } finally {
     DOMPurify.removeHook("afterSanitizeAttributes", externalLinksOnly);
   }
 }
+
+/**
+ * The sanitiser config under the external-only policy: also no inline `style` (CSS `url()`
+ * fetches), and none of the SVG elements that set a link or fetch by reference rather than
+ * through an attribute the policy checks (animations that rewrite `href`, `use`, `feImage`).
+ */
+const EXTERNAL_LINKS_ONLY_CONFIG: DOMPurifyConfig = {
+  ...SANITIZE_CONFIG,
+  FORBID_TAGS: [...(SANITIZE_CONFIG.FORBID_TAGS ?? []), "animate", "animatemotion", "animatetransform", "set", "use", "feimage"],
+  FORBID_ATTR: [...(SANITIZE_CONFIG.FORBID_ATTR ?? []), "style"],
+};
 
 /** Attributes that fetch or submit: under the external-only policy each keeps only an absolute http(s) URL. */
 const RESOURCE_ATTRIBUTES = ["src", "action", "formaction", "poster", "background", "cite", "longdesc", "data"] as const;
@@ -185,6 +196,8 @@ function externalLinksOnly(node: Element): void {
   for (const attribute of RESOURCE_ATTRIBUTES) {
     if (node.hasAttribute(attribute) && !isExternalOnly(node.getAttribute(attribute))) node.removeAttribute(attribute);
   }
+  // Any other attribute that names a resource by CSS reference (`fill="url(…)"`, `filter`, `mask`) goes too.
+  for (const { name: attribute, value } of [...node.attributes]) if (/url\s*\(/i.test(value)) node.removeAttribute(attribute);
   if (!isExternalOnly(href)) return;
   node.setAttribute("href", href);
   if (!isLink) return;

@@ -301,6 +301,21 @@ describe("core/markdown from a sidecar (linkPolicy external)", () => {
     expect(container.innerHTML).not.toContain("/api/");
   });
 
+  it("leaves no URL in CSS or SVG references: no style, no url(), no animation that rewrites a link", () => {
+    const { container } = sidecarWidget(null, {
+      content: [
+        '<p style="background:url(/api/health)">styled</p>',
+        '<svg><rect fill="url(/api/config#p)" width="1" height="1"></rect>',
+        '<a href="https://ok.example/"><set attributeName="href" to="/api/actions"></set><animate attributeName="href" values="/api/actions"></animate>a</a>',
+        '<use href="/api/sprite.svg#i"></use></svg>',
+      ].join(""),
+    });
+    expect(container.querySelector("[style]")).toBeNull();
+    expect(container.querySelector("rect")?.hasAttribute("fill")).toBe(false);
+    expect(container.querySelector("set, animate, use")).toBeNull();
+    expect(container.innerHTML).not.toContain("/api/");
+  });
+
   it("applies the policy to markdown from its source's data too", () => {
     sidecarWidget("see [the API](/api/config) or [docs](https://docs.example/)");
     expect(screen.getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual(["https://docs.example/"]);

@@ -222,6 +222,28 @@ describe("the remote provider: data", () => {
     expect(directory.snapshot()[0]?.problem?.message).toBe("cross-origin redirect refused for an authenticated request");
     expect(sidecar.seen).toEqual([]);
   });
+
+  // A sidecar is untrusted: without a credential it still may not point deck's request at
+  // another origin (deck's own loopback API, an internal service) and have the answer published.
+  it.each(["/deck/v1/data", "/deck/v1/describe"])("refuses a cross-origin redirect of an unauthenticated %s", async (path) => {
+    other.routes.set("/deck/v1/data", (_req, res) => res.writeHead(302, { location: `${sidecar.url}/deck/v1/data` }).end());
+    other.routes.set("/deck/v1/describe", (_req, res) => res.writeHead(302, { location: `${sidecar.url}/deck/v1/describe` }).end());
+    const { directory, provider: remote } = provider(other.url);
+    if (path === "/deck/v1/data") {
+      await expect(remote.fetch()).rejects.toThrow("cross-origin redirect refused");
+    } else {
+      await remote.describe();
+      expect(directory.snapshot()[0]?.problem?.message).toBe("cross-origin redirect refused");
+    }
+    expect(sidecar.seen).toEqual([]);
+  });
+
+  it("follows a redirect within the sidecar's own origin", async () => {
+    other.routes.set("/deck/v1/data", (_req, res) => res.writeHead(302, { location: "/v2/data" }).end());
+    other.routes.set("/v2/data", json(DATA));
+    const { provider: remote } = provider(other.url);
+    await expect(remote.fetch()).resolves.toMatchObject({ load: 42 });
+  });
 });
 
 describe("the remote provider: data timeout", () => {

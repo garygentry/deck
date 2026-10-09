@@ -45,9 +45,10 @@ integrations:
 
 Both are `GET`, answer `200` with a JSON body, and receive the credential when one is configured.
 Every request goes through the same hardening as `http-json`: the response size cap (1 MiB for
-data by default, 256 KiB for describe), a 64-level nesting limit, no redirect off the
-configured origin for an authenticated request, and refusal of any response that contains the
-credential.
+data by default, 256 KiB for describe), a 64-level nesting limit, and refusal of any response
+that contains the credential. A sidecar may redirect within its own origin only, with or without
+a credential: deck refuses a redirect to any other origin (its own API, another service on its
+network), so a sidecar cannot have deck fetch and publish someone else's data.
 
 ### `GET /deck/v1/data`
 

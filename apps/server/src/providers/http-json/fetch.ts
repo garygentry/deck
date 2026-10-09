@@ -32,6 +32,12 @@ export interface HttpJsonConfig {
   timeoutMs?: number;
   /** The largest response body accepted, in bytes. */
   maxBytes?: number;
+  /**
+   * Follow redirects within the configured origin only, credential or not: for an upstream
+   * deck does not trust (a sidecar), which could otherwise point deck's request at any URL on
+   * deck's network, its own loopback API included, and have the answer published.
+   */
+  sameOriginRedirects?: boolean;
 }
 
 /** Why a poll failed. Every message names the failure, never a credential, URL or body. */
@@ -152,6 +158,9 @@ async function requestJson(cfg: HttpJsonConfig, signal: AbortSignal): Promise<{ 
     // authenticated request never leaves the configured origin, a scheme change included.
     if (credential !== null && next.origin !== origin) {
       throw new HttpJsonError("redirect", "cross-origin redirect refused for an authenticated request");
+    }
+    if (cfg.sameOriginRedirects === true && next.origin !== origin) {
+      throw new HttpJsonError("redirect", "cross-origin redirect refused");
     }
     if (response.status === 303 || ((response.status === 301 || response.status === 302) && method === "POST")) {
       method = "GET";

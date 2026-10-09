@@ -157,8 +157,9 @@ export class RemoteProvider implements ProviderSpec<unknown> {
     this.directory.refuse(this.id, { code, message });
   }
 
+  /** A request to the sidecar, which may redirect within its own origin only (see `sameOriginRedirects`). */
   private request(path: string, maxBytes?: number): HttpJsonConfig {
-    return { url: endpoint(this.cfg.url, path), ...this.cfg.request, ...(maxBytes === undefined ? {} : { maxBytes }) };
+    return { url: endpoint(this.cfg.url, path), ...this.cfg.request, ...(maxBytes === undefined ? {} : { maxBytes }), sameOriginRedirects: true };
   }
 }
 

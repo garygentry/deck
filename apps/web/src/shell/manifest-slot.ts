@@ -1,7 +1,9 @@
+import type { UiExtension } from "@deck/module-sdk";
 import { APP_TITLE, isIconName } from "@/ui";
 import { useUiManifest, type UiManifestState } from "../data/index.js";
 import { getAllExtensions, type Extension } from "../registry/registry.js";
 import { useRegistryVersion } from "../registry/use-registry.js";
+import { runtimeExtensionStandIn, runtimeModuleIds, useRuntimeModulesVersion } from "../runtime/stand-ins.js";
 
 /**
  * The extensions a shell slot renders, by order then id. The UI manifest decides which render,
@@ -9,12 +11,14 @@ import { useRegistryVersion } from "../registry/use-registry.js";
  * extension of the same id and kind (one the web does not bundle is skipped), with the entry's
  * config in place of the registered one. Until the manifest loads the slot is empty;
  * if it cannot be read, the slot renders what the web registered there, so the shell keeps
- * working.
+ * working. An entry the web registered nothing for renders `standIn`'s extension, if any (a
+ * runtime module whose web half cannot render shows a tile saying so).
  */
 export function placeExtensions(
   slot: string,
   manifest: UiManifestState,
   registered: readonly Extension[],
+  standIn: (entry: UiExtension) => Extension | undefined = () => undefined,
 ): readonly Extension[] {
   if (manifest.status === "loading") return [];
   if (manifest.status === "error" || !Array.isArray(manifest.manifest.extensions)) {
@@ -24,7 +28,7 @@ export function placeExtensions(
   return manifest.manifest.extensions
     .flatMap((entry) => {
       if (entry.slot !== slot) return [];
-      const extension = byId.get(entry.id);
+      const extension = byId.get(entry.id) ?? standIn(entry);
       // The web's own switch still applies: an extension it registered as off never renders.
       if (extension?.component === undefined || !extension.enabled || extension.kind !== entry.kind) return [];
       // The manifest's config is the resolved one (defaults, then overrides): it replaces the
@@ -41,7 +45,10 @@ function byOrderThenId(a: Extension, b: Extension): number {
 /** {@link placeExtensions} for a slot, re-rendering when the manifest loads or the registry changes. */
 export function useManifestSlot(slot: string): readonly Extension[] {
   useRegistryVersion();
-  return placeExtensions(slot, useUiManifest(), getAllExtensions());
+  useRuntimeModulesVersion();
+  const manifest = useUiManifest();
+  const runtime = runtimeModuleIds(manifest);
+  return placeExtensions(slot, manifest, getAllExtensions(), (entry) => runtimeExtensionStandIn(entry, runtime));
 }
 
 /** The brand title from the manifest; deck's when it cannot be read, none while it loads. */

@@ -12,6 +12,7 @@ import { NotFoundPage } from "./NotFoundPage.js";
 import { ReloadNotice } from "./ReloadNotice.js";
 import { HOME_PATH, resolveRoutes, routeForPath, routeLabel, type ResolvedRoutes } from "./routes.js";
 import { useConfig, useUiManifest, type UiManifestState } from "../data/index.js";
+import { runtimePageRegistrations, useRuntimeModules, useRuntimeModulesVersion } from "../runtime/stand-ins.js";
 
 export function App({ url }: { url?: string } = {}) {
   return (
@@ -26,9 +27,14 @@ export function App({ url }: { url?: string } = {}) {
 function Shell() {
   // Re-render when an extension registers late (a lazily loaded module).
   useRegistryVersion();
+  // Runtime modules' web halves load once the manifest is in; until then (or if they cannot
+  // render) their pages route to stand-ins.
+  useRuntimeModules();
+  useRuntimeModulesVersion();
   const manifest = useUiManifest();
+  const pages = getPages();
   // Config pages (`ui.pages`) exist only in the manifest; they route like any module's page.
-  const routes = resolveRoutes(manifest, [...getPages(), ...configPageRegistrations(manifest)], bootHome());
+  const routes = resolveRoutes(manifest, [...pages, ...configPageRegistrations(manifest), ...runtimePageRegistrations(manifest, pages)], bootHome());
   const { path } = useLocation();
   const config = useConfig();
   const pending = awaitingConfigPage(manifest, routes, path, bootHome());

@@ -5,6 +5,7 @@ import { useUiManifest, type UiManifestState } from "../../data/index.js";
 import type { PageRegistration } from "../../registry/registry-types.js";
 import { NotFoundPage } from "../NotFoundPage.js";
 import { ConfigPage } from "./ConfigPage.js";
+import { isRenderableLayout } from "./layout.js";
 
 /** One route component per config page id, kept across renders so the router never remounts it. */
 const routeComponents = new Map<string, ComponentType>();
@@ -31,8 +32,7 @@ function configPagesOf(manifest: UiManifestState): UiPage[] {
       page?.module === UI_CONFIG_MODULE &&
       typeof page.path === "string" &&
       typeof page.title === "string" &&
-      Array.isArray(page.layout?.sections) &&
-      page.layout.sections.every((section) => section !== null && typeof section === "object" && ("slot" in section ? typeof section.slot === "string" : Array.isArray(section.widgets))),
+      isRenderableLayout(page.layout, { slots: false }),
   );
 }
 

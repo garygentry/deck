@@ -1,7 +1,9 @@
 import type { Service } from "@deck/schema";
 import type { GroupItem, LinkItem, ServiceItem } from "@deck/server/portal";
 import type { FreshnessStamp, ProviderEnvelope } from "@deck/contract";
+import { BUILTIN_STATUS_KINDS } from "@deck/contract/modules/data-sources";
 import type { StatusConditionDecl, UiStatusKind } from "@deck/module-sdk";
+import { bindingProviderId, serviceOwner } from "@deck/schema/provider-ids";
 import type { DeckConfig } from "@deck/server";
 
 export interface GatusEndpoint {
@@ -17,6 +19,7 @@ export interface GatusResult {
 }
 
 export type CardStatus =
+  | "pending"
   | "static"
   | "broken-reference"
   | "unreachable"
@@ -47,12 +50,24 @@ export interface CardViewModel {
   freshness: FreshnessStamp;
 }
 
-export interface PortalData {
-  config: DeckConfig | null;
+/** What a card's status is derived from: the status kinds and the providers the cards read. */
+export interface CardStatusContext {
   /** The provider kinds whose bindings give a card its status (the UI manifest's `statusKinds`). */
   statusKinds: readonly UiStatusKind[];
+  /**
+   * The registered provider ids (the UI manifest's `providers`): a binding whose provider is
+   * not one gives no status, so the next binding can. `null` when unknown (no manifest).
+   */
+  registered: ReadonlySet<string> | null;
   /** The envelope of each provider a card reads, by id; `null` when it is not configured or unreadable. */
   envelopes: ReadonlyMap<string, ProviderEnvelope | null>;
+  /** Providers whose first read has not settled: their cards say so, the rest render. */
+  pending: ReadonlySet<string>;
+}
+
+export interface PortalData extends CardStatusContext {
+  config: DeckConfig | null;
+  /** True only until the config and the UI manifest first settle; never again after. */
   loading: boolean;
 }
 
@@ -63,6 +78,15 @@ export interface StatusBinding {
   kind: UiStatusKind;
   providerId: string;
   value: Readonly<Record<string, unknown>>;
+}
+
+/** The built-in status kinds, which a service's bindings consult first, in this order. */
+const BUILTIN_ORDER = new Map(BUILTIN_STATUS_KINDS.map((kind, index) => [`${kind.module}/${kind.kind}`, index]));
+
+/** Status kinds in precedence order: the built-ins in their fixed order, then the others by kind name. */
+export function byPrecedence(kinds: readonly UiStatusKind[]): UiStatusKind[] {
+  const rank = (kind: UiStatusKind): number => BUILTIN_ORDER.get(`${kind.module}/${kind.kind}`) ?? BUILTIN_ORDER.size;
+  return [...kinds].sort((a, b) => rank(a) - rank(b) || (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -79,25 +103,27 @@ export function readPath(value: unknown, path: string): unknown {
   return current;
 }
 
-/** The binding's own id, else the id the server gives it (`<kind>:service:<host>:<name>`). */
-function bindingProviderId(kind: string, service: Service, value: Readonly<Record<string, unknown>>): string {
-  return typeof value.id === "string" ? value.id : `${kind}:service:${service.host}:${service.name}`;
-}
-
 /**
- * The binding that gives a service its card status: of the status kinds it binds, the first
- * by kind name whose binding is usable (an object, naming the item when the kind matches one in
- * a list). `null` when it binds none, so its card is static.
+ * The binding that gives a service its card status: of the status kinds it binds, in
+ * precedence order ({@link byPrecedence}), the first whose binding is usable (an object, naming
+ * the item when the kind matches one in a list) and whose provider is registered (when that is
+ * known). `null` when there is none, so its card is static.
  */
-export function resolveServiceBinding(service: Service, kinds: readonly UiStatusKind[]): StatusBinding | null {
+export function resolveServiceBinding(
+  service: Service,
+  kinds: readonly UiStatusKind[],
+  registered: ReadonlySet<string> | null = null,
+): StatusBinding | null {
   const bindings = service.bindings as Record<string, unknown> | undefined;
-  for (const kind of [...kinds].sort((a, b) => (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0))) {
+  for (const kind of byPrecedence(kinds)) {
     const value = bindings?.[kind.kind];
     if (!isRecord(value)) continue;
     const match = kind.status.match;
     if (match !== undefined && !isKey(readPath(value, match.binding))) continue;
-    const providerId = kind.status.provider === "fixed" ? kind.fixedId : bindingProviderId(kind.kind, service, value);
-    if (providerId === undefined) continue;
+    const providerId = kind.status.provider === "fixed"
+      ? kind.fixedId
+      : bindingProviderId(kind.kind, serviceOwner(service.host, service.name), value);
+    if (providerId === undefined || (registered !== null && !registered.has(providerId))) continue;
     return { kind, providerId, value };
   }
   return null;
@@ -124,15 +150,15 @@ export function isUp(item: unknown, conditions: readonly StatusConditionDecl[]):
 
 /**
  * A card's status: a link is static; a service item naming no declared service is a broken
- * reference; a service with no status binding is static; otherwise its binding's provider says
- * whether it is unreachable (no envelope, an error, unreachable freshness or no data), the item
- * is not found, or the item is up or down by its kind's conditions.
+ * reference; a service with no status binding is static; a binding whose provider has not
+ * answered yet is pending; otherwise its binding's provider says whether it is unreachable (no
+ * envelope, an error, unreachable freshness or no data), the item is not found, or the item is
+ * up or down by its kind's conditions.
  */
 export function deriveCardStatus(
   item: CardItem,
   resolvedService: Service | undefined,
-  kinds: readonly UiStatusKind[],
-  envelopes: ReadonlyMap<string, ProviderEnvelope | null>,
+  context: CardStatusContext,
 ): CardStatus {
   if (item.type === "link") {
     return "static";
@@ -140,11 +166,12 @@ export function deriveCardStatus(
   if (resolvedService === undefined) {
     return "broken-reference";
   }
-  const binding = resolveServiceBinding(resolvedService, kinds);
+  const binding = resolveServiceBinding(resolvedService, context.statusKinds, context.registered);
   if (binding === null) {
     return "static";
   }
-  const envelope = envelopes.get(binding.providerId) ?? null;
+  if (context.pending.has(binding.providerId)) return "pending";
+  const envelope = context.envelopes.get(binding.providerId) ?? null;
   if (
     envelope === null ||
     envelope.error !== null ||

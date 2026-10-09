@@ -2,7 +2,7 @@ import type { Host, Link, Service } from "@deck/schema";
 import type { FreshnessStamp } from "@deck/contract";
 import type { DeckConfig } from "@deck/server";
 import type { Group, GroupItem, PortalModuleConfig, ServiceItem, Subgroup } from "@deck/server/portal";
-import { useMemo, useRef, type JSX, type ReactNode } from "react";
+import { useId, useMemo, useRef, type JSX, type ReactNode } from "react";
 import {
   ActiveFilters,
   CardGrid,
@@ -125,7 +125,7 @@ function cardFreshness(
   if (status === "static" || status === "broken-reference" || service === undefined) {
     return STATIC_STAMP;
   }
-  const binding = resolveServiceBinding(service, data.statusKinds);
+  const binding = resolveServiceBinding(service, data.statusKinds, data.registered);
   if (binding === null) return STATIC_STAMP;
   return data.envelopes.get(binding.providerId)?.freshness ?? PENDING_STAMP;
 }
@@ -148,7 +148,7 @@ function buildCards(data: PortalData, groups: readonly Group[]): IndexedCard[] {
     const service = item.type === "service"
       ? serviceMap.get(`${item.host}/${item.name}`)
       : undefined;
-    const status = deriveCardStatus(item, service, data.statusKinds, data.envelopes);
+    const status = deriveCardStatus(item, service, data);
     cards.push({
       groupId: group.id,
       groupTitle: group.title,
@@ -220,13 +220,24 @@ function titleWithIcon(title: string, icon: string | undefined): ReactNode {
 const renderCards = (cards: readonly CardViewModel[]): JSX.Element[] =>
   cards.map((card, index) => <PortalCard key={index} vm={card} />);
 
-function PortalGroup({ group, cards }: { group: Group; cards: readonly IndexedCard[] }): JSX.Element {
+/**
+ * Where a widget's groups sit in the page outline and how their DOM ids are namespaced: on the
+ * portal page, group `h2` and subgroup `h3` with the page's own `group-<id>` anchors; in a
+ * dashboard card (an `h3`), group `h4` and subgroup `h5`, with ids unique to the widget.
+ */
+interface GroupOutline {
+  level: 2 | 4;
+  idPrefix: string;
+}
+
+function PortalGroup({ group, cards, outline }: { group: Group; cards: readonly IndexedCard[]; outline: GroupOutline }): JSX.Element {
   const byItem = new Map(cards.map(({ card }) => [card.item, card]));
   const blocks = groupBlocks(group, byItem);
   return (
     <Section
       title={titleWithIcon(group.title, group.icon)}
-      headingId={`group-${group.id}`}
+      headingId={`${outline.idPrefix}group-${group.id}`}
+      level={outline.level}
       className="gap-4"
     >
       {blocks.length === 0
@@ -236,9 +247,9 @@ function PortalGroup({ group, cards }: { group: Group; cards: readonly IndexedCa
           : (
             <CardGrid
               key={block.key}
-              id={block.key}
+              id={`${outline.idPrefix}${block.key}`}
               heading={titleWithIcon(block.subgroup.title, block.subgroup.icon)}
-              level={3}
+              level={outline.level === 2 ? 3 : 5}
             >
               {renderCards(block.cards)}
             </CardGrid>
@@ -259,10 +270,12 @@ export interface PortalGroupsOptions {
  * the window; on a dashboard it listens only while focus is inside it.
  */
 export function PortalGroupsWidget({ options, placement = "card" }: WidgetProps<PortalGroupsOptions>): JSX.Element {
-  const data = usePortalData();
-  const rootRef = useRef<HTMLDivElement>(null);
-  const filters = useFacetFilters<PortalFacet>({ facets: PORTAL_FACETS });
   const only = options.groups;
+  const data = usePortalData(only);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const instance = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const outline: GroupOutline = placement === "page" ? { level: 2, idPrefix: "" } : { level: 4, idPrefix: `${instance}-` };
+  const filters = useFacetFilters<PortalFacet>({ facets: PORTAL_FACETS });
   const groups = useMemo(() => (data.config === null ? [] : shownGroups(data.config, only)), [data.config, only]);
   const indexedCards = useMemo(() => buildCards(data, groups), [data, groups]);
   const result = filters.apply(indexedCards, PORTAL_FILTER_ACCESSORS);
@@ -351,6 +364,7 @@ export function PortalGroupsWidget({ options, placement = "card" }: WidgetProps<
               <PortalGroup
                 key={group.id}
                 group={group}
+                outline={outline}
                 cards={indexedCards.filter((entry) => entry.groupId === group.id && visibleCards.has(entry))}
               />
             ))}

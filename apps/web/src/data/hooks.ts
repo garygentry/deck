@@ -155,6 +155,8 @@ export interface ProvidersState<T> {
   envelopes: ReadonlyMap<string, ProviderEnvelope<T> | null>;
   /** True until every read settles (or each is known not to be configured). */
   loading: boolean;
+  /** The asked providers whose first read has not settled yet (all of them while the manifest loads). */
+  pending: ReadonlySet<string>;
 }
 
 /**
@@ -179,19 +181,28 @@ export function useProviders<T>(ids: readonly string[], options: { intervalMs?: 
   );
   const pending = manifest.status === "loading";
   const envelopes = new Map<string, ProviderEnvelope<T> | null>();
-  let loading = pending;
+  const waiting = new Set<string>();
   ids.forEach((id, index) => {
     const result = results[index]!;
     const listed = resolved[index] !== null;
     envelopes.set(id, pending || !listed ? null : (result.data ?? null));
-    if (listed && result.status === "pending") loading = true;
+    if (pending || (listed && result.status === "pending")) waiting.add(id);
   });
+  const loading = waiting.size > 0;
   // The same answer as last render keeps its identity, so readers can memoise on it.
   const last = useRef<ProvidersState<T> | null>(null);
-  if (last.current === null || last.current.loading !== loading || !sameEnvelopes(last.current.envelopes, envelopes)) {
-    last.current = { envelopes, loading };
+  if (
+    last.current === null ||
+    !sameEnvelopes(last.current.envelopes, envelopes) ||
+    !sameMembers(last.current.pending, waiting)
+  ) {
+    last.current = { envelopes, loading, pending: waiting };
   }
   return last.current;
+}
+
+function sameMembers(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  return a.size === b.size && [...a].every((id) => b.has(id));
 }
 
 function sameEnvelopes<T>(a: ReadonlyMap<string, T>, b: ReadonlyMap<string, T>): boolean {

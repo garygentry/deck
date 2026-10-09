@@ -12,7 +12,7 @@ export const DOCKER_MANIFEST: ModuleManifest = {
   id: "docker",
   version: "1.0.0",
   deckApi: "^0.1",
-  providerKinds: [{ kind: "docker", instanceSchema: instanceSchema as JsonSchema, bindable: true, statusCapable: true }],
+  providerKinds: [{ kind: "docker", fixedId: "docker", instanceSchema: instanceSchema as JsonSchema, bindable: true, statusCapable: true }],
 };
 
 export const dockerModule = defineServerModule(DOCKER_MANIFEST, () => {}, {

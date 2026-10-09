@@ -158,6 +158,12 @@ export interface ProviderKindDecl {
   statusCapable?: boolean;
   /** Finding codes the kind handler's `validate` rule may report. */
   findings?: FindingCodeDecl[];
+  /**
+   * The fixed, public provider id the kind's `instances` handler registers under (offered with
+   * `fixedId: true`), such as `prometheus`. Declared so config validation can tell another
+   * instance taking it apart. Honoured for built-in modules only.
+   */
+  fixedId?: string;
 }
 
 /** An extension id: `<kind>:<module>/<name>`, e.g. `pill:llm-usage/summary`. */

@@ -38,12 +38,14 @@ export interface ContributedProviderKind {
   findings?: readonly ({ code: string } & FindingCodeEntry)[];
   /** A pure check over one instance; finding paths are relative to the instance. */
   validate?: ContributedInstanceRule;
+  /** The fixed provider id the kind's instances register under (a built-in's only). */
+  fixedId?: string;
 }
 
 /** A pure check over one `integrations[]` / `sources[]` instance of a contributed kind. */
 export type ContributedInstanceRule = (
   instance: any,
-  context: { layer: ValidateLayer },
+  context: { layer: ValidateLayer; document: Readonly<JsonObject>; fixedIds: ReadonlyMap<string, string> },
 ) => readonly ContributedFinding[];
 
 /**
@@ -212,6 +214,7 @@ export function composeConfig(contributions: readonly ConfigContribution[]): Com
   };
   const rules: Array<{ id: string; codes: ReadonlySet<string>; rule: ContributedRule }> = [];
   const instanceRules: Array<{ id: string; kind: string; list: "integrations" | "sources"; codes: ReadonlySet<string>; rule: ContributedInstanceRule }> = [];
+  const fixedIds = new Map<string, string>();
   const sectionRoots: Array<{ id: string; def: string }> = [];
   const disabled = new Map<string, DisabledSection>();
   const checkedIdentity: Array<[string, IdentitySpec]> = [];
@@ -304,6 +307,7 @@ export function composeConfig(contributions: readonly ConfigContribution[]): Com
         catalog[code] = { severity, summary, fix };
         kindCodes.add(code);
       }
+      if (declared.fixedId !== undefined) fixedIds.set(declared.kind, declared.fixedId);
       if (declared.validate !== undefined) {
         instanceRules.push({ id, kind: declared.kind, list: declared.instanceList ?? "integrations", codes: kindCodes, rule: declared.validate });
       }
@@ -427,7 +431,7 @@ export function composeConfig(contributions: readonly ConfigContribution[]): Com
           });
         }
       }
-      if (layer === "merged") findings.push(...instanceFindings(document, layer, instanceRules, catalogued, moduleFinding));
+      if (layer === "merged") findings.push(...instanceFindings(document, layer, instanceRules, catalogued, moduleFinding, fixedIds));
       if (layer === "merged") {
         for (const [id, section] of disabled) {
           if (!Object.prototype.hasOwnProperty.call(sections, id)) continue;
@@ -486,6 +490,7 @@ function instanceFindings(
   instanceRules: ReadonlyArray<{ id: string; kind: string; list: "integrations" | "sources"; codes: ReadonlySet<string>; rule: ContributedInstanceRule }>,
   catalogued: Readonly<Record<string, FindingCodeEntry>>,
   moduleFinding: (code: "MODULE_RULE_FAILED", id: string, message: string) => Finding,
+  fixedIds: ReadonlyMap<string, string>,
 ): Finding[] {
   const findings: Finding[] = [];
   for (const { id, kind, list, codes, rule } of instanceRules) {
@@ -496,15 +501,16 @@ function instanceFindings(
       const prefix = `/${list}/${index}`;
       let reported: readonly ContributedFinding[];
       try {
-        reported = rule(instance, { layer });
+        reported = rule(instance, { layer, document, fixedIds });
         if (!Array.isArray(reported)) throw new Error("did not return a list of findings");
       } catch (error) {
-        findings.push({ ...moduleFinding("MODULE_RULE_FAILED", id, `A config rule of module "${id}" for kind "${kind}" failed: ${(error as Error)?.message ?? String(error)}`), path: prefix });
+        // The path names the instance, not the module, so the module is carried explicitly.
+        findings.push({ ...moduleFinding("MODULE_RULE_FAILED", id, `A config rule of module "${id}" for kind "${kind}" failed: ${(error as Error)?.message ?? String(error)}`), path: prefix, module: id });
         return;
       }
       for (const item of reported) {
         if (!codes.has(item.code)) {
-          findings.push({ ...moduleFinding("MODULE_RULE_FAILED", id, `A config rule of module "${id}" reported ${String(item.code)}, which its kind "${kind}" does not declare.`), path: prefix });
+          findings.push({ ...moduleFinding("MODULE_RULE_FAILED", id, `A config rule of module "${id}" reported ${String(item.code)}, which its kind "${kind}" does not declare.`), path: prefix, module: id });
           continue;
         }
         findings.push({

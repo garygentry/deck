@@ -189,7 +189,7 @@ export function load(options: LoadOptions = {}): LoaderResult {
   const moduleProblems = new Map(invalidModules);
   for (const finding of findings) {
     if (finding.code !== "MODULE_RULE_FAILED") continue;
-    const id = finding.path.split("/")[2]!.replaceAll("~1", "/").replaceAll("~0", "~");
+    const id = finding.module ?? finding.path.split("/")[2]!.replaceAll("~1", "/").replaceAll("~0", "~");
     if (!moduleProblems.has(id)) moduleProblems.set(id, finding.message);
   }
   return { exitClass: 0, config: deepFreeze(accumulator) as unknown as DeckConfig, findings, moduleProblems };

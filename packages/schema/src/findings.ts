@@ -78,6 +78,11 @@ export interface Finding {
   path: string;
   message: string;
   hint?: string;
+  /**
+   * The module a MODULE_RULE_FAILED finding is attributed to, when its path does not say (a
+   * provider kind's instance rule reports at the instance, `/integrations/<i>`).
+   */
+  module?: string;
 }
 
 /** Build a finding with the catalogued severity for its code. */

@@ -12,7 +12,7 @@ export const GATUS_MANIFEST: ModuleManifest = {
   id: "gatus",
   version: "1.0.0",
   deckApi: "^0.1",
-  providerKinds: [{ kind: "gatus", instanceSchema: instanceSchema as JsonSchema, bindable: true, statusCapable: true }],
+  providerKinds: [{ kind: "gatus", fixedId: "gatus", instanceSchema: instanceSchema as JsonSchema, bindable: true, statusCapable: true }],
 };
 
 export const gatusModule = defineServerModule(GATUS_MANIFEST, () => {}, {

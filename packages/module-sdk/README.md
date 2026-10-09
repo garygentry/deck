@@ -80,13 +80,15 @@ provider that reads the estate as a whole; the `snapshot` provider, for one, val
 snapshot against the declared hosts and services. In-process modules are fully trusted, so this
 widens nothing they could not already read.
 
-A handler may also carry `validate(instance, { layer })`: a pure config check over one
+A handler may also carry `validate(instance, { layer, document, fixedIds })`: a pure config check over one
 `integrations[]` (or `sources[]`) instance of its kind, for what the instance schema cannot
 express (a URL the runtime parser rejects, say). It runs on the merged document of every
 validation, before any module code initialises, for each instance of the kind in document order.
 Each finding's `path` is relative to the instance, and its `code` must be one the kind's
 declaration lists in `findings` (with severity, summary and fix, as a config section's codes
-are). A rule that throws or reports an undeclared code is `MODULE_RULE_FAILED`.
+are). `document` is the merged document, read-only, and `fixedIds` maps each built-in kind that
+declares `fixedId` (the provider id its instances register under) to that id. A rule that throws
+or reports an undeclared code is `MODULE_RULE_FAILED`, and disables the module that owns the kind.
 
 Each offered provider must be of the handler's own kind. A provider that keeps its binding's or
 instance's own id follows the estate: a duplicate fails boot (`PROVIDER_DUPLICATE_ID`) as it

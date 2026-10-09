@@ -15,7 +15,7 @@ export const PROMETHEUS_MANIFEST: ModuleManifest = {
   id: "prometheus",
   version: "1.0.0",
   deckApi: "^0.1",
-  providerKinds: [{ kind: "prometheus", instanceSchema: instanceSchema as JsonSchema, statusCapable: false }],
+  providerKinds: [{ kind: "prometheus", fixedId: "prometheus", instanceSchema: instanceSchema as JsonSchema, statusCapable: false }],
 };
 
 export const prometheusModule = defineServerModule(PROMETHEUS_MANIFEST, () => {}, {

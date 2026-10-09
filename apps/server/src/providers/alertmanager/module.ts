@@ -13,7 +13,7 @@ export const ALERTMANAGER_MANIFEST: ModuleManifest = {
   id: "alertmanager",
   version: "1.0.0",
   deckApi: "^0.1",
-  providerKinds: [{ kind: "alertmanager", instanceSchema: instanceSchema as JsonSchema, statusCapable: false }],
+  providerKinds: [{ kind: "alertmanager", fixedId: "alertmanager", instanceSchema: instanceSchema as JsonSchema, statusCapable: false }],
 };
 
 export const alertmanagerModule = defineServerModule(ALERTMANAGER_MANIFEST, () => {}, {

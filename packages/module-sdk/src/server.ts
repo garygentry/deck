@@ -276,6 +276,15 @@ export interface EnvReader {
   get(name: string): string | undefined;
 }
 
+/** What a kind's instance rule sees beside the instance. */
+export interface InstanceRuleContext {
+  layer: ConfigLayer;
+  /** The merged document being validated, read-only. */
+  document: Readonly<JsonObject>;
+  /** The fixed provider id each built-in kind declares (`ProviderKindDecl.fixedId`), by kind. */
+  fixedIds: ReadonlyMap<string, string>;
+}
+
 /** What a provider-kind handler may use. */
 export interface ProviderKindContext {
   /** Reads the module's declared `env` names only. */
@@ -369,7 +378,7 @@ export interface ProviderKindHandler {
    * initialises, so it must be pure: no I/O, no clock, no env. Each finding's `path` is relative
    * to the instance, and its `code` one the kind's declaration lists in `findings`.
    */
-  validate?(instance: JsonObject, context: { layer: ConfigLayer }): readonly ConfigRuleFinding[];
+  validate?(instance: JsonObject, context: InstanceRuleContext): readonly ConfigRuleFinding[];
 }
 
 export interface ServerModule<C = unknown> {

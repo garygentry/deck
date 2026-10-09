@@ -108,7 +108,7 @@ export function moduleContribution(module: ServerModule<any>): ConfigContributio
     ...(manifest.providerKinds === undefined
       ? {}
       : {
-          providerKinds: manifest.providerKinds.map(({ kind, instanceSchema, instanceList, bindable, findings, fixedId }) => {
+          providerKinds: manifest.providerKinds.map(({ kind, instanceSchema, instanceList, bindable, findings, fixedId, fixedIdEnv }) => {
             const validate = module.kinds?.[kind]?.validate;
             return {
               kind,
@@ -118,7 +118,7 @@ export function moduleContribution(module: ServerModule<any>): ConfigContributio
               ...(findings === undefined ? {} : { findings }),
               ...(validate === undefined ? {} : { validate }),
               // A fixed provider id is a built-in-only privilege.
-              ...(fixedId === undefined || !BUILTIN_SET.has(module) ? {} : { fixedId }),
+              ...(fixedId === undefined || !BUILTIN_SET.has(module) ? {} : { fixedId, ...(fixedIdEnv === undefined ? {} : { fixedIdEnv }) }),
             };
           }),
         }),

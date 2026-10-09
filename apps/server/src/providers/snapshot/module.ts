@@ -24,7 +24,7 @@ export const SNAPSHOT_MANIFEST: ModuleManifest = {
   version: "1.0.0",
   deckApi: "^0.1",
   env: [SNAPSHOT_SOURCE_ENV],
-  providerKinds: [{ kind: "snapshot", fixedId: "snapshot", statusCapable: false }],
+  providerKinds: [{ kind: "snapshot", fixedId: "snapshot", fixedIdEnv: SNAPSHOT_SOURCE_ENV, statusCapable: false }],
   services: { provides: [SNAPSHOT_CONTENT.name] },
 };
 

@@ -1,4 +1,4 @@
-import type { ConfigRuleFinding, EnvReader, InstanceRuleContext, JsonObject, ProviderTiming } from "@deck/module-sdk";
+import type { EnvReader, JsonObject, ProviderTiming } from "@deck/module-sdk";
 
 import type { HttpJsonAuth, HttpJsonConfig } from "./fetch.js";
 import instanceSchema from "./instance.schema.json" with { type: "json" };
@@ -24,25 +24,6 @@ export function sharedInstanceProperties(names: readonly string[]): Record<strin
       return [name, property];
     }),
   );
-}
-
-/**
- * A finding when `id` is the fixed provider id of a kind with an instance in the estate. A
- * fixed id clashes only when an instance of its kind is there to register it. Pure.
- */
-export function fixedIdFindings(id: unknown, { document, fixedIds }: InstanceRuleContext, code: string): ConfigRuleFinding[] {
-  const findings: ConfigRuleFinding[] = [];
-  for (const [kind, fixedId] of fixedIds) {
-    if (id !== fixedId) continue;
-    const holds = ["integrations", "sources"].some((list) => {
-      const instances = document[list];
-      return Array.isArray(instances) && instances.some((other) => other !== null && typeof other === "object" && (other as JsonObject).kind === kind);
-    });
-    if (holds) {
-      findings.push({ code, path: "/id", message: `id "${id}" is the fixed provider id of the ${kind} integration in this estate; boot would fail when both register.` });
-    }
-  }
-  return findings;
 }
 
 function auth(value: unknown): HttpJsonAuth | undefined {

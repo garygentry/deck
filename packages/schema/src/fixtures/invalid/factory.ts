@@ -25,6 +25,18 @@ export function fixtureFor(expect: FindingCode): InvalidFixture {
     case "SERVICE_DUPLICATE": return { ...common, layer: "merged", document: config({ hosts: [host("echo")], services: [service("echo", "pulse"), service("echo", "pulse")] }) };
     case "ID_DUPLICATE": return { ...common, layer: "merged", document: config(portal([group("same"), group("same")])) };
     case "PROVIDER_ID_SHARED": return { ...common, layer: "merged", document: config({ hosts: [{ ...host("echo"), bindings: { "http-health": { id: "probe", url: "https://echo.invalid" } } }, { ...host("delta"), bindings: { "http-health": { id: "probe", url: "https://delta.invalid" } } }] }) };
+    case "PROVIDER_ID_RESERVED": return {
+      ...common,
+      layer: "merged",
+      contributions: [
+        { id: "fixture-fixed", providerKinds: [{ kind: "fixture-fixed", fixedId: "fixture-fixed" }] },
+        { id: "fixture-feed", providerKinds: [{ kind: "fixture-feed" }] },
+      ],
+      document: config({ integrations: [
+        { id: "fixed", kind: "fixture-fixed", title: "Fixed", baseUrl: "https://fixed.invalid" },
+        { id: "fixture-fixed", kind: "fixture-feed", title: "Feed", baseUrl: "https://feed.invalid" },
+      ] }),
+    };
     case "REF_HOST_UNRESOLVED": return { ...common, layer: "merged", document: config({ services: [service("absent", "pulse")] }) };
     case "REF_SERVICE_UNRESOLVED": return { ...common, layer: "merged", document: config(portal([{ id: "links", title: "Links", items: [{ type: "service", host: "absent", name: "pulse" }] }])) };
     case "LAYER_OVERLAY_KEY_IN_BASE": return { ...common, layer: "base", document: config(portal([group("layout")])) };

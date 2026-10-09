@@ -501,7 +501,7 @@ describe("the remote kind in an estate", () => {
       ]),
       env: {},
     });
-    expect(result.findings).toContainEqual(expect.objectContaining({ code: "REMOTE_ID_RESERVED", severity: "error" }));
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: "PROVIDER_ID_RESERVED", severity: "error" }));
   });
 
   it("wires credentialEnv, auth, maxBytes and timeoutMs from the estate through to each request", async () => {

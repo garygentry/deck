@@ -3,7 +3,6 @@ import {
   type JsonObject,
   type JsonSchema,
   type ConfigRuleFinding,
-  type InstanceRuleContext,
   type ModuleManifest,
   type ProviderOffer,
 } from "@deck/module-sdk";
@@ -11,7 +10,7 @@ import {
 import { HttpJsonProvider, type HttpJsonConfig } from "./index.js";
 import instanceSchema from "./instance.schema.json" with { type: "json" };
 import { credentialBodyKeys, credentialHeaderNames, credentialQueryParams, isCredentialName, urlProblem } from "./literal.js";
-import { fixedIdFindings, instanceRequest } from "./request-config.js";
+import { instanceRequest } from "./request-config.js";
 
 /**
  * The `http-json` data source: each `integrations[]` instance of kind `http-json` becomes a
@@ -41,21 +40,15 @@ export const HTTP_JSON_MANIFEST: ModuleManifest = {
           summary: "An http-json integration's header, url query or body names what looks like a credential, which config may not hold.",
           fix: "Put the credential in an environment variable, name it in credentialEnv, and send it with auth (scheme query for a query parameter).",
         },
-        {
-          code: "HTTP_JSON_ID_RESERVED",
-          severity: "error",
-          summary: "An http-json integration's id is the fixed provider id of another integration in the estate, so boot would fail.",
-          fix: "Choose another id.",
-        },
       ],
     },
   ],
 };
 
 /** What config validation reports for one instance beyond its schema. Pure. */
-function validateInstance(instance: JsonObject, context: InstanceRuleContext): ConfigRuleFinding[] {
-  const { id, url, body, headers } = instance;
-  const findings = fixedIdFindings(id, context, "HTTP_JSON_ID_RESERVED");
+function validateInstance(instance: JsonObject): ConfigRuleFinding[] {
+  const { url, body, headers } = instance;
+  const findings: ConfigRuleFinding[] = [];
   for (const name of credentialHeaderNames(headers)) {
     findings.push({ code: "HTTP_JSON_LITERAL_CREDENTIAL", path: `/headers/${name.replaceAll("~", "~0").replaceAll("/", "~1")}`, message: `header "${name}" names a credential; config may not hold one.`, hint: "Use credentialEnv with auth: { scheme: header, header: ... }." });
   }
@@ -83,7 +76,7 @@ function headers(value: unknown): Record<string, string> | undefined {
 export const httpJsonModule = defineServerModule(HTTP_JSON_MANIFEST, () => {}, {
   kinds: {
     "http-json": {
-      validate: (instance, context) => validateInstance(instance, context),
+      validate: (instance) => validateInstance(instance),
       instances: (instances, { envFor, logger }) =>
         instances.flatMap((instance): ProviderOffer[] => {
           const { id, url } = instance;

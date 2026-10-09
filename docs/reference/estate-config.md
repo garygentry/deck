@@ -296,6 +296,13 @@ distinct: `deck validate` reports an id used in two collections, or by two bindi
 clash; when both declarations do register, boot fails with `PROVIDER_DUPLICATE_ID`. A repeat
 within `sources` or within `integrations` is an `ID_DUPLICATE` error.
 
+Some kinds register one provider under a fixed, public id the web reads by name: `prometheus`,
+`alertmanager`, `docker` and `gatus` once the estate has an integration of that kind, and
+`snapshot` while `DECK_SNAPSHOT_SOURCE` is set. An integration or source of any other kind with
+that id is a `PROVIDER_ID_RESERVED` error, since boot would fail with `PROVIDER_DUPLICATE_ID`.
+`deck validate` reads `DECK_SNAPSHOT_SOURCE` from its own environment, so run it with the
+variables the deployment sets.
+
 ### Source
 
 A Source object has no additional properties.
@@ -374,9 +381,9 @@ additional properties.
 
 The credential only ever comes from the variable `credentialEnv` names, under the rule above;
 config holds no secret. Beyond the schema, `deck validate` reports `HTTP_JSON_URL_INVALID` (a URL
-the runtime parser rejects), `HTTP_JSON_LITERAL_CREDENTIAL` (a credential-like query parameter
-or body key) and `HTTP_JSON_ID_RESERVED` (the fixed provider id of another integration in the estate), all
-errors. The credential variable must hold at least 8 characters, with no surrounding whitespace. See the [provider kinds reference](provider-kinds.md#http-json) for how
+the runtime parser rejects), and `HTTP_JSON_LITERAL_CREDENTIAL` (a credential-like query parameter
+or body key), both errors; like every integration, its id may not be a fixed provider id that
+registers (`PROVIDER_ID_RESERVED`, see [Sources, integrations, actions](#sources-integrations-actions)). The credential variable must hold at least 8 characters, with no surrounding whitespace. See the [provider kinds reference](provider-kinds.md#http-json) for how
 it is sent, how redirects and failures are handled, and an example.
 
 #### remote integrations
@@ -398,8 +405,8 @@ An integration of kind `remote` is a sidecar speaking the
 | `deepLink` | string | no | Link to the sidecar's own UI. |
 
 Beyond the schema, `deck validate` reports `REMOTE_URL_INVALID` (a URL the runtime parser
-rejects) and `REMOTE_ID_RESERVED` (the fixed provider id of another integration in the estate),
-both errors.
+rejects), an error; a fixed provider id that registers is `PROVIDER_ID_RESERVED`, as for every
+integration.
 
 ### Action
 

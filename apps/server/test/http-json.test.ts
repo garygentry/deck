@@ -581,12 +581,12 @@ describe("the http-json kind in an estate", () => {
 
   it.each(["prometheus", "gatus", "docker", "alertmanager"])("reports an id equal to the fixed provider id of a %s integration in the estate", (kind) => {
     const result = validate([{ id: `${kind}-main`, kind, title: kind, baseUrl: `http://${kind}.lan` }, instance({ id: kind })]);
-    expect(result.findings).toContainEqual(expect.objectContaining({ code: "HTTP_JSON_ID_RESERVED", severity: "error", path: "/integrations/1/id" }));
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: "PROVIDER_ID_RESERVED", severity: "error", path: "/integrations/1/id" }));
   });
 
   it("does not report a fixed id whose kind has no instance in the estate", () => {
     for (const id of ["prometheus", "gatus", "snapshot"]) {
-      expect(validate([instance({ id })]).findings.filter((finding) => finding.code === "HTTP_JSON_ID_RESERVED")).toEqual([]);
+      expect(validate([instance({ id })]).findings.filter((finding) => finding.code === "PROVIDER_ID_RESERVED")).toEqual([]);
     }
   });
 

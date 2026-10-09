@@ -22,12 +22,16 @@ const duplicateProviderIds = {
   "00-base.yaml": {
     schemaVersion: 2,
     estate: { name: "fatal-order" },
-    hosts: [{ name: "alpha", kind: "vm", purpose: "p" }],
+    hosts: [{ name: "alpha", kind: "vm", purpose: "p" }, { name: "beta", kind: "vm", purpose: "p" }],
   },
+  // Two bindings sharing an id: validation can only warn (PROVIDER_ID_SHARED, advisory at
+  // boot), so the clash is found when both register.
   "10-overlay.yaml": {
     schemaVersion: 2,
-    hosts: [{ name: "alpha", bindings: { "http-health": { id: "docker", url: "https://a.invalid/" } } }],
-    integrations: [{ id: "containers", kind: "docker", title: "Docker", baseUrl: "http://docker.invalid" }],
+    hosts: [
+      { name: "alpha", bindings: { "http-health": { id: "probe", url: "https://a.invalid/" } } },
+      { name: "beta", bindings: { "http-health": { id: "probe", url: "https://b.invalid/" } } },
+    ],
   },
 };
 
@@ -48,7 +52,7 @@ describe("boot: which of two fatal errors prints first", () => {
     vi.stubEnv("DECK_DATA_DIR", "");
 
     const printed = await failedBoot({ configDir: estate.dir });
-    expect(printed).toEqual(["Provider id already registered: docker\n"]);
+    expect(printed).toEqual(["Provider id already registered: probe\n"]);
   });
 
   it("a provider registration error precedes any module init", async () => {
@@ -57,11 +61,11 @@ describe("boot: which of two fatal errors prints first", () => {
     const init = vi.fn(() => {
       throw new Error("init should not run");
     });
-    // The built-in data sources must stay, so the docker and http-health providers still register.
+    // The built-in data sources must stay, so the http-health providers still register.
     const { BUILTIN_MODULES } = await import("../src/modules/builtin.js");
 
     const printed = await failedBoot({ configDir: estate.dir, modules: [...BUILTIN_MODULES, testModule({ id: "late" }, init)] });
-    expect(printed).toEqual(["Provider id already registered: docker\n"]);
+    expect(printed).toEqual(["Provider id already registered: probe\n"]);
     expect(init).not.toHaveBeenCalled();
   });
 });

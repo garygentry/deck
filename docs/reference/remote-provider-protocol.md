@@ -32,7 +32,7 @@ integrations:
 
 | Key | Required | Notes |
 | --- | --- | --- |
-| `id` | yes | Lowercase letters, digits and `-`, at most 64 characters. The provider id (`GET /api/providers/<id>`) and the name of its page (`page:remote/<id>`). Taking the fixed provider id of another integration in the estate is `REMOTE_ID_RESERVED`. |
+| `id` | yes | Lowercase letters, digits and `-`, at most 64 characters. The provider id (`GET /api/providers/<id>`) and the name of its page (`page:remote/<id>`). Taking the fixed provider id of another integration in the estate is `PROVIDER_ID_RESERVED`. |
 | `title` | yes | The page title, and its heading until the sidecar gives one. |
 | `url` | yes | The sidecar's `http://` or `https://` base URL, with no query, fragment or `user:password@`. Deck requests `/deck/v1/describe` and `/deck/v1/data` under it. A URL the runtime cannot parse is `REMOTE_URL_INVALID`. |
 | `credentialEnv`, `auth` | no | As for [`http-json`](provider-kinds.md#http-json): the credential comes only from the named variable, and is sent on both requests. |

@@ -7,6 +7,7 @@ import { fixture as hostDuplicate } from "./host-duplicate.js";
 import { fixture as serviceDuplicate } from "./service-duplicate.js";
 import { fixture as idDuplicate } from "./id-duplicate.js";
 import { fixture as providerIdShared } from "./provider-id-shared.js";
+import { fixture as providerIdReserved } from "./provider-id-reserved.js";
 import { fixture as refHostUnresolved } from "./ref-host-unresolved.js";
 import { fixture as refServiceUnresolved } from "./ref-service-unresolved.js";
 import { fixture as layerOverlayKeyInBase } from "./layer-overlay-key-in-base.js";
@@ -40,6 +41,7 @@ export const invalid: readonly InvalidFixture[] = [
   serviceDuplicate,
   idDuplicate,
   providerIdShared,
+  providerIdReserved,
   refHostUnresolved,
   refServiceUnresolved,
   layerOverlayKeyInBase,

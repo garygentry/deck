@@ -8,7 +8,8 @@ links and nav entries, and deck renders them with its own widget types, so a sid
 run code in the browser.
 
 A working example is [`examples/sidecars/nut-ups/`](../../examples/sidecars/nut-ups/): a NUT UPS
-adapter in about 50 lines of standard-library Python, with a compose snippet.
+adapter in about 50 lines of standard-library Python, with a compose snippet. To write one, see
+[Write a sidecar module](../guides/write-a-sidecar-module.md).
 
 ## Configure it in deck
 
@@ -92,13 +93,13 @@ built from the estate config schema's own descriptors:
 | `version` | The sidecar's version, at most 64 characters; shown in its health detail. |
 | `title` | The heading over its widgets, at most 80 characters; default the integration's `title`. |
 | `columns` | Grid columns of its widgets from the `md` breakpoint up, 1–4; default 1. |
-| `widgets` | Up to 24 widgets, each a [`ui.pages` widget](estate-config.md) **without `source`**, with a required `id` (not `links`, which deck uses for its link tiles). Each reads this integration's data. |
+| `widgets` | Up to 24 widgets, each a [`ui.pages` widget](estate-config.md#ui) **without `source`**, with a required `id` (not `links`, which deck uses for its link tiles). Each reads this integration's data. |
 | `links` | Up to 32 `core/link-tiles` links (`title`, `href`, `description?`, `icon?`), shown as tiles below the widgets. |
 | `nav` | Up to 8 sidebar links (`id`, `label`, `href`, `icon?`, `order?`), listed only when the integration's `page.nav` gives its page a sidebar entry, in that entry's group (`REMOTE_NAV_UNPLACED`, info, otherwise). |
 
 Beyond the schema, deck checks what a schema cannot say:
 
-- **Widget types are an allowlist** of deck's declarative types: `core/stat`, `core/stat-grid`,
+- **Widget types are an allowlist** of deck's declarative types ([widget types](widget-types.md#what-a-sidecar-may-use)): `core/stat`, `core/stat-grid`,
   `core/meter`, `core/key-value`, `core/list`, `core/table`, `core/status-grid`,
   `core/link-tiles`, `core/markdown` and `core/json`. A sidecar cannot place `core/health-pills`,
   another module's widget, or `core/embed` (a frame), whatever `ui.allowUnsafeEmbeds` says.
@@ -149,7 +150,7 @@ Any failed check refuses the whole document, never part of it.
   unchanged one changes nothing.
 - **Health per sidecar.** Each integration is its own provider in `GET /api/health`: `ok` is the
   latest data poll's. After a good poll the detail names both requests, such as
-  `data: HTTP 200, observed 2026-10-09T09:00:00Z; describe: ok (ups 1.0.0)` (a describe's outcome
+  `data: HTTP 200, observed 2026-10-09T09:00:00.000Z; describe: ok (ups 1.0.0)` (a describe's outcome
   shows from the poll after it); after a failed poll it is the poll's error, as for every
   provider, and a describe problem is its `GET /api/ui` finding. A sidecar that is down degrades
   only its own entry, and deck carries on.

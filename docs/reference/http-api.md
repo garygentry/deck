@@ -100,7 +100,8 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
   left out, and a section without widgets with them.
 - `widgetTypes` lists the widget types a config page may use: deck's own (`core/stat`,
   `core/table`, … `core/json`) and those of enabled modules (`type`, `module`, and `sources`, the
-  provider kinds a type renders, when it limits them).
+  provider kinds a type renders, when it limits them). See the
+  [widget types reference](widget-types.md).
 - `statusMaps`, present only when the config declares some, is `ui.statusMaps` by name (each
   with its `values` and `rules`): what a widget's `statusMap` option names.
 - `allowUnsafeEmbeds: true`, present only when the config sets `ui.allowUnsafeEmbeds: true`: the
@@ -277,3 +278,5 @@ action routes use the capability, gate, and lookup codes listed under
 
 - [Environment variables](./environment-variables.md) — capability switches that gate these routes.
 - [CLI reference](./cli.md) — offline config validation and rendering.
+- [Module manifest reference](./module-manifest.md) — what modules contribute to `GET /api/ui`.
+- [Widget types reference](./widget-types.md) — the types `widgetTypes` lists.

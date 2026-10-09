@@ -29,7 +29,8 @@ which lists planned maintenance windows. It adds:
 - a config section, `modules.maintenance`, with a schema and a config rule.
 
 To write a module of your own, copy the template, as described in
-[Start from the template](#start-from-the-template).
+[Start from the template](#start-from-the-template). To add a module to deck itself instead, see
+[Write a module](write-a-module.md).
 
 ## Lay out the modules directory
 
@@ -47,6 +48,7 @@ modules/
 
 - `deck-module.json` is the module's manifest, the same shape built-in modules declare: `id`,
   `version`, `deckApi`, `enabledBy`, `config`, `contributes`, and so on (see the
+  [module manifest reference](../reference/module-manifest.md) and the
   [`@deck/module-sdk` README](../../packages/module-sdk/README.md)). Its `id` must be the
   directory's name.
 - The server entry is `server.js`, `server.mjs` or `server.ts`. A module has at most one. Its
@@ -432,3 +434,10 @@ curl -sI localhost:8080/modules/maintenance/web.js
 
 Then open `/maintenance` in deck: the page, its nav entry and the header pill render from the
 module's web half.
+
+## See also
+
+- [Module manifest reference](../reference/module-manifest.md)
+- [Write a module](write-a-module.md): a module built into deck.
+- [Kernel and modules](../explanation/kernel-and-modules.md)
+- [ADR-007: Graded extension tiers, with a trust model per tier](../architecture/decisions/adr-007-extension-tiers-and-trust.md)

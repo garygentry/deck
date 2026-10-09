@@ -3,7 +3,10 @@
 The web app (`apps/web`) is a React 19 single-page app built with Vite and styled with
 Tailwind CSS v4. Every screen is composed from one in-repo component library, `@/ui`, so pages
 share one look, one set of status colours, and one set of accessibility behaviours. The decision
-behind this stack is recorded in [ADR-004](./decisions/adr-004-web-ui-stack.md).
+behind this stack is recorded in [ADR-004](./decisions/adr-004-web-ui-stack.md). What renders,
+and where, is decided by the server's UI manifest rather than by the web app
+([ADR-006](./decisions/adr-006-config-driven-ui.md)), and modules add to it on one contract
+([ADR-005](./decisions/adr-005-module-contract-and-kernel.md)).
 
 ## Layers
 
@@ -15,6 +18,10 @@ apps/web/src/
     hooks/        useListNavigation, useFacetFilters, useScrollToHash, useDocumentTitle, …
     lib/          cn(), icons.ts (curated Lucide set), status.ts (tones), format.ts, filters.ts
     index.ts      the public barrel: feature code imports from "@/ui"
+  data/           the shared TanStack Query client and hooks (`@/data`): config, UI manifest, providers
+  registry/       the page and extension registry, `registerWebModule`, and web-half discovery
+  runtime/        loading runtime modules' web halves, and their loading and failure stand-ins
+  sdk/            `@deck/sdk` as the page serves it to runtime modules, and the import map
   shell/          AppShell, AppSidebar, Topbar, ThemeMenu, NotFoundPage, the health header
   features/*/     one directory per feature not yet co-located; `index.ts` registers its web half
   styles/         app.css (Tailwind entry + base rules), theme.css (tokens), hljs.css; the token
@@ -438,6 +445,48 @@ the config and the manifest first settle; a provider still being read leaves its
 "Checking" (`pending`), and ids added later never bring the skeleton back. It falls back
 to the built-in kinds' declarations (`@deck/contract/modules/data-sources`) when the manifest
 cannot be read.
+
+### Runtime modules' web halves
+
+A runtime module ([Run a runtime module](../guides/runtime-modules.md)) has no code in this
+bundle. Its web half, `web.js`, is native ESM that deck serves from `/modules/<id>/`, and the UI
+manifest lists it under the module's `web` (`script`, optional `styles`).
+
+- **Loading.** Once the manifest arrives, `runtime/stand-ins.tsx` loads every listed module that
+  this page load has not tried yet (`loadRuntimeWebModules` in `runtime/runtime-modules.tsx`):
+  - it links `web.css` first, waiting at most 5 s;
+  - it reads the module's served `deck-module.json`;
+  - it imports `web.js` with a native `import()`.
+- **The import map.** `web.js` resolves its bare imports through the page's import map, which a
+  Vite plugin writes into `index.html` right after `<head>` (`sdk/import-map.ts`). The map gives
+  `react`, `react-dom`, `react/jsx-runtime` and `@deck/sdk` the host's own modules
+  (`SHARED_MODULES`), so a module renders with the shell's React and reads the shell's query
+  cache. `apps/web/scripts/check-web-build.mjs` checks in CI that the built page keeps the map
+  ahead of every module script.
+- **`@deck/sdk`** is `sdk/index.ts`: `defineWebModule`, the data hooks (`useProvider`,
+  `useProviders`, `useConfig`, `useUiManifest`), `Icon` and the tones, and a curated set of
+  `@/ui` patterns. It exports no primitives. `packages/sdk` publishes its types (generated from
+  this entry), the Tailwind preset and the lint rules modules build against.
+- **Checks.** A module whose web half was built for another `deckApi`, or for another id or
+  version than the server loaded, or that imports a name the SDK or React does not export, is
+  `incompatible`. One that declares other pages, nav entries, slots, extensions or widget types
+  than the server's manifest, or lacks a component the manifest names, is `failed`. Either way
+  it is tried once per page load, and the console says why.
+- **Rendering.** The server's manifest places the module's pages and extensions, as it does a
+  built-in's, so a `ui` reload moves them without loading the module again. Until the module is
+  ready, its pages show a loading state and its extensions nothing. Every component renders
+  inside its own error boundary: a page that throws shows `ModuleProblemPage`, any other
+  extension `ModuleProblemTile`, and the rest of the shell keeps working. The module's widget
+  types are registered like a built-in's.
+
+### Sidecar pages
+
+A `remote` integration's page (`page:remote/<id>`) is not a component either. The server
+builds it at runtime from the sidecar's describe document (`providers/remote/pages.ts`) as a
+config page of module `remote`. `ConfigPage` renders it like any other: one section of the
+sidecar's widgets, each reading only that integration, then its links as a `core/link-tiles`
+widget. Until a describe succeeds, it shows a fixed placeholder. Markdown in a sidecar's widgets
+renders with external links only.
 
 ## Adding a page
 

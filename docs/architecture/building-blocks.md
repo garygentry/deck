@@ -33,6 +33,41 @@ host injected as dependencies.
 A misconfiguration in any of these steps fails fast with a classified error and a non-zero exit
 rather than a half-configured server.
 
+### Module host
+
+Every feature and data source is a module on one contract, `@deck/module-sdk`
+([ADR-005](./decisions/adr-005-module-contract-and-kernel.md), explained in
+[Kernel and modules](../explanation/kernel-and-modules.md)). The module host
+(`apps/server/src/modules/`) runs them:
+
+- **Runtime modules first.** `runtime.ts` reads every `deck-module.json` under
+  `DECK_MODULES_DIR`. It imports a module's server entry only while `DECK_MODULES_ENABLED` is on
+  and the module would run, and disables one that fails to load.
+- **Composition.** `config.ts` composes the config contract from every installed module's
+  contributions, switched on or not, so config is validated against what is installed.
+- **Planning.** `host.ts` plans the modules from their manifests alone. It validates each
+  manifest, works out which are switched on, and orders them by `dependsOn`. Module env names,
+  routes and root paths are checked against the kernel's (`routes.ts`). A module's own defect
+  switches off just that module with a finding: a runtime module's unusable manifest or
+  `deckApi`, a missing dependency, a failing kind handler. Boot fails fast in the cases
+  [Kernel and modules](../explanation/kernel-and-modules.md#how-modules-start) lists in full,
+  including:
+  - with exit code 1, an invalid config section that is present, for a module that runs or a
+    runtime module that failed to load;
+  - with exit code 2:
+    - a built-in's unusable manifest;
+    - two modules that cannot coexist (`MODULE_MANIFEST_CONFLICT`);
+    - a runtime import that does not finish;
+    - a built-in kind handler's `BootFatalError`;
+    - an `init` that throws.
+- **Starting.** It hands the enabled modules' kind handlers to provider registration. It then
+  runs each `init` in order with a context (`context.ts`) that injects only what the module
+  declared, and later mounts each module's sub-app at `/api/m/<id>`.
+- **Shared parts.** Modules share in-process services through `services.ts`, and background
+  tasks run on an adaptive cadence in `scheduler.ts`.
+
+The built-in modules are a static list, `BUILTIN_MODULES` in `builtin.ts`.
+
 ### Provider registry and poll scheduler
 
 Monitoring and inventory data is served through a provider registry
@@ -92,6 +127,17 @@ It layers request logging, the config/provider/health GET routes, error and not-
 then the metrics route and the modules' routes (sources, actions, llm-usage), and finally — when
 a built web bundle is present — the static assets and SPA fallback.
 
+### UI manifest
+
+The server decides what the web shell renders ([ADR-006](./decisions/adr-006-config-driven-ui.md)).
+`apps/server/src/ui/` resolves every enabled module's UI contributions, the `ui` config's
+overrides and pages, and the pages a `remote` sidecar describes at runtime
+(`runtime-pages.ts`), into the UI manifest served at `GET /api/ui` (`resolve.ts`, a pure
+function). Resolving also sets each provider's projections: the `select` of every widget
+that reads it, evaluated on the server when the provider's data changes, and over the cached
+envelopes at once when a reload changes the set of selects. `live.ts` watches the
+config directory, and when only `ui` changed, swaps the manifest in place without a restart.
+
 ### Request and poll flow
 
 Two flows dominate.
@@ -106,6 +152,9 @@ path.
 - [ADR-001: Run the server and schema from TypeScript source under Bun](./decisions/adr-001-bun-from-source.md)
 - [ADR-002: Layered estate config merged into one document](./decisions/adr-002-layered-config.md)
 - [ADR-003: Separate declared intent from observed reality](./decisions/adr-003-intent-vs-reality.md)
+- [ADR-005: One module contract for every feature, around a small kernel](./decisions/adr-005-module-contract-and-kernel.md)
+- [ADR-006: Config-driven UI as one extension tree, resolved on the server](./decisions/adr-006-config-driven-ui.md)
+- [ADR-007: Graded extension tiers, with a trust model per tier](./decisions/adr-007-extension-tiers-and-trust.md)
 
 Per-feature building-block notes exist for three shipped features and go deeper than this chapter:
 

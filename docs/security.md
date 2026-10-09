@@ -83,7 +83,10 @@ can't escalate:
 
 ## Trust tiers
 
-Each way of extending deck gets the trust its form allows. Climb only as far as you need.
+Each way of extending deck gets the trust its form allows. Climb only as far as you need. The
+decision is recorded in [ADR-007](architecture/decisions/adr-007-extension-tiers-and-trust.md),
+and [Kernel and modules](explanation/kernel-and-modules.md#choosing-how-to-extend-deck) helps
+choose a tier.
 
 | Tier | What it can do | What deck enforces | What you own |
 | --- | --- | --- | --- |

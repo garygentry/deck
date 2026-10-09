@@ -8,8 +8,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
-/* Built-in modules' web halves live outside apps/web (modules/<id>/web), beyond automatic source detection. */
-@source "../../../../modules/*/web";
+/* Built-in modules' web halves live outside apps/web (modules/<id>/web), beyond automatic source detection.
+   The glob recurses: one that stops at each module's web directory misses the files in its subdirectories. */
+@source "../../../../modules/*/web/**/*";
 
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";

@@ -15,5 +15,7 @@ and contributes the LLM usage page, its header pill and its portal card. The ope
 There is no `module.json`: a built-in's manifest is TypeScript. Its data half (pages, pill, card)
 is `@deck/contract/modules/llm-usage`, which the web loads too, and `server/module.ts` spreads it
 into the server manifest. There is no build or test script here: each half compiles and is tested
-inside its host app. Tests that drive the module through the kernel (the module host, the app, the
-config pipeline) stay in `apps/server/test`.
+inside its host app. React, react-dom, react-query and vitest are peer dependencies (with dev
+dependencies for the tests): the app and its modules share one instance of each. Tests that drive
+the module through the kernel (the module host, the app, the config pipeline) stay in
+`apps/server/test`.

@@ -241,19 +241,16 @@ importers:
       '@deck/module-sdk':
         specifier: workspace:*
         version: link:../../packages/module-sdk
-      '@tanstack/react-query':
-        specifier: ^5.104.0
-        version: 5.104.0(react@19.3.0)
       hono:
         specifier: ^4.6.0
         version: 4.13.5
       iso8601-duration:
         specifier: ^2
         version: 2.1.4
-      react:
-        specifier: ^19.3.0
-        version: 19.3.0
     devDependencies:
+      '@tanstack/react-query':
+        specifier: ^5.104.0
+        version: 5.104.0(react@19.3.0)
       '@testing-library/react':
         specifier: ^16.3.3
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -263,6 +260,12 @@ importers:
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
+      react-dom:
+        specifier: ^19.3.0
+        version: 19.3.0(react@19.3.0)
       vitest:
         specifier: ^4.1.0
         version: 4.1.11(@types/node@22.20.1)(jsdom@25.0.1)(vite@6.4.4(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0))

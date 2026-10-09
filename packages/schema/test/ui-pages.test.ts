@@ -284,6 +284,9 @@ describe("@deck/schema/select", () => {
     expect(evaluateSelect(compiled, data)).toEqual({ value: [null, [2, 1]] });
     expect(evaluateSelect(compiled, data)).toEqual({ value: [null, [2, 1]] });
     expect(JSON.stringify(compiled.ast)).toBe(before);
+    // A reference holds its expression privately: no lookup on it reads the expression.
+    expect(evaluateSelect("(&a).node", data)).toEqual({ value: null });
+    expect(evaluateSelect("keys(&a)", data)).toEqual({ error: expect.stringMatching(/TypeError/) });
   });
 
   it("charges every built-in function: each one in the engine has a cost row", () => {
@@ -307,6 +310,26 @@ describe("@deck/schema/select", () => {
     }
     expect(evaluateSelect("a < b", { a: 1, b: 2 })).toEqual({ value: true });
     expect(evaluateSelect("a < b", { a: "1", b: "2" })).toEqual({ value: null });
+  });
+
+  it("charges an object's truthiness once per object: filters, !, || and && stay within budget", () => {
+    const big = Object.fromEntries(Array.from({ length: 60_000 }, (_, index) => [`k${index}`, index]));
+    const x = `[${Array.from({ length: 8 }, () => "@").join(", ")}]`;
+    // The review's repro: 8^4 references to one 60 000-key object, each tested by a filter.
+    const repro = timed(`b | ${x} | ${x}[] | ${x}[] | ${x}[] | [?@] | length(@)`, { b: big });
+    expect(repro.ms).toBeLessThan(1000);
+    expect(repro.result).toEqual({ value: 4096 });
+    const list = Array.from({ length: 2000 }, () => big);
+    for (const expression of ["map(&!@, @)", "[*].[@ || `1`][]", "[*].[@ && `1`][]"]) {
+      const { result, ms } = timed(expression, list);
+      expect(ms, expression).toBeLessThan(1000);
+      // A value, or a limit refusing the (2000-fold) result: never an unbounded evaluation.
+      if ("error" in result) expect(result.error, expression).toMatch(/^the result /);
+    }
+    // Distinct big objects are each enumerated, and charged: past the budget it is an error.
+    const distinct = Array.from({ length: 10 }, () => ({ ...big }));
+    expect(evaluateSelect("[?@] | length(@)", distinct)).toEqual({ error: `the select exceeded its work limit (${SELECT_LIMITS.steps} steps)` });
+    expect(evaluateSelect("[?@] | length(@)", [{}, { a: 1 }, {}])).toEqual({ value: 1 });
   });
 
   it("charges equality per node compared", () => {

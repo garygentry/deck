@@ -127,7 +127,12 @@ interface FunctionCost {
   chars?(args: readonly unknown[]): number;
 }
 
-/** Elements of a list, keys of an object, characters of a string; 1 for anything else. */
+/**
+ * Elements of a list, keys of an object, characters of a string; 1 for anything else. Counting
+ * an object's keys enumerates them (O(keys)); the charge follows at once, so each enumeration is
+ * paid for, and none repeats unpaid (an object's truthiness, which the engine tests repeatedly,
+ * is enumerated and charged once per evaluation: Runtime#isEmptyObject).
+ */
 const sizeOf = (value: unknown): number =>
   Array.isArray(value) ? value.length : typeof value === "string" ? value.length : isPlainObject(value) ? Object.keys(value).length : 1;
 

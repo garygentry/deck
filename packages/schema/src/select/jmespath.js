@@ -7,6 +7,7 @@
 // - an ES module that also exports TreeInterpreter and Runtime;
 // - an expression reference is an ExpressionRef only the interpreter creates (no data value can
 //   pass for one), and the parsed expression is never changed;
+// - an object's emptiness (truthiness) is enumerated and charged once per object per evaluation;
 // - field lookups, object comparison and the emptiness test read own properties only; hash
 //   multi-selects and merge() define keys rather than assign them;
 // - ordering comparators are defined for numbers only (null otherwise), as the spec says;
@@ -103,7 +104,10 @@ const vendored = {};
     return false;
   }
 
-  function isFalse(obj) {
+  // deck: an object's emptiness comes from the runtime, which enumerates and charges each object
+  // once per evaluation (enumerating keys is O(keys), so repeated checks of one big object must
+  // not each pay it uncharged).
+  function isFalse(obj, runtime) {
     // From the spec:
     // A false value corresponds to the following values:
     // Empty list
@@ -119,14 +123,7 @@ const vendored = {};
         // Check for an empty array.
         return true;
     } else if (isObject(obj)) {
-        // deck: own keys through Object.prototype (data may have its own "hasOwnProperty" key or
-        // no prototype at all); the first one decides.
-        for (var key in obj) {
-            if (Object.prototype.hasOwnProperty.call(obj, key)) {
-              return false;
-            }
-        }
-        return true;
+        return runtime.isEmptyObject(obj);
     } else {
         return false;
     }
@@ -892,9 +889,15 @@ const vendored = {};
 
 
   // deck: the one way to an executable expression reference (see "ExpressionReference").
+  // deck: the referenced node is held outside the value, so no field lookup on a reference
+  // (`(&a).node`) reaches the expression.
+  var REFERENCED = new WeakMap();
   function ExpressionRef(node) {
-    this.node = node;
+    REFERENCED.set(this, node);
     Object.freeze(this);
+  }
+  function referencedNode(ref) {
+    return REFERENCED.get(ref);
   }
 
   function TreeInterpreter(runtime) {
@@ -1011,7 +1014,7 @@ const vendored = {};
               var finalResults = [];
               for (i = 0; i < base.length; i++) {
                 matched = this.visit(node.children[2], base[i]);
-                if (!isFalse(matched)) {
+                if (!isFalse(matched, this.runtime)) {
                   filtered.push(base[i]);
                 }
               }
@@ -1099,20 +1102,20 @@ const vendored = {};
               return collected;
             case "OrExpression":
               matched = this.visit(node.children[0], value);
-              if (isFalse(matched)) {
+              if (isFalse(matched, this.runtime)) {
                   matched = this.visit(node.children[1], value);
               }
               return matched;
             case "AndExpression":
               first = this.visit(node.children[0], value);
 
-              if (isFalse(first) === true) {
+              if (isFalse(first, this.runtime) === true) {
                 return first;
               }
               return this.visit(node.children[1], value);
             case "NotExpression":
               first = this.visit(node.children[0], value);
-              return isFalse(first);
+              return isFalse(first, this.runtime);
             case "Literal":
               return node.value;
             case TOK_PIPE:
@@ -1268,6 +1271,23 @@ const vendored = {};
     // deck: the work meter. The interpreter and the functions charge every step whose cost grows
     // with the data, before they allocate; deck's evaluator replaces it with a budget.
     charge: function(cost) {},
+
+    // deck: whether an object has no own keys, enumerated and charged once per object per runtime
+    // (a runtime serves one evaluation).
+    isEmptyObject: function(obj) {
+      if (this._emptiness === undefined) {
+        this._emptiness = new WeakMap();
+      }
+      var known = this._emptiness.get(obj);
+      if (known !== undefined) {
+        return known;
+      }
+      var keys = Object.keys(obj);
+      this.charge(keys.length);
+      var empty = keys.length === 0;
+      this._emptiness.set(obj, empty);
+      return empty;
+    },
 
     callFunction: function(name, resolvedArgs) {
       var functionEntry = this.functionTable[name];
@@ -1450,7 +1470,7 @@ const vendored = {};
     _functionMap: function(resolvedArgs) {
       var mapped = [];
       var interpreter = this._interpreter;
-      var exprefNode = resolvedArgs[0].node;
+      var exprefNode = referencedNode(resolvedArgs[0]);
       var elements = resolvedArgs[1];
       for (var i = 0; i < elements.length; i++) {
           mapped.push(interpreter.visit(exprefNode, elements[i]));
@@ -1609,7 +1629,7 @@ const vendored = {};
             return sortedArray;
         }
         var interpreter = this._interpreter;
-        var exprefNode = resolvedArgs[1].node;
+        var exprefNode = referencedNode(resolvedArgs[1]);
         var requiredType = this._getTypeName(
             interpreter.visit(exprefNode, sortedArray[0]));
         if ([TYPE_NUMBER, TYPE_STRING].indexOf(requiredType) < 0) {
@@ -1694,7 +1714,7 @@ const vendored = {};
     createKeyFunction: function(expref, allowedTypes) {
       var that = this;
       var interpreter = this._interpreter;
-      var exprefNode = expref.node;
+      var exprefNode = referencedNode(expref);
       var keyFunc = function(x) {
         var current = interpreter.visit(exprefNode, x);
         if (allowedTypes.indexOf(that._getTypeName(current)) < 0) {

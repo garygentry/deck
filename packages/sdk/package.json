@@ -34,6 +34,8 @@
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",
     "lucide-react": "^1.47.0",
+    "postcss": "^8.5.0",
+    "postcss-selector-parser": "^6.0.10",
     "typescript": "^5.4.0"
   },
   "peerDependencies": {
@@ -46,6 +48,7 @@
     }
   },
   "devDependencies": {
+    "@deck/module-sdk": "workspace:*",
     "@types/node": "^22",
     "@types/react": "^19.3.0",
     "rollup": "^4.0.0",

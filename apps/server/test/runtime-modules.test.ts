@@ -267,6 +267,34 @@ describe("loadRuntimeModules", () => {
   });
 });
 
+describe("two runtime modules with one CSS prefix", () => {
+  for (const [first, second] of [["hello", "hello2"], ["a-b", "ab"]] as const) {
+    it(`refuses the later of ${first} and ${second} by id, at boot and in deck validate alike`, async () => {
+      const root = tempDir("deck-rt-");
+      // Written in the other order: the outcome follows the ids, not the directory listing.
+      writeModule(root, second, manifestOf(second));
+      writeModule(root, first, manifestOf(first));
+      const loaded = await loadRuntimeModules({ env: env(root), configDir: configWith({}) });
+      expect(loaded.loaded).toEqual([first]);
+      expect(loaded.loadProblems.get(second)).toBe("collision");
+      expect(loaded.loadDetails?.get(second)).toContain(`its CSS prefix "${first.replace(/[^a-z]/g, "")}" (its id's letters) is runtime module "${first}"'s`);
+      const read = readRuntimeManifests({ env: env(root), configDir: configWith({}) });
+      expect(read.loadProblems.get(second)).toBe("collision");
+      expect(read.loadProblems.has(first)).toBe(false);
+    });
+  }
+
+  it("lets a module whose manifest cannot be read claim no prefix", async () => {
+    const root = tempDir("deck-rt-");
+    writeModule(root, "a-b", "{ not json");
+    writeModule(root, "ab", manifestOf("ab"));
+    const loaded = await loadRuntimeModules({ env: env(root), configDir: configWith({}) });
+    // a-b sorts first, but its unreadable manifest claims nothing: ab keeps the prefix.
+    expect(loaded.loaded).toEqual(["ab"]);
+    expect(loaded.loadProblems.get("a-b")).toBe("bad manifest");
+  });
+});
+
 describe("a module that fails to load claims nothing", () => {
   it("lets a later healthy module take the provider kind a failed one declared", async () => {
     const root = tempDir("deck-rt-");

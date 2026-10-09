@@ -12,6 +12,8 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import postcss, { type Rule } from "postcss";
+import selectorParser from "postcss-selector-parser";
 import ts from "typescript";
 
 export interface LintFile {
@@ -34,6 +36,7 @@ export type RuleId =
   | "legacy-stylesheet"
   | "module-import"
   | "module-css-import"
+  | "module-css-selector"
   | "built-web-import"
   | "built-web-css";
 
@@ -239,6 +242,17 @@ function jsonAttribute(node: ts.ImportDeclaration | ts.ExportDeclaration): boole
   return (attributes?.elements ?? []).some((element) => element.name.text === "type" && ts.isStringLiteral(element.value) && element.value.text === "json");
 }
 
+/** Whether a dynamic `import()`'s options say `{ with: { type: "json" } }` (or `assert`). */
+function jsonOption(options: ts.Expression | undefined): boolean {
+  if (options === undefined || !ts.isObjectLiteralExpression(options)) return false;
+  const named = (object: ts.ObjectLiteralExpression, names: readonly string[]) =>
+    object.properties.find((property): property is ts.PropertyAssignment => ts.isPropertyAssignment(property) && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) && names.includes(property.name.text));
+  const attributes = named(options, ["with", "assert"])?.initializer;
+  if (attributes === undefined || !ts.isObjectLiteralExpression(attributes)) return false;
+  const type = named(attributes, ["type"])?.initializer;
+  return type !== undefined && ts.isStringLiteralLike(type) && type.text === "json";
+}
+
 /** Every import in a script: static, re-exports, dynamic `import()`, `require()` and `import x = require()`. */
 function importSites({ rel, text }: LintFile): ImportSite[] {
   const extension = /\.[^.]+$/.exec(rel)?.[0] ?? ".js";
@@ -259,7 +273,7 @@ function importSites({ rel, text }: LintFile): ImportSite[] {
     } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
       sites.push({ specifier: literal(node.moduleReference.expression), line: at(node), kind: "require", typeOnly: node.isTypeOnly, json: false });
     } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-      sites.push({ specifier: literal(node.arguments[0]), line: at(node), kind: "dynamic", typeOnly: false, json: false });
+      sites.push({ specifier: literal(node.arguments[0]), line: at(node), kind: "dynamic", typeOnly: false, json: jsonOption(node.arguments[1]) });
     } else if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "require") {
       sites.push({ specifier: literal(node.arguments[0]), line: at(node), kind: "require", typeOnly: false, json: false });
     } else if (ts.isImportTypeNode(node)) {
@@ -369,43 +383,119 @@ export function builtWebImports(webJs: LintFile): Offence[] {
 /** A Tailwind palette variable (`--color-red-500`, `--hello-color-white`): not one of deck's tokens. */
 const PALETTE_VARIABLE = /--(?:[a-z]+-)?color-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|black|white)\b/;
 
+type SelectorNode = selectorParser.Node;
+
+/** Whether a class name is the module's own: `<prefix>:…` from the preset, or `<prefix>-…` by hand. */
+const ownClass = (name: string, prefix: string): boolean => name.startsWith(`${prefix}:`) || name.startsWith(`${prefix}-`);
+
 /**
- * The classes of each selector's subject: the last compound of every comma-separated selector,
- * with parenthesised conditions (`:where(.dark *)`) dropped. Ancestors and conditions only
- * select; the subject is what a rule styles.
+ * Whether a compound selector (`.hello\:x:hover`) itself selects only the module's elements: it
+ * has one of the module's classes, or an `:is()`/`:where()` every branch of which is scoped.
+ * `:not()` and `:has()` never scope: they match elements other than the ones they name.
  */
-function subjectClasses(selector: string): string[] {
-  let flat = selector;
-  while (/\([^()]*\)/.test(flat)) flat = flat.replace(/\([^()]*\)/g, "");
-  return flat.split(",").flatMap((part) => {
-    const compounds = part.trim().split(/\s*[>+~]\s*|\s+/);
-    const subject = compounds[compounds.length - 1] ?? "";
-    return [...subject.matchAll(/\.(-?[_a-zA-Z\\](?:\\.|[\w-])*)/g)].map((name) => name[1]!);
-  });
+function compoundOwned(compound: readonly SelectorNode[], prefix: string, nestingScoped: boolean): boolean {
+  return compound.some(
+    (node) =>
+      (node.type === "class" && ownClass(node.value, prefix)) ||
+      (node.type === "nesting" && nestingScoped) ||
+      (node.type === "pseudo" && (node.value === ":is" || node.value === ":where") && node.nodes.length > 0 && node.nodes.every((branch) => selectorScoped(branch, prefix, nestingScoped))),
+  );
 }
 
 /**
- * The `web.css` deck serves, which deck's page loads after its own stylesheet: every class it
- * styles is the module's own (it starts with the module's prefix, `hello:…` from the preset or
- * `hello-…` by hand), and it adds no Preflight or base styles and no Tailwind palette.
+ * Whether a complex selector can match only the module's own elements: its subject compound is
+ * owned, or an owned compound is its ancestor (followed by a descendant or child combinator, so
+ * everything to its right sits inside the module's element). `.hello\:x span` is scoped;
+ * `.hello\:x + span`, `:is(.p-4)`, `h1`, `[data-slot=x]` and `#x` are not.
+ */
+function selectorScoped(selector: selectorParser.Selector, prefix: string, nestingScoped: boolean): boolean {
+  const compounds: SelectorNode[][] = [[]];
+  const combinators: string[] = [];
+  for (const node of selector.nodes) {
+    if (node.type === "combinator") {
+      combinators.push(node.value.trim());
+      compounds.push([]);
+    } else if (node.type !== "comment") compounds[compounds.length - 1]!.push(node);
+  }
+  const last = compounds.length - 1;
+  if (compoundOwned(compounds[last]!, prefix, nestingScoped)) return true;
+  return compounds.slice(0, last).some((compound, index) => (combinators[index] === "" || combinators[index] === ">") && compoundOwned(compound, prefix, nestingScoped));
+}
+
+/** Whether a declaration is a custom property of Tailwind's own (`--tw-*`) or of the module's (`--<prefix>-*`). */
+const internalProperty = (property: string, prefix: string): boolean => property.startsWith("--tw-") || property.startsWith(`--${prefix}-`);
+
+/** A rule's selectors, each with whether it is scoped; null when the selector does not parse. */
+function ruleSelectors(rule: Rule, prefix: string): Array<{ selector: string; scoped: boolean }> | null {
+  // A nested rule's `&` is scoped when every selector of the rule it sits in is.
+  const parent = rule.parent?.type === "rule" ? (rule.parent as Rule) : undefined;
+  const nestingScoped = parent !== undefined && (ruleSelectors(parent, prefix)?.every(({ scoped }) => scoped) ?? false);
+  try {
+    return selectorParser()
+      .astSync(rule.selector)
+      .nodes.map((selector) => ({ selector: selector.toString().trim(), scoped: selectorScoped(selector, prefix, nestingScoped) }));
+  } catch {
+    return null;
+  }
+}
+
+/** Whether a rule sits in `@keyframes`, whose "selectors" are offsets, not elements. */
+function inKeyframes(rule: Rule): boolean {
+  for (let node = rule.parent; node !== undefined && node.type !== "root"; node = node.parent as typeof node) {
+    if (node.type === "atrule" && /keyframes$/i.test((node as postcss.AtRule).name)) return true;
+  }
+  return false;
+}
+
+/**
+ * A module's stylesheet styles only the module's elements: every selector of every style rule
+ * (outside `@keyframes`) is scoped to one of its classes (see {@link selectorScoped}), since the
+ * module's CSS shares deck's page and loads after deck's own. A rule that declares only
+ * custom properties of Tailwind's (`--tw-*`) or the module's own (`--<prefix>-*`), as the
+ * preset's theme and fallbacks do, styles nothing and may select anything. A rule that sets
+ * `box-sizing` unscoped is Tailwind's Preflight shape: base styles deck already has.
+ */
+export function cssSelectors(file: LintFile, prefix: string, rule: "module-css-selector" | "built-web-css"): Offence[] {
+  const offences: Offence[] = [];
+  let root: postcss.Root;
+  try {
+    root = postcss.parse(file.text, { from: file.path ?? file.rel });
+  } catch (error) {
+    return [{ rule, file: file.rel, line: (error as { line?: number }).line ?? 0, message: `the stylesheet does not parse: ${(error as Error).message}` }];
+  }
+  root.walkRules((node) => {
+    if (inKeyframes(node)) return;
+    const declarations = node.nodes.filter((child): child is postcss.Declaration => child.type === "decl");
+    if (declarations.length > 0 && declarations.every(({ prop }) => internalProperty(prop, prefix))) return;
+    const line = node.source?.start?.line ?? 0;
+    const selectors = ruleSelectors(node, prefix);
+    if (selectors === null) {
+      offences.push({ rule, file: file.rel, line, message: `the selector ${node.selector} does not parse` });
+      return;
+    }
+    const unscoped = selectors.filter(({ scoped }) => !scoped).map(({ selector }) => selector);
+    if (unscoped.length === 0) return;
+    if (declarations.some(({ prop }) => prop.toLowerCase() === "box-sizing")) {
+      offences.push({ rule, file: file.rel, line, message: `${unscoped.join(", ")} sets box-sizing outside the module's elements: base styles (Tailwind's Preflight?) deck's page already has; import @deck/sdk/tailwind, which adds utilities only` });
+      return;
+    }
+    for (const selector of unscoped) {
+      offences.push({ rule, file: file.rel, line, message: `${selector} can match elements that are not the module's: scope every selector to one of its classes (${prefix}:… or ${prefix}-…)` });
+    }
+  });
+  return offences;
+}
+
+/**
+ * The `web.css` deck serves, which deck's page loads after its own stylesheet: it styles only
+ * the module's elements ({@link cssSelectors}), with no base styles, and carries no Tailwind
+ * palette.
  */
 export function builtWebCss(webCss: LintFile, prefix: string): Offence[] {
+  const offences = cssSelectors(webCss, prefix, "built-web-css");
   const text = blankBlockComments(webCss.text);
-  const offences: Offence[] = [];
-  const offence = (index: number, message: string) => offences.push({ rule: "built-web-css", file: webCss.rel, line: lineOf(text, index), message });
-  const own = new RegExp(`^${prefix}(?:\\\\:|-)`);
-  // Each rule's selector: the text before a `{`, back to the previous `{`, `}` or `;`.
-  for (const match of text.matchAll(/(?<=^|[{};])([^{};]*)\{/g)) {
-    const selector = match[1]!;
-    if (selector.trim().startsWith("@")) continue;
-    for (const name of subjectClasses(selector)) {
-      if (!own.test(name)) offence(match.index, `.${name} is not the module's own class: style only classes under its prefix (${prefix}:… or ${prefix}-…)`);
-    }
-  }
-  const base = /@layer\s+base\s*\{|box-sizing\s*:\s*border-box/.exec(text);
-  if (base !== null) offence(base.index, "web.css adds base styles (Tailwind's Preflight?): deck's page has its own; import @deck/sdk/tailwind, which adds utilities only");
   const palette = PALETTE_VARIABLE.exec(text);
-  if (palette !== null) offence(palette.index, `web.css carries Tailwind's palette (${palette[0]}): colours are deck's tokens, through @deck/sdk/tailwind`);
+  if (palette !== null) offences.push({ rule: "built-web-css", file: webCss.rel, line: lineOf(text, palette.index), message: `web.css carries Tailwind's palette (${palette[0]}): colours are deck's tokens, through @deck/sdk/tailwind` });
   return offences;
 }
 
@@ -481,33 +571,58 @@ function resolveRelative(from: string, specifier: string): string | undefined {
   return candidates.find((candidate) => existsSync(candidate) && statSync(candidate).isFile());
 }
 
-/**
- * A module's web sources, relative to `dir`: every script and stylesheet in the module, wherever
- * it sits, except the loader's server entry (`server.js`, `server.mjs` or `server.ts` beside
- * deck-module.json), its build output (`dist/`, and the web.js/web.css beside the manifest),
- * and dependencies. Tests and tool config are left out too, unless a source imports them.
- */
-export function moduleWebSources(dir: string): LintFile[] {
-  const excluded = new Set(["server.js", "server.mjs", "server.ts", ...(moduleIdIn(dir) === undefined ? [] : ["web.js", "web.css"])].map((name) => join(dir, name)));
-  const all = walk(dir).filter((path) => (SCRIPT.test(path) || path.endsWith(".css")) && !excluded.has(path));
-  const isTooling = (path: string) => TOOLING.test(slashed(relative(dir, path)));
-  const included = new Set(all.filter((path) => !isTooling(path)));
-  // Tooling a source imports is web-reachable: follow relative imports from the sources.
-  const queue = [...included];
+/** The files reachable from `roots` by relative imports, among `among`. */
+function reachable(roots: Iterable<string>, among: ReadonlySet<string>): Set<string> {
+  const seen = new Set(roots);
+  const queue = [...seen];
   while (queue.length > 0) {
     const path = queue.pop()!;
     if (!SCRIPT.test(path)) continue;
     for (const { specifier } of importSites({ rel: path, text: readFileSync(path, "utf8") })) {
       if (!specifier.startsWith(".")) continue;
       const target = resolveRelative(path, specifier);
-      if (target !== undefined && all.includes(target) && !included.has(target)) {
-        included.add(target);
+      if (target !== undefined && among.has(target) && !seen.has(target)) {
+        seen.add(target);
         queue.push(target);
       }
     }
   }
-  return [...included]
-    .map((path) => ({ rel: slashed(relative(dir, path)), text: readFileSync(path, "utf8"), path }))
+  return seen;
+}
+
+/** A server entry: `server.js`, `server.mjs` or `server.ts` (and the like), at the module's root or in `src/`. */
+const SERVER_ENTRY = /^(?:src\/)?server\.(?:[cm]?[jt]s)$/;
+
+/** Bundler output markers: Tailwind's banner on a stylesheet; a bundler's pure annotations or a source map on a script. */
+const BUNDLER_MARKER = /^\/\*! tailwindcss v|\/\*\s*[@#]__PURE__\s*\*\/|\/\/# sourceMappingURL=/;
+
+/**
+ * A module's web sources, relative to `dir`: every script and stylesheet in the module, wherever
+ * it sits, except:
+ * - dependencies (`node_modules`), the build's output (`dist/`) and hidden directories;
+ * - its server code: a server entry (`server.*` at the root or in `src/`) and the files only
+ *   server code imports;
+ * - tests and tool config (`test/`, `*.test.*`, `*.config.*`), unless web code imports them;
+ * - the web.js and web.css beside the manifest when they are build output: when the module has
+ *   sources of its own elsewhere, or the file carries a bundler's marker. A module with no build
+ *   step has no other sources: its web.js and web.css are its sources too.
+ */
+export function moduleWebSources(dir: string): LintFile[] {
+  const rel = (path: string) => slashed(relative(dir, path));
+  const all = new Set(walk(dir).filter((path) => SCRIPT.test(path) || path.endsWith(".css")));
+  const served = moduleIdIn(dir) === undefined ? [] : ["web.js", "web.css"].map((name) => join(dir, name)).filter((path) => all.has(path));
+  const servers = [...all].filter((path) => SERVER_ENTRY.test(rel(path)));
+  const tooling = (path: string) => TOOLING.test(rel(path));
+  // Code reachable from a server entry is server code, unless other code reaches it too.
+  const serverSide = reachable(servers, all);
+  const web = reachable([...all].filter((path) => !tooling(path) && !serverSide.has(path) && !served.includes(path)), all);
+  // A served file is build output when the module has web sources of its own, or a bundler wrote it.
+  const noBuild = web.size === 0;
+  for (const path of served) {
+    if (noBuild && !BUNDLER_MARKER.test(readFileSync(path, "utf8"))) web.add(path);
+  }
+  return [...web]
+    .map((path) => ({ rel: rel(path), text: readFileSync(path, "utf8"), path }))
     .sort((a, b) => a.rel.localeCompare(b.rel));
 }
 
@@ -518,9 +633,9 @@ export interface ModuleLintOptions {
 
 /**
  * Lint a runtime module directory: deck's guardrails over its web sources (scripts and CSS,
- * their imports included), and the build-output checks over each web.js/web.css beside a
- * deck-module.json. Build output gets only the build-output checks: a bundle carries its
- * dependencies' code, which the source rules are not about.
+ * their imports and selectors included), and the build-output checks over each web.js/web.css
+ * beside a deck-module.json. A bundle that is not also a source gets only the build-output
+ * checks: it carries its dependencies' code, which the source rules are not about.
  */
 export function lintModule(dir: string, options: ModuleLintOptions = {}): Offence[] {
   const sources = moduleWebSources(dir);
@@ -535,6 +650,7 @@ export function lintModule(dir: string, options: ModuleLintOptions = {}): Offenc
     ...legacyTokens(sources),
     ...moduleImports(scripts),
     ...moduleCssImports(css, prefix),
+    ...css.flatMap((file) => cssSelectors(file, prefix, "module-css-selector")),
     ...builtModules(dir).flatMap((built) => [
       ...(built.webJs === undefined ? [] : builtWebImports(built.webJs)),
       ...(built.webCss === undefined ? [] : builtWebCss(built.webCss, modulePrefix(built.id))),

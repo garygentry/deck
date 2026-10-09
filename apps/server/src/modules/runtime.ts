@@ -3,7 +3,7 @@ import { lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "no
 import { join, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
-import type { ModuleManifest, ServerModule } from "@deck/module-sdk";
+import { modulePrefix, type ModuleManifest, type ServerModule } from "@deck/module-sdk";
 import { merge, type JsonObject } from "@deck/schema";
 import { parse as parseYaml } from "yaml";
 
@@ -458,7 +458,7 @@ class Loading {
   admit(candidates: readonly Candidate[]): void {
     const builtinIds = new Set(BUILTIN_MODULES.map((module) => module.manifest.id));
     const admitted: Candidate[] = [];
-    for (const candidate of candidates) {
+    for (const candidate of prefixClashes(candidates.filter(({ id }) => !builtinIds.has(id))).concat(candidates.filter(({ id }) => builtinIds.has(id)))) {
       const { id } = candidate;
       if (builtinIds.has(id)) {
         this.rejected.push({ id, detail: `${candidate.dir}: a built-in module is named "${id}"` });
@@ -559,6 +559,27 @@ class Loading {
       ...(planOnly ? { planOnly: true as const } : {}),
     };
   }
+}
+
+/**
+ * `candidates` in id order, each whose CSS prefix ({@link modulePrefix}, its id's letters) an
+ * earlier one already has given a collision: two modules sharing a prefix would style each
+ * other's classes. Only a module with a readable manifest and no other problem claims a prefix.
+ */
+function prefixClashes(candidates: readonly Candidate[]): Candidate[] {
+  const owners = new Map<string, string>();
+  return [...candidates]
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((candidate) => {
+      if (candidate.manifest === null || candidate.problem !== null) return candidate;
+      const prefix = modulePrefix(candidate.id);
+      const owner = owners.get(prefix);
+      if (owner === undefined) {
+        owners.set(prefix, candidate.id);
+        return candidate;
+      }
+      return { ...candidate, problem: new LoadError("collision", `its CSS prefix "${prefix}" (its id's letters) is runtime module "${owner}"'s`) };
+    });
 }
 
 /** Discover and admit every module directory (data only); null when none is configured. */

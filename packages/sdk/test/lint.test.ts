@@ -5,9 +5,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
+import { modulePrefix as serverPrefix } from "@deck/module-sdk";
 
 import {
   builtWebCss,
+  cssSelectors,
   builtWebImports,
   colourLiterals,
   dataIconAttributes,
@@ -18,6 +20,7 @@ import {
   moduleCssImports,
   moduleImports,
   modulePrefix,
+  moduleWebSources,
   offScaleRadii,
   stripComments,
   type LintFile,
@@ -177,45 +180,89 @@ describe("build output", () => {
     ]);
   });
 
-  it("refuses a web.js that bundles React or React DOM, but not a bundled library's colours or styles", () => {
-    const bundled = file("web.js", 'import{jsx}from"react/jsx-runtime";var a={__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE:{}};');
-    expect(builtWebImports(bundled).map(({ message }) => message)).toEqual([expect.stringContaining("bundles its own React or React DOM")]);
-    const library = moduleDir({ "web.js": 'import{jsx as e}from"react/jsx-runtime";const c="rgb(1 2 3)",d="#ff0000";export default e("p",{style:{color:c}});' });
-    expect(lintModule(library)).toEqual([]);
+  it("reads a dynamic import()'s attributes: the manifest as JSON passes, without them it does not", () => {
+    const dynamic = file(
+      "web.js",
+      'const a = import("./deck-module.json", { with: { type: "json" } });\nconst b = import("./deck-module.json");\nconst c = import("./deck-module.json", { assert: { type: "json" } });\nconst d = import("./deck-module.json", { with: { type: "css" } });',
+    );
+    expect(builtWebImports(dynamic).map(({ line }) => line)).toEqual([2, 4]);
   });
 
-  it("refuses a web.css with classes outside the module's prefix, base styles or Tailwind's palette", () => {
-    const own = file("web.css", ".probe\\:p-4{padding:1rem}.probe-when{color:var(--muted)}.probe\\:dark\\:bg-card:where(.dark, .dark *){background:var(--card)}[data-slot=x]{gap:1rem}@media (width>=48rem){.probe\\:md\\:p-6{padding:2rem}}");
-    expect(builtWebCss(own, "probe")).toEqual([]);
+  it("refuses a web.js that bundles React or React DOM", () => {
+    const bundled = file("web.js", 'import{jsx}from"react/jsx-runtime";var a={__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE:{}};');
+    expect(builtWebImports(bundled).map(({ message }) => message)).toEqual([expect.stringContaining("bundles its own React or React DOM")]);
+  });
+
+  it("checks a bundler's web.js beside the manifest as build output only, but a hand-written one as a source too", () => {
+    const body = 'import{jsx as e}from"react/jsx-runtime";const c="rgb(1 2 3)";export default e("p",{style:{color:c}});';
+    // A bundler wrote it (its pure annotations say so): a bundled library's colours and styles are not the module's.
+    expect(lintModule(moduleDir({ "web.js": `/* @__PURE__ */ ${body}` }))).toEqual([]);
+    // No marker and no other sources: a module with no build step, whose web.js is its source.
+    expect(where(lintModule(moduleDir({ "web.js": body })))).toEqual(["colour-literal web.js:1", "inline-style web.js:0"]);
+    // Sources elsewhere: the web.js beside the manifest is their build output.
+    expect(lintModule(moduleDir({ "src/web/index.ts": "export {};", "web.js": body }))).toEqual([]);
+  });
+
+  it("lets a stylesheet style only the module's elements, in built and source CSS alike", () => {
+    const allowed = [
+      ".probe\\:p-4:hover{padding:1rem}",
+      ".probe-when{color:var(--muted)}",
+      ".probe\\:dark\\:bg-card:where(.dark, .dark *){background:var(--card)}",
+      ".probe\\:x :is(span){gap:1rem}",
+      ".probe\\:x > a + b{gap:1rem}",
+      ":is(.probe\\:a, .probe-b){gap:1rem}",
+      "@media (width>=48rem){.probe\\:md\\:p-6{padding:2rem}}",
+      "@keyframes spin{from{opacity:0}to{opacity:1}}",
+      ":root,:host{--probe-spacing:.25rem}",
+      "@supports (color:red){*,:before,:after{--tw-border-style:solid}}",
+      ".probe\\:box-border{box-sizing:border-box}",
+      ".probe\\:x{&:hover{gap:1rem}}",
+    ];
+    for (const css of allowed) {
+      expect(builtWebCss(file("web.css", css), "probe"), css).toEqual([]);
+      expect(cssSelectors(file("src/web/web.css", css), "probe", "module-css-selector"), css).toEqual([]);
+    }
+    const refused = [":is(.p-4){gap:0}", ":where(.p-4){gap:0}", "html{gap:0}", "body, h1{gap:0}", "[data-slot=page-header]{gap:0}", "#x{gap:0}", ":not(.probe\\:x){gap:0}", ".probe\\:x + p{gap:0}", "body:has(.probe\\:x){gap:0}", ".p-4{&:hover{gap:0}}"];
+    for (const css of refused) {
+      const offences = builtWebCss(file("web.css", css), "probe");
+      expect(offences.length, css).toBeGreaterThan(0);
+      expect(offences.every(({ message }) => message.includes("can match elements that are not the module's")), css).toBe(true);
+    }
+    expect(where(cssSelectors(file("src/web/web.css", "body, h1{gap:0}"), "probe", "module-css-selector"))).toEqual(["module-css-selector src/web/web.css:1", "module-css-selector src/web/web.css:1"]);
+  });
+
+  it("refuses the Preflight shape (box-sizing outside the module's elements) and Tailwind's palette", () => {
     const plainTailwind = file(
       "web.css",
-      "/*! tailwindcss v4.3.3 */@layer base{*,::after,::before{box-sizing:border-box;margin:0}}@layer theme{:root{--color-red-500:oklch(63.7% .237 25.331)}}@layer utilities{.p-4{padding:1rem}.dark .card{color:red}}",
+      "/*! tailwindcss v4.3.3 */@layer base{*,::after,::before{box-sizing:border-box;margin:0}html,:host{box-sizing:border-box}}@layer theme{:root{--color-red-500:oklch(63.7% .237 25.331)}}@layer utilities{.p-4{padding:1rem}}",
     );
     expect(builtWebCss(plainTailwind, "probe").map(({ message }) => message)).toEqual([
-      expect.stringContaining(".p-4 is not the module's own class"),
-      expect.stringContaining(".card is not the module's own class"),
-      expect.stringContaining("adds base styles"),
+      expect.stringContaining("*, ::after, ::before sets box-sizing outside the module's elements"),
+      expect.stringContaining("html, :host sets box-sizing"),
+      expect.stringContaining(":root can match elements"),
+      expect.stringContaining(".p-4 can match elements"),
       expect.stringContaining("carries Tailwind's palette (--color-red"),
     ]);
   });
 
   it("gives no exemption to a Tailwind banner: a source stylesheet still gets the source rules", () => {
     const dir = moduleDir({ "src/web/web.css": "/*! tailwindcss v4.3.3 */\n.x { color: #ff0000; }" });
-    expect(where(lintModule(dir))).toEqual(["colour-literal src/web/web.css:2"]);
+    expect(where(lintModule(dir))).toEqual(["colour-literal src/web/web.css:2", "module-css-selector src/web/web.css:2"]);
     const built = moduleDir({ "web.css": "/*! tailwindcss v4.3.3 */.p-4{padding:1rem}" });
     expect(where(lintModule(built))).toEqual(["built-web-css web.css:1"]);
   });
 });
 
 describe("lintModule", () => {
-  it("passes the maintenance example", () => {
+  it("passes the maintenance example, a module with no build step", () => {
     expect(lintModule(join(EXAMPLES, "maintenance"))).toEqual([]);
+    expect(moduleWebSources(join(EXAMPLES, "maintenance")).map(({ rel }) => rel)).toEqual(["web.css", "web.js"]);
   });
 
-  it("checks every web script and stylesheet in the module, wherever it sits, but not the loader's server entry", () => {
+  it("checks every web script and stylesheet in the module, wherever it sits, but not its server code", () => {
     const dir = moduleDir({
       "src/web/Page.tsx": '<div className="rounded" style={{ color: "#f00" }} />',
-      "src/web/web.css": '@import "tailwindcss";\n.x { color: rgb(1 2 3); }',
+      "src/web/web.css": '@import "tailwindcss";\n.probe-x { color: rgb(1 2 3); }',
       "web/Real.tsx": 'export const C = () => <p className="probe:bg-[red]" />;',
       "src/web/Evil.mts": 'import { createRoot } from "react-dom/client";',
       "src/server/shared.tsx": 'export const S = () => <p style = {{ width }} />;',
@@ -234,6 +281,17 @@ describe("lintModule", () => {
       "module-css-import src/web/web.css:1",
     ]);
     expect(where(lintModule(dir, { styleAllowlist: { "src/web/Page.tsx": "dynamic geometry" } }))).not.toContain("inline-style src/web/Page.tsx:0");
+  });
+
+  it("leaves out server code: a server entry in src/ and what only it imports", () => {
+    const dir = moduleDir({
+      "src/server.ts": 'import { renderToString } from "react-dom/server";\nimport { createRequire } from "node:module";\nimport { fetchAll } from "./server-util";\nconst require = createRequire(import.meta.url);\nconst hono = require("hono");\nexport default { renderToString, hono, fetchAll };',
+      "src/server-util.ts": 'const require2 = require("node:fs"); export const fetchAll = () => "#fff";',
+      "src/shared.ts": 'export const greeting = "hi";',
+      "src/web/index.tsx": 'import { greeting } from "../shared";\nexport const P = () => <p>{greeting}</p>;',
+    });
+    expect(lintModule(dir)).toEqual([]);
+    expect(moduleWebSources(dir).map(({ rel }) => rel)).toEqual(["src/shared.ts", "src/web/index.tsx"]);
   });
 
   it("checks a test or config file that web code imports", () => {
@@ -255,7 +313,12 @@ describe("lintModule", () => {
     const plain = moduleDir({ "web.js": 'import { jsx } from "react/jsx-runtime";\nimport x from "date-fns";\nimport m from "./deck-module.json" with { type: "json" };' });
     expect(where(lintModule(plain))).toEqual(["built-web-import web.js:2"]);
   });
+
+  it("keeps the lint's prefix in step with the one deck's server refuses duplicates of", () => {
+    for (const id of ["hello", "hello2", "hello-world", "a-b", "ab", "x9y"]) expect(modulePrefix(id), id).toBe(serverPrefix(id));
+  });
 });
+
 
 describe("deck-module lint", () => {
   const run = (...args: string[]) => spawnSync(process.execPath, [CLI, ...args], { encoding: "utf8" });
@@ -272,8 +335,10 @@ describe("deck-module lint", () => {
     writeFileSync(join(dir, "web.css"), ".when { color: var(--muted-foreground); }\n");
     const seeded = run("lint", dir);
     expect(seeded.status).toBe(1);
-    expect(seeded.stderr).toContain("web.css:1 built-web-css: .when is not the module's own class");
-    expect(seeded.stderr).toContain("deck-module lint: 1 offence");
+    // A module with no build step: its web.css gets the source rule and the build-output rule.
+    expect(seeded.stderr).toContain("web.css:1 module-css-selector: .when can match elements that are not the module's");
+    expect(seeded.stderr).toContain("web.css:1 built-web-css: .when can match elements that are not the module's");
+    expect(seeded.stderr).toContain("deck-module lint: 2 offences");
   });
 
   it("reads the style allowlist from the module's package.json", () => {

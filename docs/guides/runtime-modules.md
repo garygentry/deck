@@ -243,6 +243,13 @@ Every class then carries the prefix: `hello:flex hello:gap-6 hello:bg-muted hell
   Tailwind's defaults, as in deck.
 - **The prefix is required.** A module's stylesheet loads after deck's, into the same cascade
   layer. An unprefixed `p-4` in it would override deck's own `md:p-6` on deck's elements.
+- **Style only the module's elements.** Every selector in `web.css` must be scoped to one of
+  the module's classes: the element it styles carries one (`.hello\:p-4:hover`), or sits
+  inside one (`.hello-card span`). A selector that could match deck's own elements (`h1`,
+  `body`, `[data-slot=…]`, `#id`, `:is(.p-4)`) is refused, as are base styles.
+- **One prefix per module.** Two runtime modules whose ids have the same letters (`hello` and
+  `hello2`, `a-b` and `ab`) would style each other's classes, so deck loads the first by id
+  and refuses the other with `collision` (see [When a module fails](#when-a-module-fails)).
 
 ### Check it with `deck-module lint`
 
@@ -250,14 +257,16 @@ Every class then carries the prefix: `hello:flex hello:gap-6 hello:bg-muted hell
 against. It checks two kinds of file:
 
 - **Sources:** every script (`.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`) and
-  stylesheet in the module, wherever it sits, except the server entry deck loads
-  (`server.js`, `server.mjs` or `server.ts` beside `deck-module.json`), dependencies and
-  `dist/`. Tests and tool config (`test/`, `*.test.*`, `*.config.*`) are left out unless a
-  source imports them.
-- **Build output:** the `web.js` and `web.css` beside a `deck-module.json`, in the module
-  directory itself (a module with no build step, or one installed as built) or in
-  `dist/<id>/`. These are what deck serves, so they get the build-output rules only. A bundle
-  carries its dependencies' code, which the source rules are not about.
+  stylesheet in the module, wherever it sits, except dependencies, `dist/` and the module's
+  server code: a server entry (`server.*` at the root or in `src/`) and the files only server
+  code imports. Tests and tool config (`test/`, `*.test.*`, `*.config.*`) are left out unless
+  web code imports them.
+- **Build output:** the `web.js` and `web.css` beside a `deck-module.json`, in `dist/<id>/` or
+  in the module directory itself. These are what deck serves, so they get the build-output
+  rules. When the module has sources elsewhere, or a bundler wrote the file (Tailwind's banner,
+  pure annotations or a source map), that is all they get: a bundle carries its dependencies'
+  code, which the source rules are not about. In a module with no build step, they are its
+  sources too and get both.
 
 The source rules:
 
@@ -270,13 +279,14 @@ The source rules:
 | `legacy-token` | deck's removed `--inventory-*`, `--freshness-*` and `--l-*` tokens. |
 | `module-import` | A React entry point other than `react`, `react-dom` and `react/jsx-runtime` (it would bundle a second React); a deck package other than `@deck/sdk`, or `@deck/module-sdk` other than `import type`; `radix-ui`, `@radix-ui/*` or `lucide-react` (use the patterns and `<Icon>`); an `import()` of a computed name; `require()` or `import x = require()`. |
 | `module-css-import` | `tailwindcss` itself (by name or by a path into it) or an `@tailwind` directive, or `@deck/sdk/tailwind` without the module's prefix. |
+| `module-css-selector` | A selector that could match elements other than the module's own (see [Style with deck's tokens](#style-with-decks-tokens)). Rules that only set custom properties of Tailwind's (`--tw-*`) or the module's (`--hello-*`) may select anything; `@keyframes` are not selectors. |
 
 The build-output rules:
 
 | Rule | What it refuses |
 | --- | --- |
 | `built-web-import` | A `web.js` that imports anything but the four import-mapped specifiers and its own `./deck-module.json` (as a JSON module, `with { type: "json" }`); one that calls `require()`; one that bundles its own React or React DOM. Nothing else resolves in the browser. |
-| `built-web-css` | A `web.css` rule that styles a class outside the module's prefix (`hello:…` from the preset, or `hello-…` by hand); base styles such as Tailwind's Preflight; Tailwind's palette variables. |
+| `built-web-css` | The `module-css-selector` rule, and base styles in Tailwind's Preflight shape (`box-sizing` on `*`, `::before`, `html` or any other selector not scoped to the module); Tailwind's palette variables. |
 
 It prints each offence as `file:line rule: message` and exits 1 when there is one, 0 when there
 is none, and 2 when the directory has no `deck-module.json` or its `package.json` cannot be
@@ -376,7 +386,8 @@ A runtime module that cannot be loaded is disabled and boot continues. This cove
 - a module directory, manifest or entry that resolves outside `DECK_MODULES_DIR` through a
   symbolic link (`outside DECK_MODULES_DIR`);
 - a module that claims what a built-in or another runtime module already has: a finding code,
-  a provider kind, a health key, a route or path (`collision`);
+  a provider kind, a health key, a route or path; or a CSS prefix (its id's letters,
+  lowercased) that a runtime module before it by id already has (`collision`);
 - a directory that does not match its pin (`pin mismatch`);
 - an entry that throws, or that does not export a module whose manifest equals
   `deck-module.json` (`import error`).

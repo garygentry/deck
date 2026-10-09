@@ -26,3 +26,13 @@ export function defineWebModule<Components extends Record<string, unknown>>(
 ): WebModule<Components> {
   return Object.freeze({ manifest, components: Object.freeze({ ...parts.components }) });
 }
+
+/**
+ * A runtime module's CSS prefix: its id lowercased, with every character that is not a letter
+ * removed (Tailwind prefixes are letters only), as in `@import "@deck/sdk/tailwind" prefix(…)`.
+ * `hello-world` → `helloworld`, `hello2` → `hello`. Its classes are its own only while no other
+ * runtime module shares the prefix, so deck refuses a second module with the same one.
+ */
+export function modulePrefix(id: string): string {
+  return id.toLowerCase().replace(/[^a-z]/g, "");
+}

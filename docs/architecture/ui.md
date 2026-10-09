@@ -157,7 +157,7 @@ config can address an extension by id.
 | `app/routes` (page), `app/nav` (nav) | `registry.ts` (core) | a manifest's `pages` and `nav` | the router; the sidebar (see below) |
 | `app/topbar.status` (pill) | `registry.ts` (core) | a manifest `pill` extension | the health-header region |
 | `app/topbar.actions` (action) | `registry.ts` (core) | a manifest `action` extension (core's theme menu is one) | the top bar's controls |
-| `portal/summary` (widget) | the portal's `contributes.slots` | a manifest `widget` extension | the portal page |
+| `portal/summary` (widget) | the portal's `contributes.slots` | a manifest `widget` extension | the portal page's layout (`SlotWidgets`) |
 | `entity:host/sections`, `entity:service/sections` (entity-section) | `registry.ts` (core) | a manifest `entity-section` extension | host and service detail pages |
 
 The registry declares every core slot when it loads, from the list the server's UI manifest
@@ -396,6 +396,31 @@ greps the built bundle for it.
 Config pages exist only in the manifest, so while it loads the shell shows a loading state, not
 the portal or "not found", at `/` when the server's boot object names a config page as home,
 and at any path no registered page matches.
+
+### Module page dashboards: the portal
+
+A module page may declare a default dashboard, `layout` in its `contributes.pages` entry:
+sections that are a `{ slot }` the module hosts as a `widget` slot, or `{ widgets }` of
+`{ id, type }` (the module's own types or core's, with no options and no source). The UI manifest
+resolves it like a config page's (each widget is `widget:<module>/<page name>.<id>`, which an
+override can switch off), and the page's component renders it with `usePageLayout` (the
+manifest's layout, else the declared one while the manifest loads or when it cannot be read)
+and `PageLayoutSections` (`shell/config-page/layout.tsx`): a slot section's widgets through
+`SlotWidgets`, each in its own boundary, and each widget through a `WidgetHost` with
+`placement="page"`, which has no card, title or span, so the widget is the page's own content.
+A widget type's component gets the `placement`, so one that is a page's main list (the
+portal's) listens for its keys on the window there, and only within itself on a dashboard.
+
+The portal page is this: its `PageHeader`, then the `portal/summary` slot, then one
+`portal/groups` widget (`features/portal/PortalGroupsWidget.tsx`: the filter bar and the
+groups of cards). A config page can place `portal/groups` too, in a card, with a `groups`
+option. A card's status comes from the UI manifest's `statusKinds`, the declarations of the
+bindable, status-capable provider kinds (`providerKinds[].status`): `card-status.ts` reads the
+first such binding of the service by kind name, finds the bound item in the provider's data and
+checks its `up` conditions, so a new data source drives cards with no portal code.
+`usePortalData` polls only the providers the placed cards read (`useProviders`), and falls back
+to the built-in kinds' declarations (`@deck/contract/modules/data-sources`) when the manifest
+cannot be read.
 
 ## Adding a page
 

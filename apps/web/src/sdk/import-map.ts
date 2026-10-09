@@ -13,9 +13,11 @@ export const SHARED_MODULES: Readonly<Record<string, string>> = {
 };
 
 /**
- * `html` with an import map of `imports` written in as the first element of `<head>`, so it
- * precedes every module script and `modulepreload` link (a map after either is ignored). The
- * map's JSON escapes `<`, so no specifier or URL can close the script element.
+ * `html` with an import map of `imports` written in right after `<head>`, ahead of every
+ * module script and `modulepreload` link (a map after either is ignored). Vite's own HTML
+ * transform may then move the map, but only to just before the first module script, so it
+ * stays ahead of them; CI checks the built page (scripts/check-web-build.mjs). The map's
+ * JSON escapes `<`, so no specifier or URL can close the script element.
  */
 export function injectImportMap(html: string, imports: Readonly<Record<string, string>>): string {
   const json = JSON.stringify({ imports }).replace(/</g, "\\u003c");

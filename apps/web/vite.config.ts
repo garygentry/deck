@@ -81,8 +81,8 @@ export default defineConfig({
     host: "127.0.0.1",
     proxy: {
       "/api": process.env.DECK_PROXY_TARGET ?? "http://127.0.0.1:8788",
-      // Runtime modules' web halves, which the server serves.
-      "/modules": process.env.DECK_PROXY_TARGET ?? "http://127.0.0.1:8788",
+      // Runtime modules' web halves, which the server serves: `/modules` and below only.
+      "^/modules(/|$)": process.env.DECK_PROXY_TARGET ?? "http://127.0.0.1:8788",
     },
   },
   test: {

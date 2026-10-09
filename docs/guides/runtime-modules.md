@@ -93,10 +93,20 @@ layout, `web.css` is linked before `web.js` runs. Use deck's theme tokens for co
 and light or dark mode.
 
 A module can contribute its own icons as SVG markup in `contributes.icons`, named
-`<id>/<name>`; its pages, nav entries and components then use that name wherever an icon goes.
-A module has at most 64 icons of at most 16 KiB each. deck sanitises each one in the browser
-and renders the fallback icon in place of one with a `<foreignObject>`, a `<use>` of anything
-but a local `#id`, or a `url(` in its styles.
+`<id>/<name>`; its pages, nav entries, components and `ui.brand.icon` then use that name
+wherever an icon goes. A module has at most 64 icons of at most 16 KiB each, and each is an
+`<svg xmlns="http://www.w3.org/2000/svg">` document. Icons are plain drawings:
+
+- They may use only shapes and grouping (`path`, `circle`, `ellipse`, `line`, `polyline`,
+  `polygon`, `rect`, `g`, `use`, `symbol`, `defs`), gradients, clip paths and masks, and
+  `title` and `desc`, with geometry and paint attributes. deck drops other attributes.
+- They may not use styles (`<style>` or `style=`), scripts or event handlers, links, images,
+  filters or `<foreignObject>`. Every `href` and every `url(…)` must point at an `#id` in the
+  icon itself, and no attribute may hold a backslash.
+
+`deck validate` and boot refuse a manifest whose icons break the plainest of these rules. In
+the browser, deck rebuilds each icon from that allowlist and renders the fallback icon in
+place of any that breaks one. Ids inside an icon are made unique to each place it renders.
 
 The browser needs JSON module imports for the example's manifest import: Chrome or Edge 123,
 Firefox 138 or Safari 17.2 and later. A module that inlines its manifest needs only import
@@ -104,19 +114,26 @@ maps, which every current browser supports.
 
 deck serves a module's `web.js`, `web.css` and `deck-module.json` at `/modules/<id>/`, and
 nothing else of its directory: not its server entry. It serves them only for a module whose
-code it loaded, reading them when it loads the module, right after checking the module's pin;
-anything else under `/modules` is a 404. Restart deck to serve a changed web half.
+code it loaded, reading them when it loads the module; with a pin, each must be the file the
+pin's digest covered. Anything else under `/modules` is a 404. Restart deck to serve a
+changed web half.
+
+The server's manifest decides where a module's contributions go: the shell routes its pages
+at the paths, and attaches its extensions to the slots and orders, that `GET /api/ui` lists,
+whatever the web half says. The web half supplies the components.
 
 The page loads each module's web half once the UI manifest arrives, once per page load. Each
 of its components renders inside its own error boundary, so a component that throws shows a
 "failed" tile (or, for a page, an error) while the rest of deck keeps working. A web half that
 deck cannot use shows a tile and a page that say so, and the browser console says why:
 
-- "incompatible": its manifest's `deckApi` does not accept this deck's module API, or its id or
-  version differ from the `deck-module.json` the server loaded. Update the module and restart
-  deck.
-- "failed to load": `web.js` did not load, did not export a web module, or deck refused what it
-  declares. Reload the page to try again.
+- "incompatible": its manifest's `deckApi` does not accept this deck's module API, its id or
+  version differ from the `deck-module.json` the server loaded, or it imports a name that
+  `@deck/sdk` or React does not export. Update the module and restart deck.
+- "failed to load": `web.js` did not load or did not export a web module; its manifest
+  declares other pages, nav entries, slots, extensions or widget types than the server's; it
+  lacks a component the server's declarations name; or deck refused what it declares. Reload
+  the page to try again.
 
 ## Switch runtime modules on
 

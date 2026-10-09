@@ -122,7 +122,8 @@ jobs:
     # runs even if an earlier one fails, so every workspace still reports.
     # scripts/bun-parity-vitest.sh runs `bunx --bun vitest run` (plain `bunx`
     # follows vitest's node shebang and tests under Node), prints the Bun
-    # version, and fails a run that exits 0 without reaching its end.
+    # version, and fails a run that is incomplete, failed, or executed nothing
+    # (scripts/bun-parity-check.ts).
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -144,6 +145,15 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         working-directory: packages/contract
         run: bash ../../scripts/bun-parity-vitest.sh
+      - name: Guard self-test (a run that executes no test must fail)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        working-directory: packages/contract
+        # GITHUB_ACTIONS=false: the expected failure must not annotate the PR.
+        run: |
+          if GITHUB_ACTIONS=false bash ../../scripts/bun-parity-vitest.sh -t zzz-no-such-test; then
+            echo "::error::bun-parity-vitest.sh passed a run that executed no test"
+            exit 1
+          fi
       - name: Vitest under Bun (packages/drift)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         working-directory: packages/drift

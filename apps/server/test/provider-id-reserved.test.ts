@@ -110,6 +110,19 @@ describe("PROVIDER_ID_RESERVED: validation reserves every fixed provider id that
     expect(bootFails(document, {}, [...BUILTIN_MODULES, feeder])).toBe(false);
   });
 
+  it("a binding of a kind without a fixed id that takes no bindings (http-json), with id `gatus`: only its advisory finding", () => {
+    const document = estate({ integrations: [upstream("gatus")], hosts: [{ name: "alpha", kind: "vm", purpose: "p", bindings: { "http-json": { id: "gatus", url: "http://alpha.lan/status" } } }] });
+    const dir = makeConfigDir({ "00-base.yaml": document });
+    try {
+      const codes = load({ arg: dir.dir, env: {} }).findings.map(({ code, path }) => ({ code, path }));
+      expect(codes).toContainEqual({ code: "PROVIDER_BINDING_UNSUPPORTED", path: expect.stringContaining("/hosts/0/bindings/http-json") });
+      expect(codes.map(({ code }) => code)).not.toContain("PROVIDER_ID_RESERVED");
+    } finally {
+      dir.cleanup();
+    }
+    expect(bootFails(document, {})).toBe(false);
+  });
+
   it("an integration of that kind once its module is on: reserved, and boot agrees", () => {
     const document = nothingRegisters[2]![1];
     expect(reserved(document, { FEEDER_ON: "true" }, [...BUILTIN_MODULES, feeder])).toEqual([{ severity: "error", path: "/integrations/1/id" }]);

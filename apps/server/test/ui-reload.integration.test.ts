@@ -440,7 +440,7 @@ describe("ui hot reload of a config page", () => {
     writeFileSync(join(dir, "10-overlay.yaml"), stringify(lab("label")));
     await waitFor(async () => expect((await manifest(request)).etag).not.toBe(before.etag));
     expect(await projections(request)).toEqual({ "widget:ui/lab.wiki": { value: "Wiki" } });
-    expect((await manifest(request)).ui.pages.find((page) => page.id === "page:ui/lab")?.layout?.sections[0]?.widgets[0]?.select).toBe("label");
+    expect((await manifest(request)).ui.pages.find((page) => page.id === "page:ui/lab")?.layout?.sections.flatMap((section) => ("widgets" in section ? section.widgets : []))[0]?.select).toBe("label");
 
     // An invalid select does not load: the last good manifest and its projections stay.
     writeFileSync(join(dir, "10-overlay.yaml"), stringify(lab("lenght(label)")));

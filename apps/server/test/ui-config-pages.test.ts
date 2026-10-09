@@ -5,7 +5,7 @@
  * evaluates into envelope projections; and the whole path through a booted deck.
  */
 
-import type { UiManifest } from "@deck/module-sdk";
+import type { UiManifest, UiWidgetSection } from "@deck/module-sdk";
 import type { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -79,8 +79,13 @@ const LAB = {
 /** The kernel's widget types as the manifest lists them, and their names. */
 const CORE_TYPE_NAMES = CORE_WIDGET_TYPES.map(({ type }) => type as string);
 const CORE_TYPES = [...CORE_TYPE_NAMES].sort().map((type) => ({ type, module: "core" }));
+/** The built-in modules' own widget types (the portal's groups), after the kernel's. */
+const BUILTIN_TYPE_NAMES = [...CORE_TYPE_NAMES, "portal/groups"];
+const BUILTIN_TYPES = [...CORE_TYPES, { type: "portal/groups", module: "portal" }];
 
 const pageOf = (manifest: UiManifest, id: string) => manifest.pages.find((page) => page.id === id);
+/** A config page's sections, which are all widget sections. */
+const sectionsOf = (manifest: UiManifest, id: string) => (pageOf(manifest, id)?.layout?.sections ?? []) as UiWidgetSection[];
 const codes = (manifest: UiManifest) => manifest.findings.map(({ code, severity, id }) => ({ code, severity, id }));
 
 describe("config pages in the UI manifest", () => {
@@ -143,7 +148,7 @@ describe("config pages in the UI manifest", () => {
   });
 
   it("lists the kernel's widget types, and those of enabled modules", () => {
-    expect(resolveWith({}).widgetTypes).toEqual(CORE_TYPES);
+    expect(resolveWith({}).widgetTypes).toEqual(BUILTIN_TYPES);
   });
 
   it("reports a source that names no registered provider, and leaves the widget without one", () => {
@@ -152,7 +157,7 @@ describe("config pages in the UI manifest", () => {
       { code: "UI_WIDGET_SOURCE_UNKNOWN", severity: "warning", id: "widget:ui/lab.a" },
       { code: "UI_WIDGET_SOURCE_UNKNOWN", severity: "warning", id: "widget:ui/lab.b" },
     ]);
-    expect(pageOf(manifest, "page:ui/lab")?.layout?.sections[0]?.widgets.map(({ source, sourceProblem }) => ({ source, sourceProblem }))).toEqual([
+    expect(sectionsOf(manifest, "page:ui/lab")[0]?.widgets.map(({ source, sourceProblem }) => ({ source, sourceProblem }))).toEqual([
       { source: null, sourceProblem: 'It reads provider "nope", which is not configured.' },
       { source: null, sourceProblem: 'It reads a provider of kind "gatus", which is not configured.' },
     ]);
@@ -172,7 +177,7 @@ describe("config pages in the UI manifest", () => {
 
   it("switches a widget off by id; a positional id works but is reported as fragile", () => {
     const manifest = resolveWith({ pages: [LAB], extensions: { "widget:ui/lab.load": false, "widget:ui/lab.s1w2": { enabled: false } } });
-    const sections = pageOf(manifest, "page:ui/lab")?.layout?.sections ?? [];
+    const sections = sectionsOf(manifest, "page:ui/lab");
     // The Power section lost both widgets, so it is dropped.
     expect(sections.map((section) => section.title)).toEqual(["Notes"]);
     expect(codes(manifest)).toContainEqual({ code: "UI_OVERRIDE_POSITIONAL", severity: "info", id: "widget:ui/lab.s1w2" });
@@ -208,7 +213,7 @@ describe("config pages in the UI manifest", () => {
 
   it("marks a widget of a type no enabled module provides as unavailable, reading and projecting nothing", () => {
     const manifest = resolveWith({ pages: [{ ...LAB, sections: [{ title: "S", widgets: [{ id: "off", type: "gauges/dial", source: "ups", select: "load" }, { id: "on", type: "core/json", source: "ups", select: "load" }] }] }] });
-    const [off, on] = pageOf(manifest, "page:ui/lab")?.layout?.sections[0]?.widgets ?? [];
+    const [off, on] = sectionsOf(manifest, "page:ui/lab")[0]?.widgets ?? [];
     expect(off).toEqual({
       id: "widget:ui/lab.off",
       type: "gauges/dial",
@@ -225,7 +230,7 @@ describe("config pages in the UI manifest", () => {
   it("keeps explicit and positional widgets apart: their own projections and overrides", () => {
     const ui = { pages: [{ ...LAB, sections: [{ title: "S", widgets: [{ id: "w2", type: "core/json", source: "ups", select: "a" }, { type: "core/json", source: "ups", select: "b" }] }] }] };
     const manifest = resolveWith({ ...ui, extensions: { "widget:ui/lab.s1w2": false } });
-    expect(pageOf(manifest, "page:ui/lab")?.layout?.sections[0]?.widgets.map((widget) => widget.id)).toEqual(["widget:ui/lab.w2"]);
+    expect(sectionsOf(manifest, "page:ui/lab")[0]?.widgets.map((widget) => widget.id)).toEqual(["widget:ui/lab.w2"]);
     const both = deriveProjections(resolveWith(ui)).get("ups")!;
     expect([...both].map(([name, select]) => [name, select.expression])).toEqual([["widget:ui/lab.w2", "a"], ["widget:ui/lab.s1w2", "b"]]);
   });
@@ -258,7 +263,7 @@ describe("a module's widget types", () => {
 
   it("compose their option schemas next to the kernel's, so a bad option fails validation", () => {
     const { composed } = composeModules([...BUILTIN_MODULES, gauges], context);
-    expect([...composed.widgetTypes].sort()).toEqual([...CORE_TYPE_NAMES, "gauges/dial"].sort());
+    expect([...composed.widgetTypes].sort()).toEqual([...BUILTIN_TYPE_NAMES, "gauges/dial"].sort());
     expect(validate(document({ max: 5 }), { composed }).findings).toEqual([]);
     expect(validate(document({ max: "five" }), { composed }).findings).toContainEqual(
       expect.objectContaining({ code: "SCHEMA_INVALID", path: "/ui/pages/0/sections/0/widgets/0/options/max" }),
@@ -283,7 +288,7 @@ describe("a module's widget types", () => {
       providers: PROVIDERS,
       configPages: configPagesOf({ ui: { pages: [{ ...LAB, sections: [{ title: "S", widgets: [{ id: "a", type: "gauges/dial", source: "wiki" }, { id: "b", type: "gauges/dial", source: "ups" }] }] }] } }),
     });
-    const widgets = pageOf(manifest, "page:ui/lab")?.layout?.sections[0]?.widgets ?? [];
+    const widgets = sectionsOf(manifest, "page:ui/lab")[0]?.widgets ?? [];
     expect(widgets.map(({ source, sourceProblem }) => ({ source, sourceProblem }))).toEqual([
       { source: null, sourceProblem: 'It cannot render provider "wiki" (kind link).' },
       { source: { id: "ups", kind: "http-json" }, sourceProblem: undefined },
@@ -306,7 +311,7 @@ describe("a module's widget types", () => {
   it("from a module that takes a kernel id do not break composition", () => {
     const impostor = testModule({ id: "core", contributes: { widgetTypes: [{ type: "core/json", optionsSchema: {} }] } });
     const { composed } = composeModules([...BUILTIN_MODULES, impostor], context);
-    expect([...composed.widgetTypes]).toEqual(CORE_TYPE_NAMES);
+    expect([...composed.widgetTypes].sort()).toEqual([...BUILTIN_TYPE_NAMES].sort());
   });
 });
 
@@ -368,7 +373,7 @@ describe("status maps in the UI manifest", () => {
       layers.cleanup();
     }
     expect(ui.statusMaps).toEqual(MAPS);
-    expect(pageOf(ui, "page:ui/lab")?.layout?.sections[0]?.widgets[0]?.options).toEqual({ statusMap: "outlet" });
+    expect(sectionsOf(ui, "page:ui/lab")[0]?.widgets[0]?.options).toEqual({ statusMap: "outlet" });
   });
 });
 
@@ -491,12 +496,12 @@ describe("config pages through a booted deck", () => {
     } finally {
       layers.cleanup();
     }
-    expect(pageOf(ui, "page:ui/lab")?.layout?.sections[0]?.widgets[0]).toMatchObject({
+    expect(sectionsOf(ui, "page:ui/lab")[0]?.widgets[0]).toMatchObject({
       id: "widget:ui/lab.wiki",
       source: { id: "nas-wiki", kind: "link" },
       projection: "widget:ui/lab.wiki",
     });
-    expect(ui.widgetTypes).toEqual(CORE_TYPES);
+    expect(ui.widgetTypes).toEqual(BUILTIN_TYPES);
     expect(envelope.projections).toEqual({ "widget:ui/lab.wiki": { value: "https://wiki.example.net/nas" } });
   });
 

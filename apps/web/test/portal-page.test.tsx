@@ -2,10 +2,12 @@
 import type { FreshnessStamp, ProviderEnvelope } from "@deck/contract";
 import type { DeckConfig } from "@deck/server";
 import type { PortalModuleConfig } from "@deck/server/portal";
+import type { JsonObject, UiPage, UiWidgetInstance } from "@deck/module-sdk";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { DockerResult, GatusResult, PortalData } from "../src/features/portal/card-status.js";
+import { BUILTIN_STATUS_KINDS } from "@deck/contract/modules/data-sources";
+import type { GatusResult, PortalData } from "../src/features/portal/card-status.js";
 
 let portalData: PortalData;
 
@@ -17,12 +19,13 @@ vi.mock("../src/features/portal/usePortalData.js", async (importOriginal) => {
 // These side-effect imports intentionally exercise the same registration path as discovery.
 import "../src/features/portal/index.js";
 import { App } from "../src/shell/App.js";
+import { PortalPage } from "../src/features/portal/PortalPage.js";
+import { ConfigPage } from "../src/shell/config-page/ConfigPage.js";
 import {
   orderedGroups,
   orderedItems,
-  PortalPage,
   portalGroups,
-} from "../src/features/portal/PortalPage.js";
+} from "../src/features/portal/PortalGroupsWidget.js";
 import {
   deriveEndpointSummary,
   EndpointStatusSummary,
@@ -42,7 +45,7 @@ const fresh: FreshnessStamp = {
   ttlMs: 60_000,
 };
 
-const docker: ProviderEnvelope<DockerResult> = {
+const docker: ProviderEnvelope = {
   id: "docker",
   kind: "docker",
   data: {
@@ -149,7 +152,13 @@ function service(name: string, bindings?: Record<string, unknown>, href?: string
 }
 
 function loaded(overrides: Partial<PortalData> = {}): PortalData {
-  return { config, docker, gatus, loading: false, ...overrides };
+  return {
+    config,
+    statusKinds: BUILTIN_STATUS_KINDS,
+    envelopes: new Map<string, ProviderEnvelope | null>([["docker", docker], ["gatus", gatus]]),
+    loading: false,
+    ...overrides,
+  };
 }
 
 /** Every card (link or inert tile) in document order, by its title. */
@@ -250,7 +259,7 @@ describe("portal registration and assembled page", () => {
   });
 
   it("shows a loading state until the first config arrives", () => {
-    portalData = { config: null, docker: null, gatus: null, loading: true };
+    portalData = { config: null, statusKinds: [], envelopes: new Map(), loading: true };
     render(<PortalPage />);
     expect(screen.getByRole("status", { name: "Loading the portal…" })).toHaveAttribute("aria-busy", "true");
     expect(screen.queryByText("No groups configured.")).not.toBeInTheDocument();
@@ -314,7 +323,8 @@ describe("summary", () => {
   });
 
   it("renders the self-sufficient endpoint summary as a link to the portal's own path (not /, which is home) with icon + text", () => {
-    portalData = loaded();
+    getQueryClient().setQueryData(queryKeys.uiManifest, { ...manifestPlacing([]), providers: [{ id: "gatus", kind: "gatus" }] });
+    getQueryClient().setQueryData(queryKeys.provider("gatus"), gatus);
     render(<EndpointStatusSummary />);
     const link = screen.getByRole("link", { name: /1 up \/ 1 down/ });
     expect(link).toHaveAttribute("href", "/portal");
@@ -322,18 +332,18 @@ describe("summary", () => {
   });
 
   it("derives mixed, all-down, all-up, and honest zero rich summaries", () => {
-    expect(deriveEndpointSummary(loaded())).toMatchObject({
+    expect(deriveEndpointSummary(gatus)).toMatchObject({
       label: "1 up / 1 down", status: "warning", count: 1, href: "/portal",
     });
-    expect(deriveEndpointSummary(loaded({ gatus: { ...gatus, data: { endpoints: [
+    expect(deriveEndpointSummary({ ...gatus, data: { endpoints: [
       { key: "a", up: false, latencyMs: null }, { key: "b", up: false, latencyMs: null },
-    ] } } }))).toMatchObject({ label: "0 up / 2 down", status: "critical", count: 2 });
-    expect(deriveEndpointSummary(loaded({ gatus: { ...gatus, data: { endpoints: [
+    ] } })).toMatchObject({ label: "0 up / 2 down", status: "critical", count: 2 });
+    expect(deriveEndpointSummary({ ...gatus, data: { endpoints: [
       { key: "a", up: true, latencyMs: null },
-    ] } } }))).toMatchObject({ label: "1 up / 0 down", status: "ok", count: 0 });
-    expect(deriveEndpointSummary(loaded({ gatus: null })))
+    ] } })).toMatchObject({ label: "1 up / 0 down", status: "ok", count: 0 });
+    expect(deriveEndpointSummary(null))
       .toMatchObject({ label: "No monitored endpoints", status: "ok", count: 0 });
-    expect(deriveEndpointSummary(loaded({ gatus: { ...gatus, data: { endpoints: [] } } })))
+    expect(deriveEndpointSummary({ ...gatus, data: { endpoints: [] } }))
       .toMatchObject({ label: "No monitored endpoints", status: "ok", count: 0 });
   });
 });
@@ -437,6 +447,93 @@ describe("shared data and keyboard integration contracts", () => {
   }, 30_000);
 });
 
+describe("portal as a dashboard", () => {
+  const groupsWidget = (options: JsonObject = {}): UiWidgetInstance => ({
+    id: "widget:ui/media.apps",
+    type: "portal/groups",
+    title: "Apps",
+    source: null,
+    options,
+    span: 1,
+    rows: 1,
+  });
+  const dashboard = (widget: UiWidgetInstance): UiPage => ({
+    id: "page:ui/media",
+    module: "ui",
+    path: "/media",
+    title: "Media",
+    component: "ConfigPage",
+    layout: { sections: [{ title: "Apps", columns: 2, widgets: [widget] }] },
+  });
+
+  it("renders the portal's layout from the manifest: an override that switches the groups widget off leaves the summary", () => {
+    portalData = loaded();
+    getQueryClient().setQueryData(queryKeys.uiManifest, {
+      ...manifestPlacing([]),
+      pages: [{ ...PORTAL_UI.contributes!.pages![0]!, module: "portal", layout: { sections: [{ slot: PORTAL_SUMMARY_SLOT }] } }],
+    });
+    render(<PortalPage />);
+    expect(screen.getByRole("heading", { level: 1, name: "Portal" })).toBeInTheDocument();
+    expect(screen.queryByRole("search", { name: "Portal filters" })).not.toBeInTheDocument();
+    expect(cardTitles()).toEqual([]);
+  });
+
+  it("renders the declared layout without card chrome while the manifest loads", () => {
+    portalData = loaded();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    render(<PortalPage />);
+    const widget = screen.getByTestId("portal").querySelector('[data-slot="widget"]')!;
+    expect(widget).toHaveAttribute("data-widget-id", "widget:portal/overview.groups");
+    // No card: the groups list is the widget's only child, as the page's own content.
+    expect([...widget.children].map((child) => child.getAttribute("data-slot"))).toEqual(["portal-groups"]);
+    expect(within(widget as HTMLElement).queryByRole("heading", { level: 3, name: "portal/groups" })).not.toBeInTheDocument();
+    expect(cardTitles()).toHaveLength(10);
+  });
+
+  it("shows only the groups its options name, in that order, in a titled card", () => {
+    portalData = loaded();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    render(<ConfigPage page={dashboard(groupsWidget({ groups: ["z-last", "a-first", "no-such-group"] }))} />);
+    expect(screen.getByRole("heading", { level: 3, name: "Apps" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Apps", "Last group", "First group"]);
+    expect(cardTitles()).toEqual(["Always visible link", "Subgroup Z", "Subgroup A", "Direct item"]);
+    const group = screen.getByRole("toolbar", { name: "Group" });
+    expect(within(group).getAllByRole("button").map((button) => button.textContent)).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^Last group/), expect.stringMatching(/^First group/)]),
+    );
+    expect(within(group).queryByRole("button", { name: /^Second group/ })).not.toBeInTheDocument();
+  });
+
+  it("says so when none of its groups are configured", () => {
+    portalData = loaded();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    render(<ConfigPage page={dashboard(groupsWidget({ groups: ["gone"] }))} />);
+    expect(screen.getByText("None of this widget's groups are configured.")).toBeInTheDocument();
+  });
+
+  it("on a dashboard, takes keys only while focus is inside it", async () => {
+    const user = userEvent.setup();
+    portalData = loaded();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    render(<ConfigPage page={dashboard(groupsWidget())} />);
+    const search = screen.getByRole("searchbox", { name: "Search the portal" });
+    // "/" from the page does not reach a widget's search: that is the page's own shortcut.
+    await user.keyboard("/");
+    expect(search).not.toHaveFocus();
+    expect(search).not.toHaveAttribute("aria-keyshortcuts");
+
+    // With focus inside it, its keys work: j walks the cards and "/" focuses its search.
+    const links = [...document.querySelectorAll<HTMLAnchorElement>('a[data-slot="link-tile"]')];
+    links[0]!.focus();
+    await user.keyboard("j");
+    expect(links[1]).toHaveFocus();
+    await user.keyboard("/");
+    expect(search).toHaveFocus();
+    await user.keyboard("Subgroup");
+    expect(cardTitles()).toEqual(["Subgroup Z", "Subgroup A"]);
+  }, 30_000);
+});
+
 // Last in the file: these register into the shared registry singleton, once, in `beforeAll`, so
 // each test (alone with -t, or in the file) sees the same registered cards and seeds only its
 // manifest.
@@ -454,11 +551,11 @@ describe("portal summary placement", () => {
     registerCard({ id: "card:probe/throws", slot: PORTAL_SUMMARY_SLOT, component: Throws, order: 30 });
   });
 
-  /** What renders in the summary area (between the page header and the filters), in order. */
+  /** What renders in the summary area (between the page header and the groups widget), in order. */
   function summary(): string[] {
     const items: string[] = [];
     let node = screen.getByTestId("portal").querySelector('[data-slot="page-header"]')!.nextElementSibling;
-    for (; node !== null && node.getAttribute("data-slot") !== "filter-bar"; node = node.nextElementSibling) {
+    for (; node !== null && node.getAttribute("data-slot") !== "widget"; node = node.nextElementSibling) {
       items.push(node.querySelector('[role="alert"]') !== null || node.getAttribute("role") === "alert" ? "alert" : node.textContent ?? "");
     }
     return items;

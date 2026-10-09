@@ -2,28 +2,7 @@ import type { ComponentType } from "react";
 import { expectTypeOf } from "vitest";
 import type { HealthSummary } from "../src/shell/health-header/health-summary.js";
 import { EndpointStatusSummary } from "../src/features/portal/EndpointStatusSummary.js";
-import type {
-  DockerContainer,
-  DockerHealth,
-  DockerResult,
-  DockerRunState,
-  GatusEndpoint,
-  GatusResult,
-} from "../src/features/portal/card-status.js";
-
-type ServerDockerRunState = "running" | "exited" | "paused" | "restarting";
-type ServerDockerHealth = "healthy" | "unhealthy" | "starting" | "none";
-
-interface ServerDockerContainer {
-  name: string;
-  state: ServerDockerRunState;
-  health: ServerDockerHealth;
-  status: string;
-}
-
-interface ServerDockerResult {
-  containers: ServerDockerContainer[];
-}
+import type { GatusEndpoint, GatusResult } from "../src/features/portal/card-status.js";
 
 interface ServerGatusEndpoint {
   key: string;
@@ -37,14 +16,6 @@ interface ServerGatusResult {
   endpoints: ServerGatusEndpoint[];
 }
 
-expectTypeOf<DockerRunState>().toMatchTypeOf<ServerDockerRunState>();
-expectTypeOf<ServerDockerRunState>().toMatchTypeOf<DockerRunState>();
-expectTypeOf<DockerHealth>().toMatchTypeOf<ServerDockerHealth>();
-expectTypeOf<ServerDockerHealth>().toMatchTypeOf<DockerHealth>();
-expectTypeOf<DockerContainer>().toMatchTypeOf<ServerDockerContainer>();
-expectTypeOf<ServerDockerContainer>().toMatchTypeOf<DockerContainer>();
-expectTypeOf<DockerResult>().toMatchTypeOf<ServerDockerResult>();
-expectTypeOf<ServerDockerResult>().toMatchTypeOf<DockerResult>();
 expectTypeOf<GatusEndpoint>().toMatchTypeOf<ServerGatusEndpoint>();
 expectTypeOf<ServerGatusEndpoint>().toMatchTypeOf<GatusEndpoint>();
 expectTypeOf<GatusResult>().toMatchTypeOf<ServerGatusResult>();

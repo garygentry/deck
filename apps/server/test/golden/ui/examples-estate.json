@@ -234,7 +234,27 @@
       "path": "/portal",
       "title": "Portal",
       "icon": "layout-grid",
-      "component": "PortalPage"
+      "component": "PortalPage",
+      "layout": {
+        "sections": [
+          {
+            "slot": "portal/summary"
+          },
+          {
+            "columns": 1,
+            "widgets": [
+              {
+                "id": "widget:portal/overview.groups",
+                "type": "portal/groups",
+                "source": null,
+                "options": {},
+                "span": 1,
+                "rows": 1
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "page:sources/configs",
@@ -478,6 +498,72 @@
       "kind": "markdown-tree"
     }
   ],
+  "statusKinds": [
+    {
+      "kind": "docker",
+      "module": "docker",
+      "fixedId": "docker",
+      "status": {
+        "provider": "fixed",
+        "match": {
+          "list": "containers",
+          "key": "name",
+          "binding": "container"
+        },
+        "up": [
+          {
+            "field": "state",
+            "in": [
+              "running"
+            ]
+          },
+          {
+            "field": "health",
+            "in": [
+              "healthy",
+              "none"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "gatus",
+      "module": "gatus",
+      "fixedId": "gatus",
+      "status": {
+        "provider": "fixed",
+        "match": {
+          "list": "endpoints",
+          "key": "key",
+          "binding": "endpoint"
+        },
+        "up": [
+          {
+            "field": "up",
+            "in": [
+              true
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "http-health",
+      "module": "http-health",
+      "status": {
+        "provider": "binding",
+        "up": [
+          {
+            "field": "up",
+            "in": [
+              true
+            ]
+          }
+        ]
+      }
+    }
+  ],
   "widgetTypes": [
     {
       "type": "core/health-pills",
@@ -522,6 +608,10 @@
     {
       "type": "core/table",
       "module": "core"
+    },
+    {
+      "type": "portal/groups",
+      "module": "portal"
     }
   ],
   "findings": []

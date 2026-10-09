@@ -165,6 +165,21 @@ export function shellPolicy(options: { nonce: string; frameOrigins: readonly str
 }
 
 /**
+ * `response` with headers deck may change: the same body, status and headers, in a fresh
+ * `Headers` (copied entry by entry if a runtime's `Headers` will not take the original whole).
+ */
+export function mutableCopy(response: Response): Response {
+  let headers: Headers;
+  try {
+    headers = new Headers(response.headers);
+  } catch {
+    headers = new Headers();
+    response.headers.forEach((value, name) => headers.append(name, value));
+  }
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+/**
  * Set the framing policy on every response, read per request from `frameAncestors` (so a `ui`
  * hot reload applies at once). It is a Content-Security-Policy of its own, appended, so any
  * other policy a route sets (the shell's, a module's) still applies beside it, and a looser
@@ -186,7 +201,7 @@ export function securityHeaders(frameAncestors: () => readonly string[]): Middle
       apply(context.res.headers);
     } catch {
       // Hono's setter copies the old response's headers onto the new one, so apply after it.
-      context.res = new Response(context.res.body, context.res);
+      context.res = mutableCopy(context.res);
       apply(context.res.headers);
     }
   };

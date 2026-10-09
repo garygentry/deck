@@ -6,6 +6,8 @@
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -15,11 +17,11 @@ import { ORIGIN_SETTING_PATTERN } from "@deck/schema/embed";
 import type { UiManifest } from "@deck/module-sdk";
 import { Hono, type Context, type Next } from "hono";
 import type { Logger } from "pino";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { DeckConfig } from "../src/contract/index.js";
 import { createApp } from "../src/server/app.js";
-import { embedOriginsOf, frameAncestorsOf, frameOriginsFor, ORIGIN_SETTING, requestOrigins, securityHeaders, shellPolicy, sourceMatches } from "../src/server/security-headers.js";
+import { embedOriginsOf, frameAncestorsOf, frameOriginsFor, mutableCopy, ORIGIN_SETTING, requestOrigins, securityHeaders, shellPolicy, sourceMatches } from "../src/server/security-headers.js";
 
 vi.mock("hono/bun", () => ({
   serveStatic: () => async (context: Context, next: Next) =>
@@ -246,7 +248,7 @@ describe("frame-ancestors on every response", () => {
   /** A bare app behind the middleware, with routes that set policies or answer immutable responses. */
   function routes(extra: string[]) {
     const upstream = new Hono();
-    upstream.get("/", (context) => context.text("upstream"));
+    upstream.get("/", (context) => context.text("upstream", 200, { "X-Upstream": "yes" }));
     const app = new Hono();
     app.use("*", securityHeaders(() => extra));
     app.get("/strict", (context) => {
@@ -259,16 +261,44 @@ describe("frame-ancestors on every response", () => {
       return context.text("loose");
     });
     app.get("/redirect", () => Response.redirect("https://deck.example.net/elsewhere", 302));
-    app.get("/fetched", async () => fetchLike(await upstream.request("/")));
+    app.get("/fetched", () => fetch(upstreamUrl));
+    app.get("/locked", async () => locked(await upstream.request("/")));
     return app;
   }
 
-  /** A response with immutable headers, as `fetch()` returns. */
-  async function fetchLike(response: Response): Promise<Response> {
-    const immutable = new Response(await response.text(), response);
-    Object.defineProperty(immutable, "headers", { value: new Proxy(immutable.headers, { get: (target, key) => (key === "set" || key === "append" || key === "delete" ? () => { throw new TypeError("immutable"); } : Reflect.get(target, key, target)) }) });
-    return immutable;
+  /**
+   * Headers that refuse every change: a real `Headers` (so each runtime's own methods accept
+   * it), as Node's `fetch()` and `Response.redirect` give; Bun gives mutable ones, so this is
+   * how the copy path runs on both.
+   */
+  class LockedHeaders extends Headers {
+    override set(): never {
+      throw new TypeError("immutable");
+    }
+    override append(): never {
+      throw new TypeError("immutable");
+    }
+    override delete(): never {
+      throw new TypeError("immutable");
+    }
   }
+
+  /** `response` with locked headers. */
+  async function locked(response: Response): Promise<Response> {
+    const copy = new Response(await response.text(), { status: response.status, headers: response.headers });
+    Object.defineProperty(copy, "headers", { value: new LockedHeaders(response.headers) });
+    return copy;
+  }
+
+  /** A real listener for `fetch()`, whose responses are immutable under Node. */
+  let upstreamServer: Server;
+  let upstreamUrl = "";
+  beforeAll(async () => {
+    upstreamServer = createServer((_req, res) => res.writeHead(200, { "Content-Type": "text/plain", "X-Upstream": "yes" }).end("upstream"));
+    await new Promise<void>((resolve) => upstreamServer.listen(0, "127.0.0.1", resolve));
+    upstreamUrl = `http://127.0.0.1:${(upstreamServer.address() as AddressInfo).port}/`;
+  });
+  afterAll(() => new Promise((resolve) => upstreamServer.close(resolve)));
 
   it.each([["a route's own strict policy", "/strict"], ["a route's permissive frame-ancestors *", "/loose"]])("keeps framing enforced beside %s", async (_label, path) => {
     for (const extra of [[], ["https://ha.example.net"]]) {
@@ -281,13 +311,28 @@ describe("frame-ancestors on every response", () => {
     }
   });
 
-  it.each(["/redirect", "/fetched"])("sets the headers on %s, whose headers are immutable, without failing it", async (path) => {
+  it.each(["/redirect", "/fetched", "/locked"])("sets the headers on %s (immutable headers under Node; /locked on every runtime), without failing it", async (path) => {
     const response = await routes([]).request(path);
     expect(response.status).toBe(path === "/redirect" ? 302 : 200);
     expect(ancestors(response.headers.get("content-security-policy"))).toEqual(["'self'"]);
     expect(response.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     if (path === "/redirect") expect(response.headers.get("location")).toBe("https://deck.example.net/elsewhere");
-    else expect(await response.text()).toBe("upstream");
+    else {
+      expect(response.headers.get("x-upstream")).toBe("yes");
+      expect(await response.text()).toBe("upstream");
+    }
+  });
+
+  it("mutableCopy keeps the body, status and every header, set-cookie included", async () => {
+    const headers = new LockedHeaders([["X-One", "1"], ["Set-Cookie", "a=1"], ["Set-Cookie", "b=2"]]);
+    const original = new Response("body", { status: 201, statusText: "Made" });
+    Object.defineProperty(original, "headers", { value: headers });
+    const copy = mutableCopy(original);
+    copy.headers.set("X-Two", "2");
+    expect([copy.status, copy.statusText, await copy.text()]).toEqual([201, "Made", "body"]);
+    expect(copy.headers.get("x-one")).toBe("1");
+    expect(copy.headers.getSetCookie()).toEqual(["a=1", "b=2"]);
   });
 });
 

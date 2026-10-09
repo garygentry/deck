@@ -468,3 +468,28 @@ describe("ui hot reload of a config page", () => {
     expect(await projections(request)).toBeUndefined();
   });
 });
+
+describe("ui hot reload of the embed gate", () => {
+  const waitFor = (check: () => Promise<void>) => vi.waitFor(check, { timeout: 10_000, interval: 50 });
+  const page = { id: "lab", path: "/lab", title: "Lab", sections: [{ title: "Frames", widgets: [{ id: "graph", type: "core/embed", options: { url: "https://grafana.example.net/d/ups" } }] }] };
+
+  it("closes when an edit turns allowUnsafeEmbeds off, and opens again when it turns it back on", async () => {
+    const cfg = configDir({ allowUnsafeEmbeds: true, pages: [page] });
+    const request = await bootOn(cfg.dir);
+    const before = await manifest(request);
+    expect(before.ui.allowUnsafeEmbeds).toBe(true);
+
+    // Shutting the gate is a valid edit (the embed's finding is info): the new manifest has no flag.
+    cfg.writeOverlay(overlay({ allowUnsafeEmbeds: false, pages: [page] }));
+    await waitFor(async () => expect((await manifest(request)).etag).not.toBe(before.etag));
+    const shut = await manifest(request);
+    expect("allowUnsafeEmbeds" in shut.ui).toBe(false);
+    expect(shut.ui.findings).toEqual([]);
+    expect(shut.ui.pages.find((entry) => entry.id === "page:ui/lab")?.layout?.sections[0]?.widgets[0]?.type).toBe("core/embed");
+
+    // Removing the key shuts it too; setting it again opens it.
+    cfg.writeOverlay(overlay({ pages: [page] }));
+    cfg.writeOverlay(overlay({ allowUnsafeEmbeds: true, pages: [page] }));
+    await waitFor(async () => expect((await manifest(request)).ui.allowUnsafeEmbeds).toBe(true));
+  });
+});

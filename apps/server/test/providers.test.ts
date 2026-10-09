@@ -4,8 +4,8 @@ import {
   type Provider,
   type ProviderFetchContext,
 } from "../src/contract/index.js";
-import { HttpHealthProvider } from "../src/providers/http-health/index.js";
-import { LinkProvider } from "../src/providers/link/index.js";
+import { HttpHealthProvider } from "../../../modules/http-health/server/index.js";
+import { LinkProvider } from "../../../modules/link/server/index.js";
 import { registerHttpHealth, registerLink } from "./util/register-kinds.js";
 import {
   deriveState,

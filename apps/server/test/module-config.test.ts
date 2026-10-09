@@ -9,7 +9,7 @@ import { ModuleManifestError } from "../src/modules/host.js";
 import { dockerModule } from "../src/providers/docker/module.js";
 import { prometheusModule } from "../src/providers/prometheus/module.js";
 import { snapshotModule } from "../src/providers/snapshot/module.js";
-import { portalModule } from "../src/portal/module.js";
+import { portalModule } from "../../../modules/portal/server/module.js";
 import { testHost, testModule } from "./util/modules.js";
 import { makeConfigDir } from "./util/tmp-config.js";
 

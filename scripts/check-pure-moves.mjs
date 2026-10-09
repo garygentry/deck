@@ -19,9 +19,12 @@
 //     source under apps/*/src or apps/*/test, which no rename accounts for.
 //   - every other change is listed, with modified source files marked when their only edits are
 //     specifiers to the same modules, so the non-move edits are easy to review.
+//   - checking HEAD with uncommitted changes (tracked or untracked) fails: the output would not
+//     describe what is pushed. A change with no renames fails too, since its OK would vouch for
+//     nothing, unless --allow-empty says it is meant to move nothing.
 // Its output is meant to be pasted into the PR body.
 //
-// Usage: node scripts/check-pure-moves.mjs <base-ref> [--worktree]
+// Usage: node scripts/check-pure-moves.mjs <base-ref> [--worktree] [--allow-empty]
 // Exit: 0 pure, 1 not pure, 2 usage or git error.
 
 import { execFileSync } from "node:child_process";
@@ -175,6 +178,9 @@ export class Tree {
 
   /** What `specifier` loads from `from`: `file:<path>`, `package:<name>`, or `unresolved:<base>`. */
   resolve(specifier, from) {
+    // A bundler query (Vite's `?raw`) loads the same file another way: resolve the path, keep the query.
+    const query = specifier.indexOf("?");
+    if (query > 0) return `${this.resolve(specifier.slice(0, query), from)}${specifier.slice(query)}`;
     let base;
     if (specifier === "." || specifier === ".." || specifier.startsWith("./") || specifier.startsWith("../")) {
       base = posix.normalize(posix.join(posix.dirname(from), specifier));
@@ -245,7 +251,9 @@ export function compareFile({ oldTree, newTree, from, to, renames }) {
     }
     const was = oldTree.resolve(x.specifier, from);
     const now = newTree.resolve(y.specifier, to);
-    const expected = was.startsWith("file:") ? `file:${renames.get(was.slice(5)) ?? was.slice(5)}` : was;
+    const at = was.indexOf("?");
+    const [target, query] = at < 0 ? [was, ""] : [was.slice(0, at), was.slice(at)];
+    const expected = target.startsWith("file:") ? `file:${renames.get(target.slice(5)) ?? target.slice(5)}${query}` : was;
     if (was.startsWith("unresolved:") || now !== expected) {
       problems.push(`specifier "${x.specifier}" → "${y.specifier}" loads ${now.replace(/^\w+:/, "")}, not ${expected.replace(/^\w+:/, "")}`);
     } else if (x.specifier !== y.specifier) {
@@ -274,7 +282,7 @@ function fingerprint(tree, path) {
 }
 
 /** Run the check in the repository at `cwd`; returns `{ ok, output }`. */
-export function check(cwd, base, { worktree = false } = {}) {
+export function check(cwd, base, { worktree = false, allowEmpty = false } = {}) {
   const lines = [];
   const mergeBase = git(cwd, ["merge-base", base, "HEAD"]).trim();
   const range = worktree ? [mergeBase] : [mergeBase, "HEAD"];
@@ -286,6 +294,14 @@ export function check(cwd, base, { worktree = false } = {}) {
   let failed = false;
 
   lines.push(`pure-move check: ${worktree ? "working tree" : "HEAD"} against ${base} (merge-base ${mergeBase.slice(0, 12)})`);
+  if (!worktree) {
+    const dirty = git(cwd, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]).split("\0").filter((entry) => /^.. /.test(entry));
+    if (dirty.length > 0) {
+      failed = true;
+      lines.push("", `NOT CHECKED: the working tree has uncommitted changes (${dirty.length}); commit them, or check them with --worktree:`);
+      for (const entry of dirty) lines.push(`  ${entry}`);
+    }
+  }
   lines.push("", `renames (${renameEntries.length}):`);
   for (const [code, from, to] of renameEntries) {
     const { problems, specifiers, trivia } = compareFile({ oldTree, newTree, from, to, renames });
@@ -338,6 +354,11 @@ export function check(cwd, base, { worktree = false } = {}) {
     lines.push(`  ${code} ${path}${note}`);
   }
 
+  if (renameEntries.length === 0 && !allowEmpty) {
+    failed = true;
+    lines.push("", "NOT PURE: no renames, so nothing moved; pass --allow-empty if the change is meant to move nothing");
+  }
+
   lines.push("", failed ? "FAIL: not a pure move" : "OK: every rename is a pure move");
   return { ok: !failed, output: lines.join("\n") };
 }
@@ -345,13 +366,13 @@ export function check(cwd, base, { worktree = false } = {}) {
 function main() {
   const args = process.argv.slice(2);
   const positional = args.filter((arg) => !arg.startsWith("--"));
-  if (positional.length !== 1 || args.some((arg) => arg.startsWith("--") && arg !== "--worktree")) {
-    console.error("usage: node scripts/check-pure-moves.mjs <base-ref> [--worktree]");
+  if (positional.length !== 1 || args.some((arg) => arg.startsWith("--") && arg !== "--worktree" && arg !== "--allow-empty")) {
+    console.error("usage: node scripts/check-pure-moves.mjs <base-ref> [--worktree] [--allow-empty]");
     process.exit(2);
   }
   let result;
   try {
-    result = check(process.cwd(), positional[0], { worktree: args.includes("--worktree") });
+    result = check(process.cwd(), positional[0], { worktree: args.includes("--worktree"), allowEmpty: args.includes("--allow-empty") });
   } catch (error) {
     console.error(`check-pure-moves: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(2);

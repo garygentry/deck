@@ -3,9 +3,9 @@ import { BUILTIN_STATUS_KINDS } from "@deck/contract/modules/data-sources";
 import type { UiStatusKind } from "@deck/module-sdk";
 import type { Host } from "@deck/schema";
 import type { DeckConfig } from "@deck/server";
-import type { Group, PortalModuleConfig } from "@deck/server/portal";
+import type { Group, PortalModuleConfig } from "../server/types.js";
 import { useMemo, useRef } from "react";
-import { useConfig, useProviders, useUiManifest, type UiManifestState } from "../../data/index.js";
+import { useConfig, useProviders, useUiManifest, type UiManifestState } from "@/data/index.js";
 import { resolveServiceBinding, type PortalData } from "./card-status.js";
 
 const INITIAL_PORTAL_DATA: PortalData = {

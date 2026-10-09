@@ -10,7 +10,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..")
 const MODULE_SCHEMAS = [
   { schema: "apps/server/src/actions/schema.json", output: "apps/server/src/actions/config.generated.ts" },
   { schema: "modules/llm-usage/schema.json", output: "modules/llm-usage/server/config.generated.ts" },
-  { schema: "apps/server/src/portal/schema.json", output: "apps/server/src/portal/config.generated.ts" },
+  { schema: "modules/portal/schema.json", output: "modules/portal/server/config.generated.ts" },
 ] as const;
 
 type Schema = Parameters<typeof compile>[0];

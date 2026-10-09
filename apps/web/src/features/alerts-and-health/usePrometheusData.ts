@@ -6,7 +6,7 @@ import { useProvider } from "../../data/index.js";
  * Threshold-derived status for one rendered summary. Web-side mirror of the canonical server-side
  * declaration in `apps/server/src/providers/prometheus/index.ts` — kept structurally identical.
  * Mirrored (not imported from `@deck/server`) because this feature adds no engine-core barrel
- * export; the same pattern as `apps/web/src/features/portal/card-status.ts` with
+ * export; the same pattern as `modules/portal/web/card-status.ts` with
  * `DockerResult`/`GatusResult`.
  */
 export type SummaryStatus = "ok" | "warning" | "critical" | "neutral" | "error";

@@ -1,37 +1,37 @@
 // @vitest-environment jsdom
 import type { FreshnessStamp, ProviderEnvelope } from "@deck/contract";
 import type { DeckConfig } from "@deck/server";
-import type { PortalModuleConfig } from "@deck/server/portal";
+import type { PortalModuleConfig } from "../../../modules/portal/server/types.js";
 import type { JsonObject, UiPage, UiWidgetInstance } from "@deck/module-sdk";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { BUILTIN_STATUS_KINDS } from "@deck/contract/modules/data-sources";
-import type { GatusResult, PortalData } from "../src/features/portal/card-status.js";
+import type { GatusResult, PortalData } from "../../../modules/portal/web/card-status.js";
 
 let portalData: PortalData;
 
-vi.mock("../src/features/portal/usePortalData.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/features/portal/usePortalData.js")>();
+vi.mock("../../../modules/portal/web/usePortalData.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../modules/portal/web/usePortalData.js")>();
   return { ...actual, usePortalData: () => portalData };
 });
 
 // These side-effect imports intentionally exercise the same registration path as discovery.
-import "../src/features/portal/index.js";
+import "../../../modules/portal/web/index.js";
 import { App } from "../src/shell/App.js";
-import { PortalPage } from "../src/features/portal/PortalPage.js";
+import { PortalPage } from "../../../modules/portal/web/PortalPage.js";
 import { ConfigPage } from "../src/shell/config-page/ConfigPage.js";
 import { declaredLayout } from "../src/shell/config-page/layout.js";
 import {
   orderedGroups,
   orderedItems,
   portalGroups,
-} from "../src/features/portal/PortalGroupsWidget.js";
+} from "../../../modules/portal/web/PortalGroupsWidget.js";
 import {
   deriveEndpointSummary,
   EndpointStatusSummary,
-} from "../src/features/portal/EndpointStatusSummary.js";
-import { CARD_STATUS, PortalCard } from "../src/features/portal/PortalCard.js";
+} from "../../../modules/portal/web/EndpointStatusSummary.js";
+import { CARD_STATUS, PortalCard } from "../../../modules/portal/web/PortalCard.js";
 import { PORTAL_SUMMARY_SLOT, PORTAL_UI } from "@deck/contract/modules/portal";
 import { getAllExtensions, getPages, getSlot, registerCard } from "../src/registry/registry.js";
 import { getQueryClient, resetQueryClient } from "../src/data/query-client.js";
@@ -384,7 +384,7 @@ describe("filters", () => {
 describe("shared data and keyboard integration contracts", () => {
   it("renders cards from shared data without fetching on its own", async () => {
     // Polling and sharing live in the data layer (see data-layer.test.tsx); a card only renders.
-    expect(await import("../src/features/portal/PortalCard.js?raw").then((module) => module.default)).not.toContain("fetch(");
+    expect(await import("../../../modules/portal/web/PortalCard.js?raw").then((module) => module.default)).not.toContain("fetch(");
   });
 
   it("drives search, filtering, navigation and opening through the keyboard", async () => {

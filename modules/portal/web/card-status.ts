@@ -1,5 +1,5 @@
 import type { Service } from "@deck/schema";
-import type { GroupItem, LinkItem, ServiceItem } from "@deck/server/portal";
+import type { GroupItem, LinkItem, ServiceItem } from "../server/types.js";
 import type { FreshnessStamp, ProviderEnvelope } from "@deck/contract";
 import { BUILTIN_STATUS_KINDS } from "@deck/contract/modules/data-sources";
 import type { StatusConditionDecl, UiStatusKind } from "@deck/module-sdk";

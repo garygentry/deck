@@ -73,13 +73,13 @@ describe("imports: the server package is types only", () => {
       runtimeServerImports(readFileSync(path, "utf8"), serverCodeFrom(path)).map((offence) => `${sourceRel(path)}: ${offence}`),
     );
     expect(offenders).toEqual([]);
-    // The check has something to hold: the web takes wire types from the server barrel, the
-    // portal feature takes its section types from the module, and a module's web half takes its
-    // wire types from its own server half.
+    // The check has something to hold: the web takes wire types from the server barrel, and a
+    // module's web half takes its wire and section types from its own server half.
     expect(files.some((path) => /from "@deck\/server"/.test(readFileSync(path, "utf8")))).toBe(true);
-    expect(files.some((path) => /@deck\/server\/portal/.test(readFileSync(path, "utf8")))).toBe(true);
-    expect(files.map((path) => sourceRel(path))).toContain("modules/llm-usage/web/store.ts");
-    expect(readFileSync(join(REPO_ROOT, "modules/llm-usage/web/store.ts"), "utf8")).toMatch(/import type \{[^}]*\} from "\.\.\/server\/types\.js"/);
+    for (const file of ["modules/llm-usage/web/store.ts", "modules/portal/web/card-status.ts"]) {
+      expect(files.map((path) => sourceRel(path))).toContain(file);
+      expect(readFileSync(join(REPO_ROOT, file), "utf8")).toMatch(/import type \{[^}]*\} from "\.\.\/server\/types\.js"/);
+    }
   });
 
   it("refuses a runtime import of a module's server half from its web half", () => {
@@ -97,17 +97,17 @@ describe("imports: the server package is types only", () => {
   });
 
   it.each([
-    ['import type { Group } from "@deck/server/portal";', []],
-    ['import type {\n  Group,\n  ServiceItem,\n} from "@deck/server/portal";', []],
-    ['import { type Group, type LinkItem } from "@deck/server/portal";', []],
-    ['export type { Group } from "@deck/server/portal";', []],
-    ['type G = typeof import("@deck/server/portal");', []],
-    ['import { Group } from "@deck/server/portal";', ['@deck/server/portal: import { Group } from "@deck/server/portal"']],
-    ['import { type Group, orderedGroups } from "@deck/server/portal";', ['@deck/server/portal: import { type Group, orderedGroups } from "@deck/server/portal"']],
-    ['import * as portal from "@deck/server/portal";', ['@deck/server/portal: import * as portal from "@deck/server/portal"']],
-    ['export { Group } from "@deck/server/portal";', ['@deck/server/portal: export { Group } from "@deck/server/portal"']],
-    ['import "@deck/server/portal";', ["@deck/server/portal: side-effect import"]],
-    ['const m = await import("@deck/server/portal");', ["@deck/server/portal: dynamic import"]],
+    ['import type { Group } from "@deck/server/x";', []],
+    ['import type {\n  Group,\n  ServiceItem,\n} from "@deck/server/x";', []],
+    ['import { type Group, type LinkItem } from "@deck/server/x";', []],
+    ['export type { Group } from "@deck/server/x";', []],
+    ['type G = typeof import("@deck/server/x");', []],
+    ['import { Group } from "@deck/server/x";', ['@deck/server/x: import { Group } from "@deck/server/x"']],
+    ['import { type Group, orderedGroups } from "@deck/server/x";', ['@deck/server/x: import { type Group, orderedGroups } from "@deck/server/x"']],
+    ['import * as portal from "@deck/server/x";', ['@deck/server/x: import * as portal from "@deck/server/x"']],
+    ['export { Group } from "@deck/server/x";', ['@deck/server/x: export { Group } from "@deck/server/x"']],
+    ['import "@deck/server/x";', ["@deck/server/x: side-effect import"]],
+    ['const m = await import("@deck/server/x");', ["@deck/server/x: dynamic import"]],
     ['import type { DeckConfig } from "@deck/server";', []],
     ['import { type DeckConfig, type ProviderEnvelope } from "@deck/server";', []],
     ['import { POLL_DEFAULTS } from "@deck/server";', ['@deck/server: import { POLL_DEFAULTS } from "@deck/server"']],
@@ -117,7 +117,7 @@ describe("imports: the server package is types only", () => {
     ['const m = await import("@deck/server");', ["@deck/server: dynamic import"]],
     ['/** Links (we import the page module). */\nimport type { SourceTreeNode } from "@deck/server";', []],
     ['import type { DeckConfig } from "@deck/server"\nimport { POLL_DEFAULTS } from "@deck/server"\n', ['@deck/server: import { POLL_DEFAULTS } from "@deck/server"']],
-    ['import type { DeckConfig } from "@deck/server"\nimport { orderedGroups } from "@deck/server/portal"', ['@deck/server/portal: import { orderedGroups } from "@deck/server/portal"']],
+    ['import type { DeckConfig } from "@deck/server"\nimport { orderedGroups } from "@deck/server/x"', ['@deck/server/x: import { orderedGroups } from "@deck/server/x"']],
     ['import type { Foo } from "./foo"\nimport { POLL_DEFAULTS } from "@deck/server"\n', ['@deck/server: import { POLL_DEFAULTS } from "@deck/server"']],
     ['const text = \'import { POLL_DEFAULTS } from "@deck/server";\';', []],
     ['import Server from "@deck/server";', ['@deck/server: import Server from "@deck/server"']],

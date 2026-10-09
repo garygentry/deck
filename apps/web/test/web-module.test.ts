@@ -242,7 +242,7 @@ describe("the llm-usage web half", () => {
   it("registers exactly its module's contributions, with no placement of its own", async () => {
     vi.resetModules();
     // No shell module first: the pill's core slot is declared with the registry.
-    await import("../src/features/portal/index.js");
+    await import("../../../modules/portal/web/index.js");
     await import("../../../modules/llm-usage/web/index.js");
     const registry = await import("../src/registry/registry.js");
     const { LLM_USAGE_UI } = await import("@deck/contract/modules/llm-usage");

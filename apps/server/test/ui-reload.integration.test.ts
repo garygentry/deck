@@ -311,14 +311,15 @@ describe("ui hot reload, review round 1", () => {
 /**
  * Bun before 1.3.14 drops fs.watch events for some names (`..data_tmp`) and, once a watched
  * directory is renamed away, fails every later fs.watch in the process with ENOENT. Fixed
- * upstream in https://github.com/oven-sh/bun/pull/29952 (shipped in 1.3.14).
+ * upstream in https://github.com/oven-sh/bun/pull/29952 (shipped in 1.3.14). The image and CI
+ * pin a fixed Bun (#42, `.bun-version`); this skip remains for a local Bun older than that.
  */
-const bunWatchBroken = (() => {
-  const version = process.versions.bun;
-  if (version === undefined) return false;
-  const [major = 0, minor = 0, patch = 0] = version.split(".").map(Number);
-  return major * 1e6 + minor * 1e3 + patch < 1_003_014;
-})();
+const bunWatchBroken =
+  process.versions.bun !== undefined &&
+  (globalThis as unknown as { Bun: { semver: { order(a: string, b: string): number } } }).Bun.semver.order(
+    process.versions.bun,
+    "1.3.14",
+  ) < 0;
 
 describe("config directory watch", () => {
   /** A ConfigMap-style directory: versioned dirs, a `..data` symlink, files linked through it. */

@@ -35,6 +35,12 @@ export const REPLACED = {
 } as const satisfies Record<string, readonly string[]>;
 
 /**
+ * Maps either layer may set whose entries merge key by key with the later layer's value winning
+ * for a key both set (a module's integrity pin, say), where `both` would keep the earlier one.
+ */
+export const LATER_WINS: readonly string[] = ["moduleIntegrity"];
+
+/**
  * Kernel per-key ownership. Deeper keys inherit their nearest listed ancestor. Modules add
  * rows under `modules.<id>`; see `composeConfig`.
  */

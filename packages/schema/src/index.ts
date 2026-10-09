@@ -5,7 +5,7 @@ export {
   CONFIG_SCHEMA_VERSION, MIGRATABLE_CONFIG_VERSION, SNAPSHOT_SCHEMA_VERSION,
   supportedConfigVersions, supportedSnapshotVersions,
 } from "./version.js";
-export { ComposeError, composeConfig } from "./compose/compose.js";
+export { assertComposable, ComposeError, composeConfig } from "./compose/compose.js";
 export type { DisabledSections } from "./compose/compose.js";
 export { BUILTIN_CONTRIBUTIONS, composeDefault } from "./compose/builtin.js";
 export { SECRET_REF_PATTERN, SECRET_REF_MAX_LENGTH, CREDENTIAL_KEY_NAMES } from "./secrets.js";

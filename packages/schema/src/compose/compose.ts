@@ -243,6 +243,19 @@ const INSTANCE_CORE: JsonObject = {
  * closed, so an unknown key or module is still rejected. Throws {@link ComposeError}.
  */
 export function composeConfig(contributions: readonly ConfigContribution[], options: ComposeOptions = {}): ComposedConfig {
+  return compose(contributions, options, true)!;
+}
+
+/**
+ * Throw what {@link composeConfig} would throw for contributions that cannot coexist (a
+ * duplicate id, finding code or provider kind), without compiling any schema: a cheap check
+ * for trying combinations of contributions.
+ */
+export function assertComposable(contributions: readonly ConfigContribution[]): void {
+  compose(contributions, {}, false);
+}
+
+function compose(contributions: readonly ConfigContribution[], options: ComposeOptions, compile: boolean): ComposedConfig | null {
   const schema = structuredClone(kernelSchema) as unknown as KernelSchemaShape;
   const ownership: Record<string, Owner> = { ...OWNERSHIP };
   const identity: Record<string, IdentitySpec> = { ...IDENTITY };
@@ -405,6 +418,7 @@ export function composeConfig(contributions: readonly ConfigContribution[], opti
     );
   }
 
+  if (!compile) return null;
   // A widget of a declared type must have options its type accepts. Omitted options are `{}`:
   // when the type's schema (whole, through any allOf, $ref or minProperties) refuses `{}`, the
   // widget must set them. Any other type keeps the generic shape (UI_WIDGET_TYPE_UNKNOWN reports it).

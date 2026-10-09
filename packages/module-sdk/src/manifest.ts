@@ -289,12 +289,13 @@ export interface WidgetTypeDecl {
   /** Provider kinds the widget can render. */
   sources?: string[];
   /**
-   * Options whose values name entries of the module's own config section: each value of
+   * Options whose values name entries of the module's own config section (not to be confused
+   * with `config.references`, which resolve estate hosts and services): each value of
    * `option` (text, or a list of text) should be the `key` of an entry of `modules.<id>.<list>`.
    * One that is not is reported in the UI manifest (UI_WIDGET_OPTION_UNKNOWN); the widget
    * still renders, skipping it.
    */
-  references?: WidgetOptionReferenceDecl[];
+  optionReferences?: WidgetOptionReferenceDecl[];
 }
 
 /** A widget option that names entries of its module's config section (`portal/groups`' `groups`). */

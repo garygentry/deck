@@ -36,7 +36,7 @@ export const PORTAL_UI: WebModuleManifest = {
       {
         type: PORTAL_GROUPS_WIDGET,
         component: "PortalGroupsWidget",
-        references: [{ option: "groups", list: "groups", key: "id" }],
+        optionReferences: [{ option: "groups", list: "groups", key: "id" }],
         optionsSchema: {
           type: "object",
           additionalProperties: false,

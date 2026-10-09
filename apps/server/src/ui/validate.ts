@@ -228,11 +228,11 @@ function widgetTypeProblem(moduleId: string, type: Record<string, unknown>): Pro
     (isRecord(type.optionsSchema) ? null : `${label} needs an optionsSchema object`) ??
     optionalString(type.component, `${label} component`) ??
     (type.sources === undefined || (Array.isArray(type.sources) && type.sources.every(nonEmpty)) ? null : `${label} sources must be a list of provider kinds`) ??
-    (type.references === undefined ||
-    (Array.isArray(type.references) &&
-      type.references.every((reference) => isRecord(reference) && onlyKeys(reference, ["option", "list", "key"]) && nonEmpty(reference.option) && nonEmpty(reference.list) && nonEmpty(reference.key)))
+    (type.optionReferences === undefined ||
+    (Array.isArray(type.optionReferences) &&
+      type.optionReferences.every((reference) => isRecord(reference) && onlyKeys(reference, ["option", "list", "key"]) && nonEmpty(reference.option) && nonEmpty(reference.list) && nonEmpty(reference.key)))
       ? null
-      : `${label} references must be a list of { option, list, key }`)
+      : `${label} optionReferences must be a list of { option, list, key }`)
   );
 }
 

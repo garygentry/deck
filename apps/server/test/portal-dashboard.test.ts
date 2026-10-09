@@ -230,12 +230,12 @@ describe("portal/groups on a config page", () => {
     expect(fine.findings).toEqual([]);
   });
 
-  it("checks a widget type's references in its manifest", () => {
-    const bad = (references: unknown) =>
-      uiContributionProblem({ id: "gauges", version: "1", deckApi: "^0.1", contributes: { widgetTypes: [{ type: "gauges/dial", optionsSchema: {}, references } as never] } });
+  it("checks a widget type's optionReferences in its manifest", () => {
+    const bad = (optionReferences: unknown) =>
+      uiContributionProblem({ id: "gauges", version: "1", deckApi: "^0.1", contributes: { widgetTypes: [{ type: "gauges/dial", optionsSchema: {}, optionReferences } as never] } });
     expect(bad([{ option: "groups", list: "groups", key: "id" }])).toBeNull();
-    expect(bad([{ option: "groups" }])).toMatch(/references must be a list of \{ option, list, key \}/);
-    expect(bad({ option: "groups", list: "groups", key: "id" })).toMatch(/references/);
+    expect(bad([{ option: "groups" }])).toMatch(/optionReferences must be a list of \{ option, list, key \}/);
+    expect(bad({ option: "groups", list: "groups", key: "id" })).toMatch(/optionReferences/);
   });
 
   it("validates its options against the portal's schema", () => {

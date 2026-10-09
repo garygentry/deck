@@ -276,7 +276,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
         continue;
       }
       widgetTypes.set(decl.type, { type: decl.type, module: manifest.id, ...(decl.sources === undefined ? {} : { sources: [...decl.sources] }) });
-      if (decl.references !== undefined) optionReferences.set(decl.type, { module: manifest.id, references: decl.references });
+      if (decl.optionReferences !== undefined) optionReferences.set(decl.type, { module: manifest.id, references: decl.optionReferences });
     }
   }
 

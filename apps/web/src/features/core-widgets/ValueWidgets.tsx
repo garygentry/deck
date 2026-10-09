@@ -90,11 +90,18 @@ export function StatGridWidget({ value, options, widget }: WidgetProps<{ items?:
 
 /**
  * A meter's text: its `format` (a unit after it), else its `unit` after the number, else its
- * percentage of `max`. Never clamped: a value past the bar reads as it is.
+ * percentage of `max` (or "value of max" when that ratio is not a finite number). Never clamped:
+ * a value past the bar reads as it is.
  */
 function meterText(value: number, max: number, options: ScalarOptions, now: number): { text: string; sr: string } {
   if (options.format === undefined && options.unit === undefined) {
-    const text = formatValue((value / max) * 100, "percent", undefined, now);
+    const percent = (value / max) * 100;
+    // A ratio past a number's range (a huge value, a tiny max) reads as the value against its max.
+    if (!Number.isFinite(percent)) {
+      const text = `${formatValue(value, "number", undefined, now)} of ${formatValue(max, "number", undefined, now)}`;
+      return { text, sr: text };
+    }
+    const text = formatValue(percent, "percent", undefined, now);
     return { text, sr: text };
   }
   const format = options.format ?? "number";

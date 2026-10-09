@@ -584,7 +584,7 @@ A map's name is lowercase letters, digits and `-`. A map has `values`, `rules` o
 | Key | Type | Description |
 | --- | --- | --- |
 | `values` | object of value → tone | Exact values. Numbers and booleans compare as their text, so `404: warn` matches the number 404. Tried first. |
-| `rules` | array, 1–32 | Tried in order; the first whose every condition holds gives the tone. `lt`, `lte`, `gt` and `gte` hold for a number, or text that is wholly one (`"42"`, not `"42%"`); `eq` holds for a value with the same text, compared both ways (`42` matches `"42"` and `"42"` matches `42`). A rule with only a `tone` matches any value, so put it last. |
+| `rules` | array, 1–32 | Tried in order; the first whose every condition holds gives the tone. `lt`, `lte`, `gt` and `gte` hold for a number, or text that is wholly one (`"42"`, not `"42%"`); `eq` holds for an equal value, either way round: as numbers when either side is a number and both read as one (`0` matches `"0.0"`, `"404"` matches `404`), else as text (`true` matches `"true"`). A rule with only a `tone` matches any value, so put it last. |
 
 A tone is one of `ok`, `warn`, `danger`, `info`, `pending` and `neutral`; anything else is a
 schema error. A value no entry or rule matches shows untoned. A core widget naming a map that

@@ -159,3 +159,18 @@ describe("markdown.ts — image rewriting (REQ-DOCS-05, SC-17)", () => {
     expect(attr(html, "img", "src")).toBe("https://cdn.example.com/a.png");
   });
 });
+
+describe("markdown.ts — heading offset (dashboard widgets)", () => {
+  it("leaves the docs view's headings as written", () => {
+    const html = renderMarkdown("# Title\n\n<h2>Raw</h2>", ctx("index.md"));
+    expect(new DOMParser().parseFromString(html, "text/html").querySelector("h1")?.textContent).toBe("Title");
+    expect(attr(html, "h2", "id")).toBeNull();
+  });
+
+  it("moves headings down before sanitising, capped at h6, and still sanitises them", () => {
+    const html = renderMarkdown('# One\n\n#### Four\n\n<h2 onclick="x()">Raw</h2>', undefined, { headingOffset: 3 });
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    expect([...doc.querySelectorAll("h1, h2, h3, h4, h5, h6")].map((node) => node.tagName)).toEqual(["H4", "H6", "H5"]);
+    expect(attr(html, "h5", "onclick")).toBeNull();
+  });
+});

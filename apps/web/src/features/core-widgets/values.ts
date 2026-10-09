@@ -50,6 +50,17 @@ export function readItem(item: Record<string, unknown>, options: Pick<FieldOptio
 
 const NUMBER = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const PERCENT = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
+// Past a billion, grouped digits stop being readable (1e308 is 400 characters): "1.2E15". Below
+// what two decimals can show, a non-zero number would read as "0": "5E-4".
+const SCIENTIFIC = new Intl.NumberFormat("en-US", { notation: "scientific", maximumFractionDigits: 2 });
+const SCIENTIFIC_FROM = 1e9;
+const SCIENTIFIC_BELOW = 0.005;
+
+/** A number grouped (`format`), or in scientific notation when it is huge or tiny but not zero. */
+function readable(n: number, format: Intl.NumberFormat): string {
+  const size = Math.abs(n);
+  return size >= SCIENTIFIC_FROM || (size !== 0 && size < SCIENTIFIC_BELOW) ? SCIENTIFIC.format(n) : format.format(n);
+}
 const BYTE_UNITS = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"] as const;
 
 function bytes(n: number): string {
@@ -79,7 +90,7 @@ function duration(seconds: number): string {
 }
 
 /**
- * A value as text, by its format: `number` groups digits, `bytes` scales by 1024 (KiB, MiB…),
+ * A value as text, by its format: `number` groups digits (scientific past a billion), `bytes` scales by 1024 (KiB, MiB…),
  * `percent` reads a number of 100, `duration` a number of seconds, and `relative-time` an ISO
  * time or epoch milliseconds against `now`. A value its format cannot read (text where a number
  * belongs) reads as given. A unit follows the value. Lists and objects read as compact JSON.
@@ -99,11 +110,11 @@ function formatBare(value: unknown, format: ValueFormat, now: number): string {
   if (n !== undefined) {
     switch (format) {
       case "number":
-        return NUMBER.format(n);
+        return readable(n, NUMBER);
       case "bytes":
         return bytes(n);
       case "percent":
-        return `${PERCENT.format(n)}%`;
+        return `${readable(n, PERCENT)}%`;
       case "duration":
         return duration(n);
       default:

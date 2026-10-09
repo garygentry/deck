@@ -138,9 +138,42 @@ const SANITIZE_CONFIG: DOMPurifyConfig = {
  *
  * @param markdown  the raw document body (`FileReadResult.content`).
  * @param context   the source id + doc path used for relative rewriting, if any.
+ * @param options   how the caller embeds it (a heading offset for a dashboard widget).
  * @returns a sanitized HTML string containing no executable script or event-handler attrs.
  */
-export function renderMarkdown(markdown: string, context?: MarkdownRenderContext): string {
-  const html = md.render(markdown, { ...context });
+export function renderMarkdown(
+  markdown: string,
+  context?: MarkdownRenderContext,
+  options: MarkdownRenderOptions = {},
+): string {
+  const rendered = md.render(markdown, { ...context });
+  const html = options.headingOffset === undefined ? rendered : demoteHeadings(rendered, options.headingOffset);
+  // The sanitiser runs last: nothing parses, changes or re-serialises its output.
   return DOMPurify.sanitize(html, SANITIZE_CONFIG) as string;
+}
+
+/** How a caller embeds the rendered document. */
+export interface MarkdownRenderOptions {
+  /**
+   * Levels to move every heading down (at most `h6`), raw HTML headings included: a dashboard
+   * widget's markdown sits under its card's `h3`. The docs view leaves headings as written.
+   */
+  headingOffset?: number;
+}
+
+/**
+ * Rendered (not yet sanitised) HTML with every heading `by` levels lower. It parses into an
+ * inert template (no script runs, no resource loads), renames the heading elements keeping their
+ * attributes and children, and serialises; DOMPurify then sanitises the result.
+ */
+function demoteHeadings(html: string, by: number): string {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  for (const heading of template.content.querySelectorAll("h1, h2, h3, h4, h5, h6")) {
+    const demoted = document.createElement(`h${Math.min(6, Number(heading.tagName.slice(1)) + by)}`);
+    for (const { name, value } of heading.attributes) demoted.setAttribute(name, value);
+    demoted.append(...heading.childNodes);
+    heading.replaceWith(demoted);
+  }
+  return template.innerHTML;
 }

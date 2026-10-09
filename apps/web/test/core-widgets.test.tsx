@@ -295,6 +295,18 @@ describe("round 1 fixes", () => {
     expect(screen.getByRole("heading", { name: "Raw" })).toHaveAttribute("id", "x");
   });
 
+  it("N4: demotes before the sanitiser, which still strips what a heading or its neighbours carry", () => {
+    const { container } = show(MarkdownWidget, "core/markdown", null, {
+      content: '<h1 onclick="alert(1)">Click</h1><h2><img src=x onerror=alert(1)>Img</h2><script>window.pwned=1</script>',
+    });
+    const heading = screen.getByRole("heading", { name: "Click" });
+    expect(heading.tagName).toBe("H4");
+    expect(heading).not.toHaveAttribute("onclick");
+    expect(screen.getByRole("heading", { name: "Img" }).tagName).toBe("H5");
+    expect(container.querySelector("img")?.getAttribute("onerror")).toBeFalsy();
+    expect(container.querySelector("script")).toBeNull();
+  });
+
   it("G: caps status tiles at their limit and enumerated fields at the schema's maxima, and says so", () => {
     const states = Array.from({ length: 60 }, (_, index) => ({ name: `s${index}`, status: "running" }));
     show(StatusGridWidget, "core/status-grid", states, {}, "States");
@@ -345,6 +357,24 @@ describe("round 1 fixes", () => {
     cleanup();
     show(MeterWidget, "core/meter", 50, { label: "Half", max: 200 });
     expect(screen.getByRole("meter", { name: "Half" })).toHaveAttribute("aria-valuetext", "25%");
+  });
+
+  it("N1: reads a meter whose percentage overflows as its value of max, visibly and to assistive tech", () => {
+    for (const [value, max, text] of [
+      [1e308, 1e-308, "1E308 of 1E-308"],
+      [-1e308, 1e-308, "-1E308 of 1E-308"],
+      [1, 5e-324, "1 of 5E-324"],
+    ] as const) {
+      show(MeterWidget, "core/meter", value, { label: "Huge", max });
+      const meter = screen.getByRole("meter", { name: "Huge" });
+      expect(meter).toHaveAttribute("aria-valuetext", text);
+      expect(screen.getByText(text)).toBeInTheDocument();
+      expect(document.body.textContent).not.toMatch(/∞|NaN/);
+      cleanup();
+    }
+    // A finite but huge ratio stays a short percentage.
+    show(MeterWidget, "core/meter", 1e300, { label: "Big" });
+    expect(screen.getByRole("meter", { name: "Big" }).getAttribute("aria-valuetext")!.length).toBeLessThanOrEqual(16);
   });
 
   it("L: renders a field configured twice without a duplicate key", () => {

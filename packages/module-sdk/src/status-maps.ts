@@ -14,9 +14,9 @@ export function isTone(value: unknown): value is Tone {
  * - its entry in `values`, when the value is text, a number or a boolean whose text is a key
  *   there (`404`, `true` and `"running"` all compare as text);
  * - else the first rule whose every condition holds, in order: `lt`/`lte`/`gt`/`gte` hold for a
- *   number, or text that reads wholly as one (`" 42 "` does not), and `eq` for a value with the
- *   same text, either way round (`42` and `"42"`, `true` and `"true"`); a rule with no condition
- *   matches any value.
+ *   number, or text that reads wholly as one (`" 42 "` does not), and `eq` for an equal value,
+ *   either way round: as numbers when either side is a number and both read as one (`0` and
+ *   `"0.0"`), else as text (`true` and `"true"`); a rule with no condition matches any value.
  * Read leniently: a malformed map or rule (config validation refuses them) matches nothing.
  */
 export function statusTone(map: StatusMapData | undefined, value: unknown): Tone | undefined {
@@ -50,8 +50,17 @@ function ruleHolds(rule: StatusRule, value: unknown, number: number | undefined)
   return true;
 }
 
-/** `eq` compares as text, both ways, as `values` keys do: `42` equals `"42"`, `true` equals `"true"`. */
+/**
+ * `eq`, symmetric: when either side is a number and both read as numbers, they compare as
+ * numbers (`0` equals `"0.0"`, `100` equals `"1e2"`, `"404"` equals `404`); otherwise as text,
+ * as `values` keys do (`true` equals `"true"`).
+ */
 function equals(expected: unknown, value: unknown): boolean {
+  if (typeof expected === "number" || typeof value === "number") {
+    const a = numberOf(expected);
+    const b = numberOf(value);
+    if (a !== undefined && b !== undefined) return a === b;
+  }
   const text = scalarText(value);
   return text !== undefined && scalarText(expected) === text;
 }

@@ -694,7 +694,7 @@ gt?: number
  */
 gte?: number
 /**
- * The value has this text, compared both ways as values keys are (42 matches "42", and "42" matches 42).
+ * The value equals this, either way round: as numbers when either is a number and both read as one (0 matches "0.0", "404" matches 404), else as text (true matches "true").
  */
 eq?: (string | number | boolean)
 tone: UiTone1

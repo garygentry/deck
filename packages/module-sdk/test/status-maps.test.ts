@@ -61,6 +61,19 @@ describe("statusTone", () => {
     expect(statusTone(map, { a: 1 })).toBeUndefined();
   });
 
+  it("compares eq numerically when either side is a number and both read as one (N2)", () => {
+    expect(statusTone({ rules: [{ eq: 100, tone: "ok" }] }, "100.0")).toBe("ok");
+    expect(statusTone({ rules: [{ eq: 100, tone: "ok" }] }, "1e2")).toBe("ok");
+    expect(statusTone({ rules: [{ eq: 0, tone: "ok" }] }, "0.0")).toBe("ok");
+    expect(statusTone({ rules: [{ eq: 0, tone: "ok" }] }, "-0")).toBe("ok");
+    expect(statusTone({ rules: [{ eq: "404", tone: "warn" }] }, 404)).toBe("warn");
+    expect(statusTone({ rules: [{ eq: "4.04e2", tone: "warn" }] }, 404)).toBe("warn");
+    // Text against text stays text: no number on either side.
+    expect(statusTone({ rules: [{ eq: "1e2", tone: "ok" }] }, "100")).toBeUndefined();
+    expect(statusTone({ rules: [{ eq: 0, tone: "ok" }] }, "zero")).toBeUndefined();
+    expect(statusTone({ rules: [{ eq: 0, tone: "ok" }] }, false)).toBeUndefined();
+  });
+
   it("tries values before rules", () => {
     expect(statusTone({ values: { "99": "info" }, rules: [{ tone: "danger" }] }, 99)).toBe("info");
     expect(statusTone({ values: { "99": "info" }, rules: [{ tone: "danger" }] }, 98)).toBe("danger");

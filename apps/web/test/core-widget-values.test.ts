@@ -35,12 +35,18 @@ describe("formatValue", () => {
     expect(formatValue("not a time", "relative-time", undefined, NOW)).toBe("not a time");
   });
 
-  it("keeps a huge percent finite (E)", () => {
-    for (const value of [1e308, -1e308]) {
+  it("keeps a huge percent finite (E) and short (N3)", () => {
+    for (const value of [1e308, -1e308, 1e9, -12_345_678_901]) {
       const text = formatValue(value, "percent", undefined, NOW);
       expect(text).not.toContain("∞");
-      expect(text).toMatch(/^-?[\d,]+%$/);
+      expect(text.length).toBeLessThanOrEqual(16);
     }
+    expect(formatValue(1e308, "percent", undefined, NOW)).toBe("1E308%");
+    expect(formatValue(999_999_999, "percent", undefined, NOW)).toBe("999,999,999%");
+    expect(formatValue(1e308, "number", undefined, NOW).length).toBeLessThanOrEqual(16);
+    // Tiny but not zero never reads as "0".
+    expect(formatValue(0.0004, "number", undefined, NOW)).toBe("4E-4");
+    expect(formatValue(0, "number", undefined, NOW)).toBe("0");
   });
 
   it.each([

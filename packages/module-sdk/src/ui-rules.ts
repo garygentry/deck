@@ -5,6 +5,8 @@
  * or `null`.
  */
 
+import type { ExtensionId } from "./manifest.js";
+
 /** `<kind>:<module>/<name>`: a kebab-case kind and module id, then a name. */
 export const EXTENSION_ID_PATTERN = /^([a-z][a-z0-9-]*):([a-z][a-z0-9-]*)\/([a-z0-9][a-z0-9.-]*)$/;
 
@@ -225,6 +227,16 @@ export function isSafeHref(href: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * A module page dashboard widget's id: `widget:<module>/<page name>.<id>`, from its page's id
+ * (`page:<module>/<page name>`). The server lists it, an override names it, and the web
+ * renders a declared layout under the same id. Null for a malformed page id.
+ */
+export function modulePageWidgetId(page: string, widget: string): ExtensionId | null {
+  const parts = parseExtensionId(page);
+  return parts === null ? null : `widget:${parts.module}/${parts.name}.${widget}`;
 }
 
 /** The page `/` renders when the `ui` config names no home page: the portal's overview. */

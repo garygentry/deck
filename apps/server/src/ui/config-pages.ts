@@ -13,7 +13,7 @@ import type {
   UiWidgetType,
 } from "@deck/module-sdk";
 
-import { parseExtensionId, UI_CONFIG_MODULE } from "@deck/module-sdk";
+import { modulePageWidgetId, UI_CONFIG_MODULE } from "@deck/module-sdk";
 
 import { compileSelect, type CompiledSelect } from "@deck/schema/select";
 
@@ -208,16 +208,10 @@ function clamp(value: number, min: number, max: number): number {
   return Number.isInteger(value) ? Math.min(Math.max(value, min), max) : min;
 }
 
-/** A module page's widget id: `widget:<module>/<page name>.<id>`. */
-export function modulePageWidgetId(page: ExtensionId, widget: string): ExtensionId {
-  const parts = parseExtensionId(page);
-  return `widget:${parts?.module ?? ""}/${parts?.name ?? ""}.${widget}`;
-}
-
 /** Every widget id on a module page's default dashboard (`layout`). */
 export function modulePageWidgetIds(page: Pick<PageDecl, "id" | "layout">): ExtensionId[] {
   return (page.layout?.sections ?? []).flatMap((section) =>
-    "widgets" in section ? section.widgets.map((widget) => modulePageWidgetId(page.id, widget.id)) : [],
+    "widgets" in section ? section.widgets.flatMap((widget) => modulePageWidgetId(page.id, widget.id) ?? []) : [],
   );
 }
 
@@ -250,7 +244,7 @@ export function buildModuleLayout(
     const widgets: UiWidgetInstance[] = [];
     for (const widget of section.widgets) {
       const id = modulePageWidgetId(page.id, widget.id);
-      if (!context.enabled(id)) continue;
+      if (id === null || !context.enabled(id)) continue;
       const provided = context.widgetTypes.some((type) => type.type === widget.type);
       widgets.push({
         id,

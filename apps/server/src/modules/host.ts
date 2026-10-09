@@ -393,6 +393,14 @@ function statusDeclProblem(decl: NonNullable<ModuleManifest["providerKinds"]>[nu
   return null;
 }
 
+/** Why a module that is not built in declares a status reading a fixed provider, or null. */
+function fixedStatusProblem(manifest: ModuleManifest): string | null {
+  const kinds: unknown = manifest.providerKinds;
+  if (!Array.isArray(kinds)) return null;
+  const fixed = (kinds as Array<{ kind?: unknown; status?: { provider?: unknown } }>).find((decl) => decl?.status?.provider === "fixed");
+  return fixed === undefined ? null : `provider kind "${String(fixed.kind)}" status provider "fixed" is reserved for built-in modules (a fixed id is honoured for them only)`;
+}
+
 /**
  * Read a module's kind handlers exactly once: a copy of the map, and of each handler's two
  * functions, so what is validated is what runs. A throwing getter, or a value of the wrong
@@ -681,6 +689,8 @@ export function planModules(options: PlanOptions): ModulePlanning {
     const problem = manifestProblem(manifest, reservedPagePaths)
       // Only a built-in has data that predates modules.
       ?? (manifest.dataDir !== undefined && !builtin ? "dataDir.legacyPath is reserved for built-in modules" : null)
+      // A fixed id is honoured for built-ins only, so another module's status cannot read one.
+      ?? (builtin ? null : fixedStatusProblem(manifest))
       ?? ("problem" in kinds ? kinds.problem : kindsProblem(manifest, kinds.kinds))
       ?? options.manifestProblems?.get(id)
       ?? kernelCollision(manifest, options.kernelRoutes ?? [], reservedRootPaths);

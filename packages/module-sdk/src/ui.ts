@@ -270,6 +270,10 @@ export type UiFindingCode =
   | "UI_WIDGET_SOURCE_UNKNOWN"
   | "UI_WIDGET_SOURCE_KIND"
   | "UI_WIDGET_SPAN"
+  /** A widget option names an entry its module's config does not have (a `portal/groups` group id). */
+  | "UI_WIDGET_OPTION_UNKNOWN"
+  /** A bindable, status-capable provider kind declares no `status`, so its bindings give cards none. */
+  | "UI_STATUS_UNDECLARED"
   | "UI_OVERRIDE_POSITIONAL";
 
 export interface UiFinding {

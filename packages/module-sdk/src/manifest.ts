@@ -288,6 +288,22 @@ export interface WidgetTypeDecl {
   component?: string;
   /** Provider kinds the widget can render. */
   sources?: string[];
+  /**
+   * Options whose values name entries of the module's own config section: each value of
+   * `option` (text, or a list of text) should be the `key` of an entry of `modules.<id>.<list>`.
+   * One that is not is reported in the UI manifest (UI_WIDGET_OPTION_UNKNOWN); the widget
+   * still renders, skipping it.
+   */
+  references?: WidgetOptionReferenceDecl[];
+}
+
+/** A widget option that names entries of its module's config section (`portal/groups`' `groups`). */
+export interface WidgetOptionReferenceDecl {
+  option: string;
+  /** The list in the module's section (`groups`). */
+  list: string;
+  /** The key of its entries the option names (`id`). */
+  key: string;
 }
 
 export interface StatusMapData {

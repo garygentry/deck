@@ -1,5 +1,6 @@
 import type {
   ExtensionDecl,
+  JsonObject,
   ExtensionId,
   ModuleManifest,
   NavDecl,
@@ -23,6 +24,7 @@ import type {
   UiSlot,
   UiStatusKind,
   UiWidgetType,
+  WidgetOptionReferenceDecl,
 } from "@deck/module-sdk";
 
 import {
@@ -90,6 +92,8 @@ export interface ResolveUiInput {
   ui?: UiDefaults;
   /** Config-defined pages (`ui.pages`), listed as pages of module `ui` with their layout. */
   configPages?: readonly ConfigPage[];
+  /** The config's module sections (`modules`), which widget option references name entries of. */
+  moduleSections?: Readonly<Record<string, unknown>>;
 }
 
 interface Unit {
@@ -263,6 +267,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
 
   // Widget types: the first by precedence keeps a type two modules declare.
   const widgetTypes = new Map<string, UiWidgetType>();
+  const optionReferences = new Map<string, { module: string; references: readonly WidgetOptionReferenceDecl[] }>();
   for (const { manifest } of enabledUnits) {
     for (const decl of manifest.contributes?.widgetTypes ?? []) {
       const owner = widgetTypes.get(decl.type);
@@ -271,6 +276,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
         continue;
       }
       widgetTypes.set(decl.type, { type: decl.type, module: manifest.id, ...(decl.sources === undefined ? {} : { sources: [...decl.sources] }) });
+      if (decl.references !== undefined) optionReferences.set(decl.type, { module: manifest.id, references: decl.references });
     }
   }
 
@@ -278,7 +284,15 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
   const statusKinds = new Map<string, UiStatusKind>();
   for (const { manifest } of enabledUnits) {
     for (const decl of manifest.providerKinds ?? []) {
-      if (decl.bindable !== true || decl.statusCapable !== true || decl.status === undefined || statusKinds.has(decl.kind)) continue;
+      if (decl.bindable !== true || decl.statusCapable !== true || statusKinds.has(decl.kind)) continue;
+      if (decl.status === undefined) {
+        findings.push({
+          code: "UI_STATUS_UNDECLARED",
+          severity: "warning",
+          message: `provider kind "${decl.kind}" of module "${manifest.id}" is bindable and statusCapable but declares no status, so its bindings give cards no status`,
+        });
+        continue;
+      }
       statusKinds.set(decl.kind, {
         kind: decl.kind,
         module: manifest.id,
@@ -401,6 +415,18 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
     });
   }
   const routedPages = new Set<string>(pages.map((page) => page.id));
+  for (const page of pages) {
+    for (const section of page.layout?.sections ?? []) {
+      if (!("widgets" in section)) continue;
+      for (const widget of section.widgets) {
+        const declared = optionReferences.get(widget.type);
+        if (declared === undefined || widget.typeProblem !== undefined) continue;
+        for (const problem of unknownReferences(widget.options, declared.references, input.moduleSections?.[declared.module])) {
+          findings.push({ code: "UI_WIDGET_OPTION_UNKNOWN", severity: "warning", message: `widget "${widget.id}" option ${problem}; it is skipped`, id: widget.id });
+        }
+      }
+    }
+  }
   const home = resolveHome(
     ui.home,
     pages,
@@ -516,6 +542,24 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
     ...(ui.statusMaps === undefined || Object.keys(ui.statusMaps).length === 0 ? {} : { statusMaps: copyStatusMaps(ui.statusMaps) }),
     findings,
   };
+}
+
+/**
+ * What a widget's options name that its module's section does not have: for each reference,
+ * each value of the option (text, or a list of text) that no entry of the section's `list` has
+ * as its `key`.
+ */
+function unknownReferences(options: JsonObject, references: readonly WidgetOptionReferenceDecl[], section: unknown): string[] {
+  const problems: string[] = [];
+  for (const { option, list, key } of references) {
+    const value = options[option];
+    const named = typeof value === "string" ? [value] : Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+    if (named.length === 0) continue;
+    const entries = isRecord(section) && Array.isArray(section[list]) ? (section[list] as unknown[]) : [];
+    const known = new Set(entries.flatMap((entry) => (isRecord(entry) && typeof entry[key] === "string" ? [entry[key]] : [])));
+    for (const name of named) if (!known.has(name)) problems.push(`${option} names "${name}", which no ${list} entry has as its ${key}`);
+  }
+  return problems;
 }
 
 /** The status maps, copied (the manifest is served as is), by name. */

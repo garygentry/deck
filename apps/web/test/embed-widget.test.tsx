@@ -157,8 +157,11 @@ describe("core/embed's frame", () => {
     expect(embedTarget("http://deck.lab/x", "http://deck.lab")).toHaveProperty("problem");
     expect(embedTarget(42, "http://deck.lab")).toHaveProperty("problem");
     expect(embedTarget("data:text/html,x", "http://deck.lab")).toHaveProperty("problem");
-    for (const url of ["https://x:99999/", "https://%/", "https://?q", "http://:80/", "http://#a", "https://u@h.lab/", "https://u:p@h.lab/"]) {
+    for (const url of ["https://x:99999/", "https://%/", "https://?q", "http://:80/", "http://#a", "https://u@h.lab/", "https://u:p@h.lab/", "https://999.1.1.1/", "http://x.123/", "https://[:::]/", "https://[1]/"]) {
       expect(embedTarget(url, "http://deck.lab"), url).toHaveProperty("problem");
+    }
+    for (const url of ["https://grafana.lab./", "http://my_grafana:3000/", "https://bücher.lab/", "http://[::1]:3000/", "http://10.0.0.5/"]) {
+      expect(embedTarget(url, "http://deck.lab"), url).toHaveProperty("url");
     }
   });
 });

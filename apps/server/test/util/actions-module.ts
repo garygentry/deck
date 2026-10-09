@@ -39,7 +39,7 @@ export async function actionsApp(options: ActionsAppOptions = {}) {
   });
   await fixture.host.start();
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger;
-  const providers = { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [] };
+  const providers = { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [], setProjections: () => {} };
   const app = createApp({
     config,
     providers,

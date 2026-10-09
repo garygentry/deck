@@ -34,7 +34,7 @@ export interface ProviderReader {
    * Replace the selects the envelopes carry as `projections` (the registry's `setProjections`).
    * Building a UI manifest sets them from its config pages, so every manifest build wires them.
    */
-  setProjections?(selects: ReadonlyMap<string, ProviderSelects>): void;
+  setProjections(selects: ReadonlyMap<string, ProviderSelects>): void;
 }
 
 export interface AppDeps {
@@ -114,7 +114,7 @@ export function planningRouteTable(): { method: string; path: string }[] {
   };
   return kernelRouteTable({
     config: { schemaVersion: 2, estate: { name: "planning" } },
-    providers: { read: inert, count: () => 0, listHealth: () => ({}), listProviders: () => [] },
+    providers: { read: inert, count: () => 0, listHealth: () => ({}), listProviders: () => [], setProjections: () => {} },
     logger: { info: inert, warn: inert, error: inert } as unknown as Logger,
   });
 }

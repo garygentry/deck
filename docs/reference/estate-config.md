@@ -539,14 +539,17 @@ A `select` is bounded so that no expression can stall deck:
 | Length of the expression | 1024 characters | `UI_WIDGET_SELECT_INVALID` |
 | Parts of the parsed expression | 256 | `UI_WIDGET_SELECT_INVALID` |
 | Multi-selects (`[a, b]`, `{a: a}`) | 8 | `UI_WIDGET_SELECT_INVALID` |
-| Work per evaluation (expression steps, plus each value a function is handed) | 200 000 steps | the widget shows "Select failed" |
+| Work per evaluation: each expression step, plus, before it is built, every list a slice, flatten or projection makes, every value an equality compares, and each function's input and output | 200 000 steps | the widget shows "Select failed" |
+| Text the functions `join`, `reverse` and `to_string` build in one evaluation | 256 Ki characters | the widget shows "Select failed" |
 | Values in a result | 10 000 | the widget shows "Select failed" |
 | Nesting depth of a result | 64 | the widget shows "Select failed" |
-| Size of a result, as JSON | 256 KiB | the widget shows "Select failed" |
+| Size of a result, as JSON in UTF-8 | 256 KiB | the widget shows "Select failed" |
 
 A select that fails or exceeds a limit at run time affects only its own widget: the provider
 and the page's other widgets keep working. A select reads the data's own fields only (never
-`constructor` or other built-in members).
+`constructor` or other built-in members), and never treats data as part of the expression. As
+the JMESPath specification says, `<`, `<=`, `>` and `>=` compare numbers only; with anything
+else the comparison is `null`. A slice's bounds and step are integers.
 
 A widget shows a loading state until its provider's first data, an error when the provider
 has no data because it failed or the `select` failed on its data, "No data to show" when the

@@ -51,7 +51,7 @@ function buildApp(llmUsage: "off" | "no-token" | "on") {
   });
   const base: AppDeps = {
     config: {} as DeckConfig,
-    providers: { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [] },
+    providers: { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [], setProjections: () => {} },
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger,
     modules: host,
   };

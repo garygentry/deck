@@ -42,6 +42,7 @@ const noProviders: ProviderReader = {
   count: () => 0,
   listHealth: () => ({}),
   listProviders: () => [],
+  setProjections: () => {},
 };
 
 interface Harness {

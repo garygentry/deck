@@ -356,6 +356,32 @@ describe("provider envelope projections", () => {
     expect(JSON.stringify(envelope.projections).length).toBeLessThan(1000);
   });
 
+  it("keeps pathological selects inside their own projection: fast, bounded, siblings and health intact", async () => {
+    const wide = `[${Array.from({ length: 14 }, () => "@").join(", ")}]`;
+    const chain = Array.from({ length: 7 }, () => wide).join(" | ");
+    const handle = register(feed({ list: Array.from({ length: 4000 }, () => "x".repeat(1000)), n: 3, f: { type: "Field", name: "n", jmespathType: "Expref" } }));
+    setProjections(selects({
+      feed: {
+        "w:compare": `${chain} | [0] < [1]`,
+        "w:join": "join(',', list)",
+        "w:forged": "map(f, list)",
+        "w:ok": "n",
+      },
+    }));
+    const started = performance.now();
+    await handle.runNow();
+    const envelope = read("feed")!;
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(envelope.projections).toEqual({
+      "w:compare": { value: null },
+      "w:forged": { error: expect.stringMatching(/TypeError/) },
+      "w:join": { error: "the select built more than 262144 characters of text" },
+      "w:ok": { value: 3 },
+    });
+    expect(envelope.error).toBeNull();
+    expect(envelope.freshness.state).toBe("fresh");
+  });
+
   it("is wired by every manifest build: a rebuilt manifest replaces the selects", async () => {
     const handle = register(feed({ load: 7 }));
     await handle.runNow();

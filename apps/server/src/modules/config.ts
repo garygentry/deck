@@ -9,7 +9,7 @@ import {
   type JsonObject,
   MODULE_HOST_FINDING_CATALOG,
 } from "@deck/schema";
-import { selectProblem } from "@deck/schema/select";
+import { composeChecked } from "@deck/schema/select";
 import { MODULE_ID_PATTERN, type ModuleManifest, type ServerModule, type WidgetTypeDecl } from "@deck/module-sdk";
 
 import { BUILTIN_MODULES } from "./builtin.js";
@@ -202,7 +202,8 @@ export function composeModules(
   const key = JSON.stringify(composedModules.map(({ id, disabled }) => [id, disabled ?? null]));
   let composed = cache?.get(key);
   if (composed === undefined) {
-    composed = composeConfig([...BUILTIN_CONTRIBUTIONS, ...composedModules], { selectProblem });
+    // Always with the select check: every server validation goes through this composition.
+    composed = composeChecked([...BUILTIN_CONTRIBUTIONS, ...composedModules]);
     cache?.set(key, composed);
   }
   return { composed, invalid, credentials: { kinds, envOwners } };

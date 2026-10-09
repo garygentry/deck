@@ -277,7 +277,7 @@ describe("served through the app", () => {
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => logger } as never;
     const app = createApp({
       config: base(),
-      providers: { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [] },
+      providers: { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [], setProjections: () => {} },
       logger,
       live: h.reloader.current,
     });

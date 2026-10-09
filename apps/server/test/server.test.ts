@@ -24,6 +24,7 @@ function harness(overrides: Partial<ProviderReader> = {}) {
     count: () => 1,
     listHealth: () => ({}),
     listProviders: () => [],
+    setProjections: () => {},
     ...overrides,
   };
   const logger = {

@@ -376,7 +376,7 @@ describe("buildUiManifest", () => {
     const { buildUiManifest } = await import("../src/ui/manifest.js");
     const ui = buildUiManifest({
       config: {},
-      providers: { listProviders: () => [{ id: "nas", kind: "docker" }] },
+      providers: { listProviders: () => [{ id: "nas", kind: "docker" }], setProjections: () => {} },
       modules: {
         plan: [
           { id: "gadgets", enabled: true },
@@ -510,7 +510,7 @@ describe("review round 1 regressions", () => {
       });
       expect(host.manifests.get("portal")).not.toBe(BUILTIN_MODULES.find(({ manifest: m }) => m.id === "portal")!.manifest);
       expect([...host.builtinIds].sort()).toEqual(BUILTIN_MODULES.map(({ manifest: m }) => m.id).sort());
-      const ui = buildUiManifest({ config: {}, providers: { listProviders: () => [] }, modules: host, capabilities: { actions: true } });
+      const ui = buildUiManifest({ config: {}, providers: { listProviders: () => [], setProjections: () => {} }, modules: host, capabilities: { actions: true } });
       expect(ui.pages.find((page) => page.path === "/portal")?.id).toBe("page:portal/overview");
       expect(ui.pages.find((page) => page.path === "/drift")?.id).toBe("page:drift/overview");
       expect(ui.pages.find((page) => page.path === "/hosts")?.id).toBe("page:inventory/hosts");
@@ -526,7 +526,7 @@ describe("review round 1 regressions", () => {
       const squatter = testModule({ id: "aaa", contributes: { pages: [{ id: "page:aaa/home", path: "/portal", title: "Squat", component: "S" }] } });
       const { host } = testHost([...BUILTIN_MODULES, squatter], { builtins: new Set(), kernelRoutes: planningRouteTable(), reservedRootPaths: RESERVED_ROOT_PATHS });
       expect(host.builtinIds.size).toBe(0);
-      const ui = buildUiManifest({ config: {}, providers: { listProviders: () => [] }, modules: host, capabilities: {} });
+      const ui = buildUiManifest({ config: {}, providers: { listProviders: () => [], setProjections: () => {} }, modules: host, capabilities: {} });
       expect(ui.pages.find((page) => page.path === "/portal")?.id).toBe("page:aaa/home");
     });
   });
@@ -934,7 +934,7 @@ describe("capability-aware nav: disabled modules' pages and their switches", () 
       contributes: { pages: [{ id: "page:tools/overview", path: "/tools", title: "Tools", component: "ToolsPage" }] },
     });
     const { host } = testHost([tools], { env: { TOOLS_ENABLED: "nope-7d1a", TOOLS_TOKEN: "tok-9f2c1e-s3cret" } });
-    const ui = buildUiManifest({ config: {}, providers: { listProviders: () => [] }, modules: host, capabilities: {} });
+    const ui = buildUiManifest({ config: {}, providers: { listProviders: () => [], setProjections: () => {} }, modules: host, capabilities: {} });
     expect(ui.modules.find((m) => m.id === "tools")).toMatchObject({ enabled: false, enabledBy: [{ env: "TOOLS_ENABLED" }] });
     expect(ui.disabledPages).toEqual([{ id: "page:tools/overview", module: "tools", path: "/tools", title: "Tools" }]);
     const body = JSON.stringify(ui);

@@ -231,7 +231,7 @@ describe("the sources routes while the module is not running", () => {
     expect(off.plan).toContainEqual(expect.objectContaining({ id: "sources", enabled: false }));
     const offApp = createApp({
       config,
-      providers: { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [] },
+      providers: { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [], setProjections: () => {} },
       logger: { info() {}, warn() {}, error() {} } as never,
       modules: off,
     });

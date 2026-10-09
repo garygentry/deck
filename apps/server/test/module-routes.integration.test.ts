@@ -28,7 +28,7 @@ afterAll(() => rmSync(webDist, { recursive: true, force: true }));
 
 const config = { schemaVersion: 2, estate: { name: "x" } } as DeckConfig;
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger;
-const providers = { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [] };
+const providers = { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [], setProjections: () => {} };
 
 function appWith(host: ModuleHost, webDistDir?: string) {
   return createApp({ config, providers, logger, modules: host, ...(webDistDir ? { webDistDir } : {}) });

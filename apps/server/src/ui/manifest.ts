@@ -8,7 +8,7 @@ import { estateNameOf, resolveUiManifest, uiConfigOf, uiOverridesOf, type UiModu
 
 export interface UiManifestDeps {
   config: unknown;
-  /** The registered providers; their envelopes take the config pages' selects when it can set them. */
+  /** The registered providers; their envelopes take the config pages' selects. */
   providers: Pick<ProviderReader, "listProviders" | "setProjections">;
   /** The module host: its plan, the manifests it read, and which modules are built in. */
   modules?: Pick<ModuleHost, "plan" | "manifests" | "builtinIds">;
@@ -47,7 +47,7 @@ export function buildUiManifest(deps: UiManifestDeps): UiManifest {
   });
   // The manifest's config pages decide what each envelope projects: a rebuilt manifest
   // (a reloaded ui config) replaces the selects with its own.
-  deps.providers.setProjections?.(deriveProjections(ui));
+  deps.providers.setProjections(deriveProjections(ui));
   return ui;
 }
 

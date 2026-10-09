@@ -27,6 +27,7 @@ it("holds p95 below 50 ms for warm config and provider reads", async () => {
     count: () => 1,
     listHealth: () => ({}),
     listProviders: () => [],
+    setProjections: () => {},
   };
   const logger = {
     info: vi.fn(),

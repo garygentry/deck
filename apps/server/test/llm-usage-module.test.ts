@@ -21,7 +21,7 @@ import { testHost } from "./util/modules.js";
 import { serverOnlyFields } from "./util/shared-ui.js";
 
 const NOW = 1_767_225_600_000;
-const providers = { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [] };
+const providers = { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [], setProjections: () => {} };
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger;
 
 const collectors: LlmUsageCollector[] = [];

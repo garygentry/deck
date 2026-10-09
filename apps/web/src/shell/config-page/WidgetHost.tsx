@@ -1,4 +1,5 @@
 import type { FreshnessStamp, ProviderEnvelope } from "@deck/contract";
+import { Suspense } from "react";
 import type { UiWidgetInstance } from "@deck/module-sdk";
 import { EmptyState, ErrorState, FragmentBoundary, FreshnessBadge, LoadingState, Section, cn } from "@/ui";
 
@@ -142,7 +143,10 @@ function WidgetCard({
   return (
     <Section variant="card" level={3} title={title} actions={badge} className="h-full">
       <FragmentBoundary label={title} resetKey={resetKey}>
-        <WidgetBody widget={widget} view={view} type={type} />
+        {/* A widget type whose component loads on first use (core/table) waits here, not the page. */}
+        <Suspense fallback={<LoadingState label="Loading widget…" preset="lines" rows={2} />}>
+          <WidgetBody widget={widget} view={view} type={type} />
+        </Suspense>
       </FragmentBoundary>
     </Section>
   );

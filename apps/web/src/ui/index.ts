@@ -14,6 +14,7 @@ export { Icon, type IconProps } from "./patterns/icon";
 export { formatAge, formatRelative, formatTimestamp } from "./lib/format";
 export {
   TONES,
+  TONE_ICON,
   defineStatusMap,
   type StatusMap,
   type StatusPresentation,

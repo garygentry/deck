@@ -80,9 +80,24 @@ export function resolveHome(
  * The page the router renders for `path`, for the title and the current nav entry: the home
  * page at `/`, else the first routed page whose pattern matches, else a disabled module's page.
  */
-export function routeForPath(routes: ResolvedRoutes, path: string): { label: string } | undefined {
+export function routeForPath(routes: ResolvedRoutes, path: string): { id: string; label: string } | undefined {
   if (path === HOME_PATH) return routes.home;
   return matchPage(routes.routed, path) ?? matchPage(routes.notEnabled, path);
+}
+
+/**
+ * What the top bar and the document title call a page: the label of its nav entry in the UI
+ * manifest (a config page's `nav.label`, when it relabels the page), else the manifest's title
+ * for the page, else the label it registered with. So a page reads the same in the sidebar, the
+ * top bar and the browser tab. Read leniently: a malformed entry is passed over.
+ */
+export function routeLabel(manifest: UiManifestState, route: { id: string; label: string }): string {
+  if (manifest.status !== "ready") return route.label;
+  const { nav, pages } = manifest.manifest;
+  const entry = Array.isArray(nav) ? nav.find((item) => item?.page === route.id && item.separator !== true && typeof item.label === "string" && item.label.trim() !== "") : undefined;
+  if (entry !== undefined) return entry.label;
+  const page = Array.isArray(pages) ? pages.find((candidate) => candidate?.id === route.id) : undefined;
+  return typeof page?.title === "string" && page.title.trim() !== "" ? page.title : route.label;
 }
 
 /** The path that renders the home page. */

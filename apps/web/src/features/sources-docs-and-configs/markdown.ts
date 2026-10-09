@@ -89,13 +89,13 @@ const md: MarkdownIt = new MarkdownIt({
 /** Rewrite `link_open` hrefs: external links open in a new tab with a safe `rel`; relative
  *  inter-doc links become in-app `/docs?source=…&path=…` routes (06 §5.3). */
 md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
-  const context = env as MarkdownRenderContext;
+  const context = env as Partial<MarkdownRenderContext>;
   const token = tokens[idx];
   const href = token.attrGet("href") ?? "";
   if (isExternal(href)) {
     token.attrSet("target", "_blank");
     token.attrSet("rel", "noopener noreferrer");
-  } else if (!href.startsWith("#")) {
+  } else if (!href.startsWith("#") && context.sourceId !== undefined && context.docPath !== undefined) {
     const { path, hash } = splitHash(href);
     const resolved = resolveRelative(context.docPath, path);
     token.attrSet(
@@ -108,10 +108,10 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
 
 /** Rewrite relative image `src` to the confined raw route; absolute URLs pass through (06 §5.4). */
 md.renderer.rules.image = (tokens, idx, options, env, self) => {
-  const context = env as MarkdownRenderContext;
+  const context = env as Partial<MarkdownRenderContext>;
   const token = tokens[idx];
   const src = token.attrGet("src") ?? "";
-  if (!isExternal(src)) {
+  if (!isExternal(src) && context.sourceId !== undefined && context.docPath !== undefined) {
     token.attrSet("src", rawAssetUrl(context.sourceId, resolveRelative(context.docPath, src)));
   }
   return self.renderToken(tokens, idx, options);
@@ -132,11 +132,15 @@ const SANITIZE_CONFIG: DOMPurifyConfig = {
  * rewritten (§5.3/§5.4); embedded raw HTML/scripts stripped by DOMPurify BEFORE the string is
  * returned (the XSS boundary). Pure and synchronous; safe to call in render.
  *
+ * Without a context (a dashboard's markdown widget, which belongs to no source) links and images
+ * keep their targets as written; external links still open in a new tab, and DOMPurify still
+ * sanitizes everything.
+ *
  * @param markdown  the raw document body (`FileReadResult.content`).
- * @param context   the source id + doc path used for relative rewriting.
+ * @param context   the source id + doc path used for relative rewriting, if any.
  * @returns a sanitized HTML string containing no executable script or event-handler attrs.
  */
-export function renderMarkdown(markdown: string, context: MarkdownRenderContext): string {
+export function renderMarkdown(markdown: string, context?: MarkdownRenderContext): string {
   const html = md.render(markdown, { ...context });
   return DOMPurify.sanitize(html, SANITIZE_CONFIG) as string;
 }

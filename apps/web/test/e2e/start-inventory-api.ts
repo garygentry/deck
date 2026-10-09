@@ -104,10 +104,18 @@ async function main(): Promise<void> {
   );
   process.env.DECK_SOURCES_CACHE_DIR = join(rootDir, "sources-cache");
 
-  // A spec booting its own API may set a `ui` section (JSON in DECK_E2E_UI), written as the
-  // last overlay layer: `ui` is overlay-owned.
-  if (process.env.DECK_E2E_UI !== undefined) {
-    await writeFile(join(runtime.configDir, "zzzz-ui.yaml"), JSON.stringify({ schemaVersion: 2, ui: JSON.parse(process.env.DECK_E2E_UI) }));
+  // A spec booting its own API may set a `ui` section (JSON in DECK_E2E_UI) and add
+  // integrations (a JSON array in DECK_E2E_INTEGRATIONS, merged by id), written as the last
+  // overlay layer: both are overlay-owned.
+  if (process.env.DECK_E2E_UI !== undefined || process.env.DECK_E2E_INTEGRATIONS !== undefined) {
+    await writeFile(
+      join(runtime.configDir, "zzzz-ui.yaml"),
+      JSON.stringify({
+        schemaVersion: 2,
+        ...(process.env.DECK_E2E_UI === undefined ? {} : { ui: JSON.parse(process.env.DECK_E2E_UI) }),
+        ...(process.env.DECK_E2E_INTEGRATIONS === undefined ? {} : { integrations: JSON.parse(process.env.DECK_E2E_INTEGRATIONS) }),
+      }),
+    );
   }
 
   // Absolute inputs; boot reads DECK_SNAPSHOT_SOURCE once and never logs it.

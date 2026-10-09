@@ -87,9 +87,11 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
   `typeProblem`, no source and no projection: it renders as unavailable and reads nothing. A widget with a `select` has it, and `projection`: the key of
   its result in that provider's envelope `projections`. Widgets an override switches off are
   left out, and a section without widgets with them.
-- `widgetTypes` lists the widget types a config page may use: deck's own (`core/json`) and those
-  of enabled modules (`type`, `module`, and `sources`, the provider kinds a type renders, when it
-  limits them).
+- `widgetTypes` lists the widget types a config page may use: deck's own (`core/stat`,
+  `core/table`, … `core/json`) and those of enabled modules (`type`, `module`, and `sources`, the
+  provider kinds a type renders, when it limits them).
+- `statusMaps`, present only when the config declares some, is `ui.statusMaps` by name (each
+  with its `values` and `rules`): what a widget's `statusMap` option names.
 - `findings` holds problems that never stop the UI from rendering:
   - `UI_UNKNOWN_EXTENSION`: an override for an unknown id, or a nav entry to an undeclared page;
   - `UI_UNKNOWN_SLOT`: an extension on an unknown slot;

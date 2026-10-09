@@ -199,10 +199,12 @@ descriptors included) on a core slot (`app/…`, `entity:…`) that core does no
 registrations are the defaults; at runtime the UI manifest still decides what renders, where
 and with what config (below).
 
-Labels and order: a page's `title` labels its route, in the top bar, the document title and the
-fallback nav. A nav entry's own `label` and `icon` show only in the manifest-driven sidebar. Its
-`order` orders the nav (the manifest's sidebar, and the fallback nav as the page's `navOrder`),
-never the routes.
+Labels and order: a page's `title` labels its route in the fallback nav. With a UI manifest, the
+top bar and the document title name a page as the sidebar does: its nav entry's `label` (a
+config page's `nav.label` relabels it), else the manifest's `title` for the page, else its
+registered `title` (`routeLabel` in `shell/routes.ts`). The page's own heading stays its
+`title`. A nav entry's `icon` shows only in the manifest-driven sidebar. Its `order` orders the
+nav (the manifest's sidebar, and the fallback nav as the page's `navOrder`), never the routes.
 
 Moving a feature onto it:
 1. Move the module's `id`, `version`, `deckApi` and `contributes` to
@@ -357,6 +359,10 @@ null or empty value; else the type's component. A non-fresh provider adds a `Fre
 The body sits in a `FragmentBoundary` keyed on the envelope, so a widget that throws shows an
 inline error and retries when new data arrives.
 
+The body also sits in a `Suspense` boundary, so a type whose component loads on first use
+(`core/table` and `core/markdown`, which keep TanStack Table and the markdown pipeline out of the
+main bundle) shows a loading state in its own card while the rest of the page renders.
+
 A widget type's component takes `WidgetProps`: `value` (the `select` result the server evaluated
 into the envelope's `projections`, or the provider's data whole; `null` for a widget without a
 source), `options` (already checked against the type's options schema at boot), `freshness` and
@@ -364,7 +370,25 @@ the placed `widget`. A module declares its types in `contributes.widgetTypes` (`
 `optionsSchema`, `component`, optionally the provider `sources` it renders) and puts the
 components in its table; `registerWebModule` registers them (`registerWidgetType`). Deck's own
 types are `CORE_WIDGET_TYPES` in `@deck/contract/modules/core`, registered by
-`features/core-widgets`. The browser never evaluates a `select`: the JMESPath engine is only in
+`features/core-widgets`: `core/stat`, `stat-grid`, `meter`, `key-value`, `list`, `table`,
+`status-grid`, `link-tiles`, `markdown`, `health-pills` and `json`. Their option schemas are
+data in two copies that a test keeps equal: the contract's (`modules/widgets.ts`, so the browser
+bundle needs no runtime import) and the schema library's, which config validation composes. Each is a pure renderer over `@/ui` patterns (`StatTile`,
+`Meter`, `KeyValueList`, `List`, `DataTable`, `CardGrid` of `LinkTile`s, `Prose`, the top bar's
+`HealthPill`s) that reads `field` paths of its value (never a query), formats values
+(`features/core-widgets/values.ts`) and links only `http(s)` URLs (in a new tab) or absolute
+in-app paths. Given a value it cannot show, it says so with a compact `ErrorState`. The
+`markdown` widget renders through the docs view's pipeline, so DOMPurify is its XSS boundary
+too.
+
+Status in a widget comes from config, never from code: `ui.statusMaps` declares named maps
+(exact `values` and ordered numeric `rules`, read by `statusTone` in `@deck/module-sdk`), the
+UI manifest publishes them as `statusMaps`, and a widget's `statusMap` option names one
+(`useStatusMaps`, `toneOf`). A toned value renders with the tone, its icon (`TONE_ICON`) and the
+value's own text, so it is never colour alone. The workbench's "Dashboard widgets" section shows
+every type, its maps passed through `StatusMapsOverride`.
+
+The browser never evaluates a `select`: the JMESPath engine is only in
 `@deck/schema/select`, which the server imports. `test/no-select-engine.test.ts` follows every
 runtime import from `src/` through the workspace packages to keep it out of the web, and CI
 greps the built bundle for it.

@@ -236,8 +236,14 @@ describe("a remote integration's page", () => {
     expect(within(tiles).getByRole("link", { name: /Portal/ })).not.toHaveAttribute("target");
   });
 
-  it("is not routed as a config page when another module lists it", async () => {
-    await renderApp("/remote/ups", { ...servedRemote(), pages: [...golden.pages, { ...UPS, module: "portal" }] });
+  it("routes any module's runtime page by its ConfigPage component, naming no module", async () => {
+    const acme = { ...UPS, id: "page:acme/rack", module: "acme", path: "/acme/rack", title: "Rack" } as UiPage;
+    await renderApp("/acme/rack", { ...servedRemote(), pages: [...golden.pages, acme] });
+    expect(await screen.findByRole("heading", { level: 1, name: "Rack" })).toBeInTheDocument();
+  });
+
+  it("is not routed as a config page without the ConfigPage component", async () => {
+    await renderApp("/remote/ups", { ...servedRemote(), pages: [...golden.pages, { ...UPS, component: "UpsPage" }] });
     expect(await screen.findByText("Page not found")).toBeInTheDocument();
   });
 });
@@ -404,6 +410,7 @@ describe("while the manifest loads", () => {
     const loading = { status: "loading" } as const;
     expect(awaitingConfigPage(loading, routes, "/", "page:ui/lab")).toBe(true);
     expect(awaitingConfigPage(loading, routes, "/", "page:remote/ups")).toBe(true);
+    expect(awaitingConfigPage(loading, routes, "/", "page:acme/rack")).toBe(true);
     expect(awaitingConfigPage(loading, routes, "/", "page:portal/overview")).toBe(false);
     expect(awaitingConfigPage(loading, routes, "/", undefined)).toBe(false);
     expect(awaitingConfigPage(loading, routes, "/lab", undefined)).toBe(true);

@@ -23,6 +23,11 @@ export interface Provider<T = unknown> {
    * the envelope's `observedAt` and age use it, clamped to now (see `ProviderSpec.observedAt`).
    */
   observedAt?(): number | null;
+  /**
+   * Called once when the provider stops polling (its module stops, or the registry is torn
+   * down): end any work it runs beside its polls, which must then change nothing.
+   */
+  stop?(): void;
 }
 
 export interface ProviderHealth {

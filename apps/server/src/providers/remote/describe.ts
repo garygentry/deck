@@ -1,6 +1,6 @@
 import { isExternalHref, isSafeHref, type JsonObject } from "@deck/module-sdk";
 import { CORE_WIDGET_TYPES } from "@deck/contract/modules/core";
-import { createAjv, remoteDescribeSchema, widgetOptionsProblem } from "@deck/schema";
+import { compileWidgetOptions, createAjv, remoteDescribeSchema, type SchemaProblem } from "@deck/schema";
 import { selectProblem } from "@deck/schema/select";
 
 /**
@@ -69,7 +69,10 @@ export type DescribeCheck =
   | { ok: false; problem: string };
 
 const checkSchema = createAjv().compile(remoteDescribeSchema());
-const optionSchemas = new Map<string, unknown>(CORE_WIDGET_TYPES.map((entry) => [entry.type, entry.optionsSchema]));
+/** Each allowed type's options check, compiled once. */
+const optionChecks: ReadonlyMap<string, (options: unknown) => SchemaProblem | null> = new Map(
+  CORE_WIDGET_TYPES.filter((entry) => REMOTE_WIDGET_TYPES.has(entry.type)).map((entry) => [entry.type, compileWidgetOptions(entry.optionsSchema)]),
+);
 
 /**
  * Check a sidecar's describe document for the integration `instanceId`: its schema (the config's
@@ -96,9 +99,10 @@ export function checkDescribe(value: unknown, instanceId: string): DescribeCheck
     if (widget.id === REMOTE_LINKS_WIDGET) return { ok: false, problem: `${at} id "${REMOTE_LINKS_WIDGET}" is deck's own (its links)` };
     widgetIds.add(widget.id);
     if (!REMOTE_WIDGET_TYPES.has(widget.type)) return { ok: false, problem: `${at} type "${widget.type}" is not one a sidecar may place` };
-    const optionsProblem = widgetOptionsProblem(optionSchemas.get(widget.type), widget.options ?? {});
-    if (optionsProblem !== null) return { ok: false, problem: `${at} options: ${optionsProblem.replace(/ \{.*\}/s, "")}` };
-    const unsafeLink = unsafeOptionHref(widget.options);
+    const checkOptions = optionChecks.get(widget.type);
+    const optionsProblem = checkOptions === undefined ? { path: "/", message: "has no options check" } : checkOptions(widget.options ?? {});
+    if (optionsProblem !== null) return { ok: false, problem: `${at}/options${optionsProblem.path === "/" ? "" : optionsProblem.path} ${optionsProblem.message}` };
+    const unsafeLink = unsafeOptionHref(widget.options) ?? unsafeMarkdownHref(widget.options);
     if (unsafeLink !== null) return { ok: false, problem: `${at} options: ${unsafeLink}` };
     if (widget.select !== undefined) {
       const problem = selectProblem(widget.select);
@@ -125,6 +129,35 @@ function unsafeOptionHref(options: JsonObject | undefined): string | null {
   for (const [index, link] of links.entries()) {
     const href = (link as { href?: unknown } | null)?.href;
     if (typeof href === "string" && !isSafeHref(href)) return `links/${index}/href is not a safe link`;
+  }
+  return null;
+}
+
+/**
+ * Link and resource targets in markdown text: inline links and images, reference definitions,
+ * autolinks, and raw HTML `href`/`src`/`action` attributes. Broad on purpose: the web enforces
+ * the same policy where it renders; this refuses a document that tries early.
+ */
+const MARKDOWN_TARGETS: readonly RegExp[] = [
+  /\]\(\s*<?([^)\s>]*)/g,
+  /^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*<?([^\s>]*)/gm,
+  /<([A-Za-z][A-Za-z0-9+.-]*:[^\s>]*)>/g,
+  /\b(?:href|src|action|formaction|xlink:href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,
+];
+
+/**
+ * A `core/markdown` `content` target that is not an absolute http(s) URL (a path, a
+ * protocol-relative `//host`, another scheme): a sidecar's markdown may link only off deck.
+ */
+function unsafeMarkdownHref(options: JsonObject | undefined): string | null {
+  const content = options?.content;
+  if (typeof content !== "string") return null;
+  for (const pattern of MARKDOWN_TARGETS) {
+    for (const match of content.matchAll(pattern)) {
+      const target = (match[1] ?? match[2] ?? match[3] ?? "").trim();
+      if (target === "") continue;
+      if (!isExternalHref(target) || !isSafeHref(target)) return "content links somewhere other than an absolute http(s) URL";
+    }
   }
   return null;
 }

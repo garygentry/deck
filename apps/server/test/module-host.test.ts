@@ -121,6 +121,7 @@ describe("module host planning", () => {
     ["a page id of the wrong kind", { id: "x", contributes: { pages: [{ id: "nav:x/p", path: "/p", title: "P", component: "P" }] } }, 'must start with "page:"'],
     ["a relative page path", { id: "x", contributes: { pages: [{ id: "page:x/p", path: "p", title: "P", component: "P" }] } }, 'path must start with "/"'],
     ["a page without a component", { id: "x", contributes: { pages: [{ id: "page:x/p", path: "/p", title: "P", component: "" }] } }, "needs a component"],
+    ["a page claiming the kernel's ConfigPage component", { id: "x", contributes: { pages: [{ id: "page:x/p", path: "/p", title: "P", component: "ConfigPage" }] } }, "component \"ConfigPage\" is the kernel's"],
     ["a nav entry with page and href", { id: "x", contributes: { nav: [{ id: "nav:x/n", page: "page:x/p", href: "/p", group: "g" }] } }, "exactly one of page or href"],
     ["a nav entry without a group", { id: "x", contributes: { nav: [{ id: "nav:x/n", href: "/p", group: "" }] } }, "needs a group"],
     ["a nav entry with a malformed group", { id: "x", contributes: { nav: [{ id: "nav:x/n", href: "/p", group: "My Lab" }] } }, "group must be a nav group id"],

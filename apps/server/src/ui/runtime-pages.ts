@@ -11,9 +11,15 @@ import type { ConfigPage } from "./config-pages.js";
  */
 export interface RuntimePages {
   pages: ConfigPage[];
-  nav: (NavDecl & { module: string })[];
+  nav: RuntimeNavEntry[];
   findings: UiFinding[];
 }
+
+/**
+ * A runtime nav entry. `ownerPage` names the runtime page it belongs with (an external link a
+ * sidecar describes beside its page): it is listed only while that page is routed.
+ */
+export type RuntimeNavEntry = NavDecl & { module: string; ownerPage?: string };
 
 /** What a module offers under {@link RUNTIME_PAGES}. */
 export interface RuntimePageSource {
@@ -42,7 +48,8 @@ export function runtimePageSources(host: Pick<ModuleHost, "serviceOffers">): Run
 
 /**
  * Every source's pages and nav entries, each kept only in its own module's namespace, and
- * their findings. A source that throws contributes nothing this time.
+ * their findings. Every runtime page's widgets render links under the `external` link policy.
+ * A source that throws contributes nothing this time.
  */
 export function collectRuntimePages(offers: readonly RuntimePageOffer[]): RuntimePages {
   const result: RuntimePages = { pages: [], nav: [], findings: [] };
@@ -53,7 +60,8 @@ export function collectRuntimePages(offers: readonly RuntimePageOffer[]): Runtim
     } catch {
       continue;
     }
-    result.pages.push(...current.pages.filter((page) => page.module === module));
+    // Runtime contributions come from outside deck (a sidecar): their links are external only.
+    result.pages.push(...current.pages.filter((page) => page.module === module).map((page) => ({ ...page, linkPolicy: "external" as const })));
     result.nav.push(...current.nav.filter((entry) => entry.module === module && entry.id.startsWith(`nav:${module}/`)));
     result.findings.push(...current.findings);
   }

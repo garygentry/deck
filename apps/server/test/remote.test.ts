@@ -8,13 +8,13 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 
 import { load } from "../src/config/load.js";
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";
-import { createModuleHost } from "../src/modules/host.js";
+import { createModuleHost, kindRuntimes, planModules } from "../src/modules/host.js";
 import { HttpJsonError } from "../src/providers/http-json/index.js";
 import { registerAllProviders } from "../src/providers/index.js";
 import { checkDescribe, REMOTE_MAX_STRING, REMOTE_WIDGET_TYPES } from "../src/providers/remote/describe.js";
 import { RemoteDirectory } from "../src/providers/remote/directory.js";
 import { RemoteProvider } from "../src/providers/remote/provider.js";
-import { listHealth, listProviders, providerCount, read, setProjections, startScheduler, stopScheduler } from "../src/providers/registry.js";
+import { listHealth, listProviders, providerCount, read, register, setProjections, startScheduler, stopScheduler } from "../src/providers/registry.js";
 import { createApp } from "../src/server/app.js";
 import { buildUiManifest } from "../src/ui/manifest.js";
 import { collectRuntimePages, runtimePageSources } from "../src/ui/runtime-pages.js";
@@ -69,7 +69,9 @@ const DESCRIBE = {
   links: [{ title: "NUT", href: "https://nut.example/" }],
   nav: [{ id: "nut", label: "NUT web UI", href: "https://nut.example/ui" }],
 };
-const DATA = { data: { load: 42, status: "OL" }, observedAt: "2026-10-09T09:00:00Z" };
+// Observed a second ago, so the envelope is fresh (its observedAt sets its age).
+const OBSERVED = new Date(Date.now() - 1_000).toISOString();
+const DATA = { data: { load: 42, status: "OL" }, observedAt: OBSERVED };
 
 const sidecar = new Sidecar();
 const other = new Sidecar();
@@ -94,10 +96,15 @@ afterEach(() => {
 
 const env = (values: Record<string, string>) => ({ get: (name: string) => values[name] });
 
-function provider(url: string, extra: Partial<ConstructorParameters<typeof RemoteProvider>[1]> = {}) {
+type ProviderConfig = ConstructorParameters<typeof RemoteProvider>[1];
+
+/** A provider over its own directory; `timeoutMs` is the request's. */
+function provider(url: string, extra: Partial<ProviderConfig> & { timeoutMs?: number } = {}) {
+  const { timeoutMs, request, ...rest } = extra;
   const directory = new RemoteDirectory();
   directory.declare("ups", "UPS", { path: "/remote/ups" });
-  return { directory, provider: new RemoteProvider("ups", { url, request: {}, ...extra }, directory) };
+  const config: ProviderConfig = { url, request: { ...request, ...(timeoutMs === undefined ? {} : { timeoutMs }) }, ...rest };
+  return { directory, provider: new RemoteProvider("ups", config, directory) };
 }
 
 describe("checkDescribe: declarative only, the config's own descriptors", () => {
@@ -117,7 +124,7 @@ describe("checkDescribe: declarative only, the config's own descriptors", () => 
 
   it.each([
     ["a source of its own", { widgets: [{ id: "w", type: "core/json", source: "prometheus" }] }, /additional properties/],
-    ["options its type refuses", { widgets: [{ id: "w", type: "core/meter", options: { max: "lots" } }] }, /^\/widgets\/0 options: its type refuses the options/],
+    ["options its type refuses", { widgets: [{ id: "w", type: "core/meter", options: { max: "lots" } }] }, /^\/widgets\/0\/options\/max must be number$/],
     ["a select deck cannot compile", { widgets: [{ id: "w", type: "core/json", select: "nosuchfn(@)" }] }, /^\/widgets\/0 select:/],
     ["a select over the work limits", { widgets: [{ id: "w", type: "core/json", select: Array.from({ length: 300 }, () => "a").join(".") }] }, /^\/widgets\/0 select: it has \d+ parts/],
     ["a repeated widget id", { widgets: [{ id: "w", type: "core/json" }, { id: "w", type: "core/json" }] }, /repeats widget id "w"/],
@@ -132,10 +139,25 @@ describe("checkDescribe: declarative only, the config's own descriptors", () => 
     ["an overlong icon", { links: [{ title: "x", href: "https://x.example/", icon: "a".repeat(65) }] }, /^\/links\/0\/icon/],
     ["an overlong string anywhere", { widgets: [{ id: "w", type: "core/markdown", options: { content: "x".repeat(REMOTE_MAX_STRING + 1) } }] }, /^\/widgets\/0\/options\/content is longer than/],
     ["another protocol version", { deck: 2 }, /^\/deck/],
+    ["a protocol-relative markdown link", { widgets: [{ id: "w", type: "core/markdown", options: { content: "[x](//evil.example/)" } }] }, /content links somewhere other than an absolute http\(s\) URL/],
+    ["a relative markdown link", { widgets: [{ id: "w", type: "core/markdown", options: { content: "see [health](/api/health)" } }] }, /content links somewhere/],
+    ["a raw HTML link into deck", { widgets: [{ id: "w", type: "core/markdown", options: { content: '<a href="/api/health">x</a>' } }] }, /content links somewhere/],
+    ["a markdown reference link to another scheme", { widgets: [{ id: "w", type: "core/markdown", options: { content: "[x][r]\n\n[r]: javascript:alert(1)" } }] }, /content links somewhere/],
+    ["a markdown image with a relative src", { widgets: [{ id: "w", type: "core/markdown", options: { content: "![x](img.png)" } }] }, /content links somewhere/],
   ])("refuses %s", (_label, patch, problem) => {
     const result = checkDescribe({ ...DESCRIBE, ...patch }, "ups");
     expect(result.ok).toBe(false);
     expect(result.ok ? "" : result.problem).toMatch(problem);
+  });
+
+  it("accepts markdown whose links are all absolute http(s) URLs, raw HTML included", () => {
+    const content = '[a](https://a.example/) <https://b.example/> <a href="http://deck.local/api/health">c</a>';
+    expect(checkDescribe({ ...DESCRIBE, widgets: [{ id: "w", type: "core/markdown", options: { content } }] }, "ups").ok).toBe(true);
+  });
+
+  it("never repeats a refused option's value in its problem", () => {
+    const result = checkDescribe({ ...DESCRIBE, widgets: [{ id: "w", type: "core/meter", options: { max: "s3cr3t-looking-value" } }] }, "ups");
+    expect(result.ok ? "" : result.problem).not.toContain("s3cr3t");
   });
 
   it("uses a document naming another id, with a note: the id picks nothing", () => {
@@ -151,7 +173,7 @@ describe("the remote provider: data", () => {
     const { provider: remote } = provider(`${sidecar.url}/`);
     await expect(remote.fetch()).resolves.toEqual(DATA.data);
     expect(sidecar.seen.map((seen) => seen.path)).toContain("/deck/v1/data");
-    expect(await remote.health()).toMatchObject({ ok: true, detail: expect.stringMatching(/^data: HTTP 200, observed 2026-10-09T09:00:00Z; describe: /) });
+    expect(await remote.health()).toMatchObject({ ok: true, detail: expect.stringContaining(`data: HTTP 200, observed ${OBSERVED}; describe: `) });
   });
 
   it.each([
@@ -237,28 +259,79 @@ describe("the remote provider: describe on its own cadence", () => {
     expect(directory.snapshot()[0]?.problem).toBeUndefined();
   });
 
-  it("asks again after describeIntervalMs once one succeeded, and at the next poll after a failure", async () => {
+  it("asks again after describeIntervalMs once one succeeded; after a failure, after a backoff that doubles up to the interval", async () => {
     let now = 1_000;
     let answer: Route = json(DESCRIBE);
     other.routes.set("/deck/v1/describe", (req, res) => answer(req, res));
     other.routes.set("/deck/v1/data", json(DATA));
     const { provider: remote } = provider(other.url, { describeIntervalMs: 60_000, clock: { now: () => now } });
     const describes = () => other.seen.filter((seen) => seen.path === "/deck/v1/describe").length;
+    const poll = async () => {
+      await remote.fetch();
+      await remote.describing();
+    };
     // The first poll starts one; the next, within the interval, does not.
-    await remote.fetch();
-    await remote.describing();
-    await remote.fetch();
-    await remote.describing();
+    await poll();
+    await poll();
     expect(describes()).toBe(1);
     now += 60_000;
     answer = json({}, 500);
-    await remote.fetch();
-    await remote.describing();
+    await poll();
     expect(describes()).toBe(2);
-    // A failed one is asked again at the very next poll.
-    await remote.fetch();
-    await remote.describing();
-    expect(describes()).toBe(3);
+    // Failed: not before 5s, then 10s, 20s, 40s, and never more than the interval.
+    const waits: number[] = [];
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const before = describes();
+      let waited = 0;
+      while (describes() === before) {
+        now += 1_000;
+        waited += 1_000;
+        await poll();
+      }
+      waits.push(waited);
+    }
+    expect(waits).toEqual([5_000, 10_000, 20_000, 40_000, 60_000]);
+  });
+
+  it("never rejects or leaves an unhandled rejection when the directory throws, and stays consistent", async () => {
+    const { directory, provider: remote } = provider(sidecar.url);
+    vi.spyOn(directory, "accept").mockImplementation(() => {
+      throw new Error("boom");
+    });
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      await expect(remote.describe()).resolves.toBeUndefined();
+      await remote.fetch();
+      await remote.describing();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(directory.snapshot()[0]?.problem).toEqual({ code: "REMOTE_DESCRIBE_INVALID", message: "deck could not check the describe document" });
+      expect((await remote.health()).detail).toMatch(/describe: invalid \(deck could not check the describe document\)$/);
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
+
+  it("stopped during a describe, aborts it: nothing reaches the directory and no listener hears of it", async () => {
+    let started!: () => void;
+    const reached = new Promise<void>((resolve) => (started = resolve));
+    other.routes.set("/deck/v1/describe", () => started());
+    const { directory, provider: remote } = provider(other.url, { timeoutMs: 5_000 });
+    const heard = vi.fn();
+    directory.subscribe(heard);
+    const describing = remote.describe();
+    await reached;
+    const before = directory.snapshot();
+    const startedAt = Date.now();
+    remote.stop();
+    await describing;
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    expect(directory.snapshot()).toEqual(before);
+    expect(heard).not.toHaveBeenCalled();
+    // A stopped provider never describes again.
+    await remote.describe();
+    expect(other.seen.filter((seen) => seen.path === "/deck/v1/describe")).toHaveLength(1);
   });
 
   it("the directory tells listeners only of a changed snapshot, key order aside", async () => {
@@ -278,6 +351,65 @@ function checkOk(value: unknown) {
   if (!result.ok) throw new Error(result.problem);
   return result.describe;
 }
+
+describe("the remote provider: observedAt", () => {
+  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+  const bare = (url: string) => provider(url).provider;
+
+  it("the sidecar's observedAt sets the envelope's observedAt and age: old data is stale", async () => {
+    // Past the 60s ttl, inside the default unreachable bound.
+    const old = minutesAgo(1.5);
+    other.routes.set("/deck/v1/data", json({ data: { load: 1 }, observedAt: old }));
+    other.routes.set("/deck/v1/describe", json(DESCRIBE));
+    register(bare(other.url), { ttlMs: 60_000 });
+    startScheduler();
+    await vi.waitFor(() => expect(read("ups")?.data).toEqual({ load: 1 }), { timeout: 5_000 });
+    expect(read("ups")?.freshness).toMatchObject({ state: "stale", observedAt: new Date(old).toISOString() });
+    expect(read("ups")!.freshness.ageMs!).toBeGreaterThanOrEqual(89_000);
+  });
+
+  it("without observedAt the poll time is used, and a future observedAt counts as now", async () => {
+    other.routes.set("/deck/v1/data", json({ data: { load: 1 } }));
+    const ahead = new Sidecar();
+    await ahead.start();
+    try {
+      ahead.routes.set("/deck/v1/data", json({ data: { load: 2 }, observedAt: new Date(Date.now() + 3_600_000).toISOString() }));
+      register(bare(other.url), { ttlMs: 60_000 });
+      const pdu = new RemoteProvider("pdu", { url: ahead.url, request: {} }, new RemoteDirectory());
+      register(pdu, { ttlMs: 60_000 });
+      const before = Date.now();
+      startScheduler();
+      await vi.waitFor(() => {
+        expect(read("ups")?.data).toEqual({ load: 1 });
+        expect(read("pdu")?.data).toEqual({ load: 2 });
+      }, { timeout: 5_000 });
+      for (const id of ["ups", "pdu"]) {
+        const { state, observedAt } = read(id)!.freshness;
+        expect(state, id).toBe("fresh");
+        expect(Date.parse(observedAt!), id).toBeGreaterThanOrEqual(before);
+        expect(Date.parse(observedAt!), id).toBeLessThanOrEqual(Date.now());
+      }
+    } finally {
+      await ahead.stop();
+    }
+  });
+
+  it("is shown normalised, and an overlong one is refused without being echoed", async () => {
+    other.routes.set("/deck/v1/data", json({ data: 1, observedAt: "2026-10-09T11:00:00+02:00" }));
+    other.routes.set("/deck/v1/describe", json(DESCRIBE));
+    const remote = bare(other.url);
+    await remote.fetch();
+    expect((await remote.health()).detail).toMatch(/^data: HTTP 200, observed 2026-10-09T09:00:00\.000Z; /);
+    expect(remote.observedAt()).toBe(Date.parse("2026-10-09T09:00:00Z"));
+    const long = `2026-10-09T09:00:00.${"1".repeat(900_000)}Z`;
+    other.routes.set("/deck/v1/data", json({ data: 1, observedAt: long }));
+    const started = Date.now();
+    await expect(remote.fetch()).rejects.toThrow("sidecar data response's observedAt is not an RFC 3339 time");
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(JSON.stringify(await remote.health())).not.toContain("1111111111");
+    await remote.describing();
+  });
+});
 
 describe("the remote kind in an estate", () => {
   const base = { schemaVersion: 2, estate: { name: "rm" } };
@@ -332,6 +464,48 @@ describe("the remote kind in an estate", () => {
       env: {},
     });
     expect(result.findings).toContainEqual(expect.objectContaining({ code: "REMOTE_ID_RESERVED", severity: "error" }));
+  });
+
+  it("wires credentialEnv, auth, maxBytes and timeoutMs from the estate through to each request", async () => {
+    const seenAuth: Array<string | undefined> = [];
+    other.routes.set("/deck/v1/data", (req, res) => {
+      seenAuth.push(req.headers.authorization);
+      json({ data: { ok: true } })(req, res);
+    });
+    other.routes.set("/deck/v1/describe", json(DESCRIBE));
+    const big = new Sidecar();
+    const slow = new Sidecar();
+    await big.start();
+    await slow.start();
+    try {
+      big.routes.set("/deck/v1/data", json({ data: { pad: "x".repeat(4_096) } }));
+      slow.routes.set("/deck/v1/data", () => {});
+      const hostEnv = { UPS_TOKEN: SECRET };
+      const result = load({
+        arg: configDir([
+          instance({ url: other.url, credentialEnv: "UPS_TOKEN", auth: { scheme: "bearer" }, pollIntervalMs: 60_000 }),
+          instance({ id: "big", title: "Big", url: big.url, maxBytes: 1_024, pollIntervalMs: 60_000 }),
+          instance({ id: "slow", title: "Slow", url: slow.url, timeoutMs: 200, pollIntervalMs: 60_000 }),
+        ]),
+        env: hostEnv,
+      });
+      expect(errors(result)).toEqual([]);
+      const { plan, usable } = planModules({ modules: BUILTIN_MODULES, sectionOf: () => undefined, env: hostEnv });
+      registerAllProviders(result.config!, kindRuntimes(plan.filter((e) => e.enabled).map((e) => usable.get(e.id)!), hostEnv));
+      startScheduler();
+      await vi.waitFor(() => {
+        expect(read("ups")?.data).toEqual({ ok: true });
+        expect(read("big")?.error).not.toBeNull();
+        expect(read("slow")?.error).not.toBeNull();
+      }, { timeout: 5_000 });
+      expect(seenAuth).toEqual([`Bearer ${SECRET}`]);
+      expect(other.seen.filter((seen) => seen.path === "/deck/v1/describe").map((seen) => seen.authorization)).toEqual([`Bearer ${SECRET}`]);
+      expect(read("big")?.error).toEqual({ message: "upstream response exceeds 1024 bytes" });
+      expect(read("slow")?.error?.message).toMatch(/timed out after 200ms/);
+    } finally {
+      await big.stop();
+      await slow.stop();
+    }
   });
 
   /** Boot's sequence: plan, register the kinds' providers, start, then resolve the UI manifest. */
@@ -404,9 +578,20 @@ describe("the remote kind in an estate", () => {
     const { host, directory, manifest } = await boot([instance({ url: other.url })]);
     try {
       other.routes.set("/deck/v1/describe", json({}, 503));
-      expect(page(manifest(), "page:remote/ups")?.layout?.sections).toEqual([
-        expect.objectContaining({ widgets: [expect.objectContaining({ id: "widget:remote/ups.waiting", type: "core/markdown", source: null })] }),
-      ]);
+      const placeholder = () => {
+        const [section] = page(manifest(), "page:remote/ups")?.layout?.sections ?? [];
+        const widgets = section !== undefined && "widgets" in section ? section.widgets : [];
+        expect(widgets).toEqual([expect.objectContaining({ id: "widget:remote/ups.waiting", type: "core/markdown", source: null })]);
+        return widgets[0]!.options.content;
+      };
+      // A fixed text by state, never the problem itself.
+      expect(placeholder()).toBe("This sidecar has not described any widgets yet.");
+      directory.refuse("ups", { code: "REMOTE_DESCRIBE_UNREACHABLE", message: "upstream answered HTTP 503 <script>" });
+      expect(placeholder()).toBe("This sidecar could not be reached to describe its widgets. See the findings in /api/ui.");
+      directory.refuse("ups", { code: "REMOTE_DESCRIBE_INVALID", message: "/title must NOT have more than 80 characters" });
+      expect(placeholder()).toBe("This sidecar's description was refused. See the findings in /api/ui.");
+      directory.accept("ups", checkOk({ ...DESCRIBE, widgets: [], links: [], nav: [] }), []);
+      expect(placeholder()).toBe("This sidecar describes no widgets.");
       directory.accept("ups", checkOk(DESCRIBE), []);
       const ui = manifest();
       expect(ui.nav.filter((entry) => entry.module === "remote")).toEqual([]);
@@ -454,7 +639,11 @@ describe("the remote kind in an estate", () => {
       pages: [{ id: "power", path: "/remote/ups", title: "Power", sections: [{ title: "Mine", widgets: [{ type: "core/json", source: "ups" }] }] }],
       extensions: { "widget:remote/pdu.load": false, "page:remote/off": false },
     };
-    const { host, directory, manifest } = await boot([instance(), instance({ id: "pdu", title: "PDU" }), instance({ id: "off", title: "Off" })], ui);
+    const nav = { page: { nav: { group: "health" } } };
+    const { host, directory, manifest } = await boot(
+      [instance(nav), instance({ id: "pdu", title: "PDU", ...nav }), instance({ id: "off", title: "Off", ...nav })],
+      ui,
+    );
     try {
       for (const id of ["ups", "pdu", "off"]) directory.accept(id, checkOk({ ...DESCRIBE, id }), []);
       const resolved = manifest();
@@ -465,6 +654,12 @@ describe("the remote kind in an estate", () => {
       expect(pduWidgets).toEqual(["widget:remote/pdu.status", "widget:remote/pdu.links"]);
       expect(page(resolved, "page:remote/off")).toBeUndefined();
       expect(resolved.findings.filter((finding) => finding.code === "UI_UNKNOWN_EXTENSION")).toEqual([]);
+      // A sidecar's nav entries go with its page: none for the unrouted (ups) or switched-off (off) page.
+      expect(resolved.nav.filter((entry) => entry.module === "remote").map((entry) => entry.id)).toEqual(["nav:remote/pdu", "nav:remote/pdu.nut"]);
+      // Each widget of a runtime page renders links under the external-only policy.
+      const linkPolicies = page(resolved, "page:remote/pdu")?.layout?.sections.flatMap((section) => ("widgets" in section ? section.widgets.map((widget) => widget.linkPolicy) : []));
+      expect(linkPolicies).toEqual(["external", "external"]);
+      expect(page(resolved, "page:ui/power")?.layout?.sections.flatMap((section) => ("widgets" in section ? section.widgets.map((widget) => widget.linkPolicy) : []))).toEqual([undefined]);
     } finally {
       await host.stop();
     }

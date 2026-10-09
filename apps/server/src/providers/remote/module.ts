@@ -9,16 +9,14 @@ import {
 } from "@deck/module-sdk";
 import deckSchema from "@deck/schema/deck.schema.json" with { type: "json" };
 
-import httpJsonSchema from "../http-json/instance.schema.json" with { type: "json" };
 import { urlProblem } from "../http-json/literal.js";
-import { auth, fixedIdFindings, integer, timing } from "../http-json/module.js";
+import { fixedIdFindings, instanceRequest, integer, sharedInstanceProperties as shared } from "../http-json/request-config.js";
 import { RUNTIME_PAGES } from "../../ui/runtime-pages.js";
 import { RemoteDirectory, type RemotePageConfig } from "./directory.js";
+import { REMOTE_MODULE_ID } from "./pages.js";
 import { RemoteProvider } from "./provider.js";
 
 const uiDefs = (deckSchema as unknown as { $defs: Record<string, { properties: Record<string, unknown> }> }).$defs;
-const httpJson = httpJsonSchema as unknown as { properties: Record<string, unknown> };
-const shared = (names: readonly string[]) => Object.fromEntries(names.map((name) => [name, httpJson.properties[name]]));
 
 /**
  * A `remote` integration: the http-json instance's own credential, timing and size settings
@@ -72,7 +70,7 @@ const instanceSchema = {
  * render on its own page: the directory this kind offers is its runtime page source.
  */
 export const REMOTE_MANIFEST: ModuleManifest = {
-  id: "remote",
+  id: REMOTE_MODULE_ID,
   version: "1.0.0",
   deckApi: "^0.1",
   services: { provides: [RUNTIME_PAGES.name] },
@@ -134,27 +132,11 @@ export const remoteModule = defineServerModule(REMOTE_MANIFEST, () => {}, {
             return [];
           }
           directory.declare(id, typeof title === "string" ? title : id, pageOf(id, instance.page));
-          const instanceTiming = timing(instance);
-          const instanceAuth = auth(instance.auth);
-          const maxBytes = integer(instance.maxBytes);
+          // Only this instance's credential: another instance's is never readable here.
+          const { request, timing } = instanceRequest(instance, envFor);
           const describeIntervalMs = integer(instance.describeIntervalMs);
-          const provider = new RemoteProvider(
-            id,
-            {
-              url,
-              request: {
-                ...(typeof instance.credentialEnv === "string" ? { credentialEnv: instance.credentialEnv } : {}),
-                ...(instanceAuth === undefined ? {} : { auth: instanceAuth }),
-                // Only this instance's credential: another instance's is never readable here.
-                env: envFor(instance),
-              },
-              ...(instanceTiming?.timeoutMs === undefined ? {} : { timeoutMs: instanceTiming.timeoutMs }),
-              ...(maxBytes === undefined ? {} : { maxBytes }),
-              ...(describeIntervalMs === undefined ? {} : { describeIntervalMs }),
-            },
-            directory,
-          );
-          return [{ provider, ...(instanceTiming ? { timing: instanceTiming } : {}) }];
+          const provider = new RemoteProvider(id, { url, request, ...(describeIntervalMs === undefined ? {} : { describeIntervalMs }) }, directory);
+          return [{ provider, ...(timing === undefined ? {} : { timing }) }];
         });
       },
     },

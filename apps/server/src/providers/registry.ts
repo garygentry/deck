@@ -184,7 +184,7 @@ export function register<T>(
       else await tick(slot);
     },
     stop: async () => {
-      slot.stopped = true;
+      stopProvider(slot);
       if (slot.timer !== undefined) clearInterval(slot.timer);
       slot.timer = undefined;
       await slot.adaptive?.stop();
@@ -228,7 +228,7 @@ export function startScheduler(): void {
 export function stopScheduler(): void {
   for (const slot of slots.values()) {
     if (slot.timer !== undefined) clearInterval(slot.timer);
-    slot.stopped = true;
+    stopProvider(slot);
     slot.adaptive?.stop().catch(() => {});
   }
   slots.clear();
@@ -359,6 +359,17 @@ async function poll<T>(slot: Slot<T>): Promise<boolean> {
     }
   }
   return ok;
+}
+
+/** Mark the slot stopped and tell its provider once (its `stop` hook), isolating a throwing hook. */
+function stopProvider<T>(slot: Slot<T>): void {
+  if (slot.stopped) return;
+  slot.stopped = true;
+  try {
+    slot.provider.stop?.();
+  } catch {
+    // A provider's own stop failing never stops the others.
+  }
 }
 
 /**

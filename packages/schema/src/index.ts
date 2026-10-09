@@ -15,6 +15,6 @@ export { bindingProviderId, estateBindings, estateProviderIds, hostOwner, servic
 export type { EstateBinding, EstateProviderId } from "./provider-ids.js";
 export { validate } from "./validate/validate.js";
 export { validateSnapshot } from "./validate/validate-snapshot.js";
-export { createAjv, isRfc3339DateTime, widgetOptionsProblem } from "./validate/ajv.js";
+export { compileWidgetOptions, createAjv, isRfc3339DateTime, widgetOptionsProblem, type SchemaProblem } from "./validate/ajv.js";
 export { REMOTE_DESCRIBE_LIMITS, REMOTE_PROTOCOL_VERSION, remoteDescribeSchema } from "./remote-describe.js";
 export type * from "./types.js";

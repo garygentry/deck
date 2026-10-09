@@ -21,7 +21,7 @@ import type { ProviderSelects } from "../providers/registry.js";
 import { isRecord } from "./validate.js";
 
 /** The component a config page renders with, in the core web module's table. */
-export const CONFIG_PAGE_COMPONENT = "ConfigPage";
+export { CONFIG_PAGE_COMPONENT } from "@deck/module-sdk";
 
 /** A config page as the `ui.pages` config declares it (validated; read leniently anyway). */
 export interface ConfigPage {
@@ -32,6 +32,8 @@ export interface ConfigPage {
    * a remote integration's page.
    */
   module?: string;
+  /** `external` for a page a module contributes at runtime: each of its widgets carries it (`UiWidgetInstance.linkPolicy`). */
+  linkPolicy?: "external";
   path: string;
   title: string;
   icon?: string;
@@ -125,6 +127,7 @@ export function buildLayout(
         ...(typeProblem === undefined ? {} : { typeProblem }),
         ...(widget.select === undefined || typeProblem !== undefined ? {} : { select: widget.select, projection: id }),
         options: widget.options ?? {},
+        ...(page.linkPolicy === undefined ? {} : { linkPolicy: page.linkPolicy }),
         span: Math.min(span, columns) as UiWidgetInstance["span"],
         rows: clamp(widget.rows ?? 1, 1, 6),
       });

@@ -1,4 +1,4 @@
-import { REMOTE_MODULE, UI_CONFIG_MODULE, type UiPage } from "@deck/module-sdk";
+import { CONFIG_PAGE_COMPONENT, type UiPage } from "@deck/module-sdk";
 import type { ComponentType } from "react";
 
 import { useUiManifest, type UiManifestState } from "../../data/index.js";
@@ -24,18 +24,16 @@ function routeComponent(id: string): ComponentType {
 }
 
 /**
- * The modules whose pages render as config pages: the ui config's (`ui.pages`) and the remote
- * integrations' (a sidecar's described widgets).
+ * The config pages a ready manifest routes: its pages whose component is the kernel's
+ * `ConfigPage` (which the server gives only to `ui.pages` pages and pages modules contribute at
+ * runtime), with a well-formed layout.
  */
-const CONFIG_PAGE_MODULES: ReadonlySet<string> = new Set([UI_CONFIG_MODULE, REMOTE_MODULE]);
-
-/** The config pages a ready manifest routes: its pages of those modules with a well-formed layout. */
 function configPagesOf(manifest: UiManifestState): UiPage[] {
   if (manifest.status !== "ready" || !Array.isArray(manifest.manifest.pages)) return [];
   // A malformed entry is not routed (the server's never is); the page boundary covers the rest.
   return manifest.manifest.pages.filter(
     (page) =>
-      typeof page?.module === "string" && CONFIG_PAGE_MODULES.has(page.module) &&
+      page?.component === CONFIG_PAGE_COMPONENT &&
       typeof page.path === "string" &&
       typeof page.title === "string" &&
       isRenderableLayout(page.layout, { slots: false }),
@@ -43,8 +41,8 @@ function configPagesOf(manifest: UiManifestState): UiPage[] {
 }
 
 /**
- * Page registrations for the config pages (`ui.pages`, remote integrations' pages) the UI manifest routes, so the router
- * and the fallback nav treat them like any module's page. None until the manifest loads, or
+ * Page registrations for the config pages (`ui.pages`, and pages modules contribute at runtime)
+ * the UI manifest routes, so the router and the fallback nav treat them like any module's page. None until the manifest loads, or
  * when it cannot be read: config pages exist only in the manifest.
  */
 export function configPageRegistrations(manifest: UiManifestState): PageRegistration[] {

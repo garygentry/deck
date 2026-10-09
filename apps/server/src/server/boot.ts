@@ -264,7 +264,8 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
       logger.warn({ event: "ui.rebuild", result: "failed" }, "UI manifest rebuild failed; keeping the one served");
     }
   };
-  for (const { source } of pageSources) source.subscribe(rebuildUi);
+  // Kept so stop() can end them: a runtime change after shutdown begins never rebuilds.
+  const unsubscribePages = pageSources.map(({ source }) => source.subscribe(rebuildUi));
 
   // Mounting re-checks module routes against the live kernel table (a backstop).
   let app: ReturnType<typeof createApp>;
@@ -312,6 +313,7 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
     async stop() {
       stopping = true;
       reloader?.stop();
+      for (const unsubscribe of unsubscribePages) unsubscribe();
       const drained = Promise.resolve(server.stop());
       if (!(await settlesWithin(modules.stop(), stopTimings.modulesMs))) {
         logger.warn({ event: "server.stop-stage-timeout", stage: "modules", boundMs: stopTimings.modulesMs } satisfies ServerStopStageTimeoutEvent, "modules still stopping; continuing");

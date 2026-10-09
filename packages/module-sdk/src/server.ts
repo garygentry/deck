@@ -30,6 +30,11 @@ export interface ProviderSpec<T = unknown> {
    * or not a valid time means the fetch time.
    */
   observedAt?(): number | null;
+  /**
+   * Called once when the provider stops polling (its module stops, or the registry is torn
+   * down): end any work it runs beside its polls, which must then change nothing.
+   */
+  stop?(): void;
 }
 
 export interface ProviderTiming {

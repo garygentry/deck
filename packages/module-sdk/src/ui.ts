@@ -197,6 +197,12 @@ export interface UiWidgetInstance {
    */
   projection?: string;
   options: JsonObject;
+  /**
+   * `external` on a widget a module contributes at runtime (a sidecar's): every link it renders
+   * from markdown (its content, raw HTML in it, or text from its source) keeps only an absolute
+   * http(s) href, shown as an external link; any other becomes plain text. Absent otherwise.
+   */
+  linkPolicy?: "external";
   /** Columns spanned, at most the section's. */
   span: 1 | 2 | 3 | 4;
   rows: number;

@@ -12,6 +12,7 @@
  * `rel="noopener noreferrer"`.
  */
 
+import { isExternalHref, isSafeHref } from "@deck/module-sdk";
 import DOMPurify, { type Config as DOMPurifyConfig } from "dompurify";
 import MarkdownIt from "markdown-it";
 import taskLists from "markdown-it-task-lists";
@@ -148,8 +149,39 @@ export function renderMarkdown(
 ): string {
   const rendered = md.render(markdown, { ...context });
   const html = options.headingOffset === undefined ? rendered : demoteHeadings(rendered, options.headingOffset);
-  // The sanitiser runs last: nothing parses, changes or re-serialises its output.
-  return DOMPurify.sanitize(html, SANITIZE_CONFIG) as string;
+  // The sanitiser runs last: nothing parses, changes or re-serialises its output. The link
+  // policy runs inside it, on the very nodes it returns, for this call only (it is synchronous).
+  if (options.externalLinksOnly !== true) return DOMPurify.sanitize(html, SANITIZE_CONFIG) as string;
+  DOMPurify.addHook("afterSanitizeAttributes", externalLinksOnly);
+  try {
+    return DOMPurify.sanitize(html, SANITIZE_CONFIG) as string;
+  } finally {
+    DOMPurify.removeHook("afterSanitizeAttributes", externalLinksOnly);
+  }
+}
+
+/**
+ * The external-only link policy, on one sanitised node: an anchor keeps its href only when it is
+ * an absolute http(s) URL `isSafeHref` accepts, and then opens as an external link (new tab, safe
+ * `rel`, a "(opens in new tab)" note and its marker). Any other anchor (a path, a fragment, a
+ * protocol-relative `//host`, another scheme) loses its href and every link attribute, so it
+ * reads as plain text.
+ */
+function externalLinksOnly(node: Element): void {
+  if (node.nodeName.toLowerCase() !== "a") return;
+  const href = node.getAttribute("href");
+  for (const name of ["href", "xlink:href", "target", "rel", "ping", "download"]) node.removeAttribute(name);
+  if (href === null || !isExternalHref(href) || !isSafeHref(href)) return;
+  node.setAttribute("href", href);
+  node.setAttribute("target", "_blank");
+  node.setAttribute("rel", "noopener noreferrer");
+  const marker = node.ownerDocument.createElement("span");
+  marker.setAttribute("aria-hidden", "true");
+  marker.textContent = " ↗";
+  const note = node.ownerDocument.createElement("span");
+  note.setAttribute("class", "sr-only");
+  note.textContent = " (opens in new tab)";
+  node.append(marker, note);
 }
 
 /** How a caller embeds the rendered document. */
@@ -159,6 +191,12 @@ export interface MarkdownRenderOptions {
    * widget's markdown sits under its card's `h3`. The docs view leaves headings as written.
    */
   headingOffset?: number;
+  /**
+   * Keep only absolute http(s) links, each opened as an external link, and make every other
+   * link plain text: for markdown from outside deck (a widget a sidecar contributes), whose
+   * links, raw HTML or source data must not point into deck.
+   */
+  externalLinksOnly?: boolean;
 }
 
 /**

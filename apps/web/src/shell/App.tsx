@@ -1,4 +1,3 @@
-import { REMOTE_MODULE, UI_CONFIG_MODULE } from "@deck/module-sdk";
 import { Suspense, useEffect } from "react";
 import { Callout, LoadingState, PageErrorBoundary, useDocumentTitle } from "@/ui";
 import { Route, Router, Switch, useLocation } from "./router.js";
@@ -52,16 +51,14 @@ function Shell() {
 
 /**
  * Whether the page at `path` may be a config page the manifest has yet to deliver: while it
- * loads, `/` when the server says the home page is a config page (`page:ui/…`) or a remote
- * integration's (`page:remote/…`), and any path
- * no registered page matches. Rendering a loading state then, instead of the portal or "not
- * found", keeps a config home page or a deep link to one from flashing the wrong page.
+ * loads, `/` when the server's home page is not a page this bundle routes on its own (so only
+ * the manifest can route it), and any path no registered page matches. Rendering a loading
+ * state then, instead of the portal or "not found", keeps a config home page or a deep link to
+ * one from flashing the wrong page.
  */
 export function awaitingConfigPage(manifest: UiManifestState, routes: ResolvedRoutes, path: string, home: string | null | undefined): boolean {
   if (manifest.status !== "loading") return false;
-  if (path === HOME_PATH) {
-    return typeof home === "string" && (home.startsWith(`page:${UI_CONFIG_MODULE}/`) || home.startsWith(`page:${REMOTE_MODULE}/`));
-  }
+  if (path === HOME_PATH) return typeof home === "string" && !routes.routed.some((route) => route.id === home);
   return routeForPath(routes, path) === undefined;
 }
 

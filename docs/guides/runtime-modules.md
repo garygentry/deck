@@ -65,6 +65,12 @@ shape built-in modules use. Its manifest must be the module's `deck-module.json`
 imports it as a JSON module (`import manifest from "./deck-module.json" with { type: "json" }`),
 and a built module can inline it.
 
+`web.js` runs in deck's page under deck's Content-Security-Policy. It may `fetch` deck's own
+origin only (`connect-src 'self'`): for data from anywhere else, read a provider (your server
+half's, or a `remote` or `http-json` integration's) with `useProvider`, or add a route to your
+server half. It cannot add `<script>` elements of its own or use `eval`; import everything it
+needs. Styles and images are not restricted that way.
+
 ```js
 import { jsx } from "react/jsx-runtime";
 import { defineWebModule, PageHeader, useProvider } from "@deck/sdk";
@@ -191,8 +197,9 @@ the module. If two config layers pin the same module, the later layer's pin is u
 [Runtime module integrity](../reference/estate-config.md#runtime-module-integrity).
 
 A pin defends against a module directory that has changed since you pinned it, on a mount that
-is read-only to deck. It is not a defence against someone who can write to the directory
-while deck starts: files a module imports later are read after the digest is taken.
+is read-only to deck: it protects the files at rest. It is not a defence against someone who
+can write to the directory while deck starts: files a module imports later are read after the
+digest is taken.
 
 ## When a module's code is loaded
 

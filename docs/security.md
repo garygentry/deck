@@ -1,6 +1,6 @@
 # Security & access posture
 
-This is Deck's security model for v0.1.0 — what it assumes about its environment, what it
+This is Deck's security model — what it assumes about its environment, what it
 protects, and what it deliberately leaves to the operator. Read it before exposing Deck
 anywhere beyond your own machine.
 
@@ -43,8 +43,9 @@ can't escalate:
   exceeds the size cap (1 MiB by default) is refused, not published, and poll errors name the
   failure class only, never the credential, body or runtime error text. The URL is reached from the deck server, so whoever edits the estate
   config chooses what deck fetches on its network. A `remote` integration's requests to its sidecar go through the same
-  request path with the same guarantees: the credential from `credentialEnv` only, no redirect off
-  the configured origin when authenticated, and the same size, depth and timeout bounds.
+  request path with the same guarantees: the credential from `credentialEnv` only, and the same
+  size, depth and timeout bounds. A sidecar may never redirect deck off its own origin, with a
+  credential or without.
 - **A sidecar contributes data and declarations, never code.** A `remote` integration's requests
   get the same hardening as `http-json`'s, on both endpoints. Its describe document may place only
   deck's declarative widget types (never `core/embed` or another module's widget, whatever
@@ -80,6 +81,45 @@ can't escalate:
   token env var is set. It checks the bearer token in constant time, caps bodies at 2 MB, and
   only ever updates the displayed statusLine numbers.
 
+## Trust tiers
+
+Each way of extending deck gets the trust its form allows. Climb only as far as you need.
+
+| Tier | What it can do | What deck enforces | What you own |
+| --- | --- | --- | --- |
+| Built-in modules | Anything: they are deck. | Reviewed with deck. A built-in whose manifest or config schema is unusable stops boot rather than switching itself off. | Which ones you enable, and their settings. |
+| Config-driven UI (`ui`: brand, nav, pages, widgets, `select`) | Arrange and relabel deck's own UI, and show provider data through deck's widgets. No code runs. | The `ui` schema; widget options checked against each type's schema; `select` evaluated on the server with step, size and depth budgets; links pass deck's link check; markdown sanitized. | Whoever edits the config chooses what appears and what deck fetches. |
+| `core/embed` | Show another site's page in a sandboxed frame. | Off unless `ui.allowUnsafeEmbeds: true`; `http(s)` only, never deck's own origin; a sandbox from a fixed list; no referrer; the page may frame only those origins (CSP `frame-src`), so a redirect into deck is refused. | Embed only sites you trust: the page runs in each viewer's browser with that browser's cookies for its site. |
+| `http-json` | Poll a URL you name and publish its JSON. | The credential only from `credentialEnv`, never off its origin; size, depth and timeout caps; responses that echo the credential refused. | The URL is reached from deck's network: the config author chooses what deck fetches. |
+| `remote` sidecars | Contribute data, and declarative widgets, links and nav. | Its describe document is **untrusted input**: schema-checked, deck's declarative widget types only (never `core/embed`), bounded strings, `select` limits, link checks, external-only links in its markdown; its widgets read only its own integration; its page path and nav placement come from config; no redirect off its origin. | Run sidecars you trust with the data you give them. |
+| Runtime modules (`DECK_MODULES_DIR`) | Anything deck can: the server half runs in the deck process, and `web.js` runs in deck's page as deck. | Off unless `DECK_MODULES_ENABLED`; a `deckApi` check; an optional `moduleIntegrity` pin checked just before each import; load failures shown as fixed categories, never the module's error text; `web.js` served same-origin and loaded under deck's CSP (no `eval`, requests to deck only). | Full trust: install only modules you have reviewed, mount the directory read-only and pin each one. A pin protects the files at rest only: it does not stop someone who can write the directory while deck starts. |
+| Contributed icons | SVG markup in a module's manifest. | Rebuilt through an element and attribute allowlist: no scripts, no `style`, no external references. | — |
+
+## Browser policy
+
+Every response carries `frame-ancestors` (in a `Content-Security-Policy` header) and
+`X-Content-Type-Options: nosniff`. By default only deck's own origin may frame deck, and
+`X-Frame-Options: SAMEORIGIN` says so to older browsers too. To show deck inside another app,
+such as a Home Assistant panel, list that app's origin in `ui.frameAncestors`. deck then omits
+`X-Frame-Options`, which cannot name another origin. The setting takes effect without a restart.
+
+The web shell's page carries a Content-Security-Policy that browsers enforce:
+
+- **Scripts** come from deck's origin only: the app, `@deck/sdk` and runtime modules' `web.js`.
+  The page's two inline scripts (the import map and the theme script) carry a nonce that is new
+  on every response, and no `eval` runs. The page is served `Cache-Control: no-cache`, so a
+  cached copy never outlives its nonce.
+- **Requests** (`fetch`) go to deck's origin only.
+- **Frames** may show only the origins of the `core/embed` URLs in the config, and none while
+  `ui.allowUnsafeEmbeds` is off. deck's own origin is never among them.
+- **Styles** may be inline as well as deck's own, and **images** may come from any `http(s)`
+  URL (brand logos, images in docs). A sanitized page cannot inject a script, but it can show an
+  image from another site.
+- No plugins, no `<base>`, and forms post to deck only.
+
+If your reverse proxy sets its own `Content-Security-Policy` or `X-Frame-Options`, the browser
+applies both policies; keep the proxy's at least as permissive as deck's, or drop them.
+
 ## Operator responsibilities
 
 - Put an authenticating reverse proxy in front of Deck; keep its port off untrusted networks.
@@ -88,6 +128,8 @@ can't escalate:
 - Leave actions disabled unless you've provisioned and reviewed the runner allowlist.
 - Leave runtime modules disabled unless you trust every module in `DECK_MODULES_DIR`. Mount
   that directory read-only, and pin each module's digest in `moduleIntegrity`.
+- List in `ui.frameAncestors` only the apps you mean to frame deck: any page on those origins
+  can then show deck, and its actions, inside itself.
 - If you exempt the LLM usage ingest route from proxy auth, exempt exactly
   `POST /api/llm-usage/ingest`, and treat its token like any other credential.
 

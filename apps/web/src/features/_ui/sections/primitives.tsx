@@ -12,7 +12,11 @@ import {
   Checkbox,
   Icon,
   Input,
+  Kbd,
+  KbdGroup,
   Label,
+  RadioGroup,
+  RadioGroupItem,
   Separator,
   Skeleton,
   Table,
@@ -26,6 +30,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  Textarea,
 } from "@/ui";
 import { Specimen, type WorkbenchSectionDef } from "../kit.js";
 
@@ -55,6 +60,7 @@ function Primitives() {
           With icon
         </Button>
         <Button disabled>disabled</Button>
+        <Button loading>Saving</Button>
       </Specimen>
       <Specimen label="Badge variants">
         {BADGE_VARIANTS.map((variant) => (
@@ -80,6 +86,27 @@ function Primitives() {
           <Checkbox id="wb-check" defaultChecked />
           <Label htmlFor="wb-check">Include waived</Label>
         </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="wb-notes">Notes</Label>
+          <Textarea id="wb-notes" placeholder="Why this waiver exists" className="w-64" />
+        </div>
+        <RadioGroup aria-label="Density" defaultValue="comfortable" className="gap-2">
+          {["compact", "comfortable"].map((value) => (
+            <div key={value} className="flex items-center gap-2">
+              <RadioGroupItem id={`wb-density-${value}`} value={value} />
+              <Label htmlFor={`wb-density-${value}`}>{value}</Label>
+            </div>
+          ))}
+        </RadioGroup>
+      </Specimen>
+      <Specimen label="Kbd">
+        <p className="text-sm text-muted-foreground">
+          Search with <Kbd>/</Kbd>, open the palette with{" "}
+          <KbdGroup>
+            <Kbd>Ctrl</Kbd>
+            <Kbd>K</Kbd>
+          </KbdGroup>
+        </p>
       </Specimen>
       <Specimen label="Alert">
         <Alert className="max-w-md">

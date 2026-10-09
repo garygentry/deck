@@ -30,7 +30,8 @@ The kernel is the part every module builds on. It contains no feature of its own
 Boot, the app skeleton and the provider registry never name a feature or a provider kind: a
 test (`apps/server/test/kernel-names.test.ts`) fails if they mention one. `scripts/kernel-touch.ts`
 lists the kernel's files and reports which of them a change touches. Adding a built-in module
-should touch only the static list of built-ins (`apps/server/src/modules/builtin.ts`), and a
+should touch only the static list of built-ins (`apps/server/src/modules/builtin.ts`), plus the
+icon set (`apps/web/src/ui/lib/icons.ts`) if it needs a new icon, and a
 runtime module or a sidecar touches none.
 
 ## What a module is

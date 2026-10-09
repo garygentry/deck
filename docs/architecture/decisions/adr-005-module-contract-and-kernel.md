@@ -108,7 +108,7 @@ manifest as JSON (`deck-module.json`).
 ## Consequences
 
 - **A new module barely touches the kernel.** A built-in adds one line to the static list in
-  `builtin.ts`, and a runtime module or a sidecar touches nothing, unless it needs a new kernel
+  `builtin.ts` (and a name to the icon set if it needs a new icon), and a runtime module or a sidecar touches nothing, unless it needs a new kernel
   capability. `kernel-touch.ts` measures this, and `apps/server/test/kernel-names.test.ts` fails if boot,
   the app skeleton or the provider registry names any built-in module or provider kind.
 - **A module's own defect is contained; a broken deployment is not.** These disable just the

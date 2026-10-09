@@ -78,7 +78,8 @@ export const BACKUPS_UI: WebModuleManifest = {
 - A page path must not collide with another page. Built-in nav groups are `overview`,
   `inventory`, `health`, `operate` and `knowledge`.
 - Icons come from the web's icon set (`apps/web/src/ui/lib/icons.ts`). Add a Lucide icon there
-  by name if you need a new one.
+  by name if you need a new one. That file is part of the kernel, so a new icon is an expected
+  second kernel touch.
 
 Every key is in the [module manifest reference](../reference/module-manifest.md).
 
@@ -128,8 +129,8 @@ needs a credential lists the variable in `env` (or names it from config with `en
 no other module can read it.
 
 Then add the module to the static list in `apps/server/src/modules/builtin.ts`: one import and
-one array entry. That list is a kernel file, and it is the only one a new built-in should
-touch.
+one array entry. That list is a kernel file, and, with a new icon if you need one, it is the
+only one a new built-in should touch.
 
 ## Give it a config section
 
@@ -223,6 +224,11 @@ unlocks only the credential variable that one instance names. See
 
 - **Unit tests** go in `test/server/` and `test/web/`. Run them with the host app's suite:
   `pnpm --filter @deck/server test` and `pnpm --filter @deck/web test:unit`.
+- **Server test fixtures that list every built-in:**
+  - add the manifest to `BUILTIN_MANIFESTS` in `apps/server/test/util/modules.ts`, so test hosts
+    treat it as built-in;
+  - add its id to the built-in id list and the expected plan orders in
+    `apps/server/test/module-host.test.ts`.
 - **Through the kernel:** tests that boot the module host, the app or the config pipeline stay
   in `apps/server/test`.
 - **A web half's contract:** test it with React Testing Library role queries, as for any page.
@@ -232,30 +238,39 @@ unlocks only the credential variable that one instance names. See
   review the diff: it should add your ids and nothing else.
 - **Kernel touch:** run `bun scripts/kernel-touch.ts` (with `--base <ref>` when your branch
   is not based on `main`). It lists the kernel files your branch touches, which should be
-  `apps/server/src/modules/builtin.ts` alone. Anything more means the
+  `apps/server/src/modules/builtin.ts` alone, plus `apps/web/src/ui/lib/icons.ts` if you added
+  an icon. Anything more means the
   contract lacks something; say so in review rather than reaching around it.
 
 ## Check it runs
 
-Add a section to the example estate's overlay and start deck:
+Copy the example estate into a scratch directory, so the committed example stays as it is, and
+add a layer with the module's section:
 
-```yaml
-# examples/estate/10-overlay.yaml
+```bash
+estate=$(mktemp -d) && cp -r examples/estate/. "$estate"
+cat > "$estate/20-backups.yaml" <<'YAML'
+schemaVersion: 2
 modules:
   backups:
     jobs:
       - { name: nas-nightly, schedule: "02:00" }
+YAML
+DECK_CONFIG_DIR="$estate" pnpm dev
 ```
 
 ```bash
-pnpm dev
 curl -s localhost:8788/api/ui | jq '.modules[] | select(.id == "backups")'
 curl -s localhost:8788/api/providers/backups | jq .data
 ```
 
 Open `/backups` in the web app. Check the page and the pill at phone and desktop widths, in light
-and dark mode, and with the keyboard. Then remove the section: `GET /api/ui` lists the module as
-off, with `enabledBy` naming `modules.backups`, and `/backups` says the module is not enabled.
+and dark mode, and with the keyboard.
+
+Then remove `20-backups.yaml`. That change is outside `ui`, so deck reports
+`UI_RESTART_REQUIRED` and keeps the module running until it restarts. After a restart,
+`GET /api/ui` lists the module as off, with `enabledBy` naming `modules.backups`, and `/backups`
+says the module is not enabled.
 
 ## See also
 

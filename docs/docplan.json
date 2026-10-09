@@ -52,7 +52,7 @@
     { "id": "s-env", "path": "apps/server/src/server/boot.ts, apps/server/src/sources/runtime.ts, apps/server/src/actions/runtime.ts", "type": "config", "note": "DECK_* env vars: CONFIG_DIR, PORT, SNAPSHOT_SOURCE, WEB_DIST, LOG_LEVEL, SOURCES_CACHE_DIR, ACTIONS_ENABLED, DATA_DIR, RUNNERS_FILE, ACTION_TIMEOUT_MS." },
     { "id": "s-e2e", "path": "apps/web/test/e2e/*.spec.ts, apps/web/test/e2e/start-inventory-api.ts", "type": "test", "note": "Playwright operator flows (inventory, drift, actions, alerts, sources). start-inventory-api.ts is the canonical full-engine wiring: build config/overlay/snapshot scenario, boot(), materialize source fixtures." },
     { "id": "s-server-tests", "path": "apps/server/test/*.integration.test.ts", "type": "test", "note": "HTTP integration tests (provider-routes, alerts-routes, sources-routes) — verified request/response usage." },
-    { "id": "s-schema-tests", "path": "packages/schema/src/**/*.test.ts, packages/schema/src/fixtures/**", "type": "test", "note": "Validation/merge/ownership behavior with rich valid + invalid fixtures — ground truth for what a well-formed estate/snapshot is." },
+    { "id": "s-schema-tests", "path": "packages/schema/test/**/*.test.ts, packages/schema/src/fixtures/**", "type": "test", "note": "Validation/merge/ownership behavior with rich valid + invalid fixtures — ground truth for what a well-formed estate/snapshot is." },
     { "id": "s-examples", "path": "examples/estate/**, examples/compose.yaml", "type": "config", "note": "Worked estate: 00-base + 10-overlay YAML, configs/, docs/, snapshot.template.json; reference docker-compose mounting ./estate:/config:ro." },
     { "id": "s-docker", "path": "Dockerfile, docker/entrypoint.sh, .dockerignore", "type": "ci", "note": "Multi-stage build (node:22 builder → oven/bun runtime), single Bun process serves web+API, container defaults (/config, :8080), HEALTHCHECK on /api/health, snapshot templating at boot." },
     { "id": "s-ci", "path": ".github/workflows/ci.yml", "type": "ci", "note": "Jobs: node-pnpm (typecheck+unit), web-e2e (sharded Playwright), bun-parity (vitest under Bun), gates (golden render, boot smoke)." },
@@ -385,7 +385,7 @@
     {
       "id": "e3",
       "title": "Access and security model",
-      "slug": "explanation/security",
+      "slug": "security",
       "family": "diataxis",
       "type": "explanation",
       "audience": ["operator", "maintainer"],

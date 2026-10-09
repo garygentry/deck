@@ -47,13 +47,18 @@ describe("statusTone", () => {
     expect(statusTone(map, [1])).toBeUndefined();
   });
 
-  it("matches eq by equal value; a number also equals its text", () => {
-    const map: StatusMapData = { rules: [{ eq: 0, tone: "ok" }, { eq: "down", tone: "danger" }, { eq: false, tone: "warn" }] };
+  it("matches eq by text, symmetrically, as values keys do", () => {
+    const map: StatusMapData = { rules: [{ eq: 0, tone: "ok" }, { eq: "down", tone: "danger" }, { eq: false, tone: "warn" }, { eq: "42", tone: "info" }] };
     expect(statusTone(map, 0)).toBe("ok");
     expect(statusTone(map, "0")).toBe("ok");
     expect(statusTone(map, "down")).toBe("danger");
     expect(statusTone(map, false)).toBe("warn");
-    expect(statusTone(map, "false")).toBeUndefined();
+    expect(statusTone(map, "false")).toBe("warn");
+    // Text in the rule matches the number in the data, and the other way round.
+    expect(statusTone(map, 42)).toBe("info");
+    expect(statusTone({ rules: [{ eq: 42, tone: "info" }] }, "42")).toBe("info");
+    expect(statusTone(map, null)).toBeUndefined();
+    expect(statusTone(map, { a: 1 })).toBeUndefined();
   });
 
   it("tries values before rules", () => {

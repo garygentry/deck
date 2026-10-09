@@ -59,6 +59,14 @@ describe("shared UI rules", () => {
     expect(isSafeHref("//evil")).toBe(false);
   });
 
+  it("refuses a link a browser would take off this origin: spaces, controls and backslashes", () => {
+    expect(isSafeHref("/hosts/nas-01?q=a%20b#x")).toBe(true);
+    expect(isSafeHref("https://vendor.example/ups")).toBe(true);
+    for (const href of ["/\t/evil.example", "/\n/evil.example", "/\r/evil.example", "/\r\n/evil.example", "/\\evil.example", "/x\\..\\..\\evil", "//evil.example", "/ /evil.example", "/hosts\u0000", "/hosts\u007f", "https://ok.example/\tx", " /hosts", "https:\\\\evil.example"]) {
+      expect(isSafeHref(href), JSON.stringify(href)).toBe(false);
+    }
+  });
+
   it("checks an entity section's title and section name", () => {
     expect(entitySectionProblem({ title: "Findings" }, "e")).toBeNull();
     expect(entitySectionProblem({ title: "Findings", section: "findings" }, "e")).toBeNull();

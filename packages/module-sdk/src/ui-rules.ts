@@ -206,10 +206,25 @@ export function isExternalHref(href: string): boolean {
   return /^https?:\/\/[^/]/i.test(href);
 }
 
-/** Whether a nav link is safe: an `http(s):` URL, or an absolute path on this origin (not `//…`). */
+// Spaces, controls and backslashes: a browser drops tabs and line breaks from a URL and reads
+// `\` as `/`, so `/\t/evil.example` or `/\evil.example` would leave deck.
+const UNSAFE_HREF_CHARS = /[\u0000-\u0020\u007f\\]/;
+const SAME_ORIGIN = "http://deck.invalid";
+
+/**
+ * Whether a link is safe to render: an `http(s):` URL, or an absolute path that stays on this
+ * origin once a browser parses it (not `//…`). A link holding a space, a control character or a
+ * backslash never is.
+ */
 export function isSafeHref(href: string): boolean {
+  if (UNSAFE_HREF_CHARS.test(href)) return false;
   if (isExternalHref(href)) return true;
-  return href.startsWith("/") && !href.startsWith("//") && !href.startsWith("/\\");
+  if (!href.startsWith("/") || href.startsWith("//")) return false;
+  try {
+    return new URL(href, SAME_ORIGIN).origin === SAME_ORIGIN;
+  } catch {
+    return false;
+  }
 }
 
 /** The page `/` renders when the `ui` config names no home page: the portal's overview. */

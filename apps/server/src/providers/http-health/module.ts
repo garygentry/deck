@@ -1,3 +1,4 @@
+import { HTTP_HEALTH_STATUS } from "@deck/contract/modules/data-sources";
 import { defineServerModule, type ModuleManifest, type ProviderTiming } from "@deck/module-sdk";
 
 import { HttpHealthProvider, type HttpHealthConfig } from "./index.js";
@@ -10,7 +11,7 @@ export const HTTP_HEALTH_MANIFEST: ModuleManifest = {
   id: "http-health",
   version: "1.0.0",
   deckApi: "^0.1",
-  providerKinds: [{ kind: "http-health", bindable: true, statusCapable: true }],
+  providerKinds: [{ kind: "http-health", bindable: true, statusCapable: true, status: HTTP_HEALTH_STATUS }],
 };
 
 /** The numeric timing fields of a binding's `timing` object; anything else is dropped. */

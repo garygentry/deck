@@ -1,5 +1,5 @@
 import type { JsonObject } from "./json.js";
-import type { ExtensionId, SlotDecl, StatusMapData } from "./manifest.js";
+import type { ExtensionId, ProviderStatusDecl, SlotDecl, StatusMapData } from "./manifest.js";
 
 /**
  * The resolved UI manifest served at `GET /api/ui`: which modules are installed, and which of
@@ -40,6 +40,12 @@ export interface UiManifest {
   extensions: UiExtension[];
   /** Registered provider instances, by id. */
   providers: UiProvider[];
+  /**
+   * The bindable, status-capable provider kinds of enabled modules that declare how a binding
+   * gives a card its status, by kind: what a portal card's status reads. An older server does
+   * not send it.
+   */
+  statusKinds?: UiStatusKind[];
   /**
    * The widget types of enabled modules (and the kernel's `core/…`), by type: what a config
    * page's widget may name. An older server does not send it.
@@ -121,18 +127,35 @@ export interface UiPage {
   icon?: string;
   /** Export name in the module's web component table (`ConfigPage` for a config page). */
   component: string;
-  /** A config page's sections and widgets (`ui.pages`); only pages of module `ui` have one. */
+  /**
+   * The page's sections and widgets: a config page's (`ui.pages`), or the default dashboard a
+   * module declares for its page (the portal's), with overrides applied.
+   */
   layout?: UiPageLayout;
 }
 
-/** A config page's body: its sections, in reading order. */
+/** A page's body: its sections, in reading order. */
 export interface UiPageLayout {
   sections: UiLayoutSection[];
 }
 
-/** One section of a config page: a heading over a grid of widgets, one column below `md`. */
-export interface UiLayoutSection {
-  title: string;
+/** One section of a page's layout: widgets in a grid, or the widgets a slot places. */
+export type UiLayoutSection = UiWidgetSection | UiSlotSection;
+
+/**
+ * The widgets a `widget` slot's extensions place (a module page's `{ slot }` section), in the
+ * manifest's order for that slot. Listed only while the slot's host is enabled.
+ */
+export interface UiSlotSection {
+  slot: string;
+}
+
+/**
+ * One section of widgets: a heading over a grid, one column below `md`. A config page's always
+ * has a title; a module page's has none, and its page decides how its widgets render.
+ */
+export interface UiWidgetSection {
+  title?: string;
   /** Grid columns from the `md` breakpoint up. */
   columns: 1 | 2 | 3 | 4;
   /** Its widgets, in reading order (DOM order). */
@@ -172,6 +195,15 @@ export interface UiWidgetInstance {
   /** Columns spanned, at most the section's. */
   span: 1 | 2 | 3 | 4;
   rows: number;
+}
+
+/** A provider kind whose bindings give cards a status, and how (its module's declaration). */
+export interface UiStatusKind {
+  kind: string;
+  module: string;
+  /** The provider every binding of the kind reads, when its status reads the kind's fixed instance. */
+  fixedId?: string;
+  status: ProviderStatusDecl;
 }
 
 /** A widget type a module provides. */

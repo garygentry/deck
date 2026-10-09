@@ -1,16 +1,19 @@
 import type {
   ExtensionId,
   JsonObject,
+  PageDecl,
   UiFinding,
   UiLayoutSection,
+  UiWidgetSection,
   UiManifest,
   UiPageLayout,
   UiProvider,
+  UiSlot,
   UiWidgetInstance,
   UiWidgetType,
 } from "@deck/module-sdk";
 
-import { UI_CONFIG_MODULE } from "@deck/module-sdk";
+import { parseExtensionId, UI_CONFIG_MODULE } from "@deck/module-sdk";
 
 import { compileSelect, type CompiledSelect } from "@deck/schema/select";
 
@@ -87,7 +90,7 @@ export function buildLayout(
 ): UiPageLayout {
   const sections: UiLayoutSection[] = [];
   page.sections.forEach((section, sectionIndex) => {
-    const columns = clamp(section.columns ?? 1, 1, 4) as UiLayoutSection["columns"];
+    const columns = clamp(section.columns ?? 1, 1, 4) as UiWidgetSection["columns"];
     const widgets: UiWidgetInstance[] = [];
     section.widgets.forEach((widget, index) => {
       const { id } = configWidgetId(page.id, widget, sectionIndex, index);
@@ -166,6 +169,7 @@ export function deriveProjections(manifest: Pick<UiManifest, "pages">): Map<stri
   const compiled = new Map<string, CompiledSelect>();
   for (const page of manifest.pages) {
     for (const section of page.layout?.sections ?? []) {
+      if (!("widgets" in section)) continue;
       for (const widget of section.widgets) {
         if (widget.source === null || widget.select === undefined || widget.projection === undefined) continue;
         const forProvider = selects.get(widget.source.id) ?? new Map<string, CompiledSelect>();
@@ -202,4 +206,63 @@ export function configPagesOf(config: unknown): ConfigPage[] {
 
 function clamp(value: number, min: number, max: number): number {
   return Number.isInteger(value) ? Math.min(Math.max(value, min), max) : min;
+}
+
+/** A module page's widget id: `widget:<module>/<page name>.<id>`. */
+export function modulePageWidgetId(page: ExtensionId, widget: string): ExtensionId {
+  const parts = parseExtensionId(page);
+  return `widget:${parts?.module ?? ""}/${parts?.name ?? ""}.${widget}`;
+}
+
+/** Every widget id on a module page's default dashboard (`layout`). */
+export function modulePageWidgetIds(page: Pick<PageDecl, "id" | "layout">): ExtensionId[] {
+  return (page.layout?.sections ?? []).flatMap((section) =>
+    "widgets" in section ? section.widgets.map((widget) => modulePageWidgetId(page.id, widget.id)) : [],
+  );
+}
+
+/**
+ * A module page's default dashboard (`contributes.pages[].layout`, validated with its manifest):
+ * a slot section while an enabled module hosts the slot as a `widget` slot, and each widget of
+ * a widget section unless an override switches it off. A type no enabled module provides
+ * renders as unavailable, as on a config page. Its widgets read no provider and take no options.
+ */
+export function buildModuleLayout(
+  page: Pick<PageDecl, "id" | "layout">,
+  context: {
+    slots: ReadonlyMap<string, UiSlot>;
+    knownSlots: ReadonlySet<string>;
+    widgetTypes: readonly UiWidgetType[];
+    enabled: (id: ExtensionId) => boolean;
+    findings: UiFinding[];
+  },
+): UiPageLayout {
+  const sections: UiLayoutSection[] = [];
+  for (const section of page.layout?.sections ?? []) {
+    if ("slot" in section) {
+      const slot = context.slots.get(section.slot);
+      if (slot?.accepts === "widget") sections.push({ slot: section.slot });
+      else if (!context.knownSlots.has(section.slot)) {
+        context.findings.push({ code: "UI_UNKNOWN_SLOT", severity: "warning", message: `page "${page.id}" lays out unknown slot "${section.slot}"`, id: page.id, slot: section.slot });
+      }
+      continue;
+    }
+    const widgets: UiWidgetInstance[] = [];
+    for (const widget of section.widgets) {
+      const id = modulePageWidgetId(page.id, widget.id);
+      if (!context.enabled(id)) continue;
+      const provided = context.widgetTypes.some((type) => type.type === widget.type);
+      widgets.push({
+        id,
+        type: widget.type,
+        source: null,
+        ...(provided ? {} : { typeProblem: `No enabled module provides the widget type "${widget.type}".` }),
+        options: {},
+        span: 1,
+        rows: 1,
+      });
+    }
+    if (widgets.length > 0) sections.push({ columns: 1, widgets });
+  }
+  return { sections };
 }

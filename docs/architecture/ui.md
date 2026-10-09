@@ -401,7 +401,8 @@ and at any path no registered page matches.
 
 A module page may declare a default dashboard, `layout` in its `contributes.pages` entry:
 sections that are a `{ slot }` the module hosts as a `widget` slot, or `{ widgets }` of
-`{ id, type }` (the module's own types or core's, with no options and no source). The UI manifest
+`{ id, type }` (the module's own types or core's, with no options and no source; a type whose
+options schema refuses `{}` is refused with the manifest). The UI manifest
 resolves it like a config page's (each widget is `widget:<module>/<page name>.<id>`, which an
 override can switch off), and the page's component renders it with `usePageLayout` (the
 manifest's layout, else the declared one while the manifest loads or when it cannot be read)
@@ -409,16 +410,24 @@ and `PageLayoutSections` (`shell/config-page/layout.tsx`): a slot section's widg
 `SlotWidgets`, each in its own boundary, and each widget through a `WidgetHost` with
 `placement="page"`, which has no card, title or span, so the widget is the page's own content.
 A widget type's component gets the `placement`, so one that is a page's main list (the
-portal's) listens for its keys on the window there, and only within itself on a dashboard.
+portal's) listens for its keys on the window there, and only within itself on a dashboard. Its
+headings follow the placement too: the portal's groups are `h2` (subgroups `h3`) on its page,
+and `h4` (subgroups `h5`) under a dashboard card's `h3`, with DOM ids namespaced per widget
+(`useId`) there, so the page's `group-<id>` anchors stay unique. A malformed layout in the
+manifest falls back to the declared one (`isRenderableLayout`, which also gates config pages).
 
 The portal page is this: its `PageHeader`, then the `portal/summary` slot, then one
 `portal/groups` widget (`features/portal/PortalGroupsWidget.tsx`: the filter bar and the
 groups of cards). A config page can place `portal/groups` too, in a card, with a `groups`
 option. A card's status comes from the UI manifest's `statusKinds`, the declarations of the
 bindable, status-capable provider kinds (`providerKinds[].status`): `card-status.ts` reads the
-first such binding of the service by kind name, finds the bound item in the provider's data and
+service's first such binding whose provider the manifest registers (built-in kinds first, in
+their fixed order, then others by name), finds the bound item in the provider's data and
 checks its `up` conditions, so a new data source drives cards with no portal code.
-`usePortalData` polls only the providers the placed cards read (`useProviders`), and falls back
+`usePortalData(groups)` polls only the providers the widget's visible cards read
+(`useProviders`): its shown groups, hidden services and hosts left out. It is loading only until
+the config and the manifest first settle; a provider still being read leaves its own cards
+"Checking" (`pending`), and ids added later never bring the skeleton back. It falls back
 to the built-in kinds' declarations (`@deck/contract/modules/data-sources`) when the manifest
 cannot be read.
 

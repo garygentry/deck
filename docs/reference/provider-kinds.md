@@ -32,7 +32,10 @@ integration's provider for the portal's card status. A kind that is `bindable` a
 own, or the kind's fixed instance), how the bound item is found in that provider's data, and
 which field values mean up. `docker`, `gatus` and `http-health` declare one, and the portal
 derives every card's status from these declarations, so a new data source's bindings drive
-cards with no portal code. `prometheus`,
+cards with no portal code. Reading the kind's fixed instance (`provider: "fixed"`) is for
+built-in modules only, as fixed ids are; another module declaring it is refused
+(MODULE_MANIFEST_INVALID). A bindable, status-capable kind with no `status` is reported in
+`GET /api/ui` (`UI_STATUS_UNDECLARED`). `prometheus`,
 `alertmanager` and `snapshot` do not accept bindings: a host or service binding
 of any of them is ignored and reported as `PROVIDER_BINDING_UNSUPPORTED` (info), and so is a
 binding of `http-json`.

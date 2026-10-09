@@ -125,6 +125,10 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
     (or no provider of its kind);
   - `UI_WIDGET_SOURCE_KIND`: a widget's provider is of a kind its widget type cannot render;
   - `UI_WIDGET_SPAN`: a widget spans more columns than its section has (it spans them all);
+  - `UI_WIDGET_OPTION_UNKNOWN`: a widget option names an entry its module's config does not have
+    (a `portal/groups` group id); the widget skips it;
+  - `UI_STATUS_UNDECLARED`: a bindable, status-capable provider kind declares no `status`, so
+    its bindings give cards no status;
   - `UI_OVERRIDE_POSITIONAL` (`severity: "info"`): an override targets a widget by its
     positional id, which changes when its page's sections or widgets move;
   - `UI_CONFIG_INVALID`: the config directory changed and no longer loads, so the last good

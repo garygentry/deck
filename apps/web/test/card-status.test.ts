@@ -12,6 +12,7 @@ import {
   resolveServiceBinding,
   statusBucket,
   type CardStatus,
+  type CardStatusContext,
   type GatusResult,
 } from "../src/features/portal/card-status.js";
 
@@ -67,6 +68,17 @@ const envelopes = (entries: Record<string, ProviderEnvelope | null>): ReadonlyMa
   new Map(Object.entries(entries));
 const none = envelopes({});
 
+/** A card's status from these kinds and envelopes, with nothing pending and every provider registered. */
+function cardStatus(
+  item: Parameters<typeof deriveCardStatus>[0],
+  service: Service | undefined,
+  kinds: readonly UiStatusKind[],
+  envelopeMap: ReadonlyMap<string, ProviderEnvelope | null>,
+  extra: Partial<CardStatusContext> = {},
+) {
+  return deriveCardStatus(item, service, { statusKinds: kinds, envelopes: envelopeMap, registered: null, pending: new Set(), ...extra });
+}
+
 describe("binding selection", () => {
   test.each([
     [{ container: "app" }, "docker"],
@@ -101,6 +113,31 @@ describe("binding selection", () => {
     expect(resolveServiceBinding(service({ docker: { container: "app" } }), [kindOf("gatus")])).toBeNull();
     const { fixedId: _dropped, ...noFixed } = kindOf("docker");
     expect(resolveServiceBinding(service({ docker: { container: "app" } }), [noFixed])).toBeNull();
+  });
+});
+
+describe("binding precedence (built-ins first) and registration", () => {
+  const early: UiStatusKind = { kind: "aaa", module: "aaa", status: { provider: "binding", up: [{ field: "up", in: [true] }] } };
+
+  test("built-in kinds come first in their fixed order, then others by name, whatever the names", () => {
+    const bound = service({ aaa: {}, "http-health": { url: "https://x.test" }, docker: { container: "app" } });
+    expect(resolveServiceBinding(bound, [early, ...KINDS])?.kind.kind).toBe("docker");
+    expect(resolveServiceBinding(service({ aaa: {}, "http-health": { url: "https://x.test" } }), [early, ...KINDS])?.kind.kind).toBe("http-health");
+    expect(resolveServiceBinding(service({ aaa: {}, zzz: {} }), [{ ...early, kind: "zzz", module: "zzz" }, early])?.kind.kind).toBe("aaa");
+  });
+
+  test("a binding whose provider is not registered gives way to the next one", () => {
+    const bound = service({ docker: { container: "app" }, "http-health": { url: "https://x.test" } });
+    const registered = new Set(["http-health:service:host:service"]);
+    expect(resolveServiceBinding(bound, KINDS, registered)?.providerId).toBe("http-health:service:host:service");
+    expect(cardStatus(serviceItem, bound, KINDS, envelopes({ "http-health:service:host:service": envelope({ up: true }) }), { registered })).toBe("bound-up");
+    // Unknown registration (no manifest): the first by precedence, as before.
+    expect(resolveServiceBinding(bound, KINDS, null)?.providerId).toBe("docker");
+  });
+
+  test("a binding whose provider has not answered yet is pending, not unreachable", () => {
+    expect(cardStatus(serviceItem, service({ docker: { container: "app" } }), KINDS, none, { pending: new Set(["docker"]) })).toBe("pending");
+    expect(statusBucket("pending")).toBeNull();
   });
 });
 
@@ -141,11 +178,11 @@ describe("status buckets", () => {
 
 describe("deriveCardStatus precedence", () => {
   test("a link is static even when no service or provider exists", () => {
-    expect(deriveCardStatus(linkItem, undefined, KINDS, none)).toBe("static");
+    expect(cardStatus(linkItem, undefined, KINDS, none)).toBe("static");
   });
 
   test("an unresolved service is a broken reference", () => {
-    expect(deriveCardStatus(serviceItem, undefined, KINDS, none)).toBe("broken-reference");
+    expect(cardStatus(serviceItem, undefined, KINDS, none)).toBe("broken-reference");
   });
 
   test.each([
@@ -154,7 +191,7 @@ describe("deriveCardStatus precedence", () => {
     { docker: { container: true } },
     { gatus: { endpoint: null } },
   ])("a resolved service with bindings %j is static", (bindings) => {
-    expect(deriveCardStatus(serviceItem, service(bindings), KINDS, none)).toBe("static");
+    expect(cardStatus(serviceItem, service(bindings), KINDS, none)).toBe("static");
   });
 
   test.each([
@@ -163,22 +200,22 @@ describe("deriveCardStatus precedence", () => {
     ["unreachable freshness", docker({ containers: [] }, { state: "unreachable" })],
     ["null data", docker(null)],
   ])("a bound service is unreachable for %s", (_label, dockerEnvelope) => {
-    expect(deriveCardStatus(serviceItem, service({ docker: { container: "app" } }), KINDS, envelopes({ docker: dockerEnvelope })))
+    expect(cardStatus(serviceItem, service({ docker: { container: "app" } }), KINDS, envelopes({ docker: dockerEnvelope })))
       .toBe("unreachable");
   });
 
   test("a binding whose provider is not polled (absent from the envelopes) is unreachable", () => {
-    expect(deriveCardStatus(serviceItem, service({ docker: { container: "app" } }), KINDS, none)).toBe("unreachable");
+    expect(cardStatus(serviceItem, service({ docker: { container: "app" } }), KINDS, none)).toBe("unreachable");
   });
 
   test("reachable data with a missing explicit key is not-found, not unreachable", () => {
-    expect(deriveCardStatus(serviceItem, service({ docker: { container: "missing" } }), KINDS, envelopes({
+    expect(cardStatus(serviceItem, service({ docker: { container: "missing" } }), KINDS, envelopes({
       docker: docker({ containers: [] }),
     }))).toBe("not-found");
   });
 
   test("matches a container by binding.container rather than the service name", () => {
-    expect(deriveCardStatus(serviceItem, service({ docker: { container: "actual-container" } }), KINDS, envelopes({
+    expect(cardStatus(serviceItem, service({ docker: { container: "actual-container" } }), KINDS, envelopes({
       docker: docker({ containers: [{
         name: "actual-container", state: "running", health: "healthy", status: "Up",
       }] }),
@@ -186,13 +223,13 @@ describe("deriveCardStatus precedence", () => {
   });
 
   test("matches a gatus endpoint by binding.endpoint", () => {
-    expect(deriveCardStatus(serviceItem, service({ gatus: { endpoint: "explicit-key" } }), KINDS, envelopes({
+    expect(cardStatus(serviceItem, service({ gatus: { endpoint: "explicit-key" } }), KINDS, envelopes({
       gatus: gatus({ endpoints: [{ key: "explicit-key", up: false, latencyMs: 25 }] }),
     }))).toBe("bound-down");
   });
 
   test("both bindings consult docker only", () => {
-    expect(deriveCardStatus(serviceItem, service({
+    expect(cardStatus(serviceItem, service({
       docker: { container: "missing" },
       gatus: { endpoint: "up" },
     }), KINDS, envelopes({
@@ -206,7 +243,7 @@ describe("deriveCardStatus precedence", () => {
     [{ up: false, status: 503, latencyMs: 3 }, "bound-down"],
   ] as const)("an http-health binding (any statusCapable kind, W6) reads its own provider: %j is %s", (data, expected) => {
     const bound = service({ "http-health": { url: "https://x.test/health" } });
-    expect(deriveCardStatus(serviceItem, bound, KINDS, envelopes({ "http-health:service:host:service": envelope(data) }))).toBe(expected);
+    expect(cardStatus(serviceItem, bound, KINDS, envelopes({ "http-health:service:host:service": envelope(data) }))).toBe(expected);
   });
 
   test("a kind declared only in the manifest drives card status with no web code", () => {
@@ -218,9 +255,9 @@ describe("deriveCardStatus precedence", () => {
     };
     const bound = service({ ups: { outlet: 3 } });
     const data = { outlets: [{ id: 3, power: { on: "on" } }, { id: 4, power: { on: false } }] };
-    expect(deriveCardStatus(serviceItem, bound, [ups], envelopes({ ups: envelope(data) }))).toBe("bound-up");
-    expect(deriveCardStatus(serviceItem, service({ ups: { outlet: 4 } }), [ups], envelopes({ ups: envelope(data) }))).toBe("bound-down");
-    expect(deriveCardStatus(serviceItem, service({ ups: { outlet: 5 } }), [ups], envelopes({ ups: envelope(data) }))).toBe("not-found");
+    expect(cardStatus(serviceItem, bound, [ups], envelopes({ ups: envelope(data) }))).toBe("bound-up");
+    expect(cardStatus(serviceItem, service({ ups: { outlet: 4 } }), [ups], envelopes({ ups: envelope(data) }))).toBe("bound-down");
+    expect(cardStatus(serviceItem, service({ ups: { outlet: 5 } }), [ups], envelopes({ ups: envelope(data) }))).toBe("not-found");
   });
 });
 
@@ -228,7 +265,7 @@ describe("domain mappings", () => {
   const states: ReadonlyArray<DockerContainer["state"]> = ["running", "exited", "paused", "restarting"];
   const healths: ReadonlyArray<DockerContainer["health"]> = ["healthy", "unhealthy", "starting", "none"];
   const containerStatus = (container: DockerContainer) =>
-    deriveCardStatus(serviceItem, service({ docker: { container: container.name } }), KINDS, envelopes({ docker: docker({ containers: [container] }) }));
+    cardStatus(serviceItem, service({ docker: { container: container.name } }), KINDS, envelopes({ docker: docker({ containers: [container] }) }));
 
   for (const state of states) {
     for (const health of healths) {
@@ -245,7 +282,7 @@ describe("domain mappings", () => {
     "gatus up=%s maps to %s",
     (up, expected) => {
       const bound = service({ gatus: { endpoint: "endpoint" } });
-      expect(deriveCardStatus(serviceItem, bound, KINDS, envelopes({ gatus: gatus({ endpoints: [{ key: "endpoint", up, latencyMs: null }] }) }))).toBe(expected);
+      expect(cardStatus(serviceItem, bound, KINDS, envelopes({ gatus: gatus({ endpoints: [{ key: "endpoint", up, latencyMs: null }] }) }))).toBe(expected);
     },
   );
 });

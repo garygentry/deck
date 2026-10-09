@@ -206,7 +206,7 @@ describe("module kind handlers: env scope", () => {
     vi.stubGlobal("fetch", fetchStub);
     try {
       const hostEnv = { FIRST_TOKEN: "Bearer first", SECOND_TOKEN: "Bearer second" };
-      const { plan: entries, usable: modules } = planModules({ modules: BUILTIN_MODULES, sectionOf: () => undefined, env: hostEnv });
+      const { plan: entries, usable: modules } = planModules({ modules: BUILTIN_MODULES, builtins: new Set(BUILTIN_MODULES), sectionOf: () => undefined, env: hostEnv });
       const docker = kindRuntimes(entries.filter((e) => e.enabled).map((e) => modules.get(e.id)!), hostEnv).get("docker")!;
       const offers = docker.handler.instances!(docker.issueInstances([
         { id: "one", kind: "docker", title: "One", baseUrl: "http://one", credentialEnv: "FIRST_TOKEN" },
@@ -233,7 +233,7 @@ describe("module kind handlers: env scope", () => {
       } as Partial<DeckConfig>);
       const hostEnv = { DECK_DATA_DIR: "kernel-secret", GATUS_TOKEN: "Bearer gatus", DOCKER_TOKEN: "Bearer docker" };
       const plan = (_doc: DeckConfig) => {
-        const { plan: entries, usable: modules } = planModules({ modules: BUILTIN_MODULES, sectionOf: () => undefined, env: hostEnv });
+        const { plan: entries, usable: modules } = planModules({ modules: BUILTIN_MODULES, builtins: new Set(BUILTIN_MODULES), sectionOf: () => undefined, env: hostEnv });
         return kindRuntimes(entries.filter((e) => e.enabled).map((e) => modules.get(e.id)!), hostEnv);
       };
       registerAllProviders(config, plan(config));

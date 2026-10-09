@@ -7,11 +7,11 @@ import { describe, expect, it } from "vitest";
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { composeModules } from "../src/modules/config.js";
 import { moduleKindsProblem } from "../src/modules/host.js";
-import { deriveProjections } from "../src/ui/config-pages.js";
+import { configPagesOf, deriveProjections } from "../src/ui/config-pages.js";
 import { KERNEL_FEATURES } from "../src/ui/kernel-features.js";
 import { resolveUiManifest } from "../src/ui/resolve.js";
 import { uiContributionProblem } from "../src/ui/validate.js";
-import { testModule } from "./util/modules.js";
+import { testHost, testModule } from "./util/modules.js";
 
 /** The built-ins, each on unless named off, with the given overrides. */
 const resolveBuiltins = (options: { off?: readonly string[]; overrides?: Record<string, unknown> } = {}): UiManifest =>
@@ -120,8 +120,27 @@ describe("a module page's layout in its manifest", () => {
     ["a widget id used twice", { sections: [{ widgets: [{ id: "a", type: "board/tile" }] }, { widgets: [{ id: "a", type: "core/json" }] }] }, /used twice/],
     ["another module's widget type", { sections: [{ widgets: [{ id: "a", type: "portal/groups" }] }] }, /own widget types or core's/],
     ["an own type it does not declare", { sections: [{ widgets: [{ id: "a", type: "board/other" }] }] }, /own widget types or core's/],
+    // Its widgets take `{}`: a type whose options are required cannot be placed (as on a config page).
+    ["a core type that requires options", { sections: [{ widgets: [{ id: "a", type: "core/table" }] }] }, /core\/table\): its type refuses the options \{\}/],
   ])("refuses %s", (_label, layout, problem) => {
     expect(uiContributionProblem(manifest(layout))).toMatch(problem);
+  });
+});
+
+describe("a module page's layout widget options", () => {
+  it("refuses an own type whose options schema refuses {}", () => {
+    const strict = {
+      id: "board",
+      version: "1",
+      deckApi: "^0.1",
+      contributes: {
+        widgetTypes: [{ type: "board/tile", optionsSchema: { type: "object", required: ["size"], properties: { size: { type: "number" } } } }],
+        pages: [{ id: "page:board/main", path: "/board", title: "Board", component: "Board", layout: { sections: [{ widgets: [{ id: "a", type: "board/tile" }] }] } }],
+      },
+    } as ModuleManifest;
+    expect(uiContributionProblem(strict)).toMatch(/board\/tile\): its type refuses the options \{\} \(\/ must have required property 'size'\)/);
+    const { host } = testHost([testModule(strict)]);
+    expect(host.plan).toContainEqual(expect.objectContaining({ id: "board", enabled: false, reason: expect.stringContaining("refuses the options") }));
   });
 });
 
@@ -161,6 +180,22 @@ describe("status kinds", () => {
     expect(kindsProblem(decl as Partial<ProviderKindDecl>)).toMatch(problem);
   });
 
+  it("reports a bindable, status-capable kind that declares no status", () => {
+    const quiet = testModule({ id: "ups", providerKinds: [{ kind: "ups", bindable: true, statusCapable: true }] });
+    const manifest = resolveUiManifest({ modules: [{ manifest: quiet.manifest, enabled: true }], kernelFeatures: KERNEL_FEATURES });
+    expect(manifest.findings).toContainEqual(expect.objectContaining({ code: "UI_STATUS_UNDECLARED", severity: "warning", message: expect.stringContaining('"ups"') }));
+    expect(manifest).not.toHaveProperty("statusKinds");
+    expect(resolveBuiltins().findings.filter(({ code }) => code === "UI_STATUS_UNDECLARED")).toEqual([]);
+  });
+
+  it("refuses a status reading a fixed provider from a module that is not built in", () => {
+    const fixed = { ...withKind({ fixedId: "ups", status: { provider: "fixed", up: UP } }), kinds: bindingHandler };
+    const { host } = testHost([fixed]);
+    expect(host.plan).toContainEqual(expect.objectContaining({ id: "ups", enabled: false, reason: expect.stringContaining('"fixed" is reserved for built-in modules') }));
+    const own = { ...withKind({ status: { provider: "binding", up: UP } }), kinds: bindingHandler };
+    expect(testHost([own]).host.plan).toContainEqual(expect.objectContaining({ id: "ups", enabled: true }));
+  });
+
   it("disables a module whose kind declares a bad status, never failing boot", () => {
     const bad = { ...withKind({ fixedId: "ups", status: { provider: "fixed", up: [] } as never }), kinds: bindingHandler };
     const { invalid } = composeModules([...BUILTIN_MODULES, bad], { sectionOf: () => undefined, env: {} });
@@ -174,6 +209,33 @@ describe("portal/groups on a config page", () => {
     schemaVersion: 2,
     estate: { name: "x" },
     ui: { pages: [{ id: "media", path: "/media", title: "Media", sections: [{ title: "Apps", widgets: [{ type: "portal/groups", options }] }] }] },
+  });
+
+  it("reports each group id its groups option names that the portal does not have", () => {
+    const resolved = resolveUiManifest({
+      modules: BUILTIN_MODULES.map((module) => ({ manifest: module.manifest, enabled: true, builtin: true })),
+      kernelFeatures: KERNEL_FEATURES,
+      configPages: configPagesOf(document({ groups: ["media", "gone", "infra"] })),
+      moduleSections: { portal: { groups: [{ id: "media", title: "Media", items: [] }, { id: "infra", title: "Infra", items: [] }] } },
+    });
+    expect(resolved.findings).toEqual([
+      expect.objectContaining({ code: "UI_WIDGET_OPTION_UNKNOWN", severity: "warning", id: "widget:ui/media.s1w1", message: expect.stringContaining('groups names "gone"') }),
+    ]);
+    const fine = resolveUiManifest({
+      modules: BUILTIN_MODULES.map((module) => ({ manifest: module.manifest, enabled: true, builtin: true })),
+      kernelFeatures: KERNEL_FEATURES,
+      configPages: configPagesOf(document({})),
+      moduleSections: {},
+    });
+    expect(fine.findings).toEqual([]);
+  });
+
+  it("checks a widget type's references in its manifest", () => {
+    const bad = (references: unknown) =>
+      uiContributionProblem({ id: "gauges", version: "1", deckApi: "^0.1", contributes: { widgetTypes: [{ type: "gauges/dial", optionsSchema: {}, references } as never] } });
+    expect(bad([{ option: "groups", list: "groups", key: "id" }])).toBeNull();
+    expect(bad([{ option: "groups" }])).toMatch(/references must be a list of \{ option, list, key \}/);
+    expect(bad({ option: "groups", list: "groups", key: "id" })).toMatch(/references/);
   });
 
   it("validates its options against the portal's schema", () => {

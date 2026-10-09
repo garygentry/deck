@@ -203,10 +203,12 @@ then one `portal/groups` widget (`widget:portal/overview.groups`) showing every 
 `ui.extensions` can switch that widget off by id; a config page can place `portal/groups`, with
 a `groups` option to show only some groups (see `ui.pages` under [ui](#ui)).
 
-A service card's status comes from the service's first binding, by kind name, of a kind whose
-module declares how its data gives a status: `docker` (the container is running, and healthy or
-without a health check), `gatus` (the endpoint is up) and `http-health` (the probe answered 2xx
-or 3xx). A service with none of these is a plain link card.
+A service card's status comes from the service's first binding of a kind whose module declares
+how its data gives a status, and whose provider is registered: the built-in kinds first, in the
+order `docker` (the container is running, and healthy or without a health check), `gatus` (the
+endpoint is up), `http-health` (the probe answered 2xx or 3xx), then other modules' kinds by
+name. A service with none of these is a plain link card. A card whose provider has not answered
+yet says "Checking"; the rest of the portal renders meanwhile.
 
 ### Group
 
@@ -561,7 +563,7 @@ Modules add their own types. The portal's:
 
 | Type | Shows | Options |
 | --- | --- | --- |
-| `portal/groups` | The portal's groups of cards, with its search and its status and group filters. Reads no source: it reads `modules.portal.groups` and the cards' providers. | `groups`: the top-level group ids to show, in that order (1–64, unique); default every group, in the portal's order. An id no group has is skipped. |
+| `portal/groups` | The portal's groups of cards, with its search and its status and group filters. Reads no source: it reads `modules.portal.groups` and the cards' providers. | `groups`: the top-level group ids to show, in that order (1–64, unique); default every group, in the portal's order. An id no group has is skipped and reported in `GET /api/ui` (`UI_WIDGET_OPTION_UNKNOWN`). |
 
 - A **field** (`field`, `titleField`, …) is a key of an item, or keys joined by dots
   (`load.avg`). It is never a query: shape the data with the widget's `select`, such as

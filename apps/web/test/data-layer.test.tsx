@@ -241,6 +241,65 @@ describe("portal data (W9)", () => {
     expect(counts()).toEqual([1, 2, 2, 2]);
   });
 
+  it("polls only the shown groups' visible services; a slow provider blocks only its own cards", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+    const config = {
+      ...PORTAL_CONFIG,
+      hosts: [...PORTAL_CONFIG.hosts, { name: "attic", kind: "bare-metal", purpose: "Hidden host", hidden: true }],
+      services: [
+        ...PORTAL_CONFIG.services,
+        { name: "secret", host: "atlas", kind: "container", purpose: "Hidden", hidden: true, bindings: { "http-health": { url: "https://s.test" } } },
+        { name: "up-there", host: "attic", kind: "container", purpose: "On a hidden host", bindings: { "http-health": { url: "https://u.test" } } },
+      ],
+      modules: { portal: { groups: [
+        ...PORTAL_CONFIG.modules.portal.groups,
+        { id: "other", title: "Other", items: [
+          { type: "service", host: "atlas", name: "idle" },
+          { type: "service", host: "atlas", name: "secret" },
+          { type: "service", host: "attic", name: "up-there" },
+        ] },
+      ] } },
+    };
+    const ids = ["docker", "gatus", SITE, "http-health:service:atlas:idle", "http-health:service:atlas:secret", "http-health:service:attic:up-there"];
+    const calls = stubFetch({
+      "/api/ui": json({ ...manifest(ids.map((id) => ({ id, kind: id.startsWith("http") ? "http-health" : id }))), statusKinds: BUILTIN_STATUS_KINDS }),
+      "/api/config": json(config),
+      "/api/providers/docker": json(envelope("docker")),
+      // gatus never answers: only its card waits.
+      "/api/providers/gatus": () => new Promise<Response>(() => {}),
+      [`/api/providers/${encodeURIComponent(SITE)}`]: json(envelope(SITE)),
+      "/api/providers/http-health%3Aservice%3Aatlas%3Aidle": json(envelope("idle")),
+    });
+    const seen: string[] = [];
+    function Reader({ groups }: { groups?: readonly string[] }) {
+      const data = usePortalData(groups);
+      const text = data.loading ? "loading" : `ready pending=${[...data.pending].join(",")} read=${[...data.envelopes.keys()].join(",")}`;
+      seen.push(text);
+      return <p>{text}</p>;
+    }
+    const all = ["all"];
+    const { rerender } = render(<Reader groups={all} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText(`ready pending=gatus read=docker,gatus,${SITE}`)).toBeTruthy();
+    // The other group's providers, and hidden services' anywhere, are never asked for.
+    expect(calls("/api/providers/http-health%3Aservice%3Aatlas%3Aidle")).toBe(0);
+    expect(calls("/api/providers/http-health%3Aservice%3Aatlas%3Asecret")).toBe(0);
+    expect(calls("/api/providers/http-health%3Aservice%3Aattic%3Aup-there")).toBe(0);
+
+    // Showing another group after load asks for its providers without a skeleton.
+    const loadingBefore = seen.filter((text) => text === "loading").length;
+    rerender(<Reader groups={["all", "other"]} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(seen.filter((text) => text === "loading").length).toBe(loadingBefore);
+    expect(screen.getByText(`ready pending=gatus read=docker,gatus,http-health:service:atlas:idle,${SITE}`)).toBeTruthy();
+    expect(calls("/api/providers/http-health%3Aservice%3Aatlas%3Aidle")).toBe(1);
+    expect(calls("/api/providers/http-health%3Aservice%3Aatlas%3Asecret")).toBe(0);
+  });
+
   it("falls back to the built-in status kinds when the UI manifest cannot be read", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
     const calls = stubFetch({

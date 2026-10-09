@@ -21,6 +21,7 @@ import "../src/features/portal/index.js";
 import { App } from "../src/shell/App.js";
 import { PortalPage } from "../src/features/portal/PortalPage.js";
 import { ConfigPage } from "../src/shell/config-page/ConfigPage.js";
+import { declaredLayout } from "../src/shell/config-page/layout.js";
 import {
   orderedGroups,
   orderedItems,
@@ -155,6 +156,8 @@ function loaded(overrides: Partial<PortalData> = {}): PortalData {
   return {
     config,
     statusKinds: BUILTIN_STATUS_KINDS,
+    registered: null,
+    pending: new Set(),
     envelopes: new Map<string, ProviderEnvelope | null>([["docker", docker], ["gatus", gatus]]),
     loading: false,
     ...overrides,
@@ -259,7 +262,7 @@ describe("portal registration and assembled page", () => {
   });
 
   it("shows a loading state until the first config arrives", () => {
-    portalData = { config: null, statusKinds: [], envelopes: new Map(), loading: true };
+    portalData = { config: null, statusKinds: [], registered: null, envelopes: new Map(), pending: new Set(), loading: true };
     render(<PortalPage />);
     expect(screen.getByRole("status", { name: "Loading the portal…" })).toHaveAttribute("aria-busy", "true");
     expect(screen.queryByText("No groups configured.")).not.toBeInTheDocument();
@@ -267,14 +270,16 @@ describe("portal registration and assembled page", () => {
 });
 
 describe("card affordances and targets", () => {
-  it("renders all six distinct icon-and-text states, each with a tone", () => {
-    portalData = loaded();
+  it("renders all seven distinct icon-and-text states, each with a tone", () => {
+    portalData = loaded({ pending: new Set(["pending-probe"]) });
     render(<PortalPage />);
     const entries = Object.values(CARD_STATUS);
-    expect(new Set(entries.map((value) => value.icon))).toHaveLength(6);
-    expect(new Set(entries.map((value) => value.label))).toHaveLength(6);
+    expect(new Set(entries.map((value) => value.icon))).toHaveLength(7);
+    expect(new Set(entries.map((value) => value.label))).toHaveLength(7);
     expect(CARD_STATUS["not-found"]).not.toEqual(CARD_STATUS["broken-reference"]);
-    const page = screen.getByTestId("portal");
+    // A pending card shows only before its provider first answers; the fixture's have answered.
+    render(<PortalCard vm={{ item: { type: "service", host: "atlas", name: "probe" }, status: "pending", freshness: { ...fresh, state: "pending" } }} />);
+    const page = document.body;
     for (const { label, tone } of entries) {
       const badge = within(page).getAllByText(label, { selector: '[data-slot="status-badge"] > span' })[0]!;
       expect(badge.parentElement).toHaveAttribute("data-tone", tone);
@@ -494,14 +499,51 @@ describe("portal as a dashboard", () => {
     portalData = loaded();
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
     render(<ConfigPage page={dashboard(groupsWidget({ groups: ["z-last", "a-first", "no-such-group"] }))} />);
+    // The outline nests: section h2, the widget's card h3, its groups h4 and their subgroups h5.
+    expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Apps"]);
     expect(screen.getByRole("heading", { level: 3, name: "Apps" })).toBeInTheDocument();
-    expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Apps", "Last group", "First group"]);
+    expect(screen.getAllByRole("heading", { level: 4 }).map((heading) => heading.textContent)).toEqual(["Last group", "First group"]);
+    expect(screen.getAllByRole("heading", { level: 5 }).map((heading) => heading.textContent)).toEqual(["Early subgroup"]);
     expect(cardTitles()).toEqual(["Always visible link", "Subgroup Z", "Subgroup A", "Direct item"]);
     const group = screen.getByRole("toolbar", { name: "Group" });
     expect(within(group).getAllByRole("button").map((button) => button.textContent)).toEqual(
       expect.arrayContaining([expect.stringMatching(/^Last group/), expect.stringMatching(/^First group/)]),
     );
     expect(within(group).queryByRole("button", { name: /^Second group/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps the portal page's group anchors, and namespaces ids per widget on a dashboard", () => {
+    portalData = loaded();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    const { unmount } = render(<PortalPage />);
+    expect(document.getElementById("group-a-first")).not.toBeNull();
+    expect(document.getElementById("subgroup-early-subgroup")).not.toBeNull();
+    unmount();
+
+    const page = dashboard(groupsWidget());
+    const second = { ...groupsWidget({ groups: ["a-first"] }), id: "widget:ui/media.second" as const };
+    const twice: UiPage = { ...page, layout: { sections: [{ title: "Apps", columns: 2, widgets: [groupsWidget(), second] }] } };
+    render(<ConfigPage page={twice} />);
+    const ids = [...document.querySelectorAll("[id]")].map((element) => element.id);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(document.getElementById("group-a-first")).toBeNull();
+  });
+
+  it("falls back to the declared layout when the manifest's portal layout is malformed", () => {
+    portalData = loaded();
+    getQueryClient().setQueryData(queryKeys.uiManifest, {
+      ...manifestPlacing([]),
+      pages: [{ ...PORTAL_UI.contributes!.pages![0]!, module: "portal", layout: { sections: [{ widgets: "nope" }, null] } }],
+    });
+    render(<PortalPage />);
+    expect(screen.getByRole("search", { name: "Portal filters" })).toBeInTheDocument();
+    expect(cardTitles()).toHaveLength(10);
+  });
+
+  it("builds the declared layout once per page, so a widget's boundary is not reset every render", () => {
+    const page = PORTAL_UI.contributes!.pages![0]!;
+    expect(declaredLayout(page)).toBe(declaredLayout(page));
   });
 
   it("says so when none of its groups are configured", () => {

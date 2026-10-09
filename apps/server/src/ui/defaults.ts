@@ -1,4 +1,4 @@
-import type { UiNavGroup } from "@deck/module-sdk";
+import type { StatusMapData, UiNavGroup } from "@deck/module-sdk";
 
 /** The brand title when the estate has no name. */
 export const DEFAULT_BRAND_TITLE = "Deck";
@@ -20,6 +20,8 @@ export interface UiDefaults {
     /** `ui.nav.items`: the link entries and separators the config adds. */
     items?: readonly UiNavItemConfig[];
   };
+  /** `ui.statusMaps`: named maps from widget values to tones, published as the manifest's. */
+  statusMaps?: Readonly<Record<string, StatusMapData>>;
 }
 
 /** One `ui.nav.groups` entry. */

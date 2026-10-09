@@ -482,7 +482,47 @@
   ],
   "widgetTypes": [
     {
+      "type": "core/health-pills",
+      "module": "core"
+    },
+    {
       "type": "core/json",
+      "module": "core"
+    },
+    {
+      "type": "core/key-value",
+      "module": "core"
+    },
+    {
+      "type": "core/link-tiles",
+      "module": "core"
+    },
+    {
+      "type": "core/list",
+      "module": "core"
+    },
+    {
+      "type": "core/markdown",
+      "module": "core"
+    },
+    {
+      "type": "core/meter",
+      "module": "core"
+    },
+    {
+      "type": "core/stat",
+      "module": "core"
+    },
+    {
+      "type": "core/stat-grid",
+      "module": "core"
+    },
+    {
+      "type": "core/status-grid",
+      "module": "core"
+    },
+    {
+      "type": "core/table",
       "module": "core"
     }
   ],

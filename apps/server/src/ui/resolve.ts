@@ -4,6 +4,9 @@ import type {
   ModuleManifest,
   NavDecl,
   PageDecl,
+  StatusMapData,
+  StatusRule,
+  Tone,
   UiExtension,
   UiFinding,
   UiManifest,
@@ -26,6 +29,7 @@ import {
   entitySectionProblem,
   homePathProblem,
   isExternalHref,
+  isTone,
   NAV_GROUP_ID_PATTERN,
   pagePathProblem,
   UI_CONFIG_MODULE,
@@ -477,8 +481,21 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
       .map(({ id, kind }) => ({ id, kind }))
       .sort((a, b) => compareIds(a.id, b.id)),
     widgetTypes: [...widgetTypes.values()].sort((a, b) => compareIds(a.type, b.type)),
+    ...(ui.statusMaps === undefined || Object.keys(ui.statusMaps).length === 0 ? {} : { statusMaps: copyStatusMaps(ui.statusMaps) }),
     findings,
   };
+}
+
+/** The status maps, copied (the manifest is served as is), by name. */
+function copyStatusMaps(maps: Readonly<Record<string, StatusMapData>>): Record<string, StatusMapData> {
+  return Object.fromEntries(
+    Object.keys(maps)
+      .sort(compareIds)
+      .map((name) => {
+        const { values, rules } = maps[name]!;
+        return [name, { ...(values === undefined ? {} : { values: { ...values } }), ...(rules === undefined ? {} : { rules: rules.map((rule) => ({ ...rule })) }) }];
+      }),
+  );
 }
 
 /**
@@ -712,7 +729,7 @@ export function estateNameOf(config: unknown): string | undefined {
  * dropped anyway rather than trusted (an entry missing what it needs is dropped whole).
  */
 export function uiConfigOf(config: unknown): UiDefaults {
-  const ui = (config as { ui?: { brand?: unknown; home?: unknown; nav?: unknown } } | null)?.ui;
+  const ui = (config as { ui?: { brand?: unknown; home?: unknown; nav?: unknown; statusMaps?: unknown } } | null)?.ui;
   const brand = isRecord(ui?.brand) ? ui.brand : {};
   const picked = { title: text(brand.title), icon: text(brand.icon), logoUrl: text(brand.logoUrl) };
   const home = text(ui?.home);
@@ -734,9 +751,11 @@ export function uiConfigOf(config: unknown): UiDefaults {
     if (label === undefined || href === undefined || !isExternalHref(href)) return [];
     return [defined({ id, group, label, href, icon: text(item.icon), order })];
   });
+  const statusMaps = statusMapsOf(ui?.statusMaps);
   return {
     ...DEFAULT_UI,
     brand: defined(picked),
+    ...(statusMaps === undefined ? {} : { statusMaps }),
     ...(home === undefined ? {} : { home }),
     nav: {
       ...DEFAULT_UI.nav,
@@ -744,6 +763,43 @@ export function uiConfigOf(config: unknown): UiDefaults {
       ...(items.length === 0 ? {} : { items }),
     },
   };
+}
+
+const STATUS_MAP_NAME = /^[a-z0-9][a-z0-9-]*$/;
+const RULE_BOUNDS = ["lt", "lte", "gt", "gte"] as const;
+
+/**
+ * `ui.statusMaps`, read leniently: a map whose name is malformed is dropped, and so are a
+ * value whose tone is not one, and a rule with an unknown tone or a malformed condition (config
+ * validation refuses all of these). `undefined` when no map remains.
+ */
+function statusMapsOf(value: unknown): Record<string, StatusMapData> | undefined {
+  if (!isRecord(value)) return undefined;
+  const maps: Record<string, StatusMapData> = {};
+  for (const [name, map] of Object.entries(value)) {
+    if (!STATUS_MAP_NAME.test(name) || !isRecord(map)) continue;
+    const values = isRecord(map.values)
+      ? Object.fromEntries(Object.entries(map.values).filter((entry): entry is [string, Tone] => isTone(entry[1])))
+      : undefined;
+    const rules = records(map.rules).flatMap((rule): StatusRule[] => {
+      if (!isTone(rule.tone)) return [];
+      const kept: StatusRule = { tone: rule.tone };
+      for (const bound of RULE_BOUNDS) {
+        const limit = rule[bound];
+        if (limit === undefined) continue;
+        if (typeof limit !== "number" || !Number.isFinite(limit)) return [];
+        kept[bound] = limit;
+      }
+      if (rule.eq !== undefined) {
+        if (!["string", "number", "boolean"].includes(typeof rule.eq)) return [];
+        kept.eq = rule.eq as StatusRule["eq"];
+      }
+      return [kept];
+    });
+    // The name pattern keeps out `__proto__` and its kin, so this is always an own entry.
+    maps[name] = { ...(values === undefined ? {} : { values }), ...(rules.length === 0 ? {} : { rules }) };
+  }
+  return Object.keys(maps).length === 0 ? undefined : maps;
 }
 
 function text(value: unknown): string | undefined {

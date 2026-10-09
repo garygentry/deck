@@ -23,6 +23,12 @@
       "name": "Engine maintainer",
       "description": "Works on deck's own code — the schema, server, providers, drift engine, and web app. Needs the architecture spine and the internal HTTP contract.",
       "expertise": "expert"
+    },
+    {
+      "id": "module-author",
+      "name": "Module author",
+      "description": "Extends deck beyond config: writes a sidecar in any language, a module built into deck, or a runtime module loaded from DECK_MODULES_DIR. Comfortable with HTTP/JSON, and for in-process modules with TypeScript and React; not necessarily a deck maintainer.",
+      "expertise": "intermediate"
     }
   ],
   "sources": [
@@ -50,6 +56,13 @@
     { "id": "s-examples", "path": "examples/estate/**, examples/compose.yaml", "type": "config", "note": "Worked estate: 00-base + 10-overlay YAML, configs/, docs/, snapshot.template.json; reference docker-compose mounting ./estate:/config:ro." },
     { "id": "s-docker", "path": "Dockerfile, docker/entrypoint.sh, .dockerignore", "type": "ci", "note": "Multi-stage build (node:22 builder → oven/bun runtime), single Bun process serves web+API, container defaults (/config, :8080), HEALTHCHECK on /api/health, snapshot templating at boot." },
     { "id": "s-ci", "path": ".github/workflows/ci.yml", "type": "ci", "note": "Jobs: node-pnpm (typecheck+unit), web-e2e (sharded Playwright), bun-parity (vitest under Bun), gates (golden render, boot smoke)." },
+    { "id": "s-module-sdk", "path": "packages/module-sdk/src/{manifest,server,web,ui,ui-rules,version}.ts, packages/module-sdk/README.md", "type": "api", "note": "The module contract: ModuleManifest (identity, enabledBy, env, config, providerKinds, services, contributes, health, dataDir), the ServerModuleContext services, defineServerModule/defineWebModule, the UI id/slot/path rules and DECK_API_VERSION 0.1.0." },
+    { "id": "s-module-host", "path": "apps/server/src/modules/**, apps/server/src/server/boot.ts, scripts/kernel-touch.ts, apps/server/test/kernel-names.test.ts", "type": "api", "note": "Module host: runtime module loading, config composition, planning (enable, order, refuse), init with an injected context, route mounting; BUILTIN_MODULES (19 built-ins); KERNEL_PATHS and the no-feature-names guard." },
+    { "id": "s-compose", "path": "packages/schema/src/compose/**", "type": "schema", "note": "composeConfig: the kernel schema plus module sections, per-kind instance schemas, ownership, identity, unique, references and finding codes; deck validate composes the same way." },
+    { "id": "s-ui-manifest", "path": "apps/server/src/ui/**, packages/contract/src/modules/**, apps/server/test/golden/ui/**", "type": "api", "note": "UI manifest resolution (GET /api/ui): extension tree, ui config overrides, config pages, widget types, status maps, hot reload (live.ts), sidecar pages; built-ins' shared UI contributions and the core slots and widget types." },
+    { "id": "s-web-modules", "path": "apps/web/src/{registry,runtime,sdk,data}/**, apps/web/src/shell/config-page/**, apps/web/src/features/core-widgets/**", "type": "entrypoint", "note": "Web half registration (registerWebModule), runtime web halves over the import map, @deck/sdk, the TanStack Query data layer, config pages and the core widget renderers." },
+    { "id": "s-extension-examples", "path": "examples/modules/**, examples/sidecars/**, examples/dashboard/**, packages/sdk/**", "type": "config", "note": "The runtime module template (hello) and example (maintenance), the NUT UPS sidecar, the no-code dashboard overlay, and the @deck/sdk build-time package (types, Tailwind preset, deck-module lint)." },
+    { "id": "s-remote", "path": "apps/server/src/providers/remote/**, packages/schema/schema/remote-describe.schema.json", "type": "api", "note": "The remote provider protocol v1: data and describe endpoints, describe validation (widget allowlist, bounds, link and markdown policy), sidecar pages and findings." },
     { "id": "s-charter", "path": "specs/deck/charter/01-decisions.md, specs/deck/**/.rauf/forge-decisions.json", "type": "history", "note": "Design decisions recorded during the forge pipeline — the why behind runtime, config layering, and the two-document model. Provenance for proposed ADRs; not user docs." }
   ],
   "documents": [
@@ -540,15 +553,185 @@
       "status": "drafted",
       "priority": 3,
       "verification": "Stack observable in apps/web/package.json and apps/web/src/ui; consequences checked against the bundle build and CI."
+    },
+    {
+      "id": "h9",
+      "title": "Build a dashboard without code",
+      "slug": "guides/build-a-dashboard",
+      "family": "diataxis",
+      "type": "how-to",
+      "audience": ["operator"],
+      "purpose": "Build a dashboard page from config alone: an http-json integration, ui.pages sections of core widgets, select, status maps, embeds and the portal as a widget.",
+      "sourceRefs": ["s-ui-manifest", "s-extension-examples"],
+      "status": "existing",
+      "priority": 2,
+      "verification": "Written against the ui schema, the http-json provider and examples/dashboard/20-dashboard.yaml."
+    },
+    {
+      "id": "h10",
+      "title": "Customise the UI",
+      "slug": "guides/customise-the-ui",
+      "family": "diataxis",
+      "type": "how-to",
+      "audience": ["operator"],
+      "purpose": "Rename, re-theme and rearrange deck from the ui config section: brand, theme presets, home page, nav groups and links, and extension overrides by id, with hot reload.",
+      "sourceRefs": ["s-ui-manifest", "s-deck-schema"],
+      "status": "drafted",
+      "priority": 2,
+      "outline": [
+        { "heading": "Find the ids", "intent": "Read extension, page and nav ids from GET /api/ui; table of the built-ins'.", "sourceRefs": ["s-ui-manifest"] },
+        { "heading": "Name and mark it / Choose a theme / Choose the home page", "intent": "ui.brand, ui.theme presets (never colours), ui.home.", "sourceRefs": ["s-ui-manifest"] },
+        { "heading": "Arrange the sidebar", "intent": "ui.nav groups and items; moving a module's nav entry by override.", "sourceRefs": ["s-ui-manifest"] },
+        { "heading": "Hide or move what modules add", "intent": "ui.extensions overrides, replace semantics and their pitfalls.", "sourceRefs": ["s-ui-manifest"] },
+        { "heading": "Apply and check", "intent": "deck validate, hot reload, reload findings, troubleshooting.", "sourceRefs": ["s-ui-manifest", "s-cli"] }
+      ],
+      "verification": "Built-in ids taken from packages/contract/src/modules/*.ts; examples run against a dev server and checked in GET /api/ui and the browser."
+    },
+    {
+      "id": "h11",
+      "title": "Run a runtime module",
+      "slug": "guides/runtime-modules",
+      "family": "diataxis",
+      "type": "how-to",
+      "audience": ["operator", "module-author"],
+      "purpose": "Install, switch on, pin and troubleshoot a runtime module from DECK_MODULES_DIR, and build one from the hello template with the Tailwind preset and deck-module lint.",
+      "sourceRefs": ["s-module-host", "s-web-modules", "s-extension-examples"],
+      "status": "existing",
+      "priority": 3,
+      "verification": "Written against apps/server/src/modules/runtime.ts, apps/web/src/runtime and examples/modules."
+    },
+    {
+      "id": "h12",
+      "title": "Write a sidecar module",
+      "slug": "guides/write-a-sidecar-module",
+      "family": "diataxis",
+      "type": "how-to",
+      "audience": ["module-author"],
+      "purpose": "Write an out-of-process sidecar in any language that serves the remote provider protocol's data and describe endpoints, run it beside deck with a token, configure the remote integration and check it.",
+      "sourceRefs": ["s-remote", "s-extension-examples"],
+      "status": "drafted",
+      "priority": 3,
+      "outline": [
+        { "heading": "Serve the data / Describe the widgets", "intent": "The two endpoints, observedAt, the widget allowlist and the all-or-nothing describe check.", "sourceRefs": ["s-remote"] },
+        { "heading": "Write it", "intent": "A complete stdlib Python sidecar.", "sourceRefs": ["s-extension-examples"] },
+        { "heading": "Run it beside deck / Point deck at it", "intent": "Compose network, shared token, the remote integration and its page.", "sourceRefs": ["s-remote"] },
+        { "heading": "Check that it works", "intent": "Provider, health and REMOTE_* findings; troubleshooting.", "sourceRefs": ["s-remote"] }
+      ],
+      "verification": "The guide's sidecar was run against a dev server: provider data, health detail, page and widgets checked."
+    },
+    {
+      "id": "h13",
+      "title": "Write a module",
+      "slug": "guides/write-a-module",
+      "family": "diataxis",
+      "type": "how-to",
+      "audience": ["module-author", "maintainer"],
+      "purpose": "Add a built-in module to deck in its own modules/<id> package: shared UI data in @deck/contract, a server half with defineServerModule, a config section, a web half with registerWebModule, an optional provider kind, tests, goldens and the kernel-touch check.",
+      "sourceRefs": ["s-module-sdk", "s-module-host", "s-compose", "s-web-modules"],
+      "status": "drafted",
+      "priority": 3,
+      "verification": "Patterned on the co-located llm-usage module (modules/llm-usage) and the module SDK; every API named checked against packages/module-sdk/src."
+    },
+    {
+      "id": "r7",
+      "title": "Remote provider protocol (v1)",
+      "slug": "reference/remote-provider-protocol",
+      "family": "diataxis",
+      "type": "reference",
+      "audience": ["module-author", "operator"],
+      "purpose": "The remote integration's keys, the data and describe endpoints, describe validation and what deck does with a sidecar.",
+      "sourceRefs": ["s-remote"],
+      "status": "existing",
+      "priority": 3,
+      "verification": "Written against apps/server/src/providers/remote and remote-describe.schema.json."
+    },
+    {
+      "id": "r8",
+      "title": "Module manifest reference",
+      "slug": "reference/module-manifest",
+      "family": "diataxis",
+      "type": "reference",
+      "audience": ["module-author", "maintainer"],
+      "purpose": "Every key of ModuleManifest: identity, enabling, env, config, providerKinds, services, contributes (pages, nav, slots, extensions, widgetTypes, icons, routes), health and dataDir, with the rules the host applies.",
+      "sourceRefs": ["s-module-sdk", "s-module-host", "s-compose"],
+      "status": "drafted",
+      "priority": 2,
+      "verification": "Each key and rule checked against packages/module-sdk/src/manifest.ts, apps/server/src/modules/host.ts (manifestProblem, kindsProblem) and apps/server/src/ui/validate.ts (uiContributionProblem)."
+    },
+    {
+      "id": "r9",
+      "title": "Widget types reference",
+      "slug": "reference/widget-types",
+      "family": "diataxis",
+      "type": "reference",
+      "audience": ["operator", "module-author"],
+      "purpose": "Every widget type deck and its built-ins provide, their options, fields, formats, links and status maps, core/embed, the sidecar allowlist and WidgetProps.",
+      "sourceRefs": ["s-ui-manifest", "s-web-modules", "s-remote"],
+      "status": "drafted",
+      "priority": 2,
+      "verification": "Moved from the estate config reference's ui section; options checked against packages/contract/src/modules/widgets.ts and the sidecar allowlist against the remote reference."
+    },
+    {
+      "id": "e4",
+      "title": "Kernel and modules",
+      "slug": "explanation/kernel-and-modules",
+      "family": "diataxis",
+      "type": "explanation",
+      "audience": ["operator", "module-author", "maintainer"],
+      "purpose": "Explain the small kernel and the modules on one contract: what each part does, data-source vs feature modules, how modules start, how the UI is assembled, where modules live, and how to choose an extension tier.",
+      "sourceRefs": ["s-module-sdk", "s-module-host", "s-ui-manifest"],
+      "status": "drafted",
+      "priority": 2,
+      "verification": "Boot order checked against apps/server/src/server/boot.ts; module list against apps/server/src/modules/builtin.ts."
+    },
+    {
+      "id": "adr5",
+      "title": "ADR-005: One module contract for every feature, around a small kernel",
+      "slug": "architecture/decisions/adr-005-module-contract-and-kernel",
+      "family": "architecture",
+      "type": "adr",
+      "audience": ["maintainer"],
+      "purpose": "Record the module contract (declarative manifest, injected services, type-only imports), the kernel boundary, data-source vs feature modules, modules.<id> with the schemaVersion 2 cut, schema composition and co-location.",
+      "sourceRefs": ["s-module-sdk", "s-module-host", "s-compose"],
+      "status": "drafted",
+      "priority": 3,
+      "verification": "Derived from packages/module-sdk, apps/server/src/modules, scripts/kernel-touch.ts and the kernel-names test."
+    },
+    {
+      "id": "adr6",
+      "title": "ADR-006: Config-driven UI as one extension tree, resolved on the server",
+      "slug": "architecture/decisions/adr-006-config-driven-ui",
+      "family": "architecture",
+      "type": "adr",
+      "audience": ["maintainer"],
+      "purpose": "Record the extension tree, the server-resolved UI manifest, the overlay-owned ui section with replace-only overrides, named theme presets, the pages/sections/widgets model, typed widget descriptors with server-side select, the shared data layer and ui hot reload.",
+      "sourceRefs": ["s-ui-manifest", "s-web-modules"],
+      "status": "drafted",
+      "priority": 3,
+      "verification": "Derived from apps/server/src/ui, apps/web/src/{registry,data,shell}, and the /api/ui goldens."
+    },
+    {
+      "id": "adr7",
+      "title": "ADR-007: Graded extension tiers, with a trust model per tier",
+      "slug": "architecture/decisions/adr-007-extension-tiers-and-trust",
+      "family": "architecture",
+      "type": "adr",
+      "audience": ["maintainer", "operator"],
+      "purpose": "Record the five extension tiers (config, http-json, remote sidecar, in-repo module, runtime module), the declarative tiers' untrusted-input rules and the runtime tier's gates and full-trust model.",
+      "sourceRefs": ["s-remote", "s-module-host", "s-web-modules"],
+      "status": "drafted",
+      "priority": 3,
+      "verification": "Derived from the remote provider, the runtime module loader (server and web) and docs/security.md's trust tiers."
     }
   ],
   "grouping": [
     { "title": "Getting started", "documents": ["t1"] },
-    { "title": "How-to guides", "documents": ["h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8"] },
-    { "title": "Reference", "documents": ["r1", "r2", "r3", "r4", "r5", "r6"] },
-    { "title": "Explanation", "documents": ["e1", "e2", "e3"] },
+    { "title": "How-to guides", "documents": ["h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8", "h9", "h10"] },
+    { "title": "Extending deck", "documents": ["h12", "h13", "h11"] },
+    { "title": "Reference", "documents": ["r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9"] },
+    { "title": "Explanation", "documents": ["e1", "e2", "e3", "e4"] },
     { "title": "Architecture", "documents": ["c4-1", "bb1", "ax1", "ax2", "ax3", "ax4", "dep1"] },
-    { "title": "Decisions", "documents": ["adr1", "adr2", "adr3", "adr4"] }
+    { "title": "Decisions", "documents": ["adr1", "adr2", "adr3", "adr4", "adr5", "adr6", "adr7"] }
   ],
   "gaps": [
     { "note": "docs/initial-release-plan.md (~425 lines) is a release-planning artifact, not product documentation. It is intentionally excluded from the corpus (like specs/); do not fold it into a user-facing doc.", "affects": [] },

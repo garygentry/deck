@@ -59,9 +59,10 @@ bun apps/server/src/cli/deck.ts render   examples/estate --out rendered.json
 Documentation lives under [`docs/`](docs/), organized by reader need:
 
 - **Get started:** [`docs/get-started.md`](docs/get-started.md) — clone to a running deck on the example estate
-- **How-to guides:** [`docs/guides/`](docs/guides/) — configure your estate, connect monitoring, serve docs & configs, governed actions, produce a snapshot, deploy, private-repo sources, LLM plan usage, build a dashboard without code
-- **Reference:** [`docs/reference/`](docs/reference/) — estate config, snapshot contract, provider kinds, environment variables, CLI, HTTP API
-- **Explanation:** [`docs/explanation/`](docs/explanation/) — engine vs. estate, drift & coverage; plus [`docs/security.md`](docs/security.md) (access model)
+- **How-to guides:** [`docs/guides/`](docs/guides/) — configure your estate, connect monitoring, serve docs & configs, governed actions, produce a snapshot, deploy, private-repo sources, LLM plan usage, build a dashboard without code, customise the UI
+- **Extending deck:** write a [sidecar](docs/guides/write-a-sidecar-module.md), a [module](docs/guides/write-a-module.md) or a [runtime module](docs/guides/runtime-modules.md); start from [Kernel and modules](docs/explanation/kernel-and-modules.md) to choose
+- **Reference:** [`docs/reference/`](docs/reference/) — estate config, snapshot contract, provider kinds, environment variables, CLI, HTTP API, module manifest, widget types, remote provider protocol
+- **Explanation:** [`docs/explanation/`](docs/explanation/) — engine vs. estate, drift & coverage, kernel & modules; plus [`docs/security.md`](docs/security.md) (access model)
 - **Architecture:** [`docs/architecture/`](docs/architecture/) — context & containers, building blocks, deployment view, per-feature notes, and [decisions](docs/architecture/decisions/)
 - **Changelog:** [`CHANGELOG.md`](CHANGELOG.md) — release history
 

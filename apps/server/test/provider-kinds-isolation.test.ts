@@ -135,9 +135,13 @@ describe("kind handlers are isolated and attributed (L4)", () => {
       () => { initRan = true; },
       { kinds: { feed: { instances: () => { throw new Error("no instances today"); } } } },
     );
-    const { host } = testHost([flaky]);
+    const { host, lines } = testHost([flaky]);
     registerAllProviders(config, host.kindHandlers());
-    expect(host.findings[0]!.message).toBe('Module "flaky" was disabled: kind "feed": instances handler threw: no instances today.');
+    // What the module's code threw is not public: health and findings name the failure only.
+    expect(host.findings[0]!.message).toBe('Module "flaky" was disabled: kind "feed": instances handler threw.');
+    expect(JSON.stringify(host.health())).not.toContain("no instances today");
+    expect(JSON.stringify(host.plan)).not.toContain("no instances today");
+    expect(lines).toContainEqual(expect.objectContaining({ event: "module.disabled", module: "flaky", code: "MODULE_KIND_HANDLER_FAILED", detail: "no instances today" }));
     // The live plan drives later reads: the failed module's kinds are gone.
     expect(host.kindHandlers().has("feed")).toBe(false);
     await host.start();

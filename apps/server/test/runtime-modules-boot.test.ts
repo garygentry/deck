@@ -248,6 +248,33 @@ describe("a runtime module that fails to load", () => {
     expect(JSON.stringify(logLines)).toContain(SENTINEL);
   });
 
+  it("keeps what its kind handler threw out of /api/health and /api/ui, and in the log", async () => {
+    const SENTINEL = "sentinel-91c4-handler-secret";
+    const root = tempDir("deck-rtb-mods-");
+    const dir = join(root, "feeder");
+    mkdirSync(dir);
+    writeFileSync(join(dir, "deck-module.json"), JSON.stringify({
+      id: "feeder",
+      version: "1.0.0",
+      deckApi: "^0.1",
+      providerKinds: [{ kind: "feeder", instanceSchema: { type: "object" }, statusCapable: false }],
+    }));
+    writeFileSync(join(dir, "server.mjs"), [
+      `import manifest from "./deck-module.json" with { type: "json" };`,
+      `export default { manifest, init() {}, kinds: { feeder: { instances() { throw new Error("${SENTINEL} at " + import.meta.url); } } } };`,
+      "",
+    ].join("\n"));
+    modulesEnv(root);
+    const request = await bootOn(configDir({ integrations: [{ id: "feed-one", kind: "feeder", title: "Feed" }] }));
+    for (const path of ["/api/health", "/api/ui"]) {
+      const body = await (await request(path)).text();
+      expect(body, path).not.toContain(SENTINEL);
+      expect(body, path).not.toContain(root);
+    }
+    expect(JSON.stringify((await json<{ modules: Record<string, unknown> }>(request, "/api/health")).modules.feeder)).toContain("instances handler threw");
+    expect(logLines).toContainEqual(expect.objectContaining({ event: "module.disabled", module: "feeder", code: "MODULE_KIND_HANDLER_FAILED", detail: expect.stringContaining(SENTINEL) }));
+  });
+
   it("stops boot (exit 2) when a server entry never finishes loading, naming the module", async () => {
     modulesEnv(modulesWithBroken(`await new Promise(() => {});\nexport default {};\n`));
     const failed = await bootFails(configDir(), { runtimeImportTimeoutMs: 200 });

@@ -69,9 +69,16 @@ export interface ModuleFinding extends Finding {
  * routes) or a module route the kernel already serves. Unlike a defect local to one module,
  * which only disables that module, this fails boot.
  */
+/**
+ * Modules that cannot coexist (MODULE_MANIFEST_CONFLICT), or a built-in module whose own
+ * manifest or config contribution is unusable (MODULE_MANIFEST_INVALID): either fails boot.
+ */
 export class ModuleManifestError extends Error {
-  readonly code = "MODULE_MANIFEST_CONFLICT";
-  constructor(readonly moduleId: string, reason: string) {
+  constructor(
+    readonly moduleId: string,
+    reason: string,
+    readonly code: "MODULE_MANIFEST_CONFLICT" | "MODULE_MANIFEST_INVALID" = "MODULE_MANIFEST_CONFLICT",
+  ) {
     super(`module "${moduleId}": ${reason}`);
     this.name = "ModuleManifestError";
   }
@@ -233,8 +240,10 @@ export interface KindRuntime {
   /**
    * Report that a handler of this module failed: none of the module's offers are registered,
    * and the module is disabled with MODULE_KIND_HANDLER_FAILED (outside a host, this throws).
+   * `reason` is public (health, the UI manifest); `detail`, what the handler threw, goes to
+   * the log only.
    */
-  fail(reason: string): void;
+  fail(reason: string, detail?: string): void;
 }
 
 /** Top-level `/api/health` keys a module's `legacyKey` may not shadow. */
@@ -662,7 +671,8 @@ export type PlanOptions = Pick<
  * Plan modules from their manifests alone, running no module code: snapshot and validate
  * each manifest, check `deckApi`, evaluate `enabledBy`, order by `dependsOn`, and disable
  * (with a finding) any module whose manifest, API range, dependencies or dependency graph is
- * unusable. Throws {@link ModuleManifestError} for modules that cannot coexist. Config
+ * unusable. Throws {@link ModuleManifestError} for modules that cannot coexist, and for a
+ * built-in module with any such problem (a deck defect, never switched off quietly). Config
  * loading plans the same way (without kernel routes) so it validates only enabled modules.
  */
 export function planModules(options: PlanOptions): ModulePlanning {
@@ -698,6 +708,7 @@ export function planModules(options: PlanOptions): ModulePlanning {
     try {
       snapshots.push({ module, id, manifest: jsonSnapshot(module.manifest), builtin: options.builtins?.has(module) === true });
     } catch (cause) {
+      if (options.builtins?.has(module) === true) throw new ModuleManifestError(id, `built-in module has an invalid manifest: ${(cause as Error).message}`, "MODULE_MANIFEST_INVALID");
       refuse(id, "MODULE_MANIFEST_INVALID", `Module "${id}" has an invalid manifest: ${(cause as Error).message}.`);
     }
   }
@@ -730,6 +741,9 @@ export function planModules(options: PlanOptions): ModulePlanning {
       ?? options.manifestProblems?.get(id)
       ?? kernelCollision(manifest, options.kernelRoutes ?? [], reservedRootPaths);
     if (problem !== null) {
+      // A built-in's manifest and config contribution (its schemas compiled, say) ship with deck:
+      // a problem in one is a deck defect, never a module to switch off quietly.
+      if (builtin) throw new ModuleManifestError(id, `built-in module has an invalid manifest: ${problem}`, "MODULE_MANIFEST_INVALID");
       // A switched-off runtime module is inert: off for its switch, whatever its manifest says.
       if (inert(id)) inertUnusable.add(id);
       else refuse(id, "MODULE_MANIFEST_INVALID", `Module "${id}" has an invalid manifest: ${problem}.`);
@@ -954,8 +968,8 @@ export function kindRuntimes(
   modules: readonly UsableModule[],
   env: Readonly<Record<string, string | undefined>>,
   adopt: (moduleId: string, handle: TaskHandle) => void = () => {},
-  fail: (moduleId: string, reason: string) => void = (moduleId, reason) => {
-    throw new Error(`module "${moduleId}" ${reason}`);
+  fail: (moduleId: string, reason: string, detail?: string) => void = (moduleId, reason, detail) => {
+    throw new Error(`module "${moduleId}" ${reason}${detail === undefined ? "" : ` (${detail})`}`);
   },
   envOwners: ReadonlyMap<string, string> = new Map(),
   logger: Logger = kernelLogger,
@@ -1017,7 +1031,7 @@ export function kindRuntimes(
         context,
         issueInstances,
         adopt: (handle) => adopt(manifest.id, handle),
-        fail: (reason) => fail(manifest.id, reason),
+        fail: (reason, detail) => fail(manifest.id, reason, detail),
       });
     }
   }
@@ -1249,7 +1263,7 @@ export function createModuleHost(options: ModuleHostOptions): ModuleHost {
           handles.push(handle);
           adopted.set(id, handles);
         },
-        (id, reason) => {
+        (id, reason, detail) => {
           const index = plan.findIndex((entry) => entry.id === id && entry.enabled);
           if (index === -1) return;
           const message = `Module "${id}" was disabled: ${reason}.`;
@@ -1260,7 +1274,7 @@ export function createModuleHost(options: ModuleHostOptions): ModuleHost {
           const at = plan.findIndex((entry) => !entry.enabled && compareText(entry.id, id) > 0);
           plan.splice(at === -1 ? plan.length : at, 0, { id, enabled: false, reason: message });
           services.drop(id);
-          logger.warn({ event: "module.disabled", module: id, reason: message, code: "MODULE_KIND_HANDLER_FAILED" } satisfies ModuleDisabledEvent, "module disabled");
+          logger.warn({ event: "module.disabled", module: id, reason: message, code: "MODULE_KIND_HANDLER_FAILED", ...(detail === undefined ? {} : { detail }) } satisfies ModuleDisabledEvent, "module disabled");
         },
         envOwners,
         logger,

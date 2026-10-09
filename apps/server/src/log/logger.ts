@@ -133,7 +133,8 @@ export interface ModuleDisabledEvent {
   code?: string;
   /**
    * For a runtime module that failed to load: the full cause (its directory, the error its
-   * code threw). The log only: `reason`, which the HTTP API serves, names a category.
+   * code threw); for a module other than a built-in whose kind handler threw: what it threw.
+   * The log only: `reason`, which the HTTP API serves, names a category.
    */
   detail?: string;
 }

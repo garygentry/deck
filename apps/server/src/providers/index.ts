@@ -64,17 +64,21 @@ function runHandler(
 ): readonly Offer[] | null {
   if (failed.has(runtime.moduleId)) return null;
   let problem: string | null;
+  let detail: string | undefined;
   let result: unknown;
   try {
     result = call();
     problem = offersProblem(result, runtime.kind);
   } catch (error) {
     if (error instanceof BootFatalError && runtime.builtin) throw error;
-    problem = `threw: ${error instanceof Error ? error.message : String(error)}`;
+    const thrown = error instanceof Error ? error.message : String(error);
+    // What another module's code threw (a path, a value) stays in the log; the public reason is fixed.
+    if (runtime.builtin) problem = `threw: ${thrown}`;
+    else [problem, detail] = ["threw", thrown];
   }
   if (problem === null) return result as readonly Offer[];
   failed.add(runtime.moduleId);
-  runtime.fail(`kind "${runtime.kind}": ${name} handler ${problem}`);
+  runtime.fail(`kind "${runtime.kind}": ${name} handler ${problem}`, detail);
   return null;
 }
 

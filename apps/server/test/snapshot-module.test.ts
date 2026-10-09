@@ -92,7 +92,7 @@ describe("BootFatalError is a built-in-only privilege", () => {
     const { host } = testHost([fatalModule(), steady]);
     expect(() => registerAllProviders(config, host.kindHandlers())).not.toThrow();
     expect(listProviders()).toEqual([{ id: "steady", kind: "steady" }]);
-    expect(host.plan).toContainEqual({ id: "fatal", enabled: false, reason: 'Module "fatal" was disabled: kind "feed": instances handler threw: feed source is malformed.' });
+    expect(host.plan).toContainEqual({ id: "fatal", enabled: false, reason: 'Module "fatal" was disabled: kind "feed": instances handler threw.' });
   });
 });
 

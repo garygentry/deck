@@ -180,6 +180,11 @@ export interface ComposedConfig {
   /** Ids of disabled modules: their sections are exempt from layer ownership checks. */
   readonly disabledModuleIds: ReadonlySet<string>;
   /**
+   * The disabled modules whose sections are checked as if they ran (`strictSection`): their
+   * layer ownership and host/service references are checked whatever `disabledSections` says.
+   */
+  readonly strictModuleIds: ReadonlySet<string>;
+  /**
    * The checks composed from contributions, for one validated document:
    * - duplicate identity tuples in module arrays, and duplicate ids in a declared
    *   namespace (ID_DUPLICATE);
@@ -486,6 +491,7 @@ export function composeConfig(contributions: readonly ConfigContribution[], opti
     moduleIds: Object.freeze([...moduleIds].sort()),
     knownModuleIds: Object.freeze([...moduleIds, ...disabled.keys()].sort()),
     disabledModuleIds: new Set(disabled.keys()),
+    strictModuleIds: new Set([...disabled].filter(([, section]) => section.strict).map(([id]) => id)),
     runChecks(document: JsonObject, layer: ValidateLayer, options: { disabledSections?: DisabledSections } = {}): Finding[] {
       const advisory = (options.disabledSections ?? "advisory") === "advisory";
       const sections = isObject(document.modules) ? document.modules : {};

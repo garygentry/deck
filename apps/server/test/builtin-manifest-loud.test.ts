@@ -49,6 +49,20 @@ describe("a built-in module whose manifest or config contribution is unusable fa
     }
   });
 
+  it.each(["invalid", "^999.0"])("a built-in whose deckApi is %s fails planning loudly; another module is refused (MODULE_API_INCOMPATIBLE)", (deckApi) => {
+    const builtin = defineServerModule(manifest("old", { deckApi }), () => {});
+    expect(() => planModules({ modules: [builtin], sectionOf: () => undefined, env: {}, builtins: new Set([builtin]) })).toThrow(
+      expect.objectContaining({ code: "MODULE_MANIFEST_INVALID", moduleId: "old", message: expect.stringContaining(`deckApi ${deckApi} is not satisfied`) }),
+    );
+    // Off by its switch, too: a built-in's deckApi is checked whether or not it runs.
+    const off = defineServerModule(manifest("old", { deckApi, enabledBy: { env: "OLD_ON" } }), () => {});
+    expect(() => planModules({ modules: [off], sectionOf: () => undefined, env: {}, builtins: new Set([off]) })).toThrow(expect.objectContaining({ code: "MODULE_MANIFEST_INVALID" }));
+    const external = defineServerModule(manifest("old", { deckApi }), () => {});
+    const planned = planModules({ modules: [external], sectionOf: () => undefined, env: {}, builtins: new Set() });
+    expect(planned.findings).toContainEqual(expect.objectContaining({ code: "MODULE_API_INCOMPATIBLE" }));
+    expect(planned.plan.find((entry) => entry.id === "old")?.enabled).toBe(false);
+  });
+
   it("is a ModuleManifestError, which boot reports and exits on", () => {
     expect(new ModuleManifestError("x", "y", "MODULE_MANIFEST_INVALID").code).toBe("MODULE_MANIFEST_INVALID");
     expect(new ModuleManifestError("x", "y").code).toBe("MODULE_MANIFEST_CONFLICT");

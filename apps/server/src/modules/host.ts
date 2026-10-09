@@ -65,13 +65,11 @@ export interface ModuleFinding extends Finding {
 }
 
 /**
- * Modules that cannot coexist (a duplicate id, a shared legacy health key, overlapping
- * routes) or a module route the kernel already serves. Unlike a defect local to one module,
- * which only disables that module, this fails boot.
- */
-/**
- * Modules that cannot coexist (MODULE_MANIFEST_CONFLICT), or a built-in module whose own
- * manifest or config contribution is unusable (MODULE_MANIFEST_INVALID): either fails boot.
+ * What fails boot instead of disabling one module: modules that cannot coexist (a duplicate
+ * id, a shared legacy health key, overlapping routes) or a module route the kernel already
+ * serves (MODULE_MANIFEST_CONFLICT); or a built-in module whose own manifest, `deckApi` or
+ * config contribution is unusable (MODULE_MANIFEST_INVALID). Another module's own defect only
+ * disables it.
  */
 export class ModuleManifestError extends Error {
   constructor(
@@ -737,6 +735,8 @@ export function planModules(options: PlanOptions): ModulePlanning {
       ?? (manifest.dataDir !== undefined && !builtin ? "dataDir.legacyPath is reserved for built-in modules" : null)
       // A fixed id is honoured for built-ins only, so another module's status cannot read one.
       ?? (builtin ? null : fixedStatusProblem(manifest))
+      // A built-in ships with this deck: a deckApi it does not satisfy is a deck defect.
+      ?? (builtin && (!isDeckApiRange(manifest.deckApi) || !satisfiesDeckApi(manifest.deckApi)) ? `deckApi ${manifest.deckApi} is not satisfied by this deck's ${DECK_API_VERSION}` : null)
       ?? ("problem" in kinds ? kinds.problem : kindsProblem(manifest, kinds.kinds, !codeless))
       ?? options.manifestProblems?.get(id)
       ?? kernelCollision(manifest, options.kernelRoutes ?? [], reservedRootPaths);

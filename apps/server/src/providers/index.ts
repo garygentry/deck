@@ -31,8 +31,8 @@ function isObject(value: unknown): value is JsonObject {
 }
 
 /** Why a handler's return value is not a list of provider offers of `kind`, or null. */
-function offersProblem(value: unknown, kind: string): string | null {
-  if (!Array.isArray(value)) return `returned ${value === null ? "null" : typeof value}, not a list of offers`;
+function offersProblem(value: unknown, kind: string): { problem: string; detail?: string } | null {
+  if (!Array.isArray(value)) return { problem: `returned ${value === null ? "null" : typeof value}, not a list of offers` };
   for (const [index, offer] of value.entries()) {
     const provider = isObject(offer) ? (offer as { provider?: unknown }).provider : undefined;
     if (
@@ -42,10 +42,11 @@ function offersProblem(value: unknown, kind: string): string | null {
       typeof (provider as { fetch?: unknown }).fetch !== "function" ||
       typeof (provider as { health?: unknown }).health !== "function"
     ) {
-      return `returned an offer at index ${index} without a provider (id, kind, fetch, health)`;
+      return { problem: `returned an offer at index ${index} without a provider (id, kind, fetch, health)` };
     }
     const offered = (provider as { kind: string }).kind;
-    if (offered !== kind) return `offered a provider of kind "${offered}" at index ${index}; a handler may offer only its own kind`;
+    // The offered kind is the module's own text: named in the log only, and bounded.
+    if (offered !== kind) return { problem: `offered a provider of another kind at index ${index}; a handler may offer only its own kind`, detail: `offered kind ${JSON.stringify(offered.slice(0, 64))}` };
   }
   return null;
 }
@@ -68,7 +69,9 @@ function runHandler(
   let result: unknown;
   try {
     result = call();
-    problem = offersProblem(result, runtime.kind);
+    const found = offersProblem(result, runtime.kind);
+    problem = found === null ? null : runtime.builtin && found.detail !== undefined ? `${found.problem} (${found.detail})` : found.problem;
+    if (!runtime.builtin) detail = found?.detail;
   } catch (error) {
     if (error instanceof BootFatalError && runtime.builtin) throw error;
     const thrown = error instanceof Error ? error.message : String(error);
@@ -216,7 +219,10 @@ export function registerAllProviders(
     if (failed.has(offerer.moduleId)) continue;
     if (hasProvider(id) || estateIds.has(id) || claimed.has(id)) {
       failed.add(offerer.moduleId);
-      offerer.fail(`kind "${offerer.kind}": ${handler} handler offered provider id "${id}", which another provider already has`);
+      // The id is the module's own choice: public for a built-in, the log's detail otherwise.
+      const taken = `kind "${offerer.kind}": ${handler} handler offered`;
+      if (offerer.builtin) offerer.fail(`${taken} provider id "${id}", which another provider already has`);
+      else offerer.fail(`${taken} a provider id another provider already has`, `offered provider id ${JSON.stringify(id.slice(0, 64))}`);
       continue;
     }
     claimed.add(id);

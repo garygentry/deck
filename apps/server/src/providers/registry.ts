@@ -29,6 +29,12 @@ export interface DeriveInput {
   errored: boolean;
   failureFreshness: FailureFreshness;
   ageMs: number | null;
+  /**
+   * Milliseconds since the latest successful poll, when the data's age (`ageMs`) is the
+   * provider's own observation time instead: `unreachable` follows the poll, so a source that
+   * answers but reports old data is at most `stale`. Absent means `ageMs`.
+   */
+  sinceSuccessMs?: number | null;
   ttlMs: number;
   unreachableAfterMs: number;
 }
@@ -40,6 +46,8 @@ interface Slot<T = unknown> {
   envelope: ProviderEnvelope<T>;
   /** RFC 3339 timestamp of the latest successful fetch only. */
   lastSuccessAt: string | null;
+  /** When the latest successful fetch's data was observed (the provider's report, else the fetch time). */
+  observedAt: string | null;
   /** Current publishable payload, including an optional failure projection. */
   retainedData: T | null;
   /** Cached non-I/O health published by the latest completed poll. */
@@ -97,7 +105,8 @@ export function deriveState(input: DeriveInput): FreshnessState {
   if (!input.hasSuccess) return "pending";
   if (input.errored && input.failureFreshness === "immediate-unreachable") return "unreachable";
   const age = input.ageMs ?? Number.POSITIVE_INFINITY;
-  if (age > input.unreachableAfterMs) return "unreachable";
+  const sinceSuccess = input.sinceSuccessMs === undefined ? age : (input.sinceSuccessMs ?? Number.POSITIVE_INFINITY);
+  if (sinceSuccess > input.unreachableAfterMs) return "unreachable";
   if (age > input.ttlMs) return "stale";
   return "fresh";
 }
@@ -146,6 +155,7 @@ export function register<T>(
     timing: resolveTiming(opts),
     isStatic,
     lastSuccessAt: null,
+    observedAt: null,
     retainedData: null,
     health: { kind: provider.kind, ok: false, detail: "Awaiting first poll" },
     polling: null,
@@ -309,7 +319,9 @@ async function poll<T>(slot: Slot<T>): Promise<boolean> {
       controller.signal,
       slot.timing.timeoutMs,
     );
-    slot.lastSuccessAt = new Date().toISOString();
+    const fetchedAt = Date.now();
+    slot.lastSuccessAt = new Date(fetchedAt).toISOString();
+    slot.observedAt = new Date(observedAtOf(slot.provider, fetchedAt)).toISOString();
     slot.retainedData = data;
     publish(slot, null);
     ok = true;
@@ -349,6 +361,21 @@ async function poll<T>(slot: Slot<T>): Promise<boolean> {
   return ok;
 }
 
+/**
+ * When the data a successful fetch returned was observed: the provider's own report, never
+ * after `now` (a future time counts as now), else `now`. A throwing or invalid report is `now`.
+ */
+function observedAtOf<T>(provider: Provider<T>, now: number): number {
+  let reported: unknown;
+  try {
+    reported = provider.observedAt?.();
+  } catch {
+    return now;
+  }
+  if (typeof reported !== "number" || Number.isNaN(new Date(reported).getTime())) return now;
+  return Math.min(reported, now);
+}
+
 /** Read the now non-I/O provider health, isolating a rejecting or invalid snapshot. */
 async function captureHealth<T>(slot: Slot<T>): Promise<ProviderHealthEntry> {
   try {
@@ -377,14 +404,17 @@ function projectFailure<T>(slot: Slot<T>, error: unknown): void {
 }
 
 function publish<T>(slot: Slot<T>, error: { message: string } | null): void {
-  const observedAt = slot.isStatic ? null : slot.lastSuccessAt;
-  const ageMs = observedAt === null ? null : Math.max(0, Date.now() - Date.parse(observedAt));
+  const now = Date.now();
+  const observedAt = slot.isStatic ? null : slot.observedAt;
+  const ageMs = observedAt === null ? null : Math.max(0, now - Date.parse(observedAt));
+  const sinceSuccessMs = slot.lastSuccessAt === null ? null : Math.max(0, now - Date.parse(slot.lastSuccessAt));
   const state = deriveState({
     isStatic: slot.isStatic,
     hasSuccess: slot.lastSuccessAt !== null,
     errored: error !== null,
     failureFreshness: slot.timing.failureFreshness,
     ageMs,
+    sinceSuccessMs,
     ttlMs: slot.timing.ttlMs,
     unreachableAfterMs: slot.timing.unreachableAfterMs,
   });

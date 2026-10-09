@@ -12,7 +12,7 @@
  *   `GET /api/m/llm-usage/refresh`, and `POST /api/m/llm-usage/ingest ×3` exactly when the
  *   golden has `POST /api/llm-usage/ingest ×3`.
  *
- * - `/api/health`: `modules.{alertmanager,docker,gatus,http-health,http-json,link,prometheus,snapshot}`: `{state: "ok"}` when the
+ * - `/api/health`: `modules.{alertmanager,docker,gatus,http-health,http-json,link,prometheus,remote,snapshot}`: `{state: "ok"}` when the
  *   golden's provider health lists a provider of that kind, else
  *   `{state: "ok", detail: "not configured"}`. The data-source modules have no routes and
  *   report no health of their own.
@@ -72,7 +72,7 @@
  */
 
 /** Data-source modules: health `{state: "ok"}` (no reporter), and no routes mounted. */
-const DATA_SOURCE_MODULES = ["alertmanager", "docker", "file-tree", "gatus", "http-health", "http-json", "link", "markdown-tree", "prometheus", "snapshot"];
+const DATA_SOURCE_MODULES = ["alertmanager", "docker", "file-tree", "gatus", "http-health", "http-json", "link", "markdown-tree", "prometheus", "remote", "snapshot"];
 
 const SOURCES_ROUTES = [
   "ALL /api/m/sources/*",

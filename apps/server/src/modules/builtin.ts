@@ -16,6 +16,7 @@ import { httpJsonModule } from "../providers/http-json/module.js";
 import { linkModule } from "../providers/link/module.js";
 import { markdownTreeModule } from "../providers/markdown-tree/module.js";
 import { prometheusModule } from "../providers/prometheus/module.js";
+import { remoteModule } from "../providers/remote/module.js";
 import { snapshotModule } from "../providers/snapshot/module.js";
 import { portalModule } from "../portal/module.js";
 import { sourcesModule } from "../sources/module.js";
@@ -42,6 +43,7 @@ export const BUILTIN_MODULES: readonly ServerModule<any>[] = [
   monitoringModule,
   portalModule,
   prometheusModule,
+  remoteModule,
   snapshotModule,
   sourcesModule,
 ];

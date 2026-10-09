@@ -24,15 +24,18 @@ export interface IntegrationCardProps {
 }
 
 /**
- * A single deep-link tile. Every tile is one anchor to `deepLink ?? baseUrl`, opened in a new tab,
- * showing the title and kind. A live status (and its freshness) renders only when `live !== null`.
+ * A single deep-link tile: one anchor to `deepLink ?? baseUrl`, opened in a new tab, showing the
+ * title and kind. An integration with neither (a kind whose own shape has no `baseUrl`, such as
+ * `remote`) is a plain, non-link tile: never an anchor without an href, and never a link to an
+ * address deck polls (`url`). A live status (and its freshness) renders only when `live !== null`.
  */
 export function IntegrationCard({ integration, live }: IntegrationCardProps): JSX.Element {
-  const href = integration.deepLink ?? integration.baseUrl;
+  const target: unknown = integration.deepLink ?? integration.baseUrl;
+  const href = typeof target === "string" && target !== "" ? target : undefined;
   const status = live === null ? null : liveStatus(live);
   return (
     <LinkTile
-      href={href}
+      {...(href === undefined ? {} : { href })}
       external
       title={integration.title}
       description={integration.kind}

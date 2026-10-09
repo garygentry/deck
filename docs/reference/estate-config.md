@@ -379,6 +379,26 @@ or body key) and `HTTP_JSON_ID_RESERVED` (the fixed provider id of another integ
 errors. The credential variable must hold at least 8 characters, with no surrounding whitespace. See the [provider kinds reference](provider-kinds.md#http-json) for how
 it is sent, how redirects and failures are handled, and an example.
 
+#### remote integrations
+
+An integration of kind `remote` is a sidecar deck polls at `<url>/deck/v1/data` (see the
+[provider kinds reference](provider-kinds.md#remote)). It has no `baseUrl`, `card`, `method`,
+`headers` or `body`, and no additional properties.
+
+| Key | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | string | yes | Lowercase letters, digits and `-`, at most 64 characters; also the provider id. Not the fixed provider id of another integration in the estate. |
+| `kind` | `remote` | yes | |
+| `title` | string | yes | Human-readable integration title. |
+| `url` | string | yes | The sidecar's `http://` or `https://` base URL, at most 2048 characters, with no query, fragment or `user:password@`. |
+| `credentialEnv`, `auth` | | no | As for `http-json`. |
+| `pollIntervalMs`, `ttlMs`, `timeoutMs`, `maxBytes` | integer | no | As for `http-json`. |
+| `deepLink` | string | no | Link to the sidecar's own UI. |
+
+Beyond the schema, `deck validate` reports `REMOTE_URL_INVALID` (a URL the runtime parser
+rejects) and `REMOTE_ID_RESERVED` (the fixed provider id of another integration in the estate),
+both errors.
+
 ### Action
 
 Actions live under `modules.actions.actions`. An Action object has no additional properties.

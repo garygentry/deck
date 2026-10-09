@@ -6,12 +6,12 @@ import {
   type InstanceRuleContext,
   type ModuleManifest,
   type ProviderOffer,
-  type ProviderTiming,
 } from "@deck/module-sdk";
 
-import { HttpJsonProvider, type HttpJsonAuth, type HttpJsonConfig } from "./index.js";
+import { HttpJsonProvider, type HttpJsonConfig } from "./index.js";
 import instanceSchema from "./instance.schema.json" with { type: "json" };
 import { credentialBodyKeys, credentialHeaderNames, credentialQueryParams, isCredentialName, urlProblem } from "./literal.js";
+import { fixedIdFindings, instanceRequest } from "./request-config.js";
 
 /**
  * The `http-json` data source: each `integrations[]` instance of kind `http-json` becomes a
@@ -53,20 +53,9 @@ export const HTTP_JSON_MANIFEST: ModuleManifest = {
 };
 
 /** What config validation reports for one instance beyond its schema. Pure. */
-function validateInstance(instance: JsonObject, { document, fixedIds }: InstanceRuleContext): ConfigRuleFinding[] {
-  const findings: ConfigRuleFinding[] = [];
+function validateInstance(instance: JsonObject, context: InstanceRuleContext): ConfigRuleFinding[] {
   const { id, url, body, headers } = instance;
-  // A fixed id clashes only when an instance of its kind is there to register it.
-  for (const [kind, fixedId] of fixedIds) {
-    if (id !== fixedId) continue;
-    const holds = ["integrations", "sources"].some((list) => {
-      const instances = document[list];
-      return Array.isArray(instances) && instances.some((other) => other !== null && typeof other === "object" && (other as JsonObject).kind === kind);
-    });
-    if (holds) {
-      findings.push({ code: "HTTP_JSON_ID_RESERVED", path: "/id", message: `id "${id}" is the fixed provider id of the ${kind} integration in this estate; boot would fail when both register.` });
-    }
-  }
+  const findings = fixedIdFindings(id, context, "HTTP_JSON_ID_RESERVED");
   for (const name of credentialHeaderNames(headers)) {
     findings.push({ code: "HTTP_JSON_LITERAL_CREDENTIAL", path: `/headers/${name.replaceAll("~", "~0").replaceAll("/", "~1")}`, message: `header "${name}" names a credential; config may not hold one.`, hint: "Use credentialEnv with auth: { scheme: header, header: ... }." });
   }
@@ -83,38 +72,12 @@ function validateInstance(instance: JsonObject, { document, fixedIds }: Instance
   return findings;
 }
 
-function auth(value: unknown): HttpJsonAuth | undefined {
-  if (typeof value !== "object" || value === null) return undefined;
-  const { scheme, header } = value as { scheme?: unknown; header?: unknown };
-  if (scheme === "bearer" || scheme === "basic") return { scheme };
-  if (scheme === "header" && typeof header === "string") return { scheme, header };
-  const { param } = value as { param?: unknown };
-  if (scheme === "query" && typeof param === "string") return { scheme, param };
-  return undefined;
-}
-
 function headers(value: unknown): Record<string, string> | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   const entries = Object.entries(value).filter(
     (entry): entry is [string, string] => typeof entry[1] === "string" && !isCredentialName(entry[0]),
   );
   return entries.length === 0 ? undefined : Object.fromEntries(entries);
-}
-
-const integer = (value: unknown): number | undefined =>
-  typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
-
-/** The provider timing an instance sets. Freshness defaults to its poll interval, not deck's. */
-function timing(instance: JsonObject): ProviderTiming | undefined {
-  const pollIntervalMs = integer(instance.pollIntervalMs);
-  const timeoutMs = integer(instance.timeoutMs);
-  const ttlMs = integer(instance.ttlMs) ?? pollIntervalMs;
-  const resolved: ProviderTiming = {
-    ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
-    ...(timeoutMs === undefined ? {} : { timeoutMs }),
-    ...(ttlMs === undefined ? {} : { ttlMs }),
-  };
-  return Object.keys(resolved).length === 0 ? undefined : resolved;
 }
 
 export const httpJsonModule = defineServerModule(HTTP_JSON_MANIFEST, () => {}, {
@@ -129,23 +92,17 @@ export const httpJsonModule = defineServerModule(HTTP_JSON_MANIFEST, () => {}, {
             logger.warn({ event: "http-json.instance.skipped", ...(typeof id === "string" ? { id } : {}) }, "http-json instance skipped");
             return [];
           }
-          const instanceTiming = timing(instance);
+          const { request, timing } = instanceRequest(instance, envFor);
           const literalHeaders = headers(instance.headers);
-          const instanceAuth = auth(instance.auth);
-          const maxBytes = integer(instance.maxBytes);
           const config: HttpJsonConfig = {
             url,
             ...(instance.method === "POST" ? { method: "POST" as const } : {}),
             ...(literalHeaders === undefined ? {} : { headers: literalHeaders }),
             ...(instance.body === undefined ? {} : { body: instance.body }),
-            ...(typeof instance.credentialEnv === "string" ? { credentialEnv: instance.credentialEnv } : {}),
-            ...(instanceAuth === undefined ? {} : { auth: instanceAuth }),
             // Only this instance's credential: another instance's is never readable here.
-            env: envFor(instance),
-            ...(instanceTiming?.timeoutMs === undefined ? {} : { timeoutMs: instanceTiming.timeoutMs }),
-            ...(maxBytes === undefined ? {} : { maxBytes }),
+            ...request,
           };
-          return [{ provider: new HttpJsonProvider(id, config), ...(instanceTiming ? { timing: instanceTiming } : {}) }];
+          return [{ provider: new HttpJsonProvider(id, config), ...(timing === undefined ? {} : { timing }) }];
         }),
     },
   },

@@ -22,6 +22,14 @@ export interface ProviderSpec<T = unknown> {
   fetch(context?: ProviderFetchContext): Promise<T>;
   /** Optionally project a failed poll into retained data without recording success. */
   onFetchError?(error: unknown, retainedData: Readonly<T> | null): T | null;
+  /**
+   * When the data the latest successful `fetch` returned was observed at its source (epoch
+   * milliseconds), for a provider whose upstream reports it; null when it does not. The registry
+   * reads it right after each successful fetch and uses it for the envelope's `observedAt` and
+   * age, so the usual staleness rules apply to it. A time after now counts as now; absent, null
+   * or not a valid time means the fetch time.
+   */
+  observedAt?(): number | null;
 }
 
 export interface ProviderTiming {

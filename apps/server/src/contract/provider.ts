@@ -18,6 +18,11 @@ export interface Provider<T = unknown> {
   fetch(context?: ProviderFetchContext): Promise<T>;
   /** Optionally project a failed poll into retained data without recording success. */
   onFetchError?(error: unknown, retainedData: Readonly<T> | null): T | null;
+  /**
+   * When the latest successful fetch's data was observed at its source (epoch ms), or null;
+   * the envelope's `observedAt` and age use it, clamped to now (see `ProviderSpec.observedAt`).
+   */
+  observedAt?(): number | null;
 }
 
 export interface ProviderHealth {

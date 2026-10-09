@@ -112,6 +112,12 @@
       "origin": "module"
     },
     {
+      "id": "remote",
+      "version": "1.0.0",
+      "enabled": true,
+      "origin": "module"
+    },
+    {
       "id": "snapshot",
       "version": "1.0.0",
       "enabled": true,

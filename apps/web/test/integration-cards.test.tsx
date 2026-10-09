@@ -140,6 +140,24 @@ describe("IntegrationsSection", () => {
   });
 });
 
+describe("IntegrationCard without a link", () => {
+  it("renders an integration with no deepLink or baseUrl (a remote sidecar) as a plain tile, not a link to its url", () => {
+    const remote = { id: "ups", kind: "remote", title: "UPS", url: "http://nut-ups:9000" } as unknown as Integration;
+    const { container } = render(<IntegrationCard integration={remote} live={null} />);
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.querySelector("article")).not.toBeNull();
+    expect(screen.getByText("UPS")).toBeInTheDocument();
+    expect(container.innerHTML).not.toContain("nut-ups");
+  });
+
+  it("links to a remote integration's deepLink when it sets one", () => {
+    const remote = { id: "ups", kind: "remote", title: "UPS", url: "http://nut-ups:9000", deepLink: "https://nut.example/" } as unknown as Integration;
+    render(<IntegrationCard integration={remote} live={null} />);
+    expect(tile("UPS")).toHaveAttribute("href", "https://nut.example/");
+  });
+});
+
 describe("IntegrationCard live status", () => {
   function renderCard(
     kind: "alertmanager" | "prometheus",

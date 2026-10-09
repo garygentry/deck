@@ -203,7 +203,9 @@ describe("parity goldens", () => {
     }
   });
 
-  it("every invalid estate fixture emits its code, and its deck validate output matches", async () => {
+  // One `deck validate` capture per fixture, ~1.5–4s each on a loaded host (Bun ~35% slower
+  // than Node): the budget grows with the fixture list instead of the file-wide timeout.
+  it("every invalid estate fixture emits its code, and its deck validate output matches", { timeout: estateFixtures.length * 10_000 }, async () => {
     // Fixtures added after the goldens froze (MODULE_UNKNOWN) are asserted on their code
     // only; the rest must match the frozen golden under the v1 → v2 mapping.
     const frozen = readGolden("invalid-fixtures") as Record<string, unknown>;

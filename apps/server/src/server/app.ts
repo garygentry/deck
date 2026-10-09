@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { apiErrorBody, type UiManifest } from "@deck/module-sdk";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
+import { every } from "hono/combine";
 import type { Logger } from "pino";
 
 import type {
@@ -133,9 +134,9 @@ export function createApp(deps: AppDeps): Hono {
   const current = (): { config: DeckConfig; ui?: UiManifest; etag?: string } =>
     deps.live?.() ?? staticUi ?? { config: deps.config };
 
-  app.use("*", requestLogger(deps.logger));
-  // Who may frame deck, on every response (the shell's own policy also names it).
-  app.use("*", securityHeaders(() => frameAncestorsOf(current().config)));
+  // One kernel middleware (the route table stays as it was): the request log, and who may frame
+  // deck on every response (the shell's own policy also names it).
+  app.use("*", every(requestLogger(deps.logger), securityHeaders(() => frameAncestorsOf(current().config))));
 
   app.get("/api/config", (context) => context.json(current().config));
 

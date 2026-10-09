@@ -182,6 +182,12 @@ interface ProviderKindDecl {
      * instance taking it apart. Honoured for built-in modules only.
      */
     fixedId?: string;
+    /**
+     * With `fixedId`: the environment variable whose non-empty value registers the fixed id with
+     * no instance in the estate (as `snapshot`'s `DECK_SNAPSHOT_SOURCE`). Config validation then
+     * reserves the id while the variable is set. Honoured for built-in modules only.
+     */
+    fixedIdEnv?: string;
 }
 /**
  * Where a binding's status is in provider data, and which values mean up. The bound item is
@@ -1209,6 +1215,18 @@ interface Ui {
      * Let core/embed widgets show other sites' pages in sandboxed frames; default false, when each shows that embeds are off.
      */
     allowUnsafeEmbeds?: boolean;
+    /**
+     * Origins besides deck's own that may show deck in a frame (Content-Security-Policy frame-ancestors), such as https://ha.example.net or https://*.example.net; no path. Default none: only deck's own origin may frame it.
+     *
+     * @maxItems 32
+     */
+    frameAncestors?: string[];
+    /**
+     * While ui.allowUnsafeEmbeds is true, origins besides the core/embed URLs' own that framed pages may load or redirect to (Content-Security-Policy frame-src), such as a sign-in page: https://auth.example.net; no path. Deck's own origin is never allowed.
+     *
+     * @maxItems 32
+     */
+    frameSources?: string[];
     /**
      * Named maps from a widget's values to status tones, which widget options reference by name (statusMap).
      */

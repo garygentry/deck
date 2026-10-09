@@ -1,3 +1,4 @@
+import { EMBED_SANDBOX, embedUrlProblem } from "@deck/contract/modules/widgets";
 import { EmptyState, ErrorState, ExternalLink, LoadingState, cn } from "@/ui";
 
 import { useUiManifest } from "../../data/index.js";
@@ -21,17 +22,10 @@ const HEIGHT: Record<NonNullable<EmbedOptions["height"]>, string> = {
 export const DEFAULT_EMBED_SANDBOX: readonly string[] = ["allow-scripts", "allow-same-origin"];
 
 /**
- * The sandbox tokens a widget may grant (its options schema's list). Top navigation, modals,
+ * The sandbox tokens a widget may grant: its options schema's list. Top navigation, modals,
  * pointer lock and the rest are never granted, whatever reaches the component.
  */
-const SANDBOX_TOKENS: ReadonlySet<string> = new Set([
-  "allow-scripts",
-  "allow-same-origin",
-  "allow-forms",
-  "allow-popups",
-  "allow-popups-to-escape-sandbox",
-  "allow-downloads",
-]);
+const SANDBOX_TOKENS: ReadonlySet<string> = new Set(EMBED_SANDBOX);
 
 /** The frame's `sandbox` attribute: the widget's tokens (default {@link DEFAULT_EMBED_SANDBOX}), known ones only. */
 export function sandboxOf(tokens: readonly string[] | undefined): string {
@@ -39,19 +33,15 @@ export function sandboxOf(tokens: readonly string[] | undefined): string {
 }
 
 /**
- * The URL the frame may show: an absolute http(s) URL on another origin than deck's. A page of
- * deck's own origin is refused: framed with scripts and its origin, it could lift its own sandbox
- * and act as deck.
+ * The URL the frame may show: one config validation accepts (`embedUrlProblem`, the same check)
+ * on another origin than deck's. A page of deck's own origin is refused: framed with scripts and
+ * its origin, it could lift its own sandbox and act as deck. Only the configured URL is checked;
+ * where that page later redirects or navigates is the framed site's.
  */
 export function embedTarget(raw: unknown, ownOrigin: string): { url: URL } | { problem: string } {
-  let url: URL;
-  try {
-    if (typeof raw !== "string") throw new TypeError("not text");
-    url = new URL(raw);
-  } catch {
-    return { problem: "Its url is not an absolute http(s) URL." };
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") return { problem: "Its url is not an absolute http(s) URL." };
+  const problem = embedUrlProblem(raw);
+  if (problem !== null) return { problem };
+  const url = new URL(raw as string);
   if (url.origin === ownOrigin) return { problem: "Deck does not frame its own pages; place their widgets on a dashboard instead." };
   return { url };
 }
@@ -75,12 +65,15 @@ export function EmbedWidget({ options, widget }: WidgetProps<EmbedOptions>) {
   if (manifest.status !== "ready" || manifest.manifest.allowUnsafeEmbeds !== true) {
     return <EmptyState compact icon="eye-off" title="Embeds are off" description="Set ui.allowUnsafeEmbeds: true to show this page here." action={open} />;
   }
+  const sandbox = sandboxOf(options.sandbox);
   return (
     <div data-slot="embed" className="flex flex-col gap-2">
+      {/* A browser applies sandbox changes only on the next navigation, so a new URL or policy is a new frame. */}
       <iframe
+        key={`${target.url.href} ${sandbox}`}
         src={target.url.href}
         title={widget.title ?? `Page from ${target.url.host}`}
-        sandbox={sandboxOf(options.sandbox)}
+        sandbox={sandbox}
         referrerPolicy="no-referrer"
         loading="lazy"
         className={cn("block w-full rounded-md border border-border bg-background", HEIGHT[options.height ?? "md"] ?? HEIGHT.md)}

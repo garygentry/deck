@@ -3,10 +3,11 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import type { UiManifest, UiWidgetInstance } from "@deck/module-sdk";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resetQueryClient } from "../src/data/query-client.js";
+import { queryKeys } from "../src/data/queries.js";
+import { getQueryClient, resetQueryClient } from "../src/data/query-client.js";
 import { EmbedWidget, embedTarget, sandboxOf, type EmbedOptions } from "../src/features/core-widgets/EmbedWidget.js";
 
 /**
@@ -59,6 +60,16 @@ describe("core/embed's gate", () => {
     expect(screen.getByRole("link", { name: /opens in new tab/ })).toHaveAttribute("target", "_blank");
   });
 
+  it("takes the frame away when a reloaded manifest no longer allows embeds", async () => {
+    const { container } = show(allowed);
+    await screen.findByTitle("UPS graph");
+    // The server swapped its manifest after a ui edit shut the gate (hot reload); the page refetches it.
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(golden)));
+    await act(() => getQueryClient().refetchQueries({ queryKey: queryKeys.uiManifest }));
+    expect(await screen.findByText("Embeds are off")).toBeInTheDocument();
+    expect(frame(container)).toBeNull();
+  });
+
   it("stays off when the manifest cannot be read", async () => {
     const { container } = show(500);
     expect(await screen.findByText("Embeds are off", {}, { timeout: 5_000 })).toBeInTheDocument();
@@ -96,11 +107,31 @@ describe("core/embed's frame", () => {
     expect(iframe).toHaveAttribute("sandbox", "allow-forms");
     expect(iframe).toHaveClass("h-144");
     unmount();
+    expect(frame(container)).toBeNull();
     resetQueryClient();
-    show(allowed, { sandbox: [] });
+    const second = show(allowed, { sandbox: [] });
     const strict = await screen.findByTitle("UPS graph");
     expect(strict).toHaveAttribute("sandbox", "");
-    expect(frame(container)).toBeNull();
+    expect(frame(second.container)).toBe(strict);
+  });
+
+  it("replaces the frame when its sandbox or URL changes, since a loaded document keeps its old policy", async () => {
+    const view = show(allowed, { sandbox: ["allow-scripts", "allow-same-origin"] });
+    const first = await screen.findByTitle("UPS graph");
+    const rerender = (options: Partial<EmbedOptions>) =>
+      view.rerender(<EmbedWidget value={null} options={{ url: URL_, ...options }} freshness={null} widget={widget("UPS graph")} />);
+
+    rerender({ sandbox: ["allow-scripts", "allow-same-origin"], height: "lg" });
+    expect(frame(view.container)).toBe(first);
+
+    rerender({ sandbox: ["allow-scripts"] });
+    const narrowed = frame(view.container);
+    expect(narrowed).not.toBe(first);
+    expect(first.isConnected).toBe(false);
+    expect(narrowed).toHaveAttribute("sandbox", "allow-scripts");
+
+    view.rerender(<EmbedWidget value={null} options={{ url: "https://grafana.example.net/d/other", sandbox: ["allow-scripts"] }} freshness={null} widget={widget("UPS graph")} />);
+    expect(frame(view.container)).not.toBe(narrowed);
   });
 
   it("never grants a token outside the schema's list, whatever reaches it", () => {
@@ -112,6 +143,8 @@ describe("core/embed's frame", () => {
     ["deck's own origin", () => `${window.location.origin}/hosts`, /own pages/],
     ["a javascript: URL", () => "javascript:alert(1)", /absolute http\(s\) URL/],
     ["a relative path", () => "/hosts", /absolute http\(s\) URL/],
+    ["a url with user:password@", () => "https://user:pw@grafana.example.net/d", /absolute http\(s\) URL/],
+    ["a port out of range", () => "https://grafana.example.net:99999/", /absolute http\(s\) URL/],
   ])("refuses %s, even with embeds allowed", async (_name, url, message) => {
     const { container } = show(allowed, { url: url() });
     expect(screen.getByRole("alert")).toHaveTextContent(message);
@@ -124,5 +157,8 @@ describe("core/embed's frame", () => {
     expect(embedTarget("http://deck.lab/x", "http://deck.lab")).toHaveProperty("problem");
     expect(embedTarget(42, "http://deck.lab")).toHaveProperty("problem");
     expect(embedTarget("data:text/html,x", "http://deck.lab")).toHaveProperty("problem");
+    for (const url of ["https://x:99999/", "https://%/", "https://?q", "http://:80/", "http://#a", "https://u@h.lab/", "https://u:p@h.lab/"]) {
+      expect(embedTarget(url, "http://deck.lab"), url).toHaveProperty("problem");
+    }
   });
 });

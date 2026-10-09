@@ -22,6 +22,8 @@ export interface UiDefaults {
   };
   /** `ui.statusMaps`: named maps from widget values to tones, published as the manifest's. */
   statusMaps?: Readonly<Record<string, StatusMapData>>;
+  /** `ui.allowUnsafeEmbeds`: whether `core/embed` widgets frame their pages; published only when true. */
+  allowUnsafeEmbeds?: boolean;
 }
 
 /** One `ui.nav.groups` entry. */

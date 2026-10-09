@@ -18,6 +18,8 @@ import { moduleDigest } from "../src/modules/runtime.js";
 import { stopScheduler } from "../src/providers/registry.js";
 import { boot, type BootHandle } from "../src/server/boot.js";
 
+import { stubBun, unstubBun } from "./util/stub-bun.js";
+
 vi.setConfig({ testTimeout: 30_000 });
 
 const EXAMPLES = fileURLToPath(new URL("../../../examples/modules", import.meta.url));
@@ -40,7 +42,7 @@ afterEach(async () => {
   while (cleanup.length) await cleanup.pop()!();
   logLines.length = 0;
   stopScheduler();
-  vi.unstubAllGlobals();
+  unstubBun();
   vi.restoreAllMocks();
   for (const name of ENV_NAMES) delete process.env[name];
 });
@@ -74,7 +76,7 @@ type Request_ = (path: string) => Promise<Response>;
 /** Boot deck on `dir` with the HTTP listener stubbed; requests go straight to its fetch handler. */
 async function bootOn(dir: string, options: { runtimeImportTimeoutMs?: number } = {}): Promise<Request_> {
   let fetchHandler: ((request: Request) => Response | Promise<Response>) | undefined;
-  vi.stubGlobal("Bun", {
+  stubBun({
     serve: (serveOptions: { fetch: (request: Request) => Response | Promise<Response> }) => {
       fetchHandler = serveOptions.fetch;
       return { stop: async () => undefined };
@@ -87,7 +89,7 @@ async function bootOn(dir: string, options: { runtimeImportTimeoutMs?: number } 
 
 /** Boot expecting an exit: the code and what was printed. */
 async function bootFails(dir: string, options: { runtimeImportTimeoutMs?: number } = {}): Promise<{ code: string; stderr: string }> {
-  vi.stubGlobal("Bun", { serve: () => ({ stop: async () => undefined }) });
+  stubBun({ serve: () => ({ stop: async () => undefined }) });
   const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   vi.spyOn(process, "exit").mockImplementation(((code: number) => {
     throw new Error(`exit:${code}`);

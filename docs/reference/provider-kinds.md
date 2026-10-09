@@ -128,12 +128,12 @@ Backed by an integration; each instance is its own provider, registered under it
 
 | Key | Required | Notes |
 | --- | --- | --- |
-| `id` | yes | Integration id, and the provider id (`GET /api/providers/<id>`). It may not be a built-in fixed provider id (`alertmanager`, `docker`, `gatus`, `prometheus`, `snapshot`): `HTTP_JSON_ID_RESERVED`. |
+| `id` | yes | Integration id, and the provider id (`GET /api/providers/<id>`). Taking the fixed provider id of another integration in the estate (`prometheus` beside a `prometheus` integration, say) is `HTTP_JSON_ID_RESERVED`. |
 | `title` | yes | Display title. |
 | `url` | yes | The `http://` or `https://` URL polled, as the runtime's URL parser reads it. Any other scheme, a URL carrying `user:password@`, or one it cannot parse (a bad IPv6 host, a port over 65535) is `HTTP_JSON_URL_INVALID`. A query parameter whose name looks like a credential (see `headers`) is `HTTP_JSON_LITERAL_CREDENTIAL`: use `auth.scheme: query`. |
 | `method` | no | `GET` (default) or `POST`. |
 | `body` | no | A JSON request body, sent with `POST` only (as `application/json` unless `headers` sets `Content-Type`). A key anywhere in it whose name looks like a credential is `HTTP_JSON_LITERAL_CREDENTIAL`. |
-| `headers` | no | Literal request headers. They are config, so never secret: a header whose name contains `auth`, `cookie`, `token`, `secret`, `key`, `pass`, `session` or `credential` (any case) is refused. Values are printable ASCII (and tab). |
+| `headers` | no | Literal request headers. They are config, so never secret: a header whose name names a credential is `HTTP_JSON_LITERAL_CREDENTIAL`. A name names a credential when it holds a whole word such as `auth`, `authorization`, `token`, `secret`, `password`, `passwd`, `passphrase`, `session`, `cookie`, `credential`, `sig`, `signature` or `apikey`, the pairs `api key`, `access token`, `private key` and `client secret`, or a bare `key`, split at `_`, `-`, `.` and camelCase (so `X-Api-Key`, `accessToken` and `api_key` are credentials; `author`, `keys`, `sort_key` and `passed` are not). Values are printable ASCII (and tab). |
 | `credentialEnv` | no | Environment-variable **name** holding the credential, read at every poll. |
 | `auth` | no | How the credential is sent (needs `credentialEnv`); see below. |
 | `pollIntervalMs` | no | Milliseconds between polls, 1000–86400000; default 30000. |
@@ -153,7 +153,9 @@ Backed by an integration; each instance is its own provider, registered under it
 | `query` | The `<auth.param>` query parameter set to the value, for an API that takes its key in the URL. The URL in config never holds it. |
 
 An unset or empty credential variable, or one the module may not read
-(`MODULE_CREDENTIAL_ENV_REFUSED`), fails the poll without sending a request. So does a value a
+(`MODULE_CREDENTIAL_ENV_REFUSED`), fails the poll without sending a request. So does a value
+shorter than **8 characters** or with leading or trailing whitespace: a header would trim the
+padding, and a shorter value could not be told apart in the echo check above. So does a value a
 header cannot carry (a line break, a control character, a character outside Latin-1) under the
 `bearer`, `header` or default scheme; `basic` and `query` encode any value.
 
@@ -166,9 +168,8 @@ redirect to a non-http(s) URL or to a URL with `user:password@` is refused. A 30
 
 A response is refused, never published, when it nests arrays and objects more than 64 levels
 deep (checked before parsing), or when any string or key in it contains the credential, raw or
-as sent (the `Bearer` value, the base64 `Basic` pair, the URL-encoded value). A form shorter
-than 6 characters counts only when it is a whole string or key, so a short credential does not
-flag every body that happens to contain it.
+as sent (the `Bearer` value, the base64 `Basic` pair, the URL-encoded value, the exact header
+value the runtime sends).
 
 A failed poll keeps the last good data and publishes one of these errors. None ever contains
 the credential, the response body or the runtime's own error text:

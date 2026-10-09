@@ -38,7 +38,7 @@ can't escalate:
   `http-json` integration's URL must be `http(s)` without `user:password@`. Literal headers,
   URL query parameters and body keys may not take credential-like names, so the only credential
   is the `credentialEnv` variable, sent as a header or (`auth.scheme: query`) a query parameter
-  filled in at request time. An authenticated request never follows a redirect off the
+  filled in at request time; it must hold at least 8 characters. An authenticated request never follows a redirect off the
   configured origin. A response that contains the credential, nests deeper than 64 levels or
   exceeds the size cap (1 MiB by default) is refused, not published, and poll errors name the
   failure class only, never the credential, body or runtime error text. The URL is reached from the deck server, so whoever edits the estate

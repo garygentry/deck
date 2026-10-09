@@ -22,6 +22,12 @@ apps/web/src/
 
 - **Primitives** are shadcn/ui components, copied into the repo rather than installed. They
   belong to deck and may be edited; each local edit is noted in a comment at the top of the file.
+  Radix comes from its scoped packages (`import * as DialogPrimitive from "@radix-ui/react-dialog"`,
+  `import * as Slot from "@radix-ui/react-slot"`), never the `radix-ui` umbrella that the shadcn CLI
+  writes: rewrite the import after `shadcn add` and add the scoped package to `package.json`. The
+  umbrella hides which Radix packages a primitive needs, and a bundler that does not tree-shake
+  its re-exports puts every Radix package used anywhere on the initial route. The guardrail test
+  forbids it.
 - **Patterns** are deck's own components built on the primitives. They carry the product's
   decisions: never colour-only status, a labelled region for every scrolling table, one `h1` per
   page, and so on.

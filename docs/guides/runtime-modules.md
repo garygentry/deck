@@ -94,7 +94,7 @@ moduleIntegrity:
 
 deck computes a module's digest over every file in its directory immediately before it imports
 that module, so a module that does not match runs no code. Update the pin whenever you update
-the module. If two config layers pin the same module, the earlier layer's pin is used. See
+the module. If two config layers pin the same module, the later layer's pin is used. See
 [Runtime module integrity](../reference/estate-config.md#runtime-module-integrity).
 
 A pin defends against a module directory that has changed since you pinned it, on a mount that
@@ -114,7 +114,9 @@ While it is on, deck works out the whole module plan from the manifests before i
 anything, exactly as it plans built-in modules: switches, `deckApi`, dependencies, routes and
 paths, and env names. It then imports only the modules that plan runs, in dependency order,
 each just after checking its pin. If a module fails to load, the plan is worked out again
-without it, so a module that depends on it is never imported. Every other module is off, none
+without it, so a module that depends on it is never imported: it is off with
+`MODULE_DEPENDENCY_MISSING`. `deck validate` and `deck render` follow the same order, checking
+pins without importing anything. Every other module is off, none
 of its code runs, and `GET /api/ui` lists it with the reason and the setting that would switch
 it on.
 
@@ -124,6 +126,8 @@ A runtime module that cannot be loaded is disabled and boot continues. This cove
 
 - a missing, invalid or oversized `deck-module.json` (over 64 KiB or nested over 32 levels), or
   an `id` that is not its directory's name (`bad manifest`);
+- a manifest, entry or pinned directory deck cannot read: no permission, an I/O error, or a
+  symbolic link inside a pinned directory (`unreadable`);
 - a module directory, manifest or entry that resolves outside `DECK_MODULES_DIR` through a
   symbolic link (`outside DECK_MODULES_DIR`);
 - a module that claims what a built-in or another runtime module already has: a finding code,
@@ -136,13 +140,19 @@ deck logs a `module.disabled` warning with the code `MODULE_LOAD_FAILED`, the re
 `detail` field with the full cause. `GET /api/health` reports the module as `disabled`, and both
 it and `GET /api/ui` give only the category in parentheses above: never the module's own error
 text or a file path. A directory named like a built-in module is left out altogether; the
-`modules.runtime` log line lists it under `rejected`. Other failures follow the rules for every
+`modules.runtime` log line lists it under `rejected`.
+
+A module that fails to load claims nothing: no provider kind, finding code, route, path,
+health key, nav entry or service. Another module may use them. Only its config section is
+kept, so that config you wrote for it is still checked. While runtime modules are off, every
+runtime module is out of the plan, so nothing in one can affect a built-in. Other failures follow the rules for every
 module: a manifest the host refuses is `MODULE_MANIFEST_INVALID`, and a `deckApi` mismatch is
 `MODULE_API_INCOMPATIBLE`.
 
 There is one exception: config you wrote for the module is still checked. If the module's
 section is present and invalid against the schema in its `deck-module.json`, boot fails as it
-would if the module had loaded.
+would if the module had loaded. When the manifest itself cannot be read, its schema is unknown,
+so the section is not checked.
 
 Two failures stop boot with exit class 2, because deck cannot stop the code involved:
 

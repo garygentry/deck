@@ -92,35 +92,51 @@ moduleIntegrity:
   maintenance: sha256-…   # the line the command printed
 ```
 
-deck computes the digest over every file in the directory before it imports anything, so a
-module that does not match runs no code. Update the pin whenever you update the module. See
+deck computes a module's digest over every file in its directory immediately before it imports
+that module, so a module that does not match runs no code. Update the pin whenever you update
+the module. If two config layers pin the same module, the earlier layer's pin is used. See
 [Runtime module integrity](../reference/estate-config.md#runtime-module-integrity).
+
+A pin defends against a module directory that has changed since you pinned it, on a mount that
+is read-only to deck. It is not a defence against someone who can write to the directory
+while deck starts: files a module imports later are read after the digest is taken.
 
 ## When a module's code is loaded
 
 deck reads every `deck-module.json` at boot, whether or not runtime modules are on. That way it
-always knows each module's config section and says why a module is off. It imports a module's
-server entry only when all of these hold:
+always knows each module's config section and says why a module is off.
 
-1. `DECK_MODULES_ENABLED` is on.
-2. The manifest is usable and its `deckApi` range matches this deck.
-3. The module's own `enabledBy` switches are on.
-4. The directory matches its pin, if it has one.
+While `DECK_MODULES_ENABLED` is off, runtime modules are inert. None of their code runs, a broken
+or clashing directory is not an error, and each module is reported off with
+`not enabled: DECK_MODULES_ENABLED is not true`.
 
-Otherwise the module is off and none of its code runs. `GET /api/ui` lists it with the reason,
-and with the setting that would switch it on.
+While it is on, deck works out the whole module plan from the manifests before it imports
+anything, exactly as it plans built-in modules: switches, `deckApi`, dependencies, routes and
+paths, and env names. It then imports only the modules that plan runs, in dependency order,
+each just after checking its pin. If a module fails to load, the plan is worked out again
+without it, so a module that depends on it is never imported. Every other module is off, none
+of its code runs, and `GET /api/ui` lists it with the reason and the setting that would switch
+it on.
 
 ## When a module fails
 
 A runtime module that cannot be loaded is disabled and boot continues. This covers:
 
-- a missing or invalid `deck-module.json`, or an `id` that is not its directory's name;
-- a directory that does not match its pin;
-- an entry that throws or does not finish importing within 10 seconds;
-- an entry that does not export a module whose manifest equals `deck-module.json`.
+- a missing, invalid or oversized `deck-module.json` (over 64 KiB or nested over 32 levels), or
+  an `id` that is not its directory's name (`bad manifest`);
+- a module directory, manifest or entry that resolves outside `DECK_MODULES_DIR` through a
+  symbolic link (`outside DECK_MODULES_DIR`);
+- a module that claims what a built-in or another runtime module already has: a finding code,
+  a provider kind, a health key, a route or path (`collision`);
+- a directory that does not match its pin (`pin mismatch`);
+- an entry that throws, or that does not export a module whose manifest equals
+  `deck-module.json` (`import error`).
 
-deck logs a `module.disabled` warning with the code `MODULE_LOAD_FAILED` and the reason, and
-`GET /api/health` reports the module as `disabled`. Other failures follow the rules for every
+deck logs a `module.disabled` warning with the code `MODULE_LOAD_FAILED`, the reason, and a
+`detail` field with the full cause. `GET /api/health` reports the module as `disabled`, and both
+it and `GET /api/ui` give only the category in parentheses above: never the module's own error
+text or a file path. A directory named like a built-in module is left out altogether; the
+`modules.runtime` log line lists it under `rejected`. Other failures follow the rules for every
 module: a manifest the host refuses is `MODULE_MANIFEST_INVALID`, and a `deckApi` mismatch is
 `MODULE_API_INCOMPATIBLE`.
 
@@ -128,8 +144,12 @@ There is one exception: config you wrote for the module is still checked. If the
 section is present and invalid against the schema in its `deck-module.json`, boot fails as it
 would if the module had loaded.
 
-Once loaded, a runtime module runs under the same lifecycle as a built-in. If its `init` throws,
-boot fails with exit class 2, and its stop hooks run at shutdown.
+Two failures stop boot with exit class 2, because deck cannot stop the code involved:
+
+- an entry that does not finish importing within 10 seconds, since its code may still be
+  running;
+- once loaded, an `init` that throws: a runtime module runs under the same lifecycle as a
+  built-in, and its stop hooks run at shutdown.
 
 ## Check that it runs
 

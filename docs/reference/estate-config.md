@@ -65,8 +65,10 @@ moduleIntegrity:
 ```
 
 A pinned module whose directory does not match its pin is disabled with `MODULE_LOAD_FAILED`, and
-boot continues. A module with no pin loads without a check. A pin for a module that is not
-installed has no effect. A value that is not a `sha256-<base64>` digest fails validation.
+boot continues. `deck validate` reports the same mismatch. A module with no pin loads without a
+check. A pin for a module that is not installed has no effect. A value that is not a
+`sha256-<base64>` digest fails validation. Either layer may pin a module. When both pin the same
+module, the earlier layer's pin is the one used, as for every key either layer may set.
 
 ### Layer merge
 

@@ -71,8 +71,11 @@ warning (exit 1) unless `--advisory-disabled` is given.
 
 When `DECK_MODULES_DIR` is set, `deck validate` reads each runtime module's `deck-module.json`,
 so a runtime module's section is checked against the schema its manifest declares rather than
-rejected as `MODULE_UNKNOWN`. It never imports a runtime module's code, so a runtime module's
-config rules run only at boot. `deck render` reads runtime modules the same way.
+rejected as `MODULE_UNKNOWN`. It plans runtime modules as boot would, and checks each module boot
+would import against its integrity pin: a mismatch is `MODULE_LOAD_FAILED`, a warning (info for
+`deck render`, since boot goes on without the module). It never imports a runtime module's
+code, so a runtime module's config rules run only at boot. `deck render` reads runtime modules
+the same way.
 
 ```bash
 bun apps/server/src/cli/deck.ts validate --config examples/estate

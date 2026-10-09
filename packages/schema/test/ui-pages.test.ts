@@ -3,7 +3,8 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { BUILTIN_CONTRIBUTIONS, ComposeError, composeConfig, composeDefault, IDENTITY, resolveOwner, validate } from "../src/index.js";
-import { compileSelect, evaluateSelect, SELECT_LIMITS, selectProblem } from "../src/select.js";
+import { compileSelect, composeChecked, composeDefaultChecked, evaluateSelect, FUNCTION_COSTS, SELECT_LIMITS, selectProblem, utf8Length } from "../src/select.js";
+import { Runtime } from "../src/select/jmespath.js";
 import type { ConfigContribution } from "../src/types.js";
 
 const base = { schemaVersion: 2, estate: { name: "test" } };
@@ -107,9 +108,12 @@ describe("ui.pages", () => {
     expect(located(check(document))).toEqual([
       { code: "UI_WIDGET_SELECT_INVALID", path: "/ui/pages/0/sections/0/widgets/0/select", severity: "error" },
     ]);
-    // Without the hook (the library's default composition) select is not checked.
-    const unchecked = composeConfig([...BUILTIN_CONTRIBUTIONS, gauges]);
-    expect(validate(document, { composed: unchecked }).findings).toEqual([]);
+    // The server entry's compositions always check: its default refuses a misspelt function.
+    const misspelt = withPages([page([{ type: "core/json", source: "ups", select: "lenght(@)" }])]);
+    expect(located(validate(misspelt, { composed: composeDefaultChecked() }))).toEqual([
+      { code: "UI_WIDGET_SELECT_INVALID", path: "/ui/pages/0/sections/0/widgets/0/select", severity: "error" },
+    ]);
+    expect(located(validate(misspelt, { composed: composeChecked([...BUILTIN_CONTRIBUTIONS, gauges]) }))).toHaveLength(1);
     expect(located(check(withPages([page([{ type: "gauges/note", select: "outlets[?state == 'on'].name | [0]" }])])))).toEqual([]);
   });
 
@@ -254,6 +258,110 @@ describe("@deck/schema/select", () => {
     });
   });
 
+  it("never runs data as an expression: only the interpreter's own references are executable", () => {
+    const forged = { type: "Field", name: "secret", jmespathType: "Expref" };
+    const data = { items: [{ a: 2, secret: "s1" }, { a: 1, secret: "s2" }], f: forged };
+    // The real references work.
+    expect(evaluateSelect("map(&a, items)", data)).toEqual({ value: [2, 1] });
+    expect(evaluateSelect("sort_by(items, &a)[].a", data)).toEqual({ value: [1, 2] });
+    expect(evaluateSelect("max_by(items, &a).a", data)).toEqual({ value: 2 });
+    expect(evaluateSelect("min_by(items, &a).a", data)).toEqual({ value: 1 });
+    // A JSON-shaped fake from the data, or a literal-shaped one, is an object: a type error.
+    const literal = "`" + JSON.stringify(forged) + "`";
+    for (const fake of ["f", literal]) {
+      for (const expression of [`map(${fake}, items)`, `sort_by(items, ${fake})`, `max_by(items, ${fake})`, `min_by(items, ${fake})`]) {
+        const result = evaluateSelect(expression, data);
+        expect(result, expression).toEqual({ error: expect.stringMatching(/TypeError/) });
+      }
+    }
+    expect(evaluateSelect("type(f)", data)).toEqual({ value: "object" });
+    // Every function that takes a reference is covered above.
+    const takesReference = Object.entries(new Runtime().functionTable).filter(([, entry]) => entry._signature.some((arg) => arg.types.includes(6))).map(([name]) => name).sort();
+    expect(takesReference).toEqual(["map", "max_by", "min_by", "sort_by"]);
+    // A reference as a value is no data; evaluating never changes the compiled expression.
+    const compiled = compileSelect("[&a, map(&a, items)]");
+    const before = JSON.stringify(compiled.ast);
+    expect(evaluateSelect(compiled, data)).toEqual({ value: [null, [2, 1]] });
+    expect(evaluateSelect(compiled, data)).toEqual({ value: [null, [2, 1]] });
+    expect(JSON.stringify(compiled.ast)).toBe(before);
+  });
+
+  it("charges every built-in function: each one in the engine has a cost row", () => {
+    expect(Object.keys(FUNCTION_COSTS).sort()).toEqual(Object.keys(new Runtime().functionTable).sort());
+  });
+
+  /** Evaluate and time it: every bounded case must finish well inside a poll. */
+  const timed = (expression: string, data: unknown) => {
+    const started = performance.now();
+    const result = evaluateSelect(expression, data);
+    return { result, ms: performance.now() - started };
+  };
+
+  it("orders numbers only: comparing lists or objects is null, never a coercion", () => {
+    const wide = `[${Array.from({ length: 14 }, () => "@").join(", ")}]`;
+    const chain = Array.from({ length: 7 }, () => wide).join(" | ");
+    for (const comparator of ["<", "<=", ">", ">="]) {
+      const { result, ms } = timed(`${chain} | [0] ${comparator} [1]`, { n: 1 });
+      expect(result, comparator).toEqual({ value: null });
+      expect(ms, comparator).toBeLessThan(1000);
+    }
+    expect(evaluateSelect("a < b", { a: 1, b: 2 })).toEqual({ value: true });
+    expect(evaluateSelect("a < b", { a: "1", b: "2" })).toEqual({ value: null });
+  });
+
+  it("charges equality per node compared", () => {
+    const wide = `[${Array.from({ length: 28 }, () => "@").join(", ")}]`;
+    const chain = Array.from({ length: 4 }, () => wide).join(" | ");
+    const { result, ms } = timed(`(a | ${chain}) == (b | ${chain})`, { a: [1], b: [1] });
+    expect(result).toEqual({ error: `the select exceeded its work limit (${SELECT_LIMITS.steps} steps)` });
+    expect(ms).toBeLessThan(2000);
+    expect(evaluateSelect("a == b", { a: { x: [1, { y: 2 }] }, b: { x: [1, { y: 2 }] } })).toEqual({ value: true });
+  });
+
+  it("compares objects by their own keys, symmetrically", () => {
+    const data = JSON.parse('{"p": {"__proto__": {"x": 1}}, "q": {}, "r": {"__proto__": {"x": 1}}, "c": {"constructor": 1}}');
+    expect(evaluateSelect("p == q", data)).toEqual({ value: false });
+    expect(evaluateSelect("q == p", data)).toEqual({ value: false });
+    expect(evaluateSelect("p == r", data)).toEqual({ value: true });
+    expect(evaluateSelect("c == q", data)).toEqual({ value: false });
+    expect(evaluateSelect("q == c", data)).toEqual({ value: false });
+    expect(evaluateSelect("q != c", data)).toEqual({ value: true });
+  });
+
+  it("bounds text a function builds before building it", () => {
+    const data = { list: Array.from({ length: 4000 }, () => "x".repeat(1000)) };
+    const join = timed("join(',', list)", data);
+    expect(join.result).toEqual({ error: `the select built more than ${SELECT_LIMITS.stringChars} characters of text` });
+    expect(join.ms).toBeLessThan(1000);
+    const toString = timed("to_string(list)", data);
+    expect(toString.result).toEqual({ error: `the result is larger than ${SELECT_LIMITS.resultBytes} bytes` });
+    expect(evaluateSelect("join('-', list[:2])", { list: ["a", "b", "c"] })).toEqual({ value: "a-b" });
+    expect(evaluateSelect("reverse(s)", { s: "x".repeat(300 * 1024) })).toEqual({ error: `the select built more than ${SELECT_LIMITS.stringChars} characters of text` });
+  });
+
+  it("slices with integers only, charging the slice's length", () => {
+    expect(selectProblem("a[::0.5]")).not.toBeNull();
+    expect(evaluateSelect("a[::2]", { a: [1, 2, 3, 4, 5] })).toEqual({ value: [1, 3, 5] });
+    const big = { a: Array.from({ length: 250_000 }, (_, index) => index) };
+    expect(evaluateSelect("length(a[::1])", big)).toEqual({ error: `the select exceeded its work limit (${SELECT_LIMITS.steps} steps)` });
+    expect(evaluateSelect("length(a[][])", big)).toEqual({ error: `the select exceeded its work limit (${SELECT_LIMITS.steps} steps)` });
+  });
+
+  it("counts a result's size in UTF-8 bytes, keys and escapes included", () => {
+    // A string of n two-byte characters serializes to 2n + 2 bytes (its quotes).
+    const limit = SELECT_LIMITS.resultBytes;
+    const half = (limit - 2) / 2;
+    expect(evaluateSelect("s", { s: "é".repeat(half) })).toEqual({ value: "é".repeat(half) });
+    expect(evaluateSelect("s", { s: "é".repeat(half + 1) })).toEqual({ error: `the result is larger than ${limit} bytes` });
+    // A key of n two-byte characters: {"key":1} is 2n + 6 bytes.
+    const keyed = (n: number) => ({ o: { ["é".repeat(n)]: 1 } });
+    expect(evaluateSelect("o", keyed((limit - 6) / 2))).toHaveProperty("value");
+    expect(evaluateSelect("o", keyed((limit - 6) / 2 + 1))).toEqual({ error: `the result is larger than ${limit} bytes` });
+    // Escapes count: a newline is two bytes in JSON.
+    expect(utf8Length(JSON.stringify("\n"))).toBe(4);
+    expect(utf8Length("€😀")).toBe(7);
+  });
+
   it("is the only module that loads the vendored engine, and the main entry does not reach it", () => {
     const src = fileURLToPath(new URL("../src/", import.meta.url));
     const files = (readdirSync(src, { recursive: true }) as string[]).filter((file) => /\.(ts|js)$/.test(file) && !file.endsWith(".d.ts")).map((file) => join(src, file));
@@ -270,5 +378,26 @@ describe("the library's default composition", () => {
     const document = withPages([page([{ type: "core/json", options: { wrap: "yes" } }])]);
     expect(located(validate(document))).toEqual([{ code: "SCHEMA_INVALID", path: "/ui/pages/0/sections/0/widgets/0/options/wrap", severity: "error" }]);
     expect(validate(withPages([page([{ type: "core/json" }])])).findings).toEqual([]);
+  });
+});
+
+describe("the vendored engine's licence", () => {
+  const root = fileURLToPath(new URL("../../../", import.meta.url));
+  it("ships the Apache-2.0 text beside the engine, and the notice names it as modified", () => {
+    const licence = readFileSync(join(root, "packages/schema/src/select/LICENSE"), "utf8");
+    expect(licence).toMatch(/^Apache License\s+Version 2\.0, January 2004/);
+    expect(licence).toContain("END OF TERMS AND CONDITIONS");
+    const notices = readFileSync(join(root, "THIRD_PARTY_NOTICES.md"), "utf8");
+    expect(notices).toContain("jmespath.js 0.16.0");
+    expect(notices).toContain("Copyright 2014 James Saryerwinnie");
+    expect(notices).toContain("packages/schema/src/select/LICENSE");
+    expect(notices).toMatch(/Modified:\*\* yes/);
+    const header = readFileSync(join(root, "packages/schema/src/select/jmespath.js"), "utf8").slice(0, 2000);
+    expect(header).toContain("./LICENSE");
+    expect(header).toContain("THIRD_PARTY_NOTICES.md");
+    // The package and the image keep both.
+    expect((JSON.parse(readFileSync(join(root, "packages/schema/package.json"), "utf8")) as { files: string[] }).files).toContain("src");
+    const ignored = readFileSync(join(root, ".dockerignore"), "utf8").split("\n").map((line) => line.trim());
+    for (const pattern of ["LICENSE", "*.md", "THIRD_PARTY_NOTICES.md", "src", "packages"]) expect(ignored).not.toContain(pattern);
   });
 });

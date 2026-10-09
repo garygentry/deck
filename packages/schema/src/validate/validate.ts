@@ -24,7 +24,9 @@ function isObject(value: unknown): value is Record<string, unknown> {
 /**
  * Validate an already-parsed config document against the composed config contract
  * (`options.composed`, default: the kernel plus the built-in contributions). This
- * function never throws.
+ * function never throws. Widget `select` expressions are checked only when the composition
+ * carries the check: compose with `composeChecked()` from the server-only `@deck/schema/select`
+ * (as deck does); the default composition does not check them.
  */
 export function validate(
   document: unknown,

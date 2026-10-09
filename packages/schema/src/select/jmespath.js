@@ -1,8 +1,18 @@
 // Vendored from jmespath.js 0.16.0 (https://github.com/jmespath/jmespath.js), the JMESPath
-// reference implementation, under the Apache License 2.0 (below). Modified for deck, each
-// change marked "deck:": an ES module that also exports TreeInterpreter and Runtime; field
-// lookups read own properties only; hash multi-selects and merge() define keys rather than
-// assign them. Server-only: reachable through `@deck/schema/select` alone.
+// reference implementation, licensed under the Apache License 2.0: the full text is in
+// ./LICENSE, and THIRD_PARTY_NOTICES.md at the repository root records this copy and that it is
+// modified. Server-only: reachable through `@deck/schema/select` alone.
+//
+// Modified for deck; every change is marked "deck:":
+// - an ES module that also exports TreeInterpreter and Runtime;
+// - an expression reference is an ExpressionRef only the interpreter creates (no data value can
+//   pass for one), and the parsed expression is never changed;
+// - field lookups, object comparison and the emptiness test read own properties only; hash
+//   multi-selects and merge() define keys rather than assign them;
+// - ordering comparators are defined for numbers only (null otherwise), as the spec says;
+// - a work meter (Runtime#charge) is charged before every step that grows with the data:
+//   slices (integer bounds only), flattens, value projections, equality;
+// - starts_with/ends_with are linear.
 //
 // Copyright 2014 James Saryerwinnie
 //
@@ -38,7 +48,11 @@ const vendored = {};
     }
   }
 
-  function strictDeepEqual(first, second) {
+  // deck: metered (charge(1) per node compared) and own keys only, with a Set as the tracker.
+  function strictDeepEqual(first, second, charge) {
+    if (charge) {
+      charge(1);
+    }
     // Check the scalar case first.
     if (first === second) {
       return true;
@@ -57,30 +71,31 @@ const vendored = {};
         return false;
       }
       for (var i = 0; i < first.length; i++) {
-        if (strictDeepEqual(first[i], second[i]) === false) {
+        if (strictDeepEqual(first[i], second[i], charge) === false) {
           return false;
         }
       }
       return true;
     }
     if (isObject(first) === true) {
-      // An object is equal if it has the same key/value pairs.
-      var keysSeen = {};
-      for (var key in first) {
-        if (hasOwnProperty.call(first, key)) {
-          if (strictDeepEqual(first[key], second[key]) === false) {
-            return false;
-          }
-          keysSeen[key] = true;
+      // An object is equal if it has the same own key/value pairs.
+      var firstKeys = Object.keys(first);
+      var secondKeys = Object.keys(second);
+      if (charge) {
+        charge(firstKeys.length + secondKeys.length);
+      }
+      if (firstKeys.length !== secondKeys.length) {
+        return false;
+      }
+      var keysSeen = new Set(firstKeys);
+      for (var k = 0; k < secondKeys.length; k++) {
+        if (!keysSeen.has(secondKeys[k])) {
+          return false;
         }
       }
-      // Now check that there aren't any keys in second that weren't
-      // in first.
-      for (var key2 in second) {
-        if (hasOwnProperty.call(second, key2)) {
-          if (keysSeen[key2] !== true) {
-            return false;
-          }
+      for (var m = 0; m < firstKeys.length; m++) {
+        if (strictDeepEqual(first[firstKeys[m]], second[firstKeys[m]], charge) === false) {
+          return false;
         }
       }
       return true;
@@ -104,12 +119,10 @@ const vendored = {};
         // Check for an empty array.
         return true;
     } else if (isObject(obj)) {
-        // Check for an empty object.
+        // deck: own keys through Object.prototype (data may have its own "hasOwnProperty" key or
+        // no prototype at all); the first one decides.
         for (var key in obj) {
-            // If there are any keys, then
-            // the object is not empty so the object
-            // is not false.
-            if (obj.hasOwnProperty(key)) {
+            if (Object.prototype.hasOwnProperty.call(obj, key)) {
               return false;
             }
         }
@@ -878,6 +891,12 @@ const vendored = {};
   };
 
 
+  // deck: the one way to an executable expression reference (see "ExpressionReference").
+  function ExpressionRef(node) {
+    this.node = node;
+    Object.freeze(this);
+  }
+
   function TreeInterpreter(runtime) {
     this.runtime = runtime;
   }
@@ -936,6 +955,11 @@ const vendored = {};
               var start = computed[0];
               var stop = computed[1];
               var step = computed[2];
+              // deck: integers only, and the output's length is charged before it is built.
+              if (!Number.isInteger(start) || !Number.isInteger(stop) || !Number.isInteger(step)) {
+                throw new Error("RuntimeError: slice bounds and step must be integers");
+              }
+              this.runtime.charge(step > 0 ? Math.max(0, Math.ceil((stop - start) / step)) : Math.max(0, Math.ceil((start - stop) / -step)));
               result = [];
               if (step > 0) {
                   for (i = start; i < stop; i += step) {
@@ -968,6 +992,8 @@ const vendored = {};
                 return null;
               }
               collected = [];
+              // deck: the values list is charged before it is built.
+              this.runtime.charge(Object.keys(base).length);
               var values = objValues(base);
               for (i = 0; i < values.length; i++) {
                 current = this.visit(node.children[1], values[i]);
@@ -1000,23 +1026,26 @@ const vendored = {};
               first = this.visit(node.children[0], value);
               second = this.visit(node.children[1], value);
               switch(node.name) {
+                // deck: equality is metered per node compared.
                 case TOK_EQ:
-                  result = strictDeepEqual(first, second);
+                  result = strictDeepEqual(first, second, this.runtime.charge.bind(this.runtime));
                   break;
                 case TOK_NE:
-                  result = !strictDeepEqual(first, second);
+                  result = !strictDeepEqual(first, second, this.runtime.charge.bind(this.runtime));
                   break;
+                // deck: ordering is defined for numbers only (JMESPath spec); anything else is null,
+                // never a JavaScript coercion (which would stringify lists and objects).
                 case TOK_GT:
-                  result = first > second;
+                  result = typeof first === "number" && typeof second === "number" ? first > second : null;
                   break;
                 case TOK_GTE:
-                  result = first >= second;
+                  result = typeof first === "number" && typeof second === "number" ? first >= second : null;
                   break;
                 case TOK_LT:
-                  result = first < second;
+                  result = typeof first === "number" && typeof second === "number" ? first < second : null;
                   break;
                 case TOK_LTE:
-                  result = first <= second;
+                  result = typeof first === "number" && typeof second === "number" ? first <= second : null;
                   break;
                 default:
                   throw new Error("Unknown comparator: " + node.name);
@@ -1027,11 +1056,19 @@ const vendored = {};
               if (!isArray(original)) {
                 return null;
               }
+              // deck: the output's length is charged before it is built.
+              var total = 0;
+              for (i = 0; i < original.length; i++) {
+                total += isArray(original[i]) ? original[i].length : 1;
+              }
+              this.runtime.charge(original.length + total);
               var merged = [];
               for (i = 0; i < original.length; i++) {
                 current = original[i];
                 if (isArray(current)) {
-                  merged.push.apply(merged, current);
+                  for (var f = 0; f < current.length; f++) {
+                    merged.push(current[f]);
+                  }
                 } else {
                   merged.push(current);
                 }
@@ -1090,11 +1127,10 @@ const vendored = {};
               }
               return this.runtime.callFunction(node.name, resolvedArgs);
             case "ExpressionReference":
-              var refNode = node.children[0];
-              // Tag the node with a specific attribute so the type
-              // checker verify the type.
-              refNode.jmespathType = TOK_EXPREF;
-              return refNode;
+              // deck: an expression reference is an ExpressionRef, which only the interpreter
+              // creates from the parsed expression; no data value (JSON-shaped or literal) can be
+              // one. The parsed expression is never tagged or changed.
+              return new ExpressionRef(node.children[0]);
             default:
               throw new Error("Unknown node type: " + node.type);
           }
@@ -1229,6 +1265,10 @@ const vendored = {};
   }
 
   Runtime.prototype = {
+    // deck: the work meter. The interpreter and the functions charge every step whose cost grows
+    // with the data, before they allocate; deck's evaluator replaces it with a budget.
+    charge: function(cost) {},
+
     callFunction: function(name, resolvedArgs) {
       var functionEntry = this.functionTable[name];
       if (functionEntry === undefined) {
@@ -1334,9 +1374,9 @@ const vendored = {};
             case "[object Null]":
               return TYPE_NULL;
             case "[object Object]":
-              // Check if it's an expref.  If it has, it's been
-              // tagged with a jmespathType attr of 'Expref';
-              if (obj.jmespathType === TOK_EXPREF) {
+              // deck: an expression reference is an ExpressionRef the interpreter made, never a
+              // value tagged by its fields (data could forge those).
+              if (obj instanceof ExpressionRef) {
                 return TYPE_EXPREF;
               } else {
                 return TYPE_OBJECT;
@@ -1345,13 +1385,15 @@ const vendored = {};
     },
 
     _functionStartsWith: function(resolvedArgs) {
-        return resolvedArgs[0].lastIndexOf(resolvedArgs[1]) === 0;
+        // deck: linear in the prefix (lastIndexOf scanned the whole string).
+        return resolvedArgs[0].startsWith(resolvedArgs[1]);
     },
 
     _functionEndsWith: function(resolvedArgs) {
         var searchStr = resolvedArgs[0];
         var suffix = resolvedArgs[1];
-        return searchStr.indexOf(suffix, searchStr.length - suffix.length) !== -1;
+        // deck: linear in the suffix.
+        return searchStr.endsWith(suffix);
     },
 
     _functionReverse: function(resolvedArgs) {
@@ -1408,7 +1450,7 @@ const vendored = {};
     _functionMap: function(resolvedArgs) {
       var mapped = [];
       var interpreter = this._interpreter;
-      var exprefNode = resolvedArgs[0];
+      var exprefNode = resolvedArgs[0].node;
       var elements = resolvedArgs[1];
       for (var i = 0; i < elements.length; i++) {
           mapped.push(interpreter.visit(exprefNode, elements[i]));
@@ -1567,7 +1609,7 @@ const vendored = {};
             return sortedArray;
         }
         var interpreter = this._interpreter;
-        var exprefNode = resolvedArgs[1];
+        var exprefNode = resolvedArgs[1].node;
         var requiredType = this._getTypeName(
             interpreter.visit(exprefNode, sortedArray[0]));
         if ([TYPE_NUMBER, TYPE_STRING].indexOf(requiredType) < 0) {
@@ -1649,9 +1691,10 @@ const vendored = {};
       return minRecord;
     },
 
-    createKeyFunction: function(exprefNode, allowedTypes) {
+    createKeyFunction: function(expref, allowedTypes) {
       var that = this;
       var interpreter = this._interpreter;
+      var exprefNode = expref.node;
       var keyFunc = function(x) {
         var current = interpreter.visit(exprefNode, x);
         if (allowedTypes.indexOf(that._getTypeName(current)) < 0) {

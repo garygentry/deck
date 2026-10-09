@@ -12,7 +12,11 @@ export const BUILTIN_CONTRIBUTIONS: readonly ConfigContribution[] = [
 
 let defaultComposition: ComposedConfig | undefined;
 
-/** The kernel composed with {@link BUILTIN_CONTRIBUTIONS}: what deck validates without modules. */
+/**
+ * The kernel composed with {@link BUILTIN_CONTRIBUTIONS}. Browser-safe, so it does **not** check
+ * widget `select` expressions (the engine is server-only): the server's entry,
+ * `composeDefaultChecked()` / `composeChecked()` from `@deck/schema/select`, does.
+ */
 export function composeDefault(): ComposedConfig {
   defaultComposition ??= composeConfig(BUILTIN_CONTRIBUTIONS);
   return defaultComposition;

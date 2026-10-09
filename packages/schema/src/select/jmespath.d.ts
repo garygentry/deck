@@ -6,7 +6,6 @@ export interface JmesNode {
   name?: string;
   value?: unknown;
   children?: JmesNode[];
-  jmespathType?: string;
 }
 
 export interface JmesSignatureEntry {
@@ -27,6 +26,8 @@ export function search(data: unknown, expression: string): unknown;
 export class Runtime {
   constructor(interpreter?: TreeInterpreter);
   _interpreter: TreeInterpreter;
+  /** The work meter: a no-op unless replaced; it throws to stop an evaluation. */
+  charge(cost: number): void;
   functionTable: Record<string, JmesFunctionEntry>;
   callFunction(name: string, resolvedArgs: unknown[]): unknown;
 }

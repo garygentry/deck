@@ -1,5 +1,6 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { ServerModuleContext } from "@deck/module-sdk";
@@ -9,7 +10,14 @@ import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { KERNEL_ENV_NAMES } from "../src/modules/context.js";
 import { register, read, startScheduler, stopScheduler } from "../src/providers/registry.js";
 import { testHost, testModule } from "./util/modules.js";
+import { serverSourceFiles, serverSourceRoots } from "./util/source-roots.js";
 import { makeDataDir } from "./util/tmp-data.js";
+
+/** Every `DECK_*` name the server's sources (its own and each module's server half) mention. */
+function deckNamesInServerSources(repo?: string): Set<string> {
+  const files = serverSourceFiles(repo).filter((file) => file.endsWith(".ts"));
+  return new Set(files.flatMap((file) => readFileSync(file, "utf8").match(/DECK_[A-Z0-9_]+/g) ?? []));
+}
 
 /** Start a single always-on module and hand back its context. */
 async function contextFor(
@@ -81,9 +89,9 @@ describe("ctx.env", () => {
 
   it("lists every DECK_* setting the server, the entrypoint and the env reference name as a kernel setting or a built-in module's own or shared one", () => {
     const root = fileURLToPath(new URL("../../../", import.meta.url));
-    const src = join(root, "apps/server/src");
-    const files = readdirSync(src, { recursive: true, encoding: "utf8" }).filter((file) => file.endsWith(".ts"));
-    const read = new Set(files.flatMap((file) => readFileSync(join(src, file), "utf8").match(/DECK_[A-Z0-9_]+/g) ?? []));
+    // The scan covers the built-in modules' server halves, not only apps/server/src.
+    expect(serverSourceRoots().map((dir) => relative(root, dir))).toContain("modules/llm-usage/server");
+    const read = deckNamesInServerSources();
     read.delete("DECK_API_VERSION"); // the module API version constant, not an env var
     for (const name of readFileSync(join(root, "docker/entrypoint.sh"), "utf8").match(/DECK_[A-Z0-9_]*[A-Z0-9]\b/g) ?? []) read.add(name);
     // Every setting row of the environment-variables reference: `| \`DECK_X\` | default | … |`.
@@ -97,6 +105,18 @@ describe("ctx.env", () => {
     expect([...shared].filter((name) => KERNEL_ENV_NAMES.has(name) || owned.has(name))).toEqual([]);
     // Kernel settings and module-owned names never overlap (the host refuses such a manifest).
     expect([...owned].filter((name) => KERNEL_ENV_NAMES.has(name))).toEqual([]);
+  });
+
+  it("reads DECK_* names from a module's server half (scan self-test)", () => {
+    const repo = mkdtempSync(join(tmpdir(), "server-roots-"));
+    try {
+      const probe = join(repo, "modules/probe/server/module.ts");
+      mkdirSync(dirname(probe), { recursive: true });
+      writeFileSync(probe, 'export const flag = process.env.DECK_PROBE_ONLY_SETTING;\n');
+      expect([...deckNamesInServerSources(repo)]).toEqual(["DECK_PROBE_ONLY_SETTING"]);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 
   it("ignores a pointer whose value is not a non-empty string", async () => {

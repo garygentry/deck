@@ -31,6 +31,7 @@ export function aliasProblem(alias: string): string | null {
 export function rootPathProblem(path: string): string | null {
   if (!isLiteralPath(path)) return "must be a literal path (A-Z a-z 0-9 . _ ~ - /)";
   if (segments(path)[0] === "api") return "must be outside /api";
+  if (segments(path)[0] === "modules") return "must be outside /modules";
   return null;
 }
 

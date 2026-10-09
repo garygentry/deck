@@ -1,6 +1,8 @@
 import type { ModuleManifest, UiManifest } from "@deck/module-sdk";
 
 import type { ModuleHost } from "../modules/host.js";
+import type { RuntimeWebAssets } from "../modules/runtime.js";
+import { webEntryOf } from "../server/module-assets.js";
 import type { ProviderReader } from "../server/app.js";
 import { KERNEL_FEATURES } from "./kernel-features.js";
 import { configPagesOf, deriveProjections } from "./config-pages.js";
@@ -17,6 +19,8 @@ export interface UiManifestDeps {
   capabilities: Readonly<Record<string, boolean>>;
   /** The pages modules contribute at runtime now (`collectRuntimePages`). */
   runtimePages?: () => RuntimePages;
+  /** The runtime modules' web halves deck serves, by id (see `servedWebModules`). */
+  web?: ReadonlyMap<string, RuntimeWebAssets>;
 }
 
 /**
@@ -28,6 +32,7 @@ export function buildUiManifest(deps: UiManifestDeps): UiManifest {
   const modules: UiModuleInput[] = (deps.modules?.plan ?? []).map((entry) => {
     // A module whose manifest was unusable is listed by id, with nothing to contribute.
     const manifest = deps.modules?.manifests.get(entry.id) ?? unusableManifest(entry.id);
+    const web = deps.web?.get(entry.id);
     return {
       manifest,
       enabled: entry.enabled,
@@ -35,6 +40,7 @@ export function buildUiManifest(deps: UiManifestDeps): UiManifest {
       ...(entry.gates === undefined ? {} : { enabledBy: [...entry.gates] }),
       // By id: the host snapshots each manifest, and ids are unique per host.
       ...(deps.modules?.builtinIds.has(entry.id) === true ? { builtin: true } : {}),
+      ...(web === undefined || !entry.enabled ? {} : { web: webEntryOf(entry.id, web) }),
     };
   });
   const estateName = estateNameOf(deps.config);

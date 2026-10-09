@@ -22,6 +22,12 @@ export const MODULES_ENABLED_ENV = "DECK_MODULES_ENABLED";
 export const RUNTIME_MANIFEST_FILE = "deck-module.json";
 /** Server entry file names; a module has at most one. */
 export const SERVER_ENTRY_FILES: readonly string[] = ["server.js", "server.mjs", "server.ts"];
+/** The web half's script: native ESM, default-exporting the module's `defineWebModule(...)`. */
+export const WEB_SCRIPT_FILE = "web.js";
+/** The web half's optional stylesheet. */
+export const WEB_STYLES_FILE = "web.css";
+/** Bound on each web asset, which is held in memory from load to stop. */
+export const MAX_WEB_ASSET_BYTES = 8 * 1024 * 1024;
 /** An integrity pin: `sha256-` and the base64 digest {@link moduleDigest} computes. */
 export const INTEGRITY_PATTERN = /^sha256-[A-Za-z0-9+/]{43}=$/;
 /** How long a server entry may take to import (its top-level code included). */
@@ -61,6 +67,22 @@ export interface RuntimeModulePlan {
   readonly planOnly?: true;
 }
 
+/**
+ * A loaded runtime module's web half, read right after its integrity pin was checked, so what
+ * deck serves is what was pinned. Each file's bytes and their sha256 (hex, the ETag).
+ */
+export interface RuntimeWebAssets {
+  readonly script: WebAsset;
+  readonly styles?: WebAsset;
+  /** Its `deck-module.json`, which a web half may import as a JSON module. */
+  readonly manifest: WebAsset;
+}
+
+export interface WebAsset {
+  readonly body: Uint8Array;
+  readonly sha256: string;
+}
+
 export interface RuntimeModules extends RuntimeModulePlan {
   /** The modules directory as set; undefined when {@link MODULES_DIR_ENV} is unset. */
   readonly dir: string | undefined;
@@ -74,6 +96,8 @@ export interface RuntimeModules extends RuntimeModulePlan {
   readonly sections: ReadonlySet<string>;
   /** Directories left out entirely (named like a built-in or not plannable at all), each with why, for the log. */
   readonly rejected: readonly { id: string; detail: string }[];
+  /** The web halves of loaded modules that have one, by id: only a loaded module's is ever served. */
+  readonly web: ReadonlyMap<string, RuntimeWebAssets>;
 }
 
 /** The empty result: no runtime modules. */
@@ -88,6 +112,7 @@ export const NO_RUNTIME_MODULES: RuntimeModules = Object.freeze({
   pins: new Map<string, string>(),
   sections: new Set<string>(),
   rejected: [],
+  web: new Map<string, RuntimeWebAssets>(),
 });
 
 /** A failure of one runtime module: a public category, and the detail for the log. */
@@ -123,20 +148,30 @@ const inside = (parent: string, child: string) => child.startsWith(`${parent}${s
  * outside what the digest covers.
  */
 export function moduleDigest(dir: string): string {
+  return digestWalk(dir).digest;
+}
+
+/** {@link moduleDigest}, with the sha256 (hex) of each file it covered, by relative path. */
+function digestWalk(dir: string): { digest: string; files: ReadonlyMap<string, string> } {
   const root = realpathSync(dir);
   const outer = createHash("sha256");
+  const files = new Map<string, string>();
   const walk = (current: string) => {
     for (const name of readdirSync(current).sort()) {
       const path = join(current, name);
       const stats = lstatSync(path);
       const rel = relative(root, path).split(sep).join("/");
       if (stats.isDirectory()) walk(path);
-      else if (stats.isFile()) outer.update(`${rel}\0${createHash("sha256").update(readFileSync(path)).digest("hex")}\n`);
+      else if (stats.isFile()) {
+        const hash = createHash("sha256").update(readFileSync(path)).digest("hex");
+        files.set(rel, hash);
+        outer.update(`${rel}\0${hash}\n`);
+      }
       else throw new LoadError("unreadable", `"${rel}" is not a regular file or directory, so the integrity digest cannot cover it`);
     }
   };
   walk(root);
-  return `sha256-${outer.digest("base64")}`;
+  return { digest: `sha256-${outer.digest("base64")}`, files };
 }
 
 /** Whether `value` nests no deeper than `max` (iteratively: a deep value cannot overflow the stack). */
@@ -287,6 +322,45 @@ function idOnly(id: string): ServerModule {
   return standIn(Object.freeze({ id, version: "unknown", deckApi: "0" }));
 }
 
+/**
+ * One file of a module's web half, read whole; null when the module has no such file. With
+ * `pinned` (the per-file hashes of a pinned directory's digest), its bytes must be the ones
+ * the digest covered: a file changed between the two reads is a pin mismatch.
+ */
+function readWebAsset(dir: string, name: string, pinned: ReadonlyMap<string, string> | null): WebAsset | null {
+  let file: string;
+  try {
+    file = realpathSync(join(dir, name));
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw new LoadError("unreadable", `its ${name} cannot be read: ${(cause as Error).message}`);
+  }
+  if (!inside(dir, file)) throw new LoadError("outside DECK_MODULES_DIR", `its ${name} resolves to ${file}, outside the module directory`);
+  let body: Uint8Array;
+  try {
+    if (!statSync(file).isFile()) throw new Error("not a regular file");
+    if (statSync(file).size > MAX_WEB_ASSET_BYTES) throw new Error(`larger than ${MAX_WEB_ASSET_BYTES} bytes`);
+    body = readFileSync(file);
+  } catch (cause) {
+    throw new LoadError("unreadable", `its ${name} cannot be read: ${(cause as Error).message}`);
+  }
+  const sha256 = createHash("sha256").update(body).digest("hex");
+  if (pinned !== null && pinned.get(name) !== sha256) throw new LoadError("pin mismatch", `its ${name} changed after its directory digest was checked`);
+  return Object.freeze({ body, sha256 });
+}
+
+/**
+ * A module's web half, when it has a {@link WEB_SCRIPT_FILE}; a stylesheet alone is not one.
+ * `pinned`: the per-file hashes its pin was checked against, or null when it has no pin.
+ */
+export function readWebAssets(dir: string, pinned: ReadonlyMap<string, string> | null): RuntimeWebAssets | null {
+  const script = readWebAsset(dir, WEB_SCRIPT_FILE, pinned);
+  if (script === null) return null;
+  const styles = readWebAsset(dir, WEB_STYLES_FILE, pinned);
+  const manifest = readWebAsset(dir, RUNTIME_MANIFEST_FILE, pinned)!;
+  return Object.freeze({ script, manifest, ...(styles === null ? {} : { styles }) });
+}
+
 /** The default export of a server entry as a server module, checked against its manifest file. */
 function asServerModule(exported: unknown, manifest: ModuleManifest, name: string): ServerModule {
   if (exported === null || typeof exported !== "object") {
@@ -337,6 +411,7 @@ class Loading {
   readonly codeless = new Set<string>();
   readonly pins = new Map<string, string>();
   readonly rejected: { id: string; detail: string }[] = [];
+  readonly web = new Map<string, RuntimeWebAssets>();
   /** Modules whose config contribution does not compose on its own, from the admitting composition. */
   private invalid: ReadonlyMap<string, string> = new Map();
 
@@ -349,6 +424,7 @@ class Loading {
 
   /** Disable a module that failed to load: it keeps only its config section (see {@link sectionOnly}). */
   fail(id: string, problem: LoadError): void {
+    this.web.delete(id);
     this.loadProblems.set(id, problem.category);
     this.loadDetails.set(id, `${this.candidates.get(id)?.dir ?? id}: ${problem.message}`);
     this.codeless.add(id);
@@ -433,19 +509,23 @@ class Loading {
     return conflict;
   }
 
-  /** Check a module's directory against its pin, now; throws a LoadError when it does not match. */
-  checkPin(id: string): void {
+  /**
+   * Check a module's directory against its pin, now; throws a LoadError when it does not match.
+   * Returns the per-file hashes the digest covered, or null when the module has no pin.
+   */
+  checkPin(id: string): ReadonlyMap<string, string> | null {
     const pin = this.hints?.pins.get(id);
-    if (pin === undefined) return;
+    if (pin === undefined) return null;
     if (typeof pin !== "string" || !INTEGRITY_PATTERN.test(pin)) throw new LoadError("pin mismatch", "its integrity pin is not a sha256-<base64> digest");
     this.pins.set(id, pin);
-    let digest: string;
+    let walked: ReturnType<typeof digestWalk>;
     try {
-      digest = moduleDigest(this.candidates.get(id)!.dir);
+      walked = digestWalk(this.candidates.get(id)!.dir);
     } catch (cause) {
       throw cause instanceof LoadError ? cause : new LoadError("unreadable", `its directory cannot be read: ${(cause as Error).message}`);
     }
-    if (digest !== pin) throw new LoadError("pin mismatch", `its directory digest ${digest} does not match the pinned ${pin}`);
+    if (walked.digest !== pin) throw new LoadError("pin mismatch", `its directory digest ${walked.digest} does not match the pinned ${pin}`);
+    return walked.files;
   }
 
   /**
@@ -475,6 +555,7 @@ class Loading {
       pins: this.pins,
       sections: this.hints?.sections ?? new Set(),
       rejected: this.rejected,
+      web: this.web,
       ...(planOnly ? { planOnly: true as const } : {}),
     };
   }
@@ -527,7 +608,11 @@ export async function loadRuntimeModules(options: LoadRuntimeOptions): Promise<R
     const candidate = loading.candidates.get(id)!;
     try {
       // Immediately before the import, so an earlier module's import cannot change it unseen.
-      loading.checkPin(id);
+      const pinned = loading.checkPin(id);
+      // Read now and served from memory, so a later change is not served; when pinned, each
+      // file must hash as it did in the digest just checked.
+      const web = readWebAssets(candidate.dir, pinned);
+      if (web !== null) loading.web.set(id, web);
       if (candidate.entry === null) {
         // No server code: a module of manifest contributions only.
         loading.modules.set(id, standIn(candidate.manifest!));

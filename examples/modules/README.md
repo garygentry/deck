@@ -6,4 +6,4 @@ Each directory here is a runtime module: point `DECK_MODULES_DIR` at this direct
 
 | Module | What it adds |
 | --- | --- |
-| [`maintenance`](maintenance) | Planned maintenance windows: a page, a header pill, a provider, a route and a config section with a rule. |
+| [`maintenance`](maintenance) | Planned maintenance windows: a web half with a page, a header pill and an icon; a provider, a route and a config section with a rule. |

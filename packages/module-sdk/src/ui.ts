@@ -61,6 +61,11 @@ export interface UiManifest {
    * `core/embed` widget frame its page. Absent otherwise.
    */
   allowUnsafeEmbeds?: true;
+  /**
+   * The SVG icons enabled modules contribute (`contributes.icons`), by name (`<module>/<name>`):
+   * what `Icon` renders for a name outside deck's curated set. Absent when there are none.
+   */
+  icons?: Record<string, string>;
   /** Problems found while resolving; none of them stops the UI from rendering. */
   findings: UiFinding[];
 }
@@ -103,6 +108,18 @@ export interface UiModule {
    * setting would enable the module; never empty.
    */
   enabledBy?: UiModuleSwitch[];
+  /**
+   * Where the module's web half loads from: set only for an enabled runtime module whose code
+   * deck loaded and that has one. The shell imports `script` (native ESM, through the page's
+   * import map) after this manifest, with `styles` linked first.
+   */
+  web?: UiModuleWeb;
+}
+
+/** A runtime module's web half: root-relative URLs under `/modules/<id>/`. */
+export interface UiModuleWeb {
+  script: string;
+  styles?: string;
 }
 
 /** An env var (`DECK_ACTIONS_ENABLED`) or a config key (`modules.<id>`) that enables a module. */

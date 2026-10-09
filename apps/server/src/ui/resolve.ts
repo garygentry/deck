@@ -16,6 +16,7 @@ import type {
   UiHome,
   UiModule,
   UiModuleSwitch,
+  UiModuleWeb,
   UiNavGroup,
   UiNavItem,
   UiOverride,
@@ -74,6 +75,8 @@ export interface UiModuleInput {
   builtin?: boolean;
   /** The unset settings that keep the module off, when they are why (names, never values). */
   enabledBy?: readonly UiModuleSwitch[];
+  /** Where its web half loads from: a loaded runtime module's that has one. */
+  web?: UiModuleWeb;
 }
 
 export interface ResolveUiInput {
@@ -113,6 +116,7 @@ interface Unit {
   reason?: string;
   builtin?: boolean;
   enabledBy?: readonly UiModuleSwitch[];
+  web?: UiModuleWeb;
 }
 
 type Owned<T> = T & { module: string };
@@ -539,13 +543,14 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
     uiApi: 1,
     brand: resolveBrand(input.estateName, ui.brand),
     home: home ?? null,
-    modules: units.map(({ manifest, origin, enabled, reason, enabledBy }) => ({
+    modules: units.map(({ manifest, origin, enabled, reason, enabledBy, web }) => ({
       id: manifest.id,
       version: manifest.version,
       enabled,
       ...(reason === undefined ? {} : { reason }),
       origin,
       ...(enabled || enabledBy === undefined || enabledBy.length === 0 ? {} : { enabledBy: enabledBy.map(copySwitch) }),
+      ...(enabled && web !== undefined ? { web: { ...web } } : {}),
     })),
     slots: [...slots.values()].sort((a, b) => compareIds(a.id, b.id)),
     pages: pages.sort((a, b) => compareIds(a.id, b.id)),
@@ -556,6 +561,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
     providers: [...(input.providers ?? [])]
       .map(({ id, kind }) => ({ id, kind }))
       .sort((a, b) => compareIds(a.id, b.id)),
+    ...iconsOf(units),
     ...(statusKinds.size === 0 ? {} : { statusKinds: [...statusKinds.values()].sort((a, b) => compareIds(a.kind, b.kind)) }),
     widgetTypes: [...widgetTypes.values()].sort((a, b) => compareIds(a.type, b.type)),
     ...(ui.statusMaps === undefined || Object.keys(ui.statusMaps).length === 0 ? {} : { statusMaps: copyStatusMaps(ui.statusMaps) }),
@@ -708,15 +714,30 @@ function configUnroutedReason(id: string, overrides: ReadonlyMap<string, UiOverr
   return "another contribution has its id, or another page or a module's root path has its path, or its path is unusable";
 }
 
+/**
+ * The icons enabled modules contribute (`contributes.icons`), by name: none when there are none.
+ * Each name is namespaced to its module (`<module>/<name>`), so two modules never share one.
+ */
+function iconsOf(units: readonly Unit[]): { icons?: Record<string, string> } {
+  const icons: Record<string, string> = {};
+  for (const unit of units) {
+    if (!unit.enabled) continue;
+    for (const [name, svg] of Object.entries(unit.manifest.contributes?.icons ?? {})) icons[name] = svg;
+  }
+  const names = Object.keys(icons).sort(compareIds);
+  return names.length === 0 ? {} : { icons: Object.fromEntries(names.map((name) => [name, icons[name]!])) };
+}
+
 /** Modules, then the kernel features no module replaces, by id (a reserved id is listed twice, by origin). */
 function collectUnits(input: ResolveUiInput): Unit[] {
-  const units: Unit[] = input.modules.map(({ manifest, enabled, reason, builtin, enabledBy }) => ({
+  const units: Unit[] = input.modules.map(({ manifest, enabled, reason, builtin, enabledBy, web }) => ({
     manifest,
     origin: "module",
     enabled,
     ...(reason === undefined ? {} : { reason }),
     ...(builtin === true ? { builtin } : {}),
     ...(enabledBy === undefined ? {} : { enabledBy }),
+    ...(web === undefined ? {} : { web }),
   }));
   const moduleIds = new Set(units.map((unit) => unit.manifest.id));
   for (const { manifest, requires } of input.kernelFeatures ?? []) {

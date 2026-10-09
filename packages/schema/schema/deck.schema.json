@@ -77,7 +77,7 @@
       "title": "UiBrand", "type": "object", "additionalProperties": false,
       "properties": {
         "title": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "\\S", "description": "The product name in the sidebar and the document title; default estate.name, then Deck." },
-        "icon": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "description": "An icon name from the shell's icon set, shown in place of the title's initial." },
+        "icon": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)?$", "description": "An icon name from the shell's icon set, or one a module contributes (<module>/<name>), shown in place of the title's initial." },
         "logoUrl": { "type": "string", "maxLength": 2048, "pattern": "^(?:https?://|/(?!/))[^\\s\"'<>]*$", "description": "An http(s) URL or a root-relative path to a logo image, shown in place of the icon." }
       }
     },

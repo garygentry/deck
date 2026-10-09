@@ -18,7 +18,9 @@ import type { ModuleHost } from "../modules/host.js";
 import type { ProviderSelects } from "../providers/registry.js";
 import { requestLogger } from "../log/logger.js";
 import { etagMatches, etagOf, type LiveUi } from "../ui/live.js";
+import type { RuntimeWebAssets } from "../modules/runtime.js";
 import { deckBootOf, renderIndexHtml } from "./index-html.js";
+import { mountModuleAssets } from "./module-assets.js";
 import { RESERVED_ROOT_PATHS } from "./reserved-paths.js";
 
 export interface ProviderReader {
@@ -52,6 +54,8 @@ export interface AppDeps {
    */
   live?: () => LiveUi;
   webDistDir?: string;
+  /** Runtime modules' web halves to serve under `/modules` (see `servedWebModules`). */
+  moduleWeb?: ReadonlyMap<string, RuntimeWebAssets>;
   startedAtMs?: number;
 }
 
@@ -190,6 +194,10 @@ export function createApp(deps: AppDeps): Hono {
     // this same handler and overflow into the 500 onError path.
     return context.text("404 Not Found", 404);
   });
+
+  // Runtime modules' web halves: before module routes and the static/SPA fallback, so every
+  // path under /modules is answered here (a file or a plain 404), API-only or not.
+  mountModuleAssets(app, deps.moduleWeb ?? new Map());
 
   // Module routes (/api/m/<id>, declared legacy aliases and root paths): same placement
   // contract, after the built-in feature routes and before the static/SPA fallback.

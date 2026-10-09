@@ -1,5 +1,6 @@
 import {
   CONFIG_PAGE_COMPONENT,
+  contributedIconsProblem,
   entitySectionProblem,
   extensionIdProblem,
   EXTENSION_KINDS as KINDS,
@@ -73,7 +74,8 @@ export function uiContributionProblem(manifest: ModuleManifest, options: UiContr
     listProblem(contributes.slots, "slots", (slot) => slotProblem(manifest.id, slot, options)) ??
     listProblem(contributes.extensions, "extensions", (extension) => extensionProblem(manifest.id, extension)) ??
     listProblem(contributes.widgetTypes, "widgetTypes", (type) => widgetTypeProblem(manifest.id, type)) ??
-    duplicateWidgetTypeProblem(contributes.widgetTypes)
+    duplicateWidgetTypeProblem(contributes.widgetTypes) ??
+    contributedIconsProblem(manifest.id, contributes.icons)
   );
 }
 

@@ -223,6 +223,9 @@ describe("brandMark", () => {
     expect(brandMark(ready(manifest({ brand: { title: "Lab", logoUrl: "https://lab.example/l.png" } })))).toEqual({ kind: "logo", url: "https://lab.example/l.png" });
     expect(brandMark(ready(manifest({ brand: { title: "Lab", icon: "server" } })))).toEqual({ kind: "icon", name: "server" });
     expect(brandMark(ready(manifest({ brand: { title: "Lab", icon: "not-an-icon" } })))).toEqual({ kind: "initial" });
+    // A module's icon is kept: Icon renders it once the manifest's icons are in, else the fallback icon.
+    expect(brandMark(ready(manifest({ brand: { title: "Lab", icon: "maintenance/wrench" } })))).toEqual({ kind: "icon", name: "maintenance/wrench" });
+    expect(brandMark(ready(manifest({ brand: { title: "Lab", icon: "Bad/Name" } })))).toEqual({ kind: "initial" });
     expect(brandMark(ready(manifest({ brand: { title: "Lab" } })))).toEqual({ kind: "initial" });
   });
 

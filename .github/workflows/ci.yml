@@ -219,6 +219,8 @@ jobs:
             echo "::error::the JMESPath engine reached the web bundle"
             exit 1
           fi
+      - name: Web build shares one React through its import map
+        run: node apps/web/scripts/check-web-build.mjs /tmp/web-dist
       - name: Bare-Bun boot smoke
         run: |
           export DECK_PORT=8787

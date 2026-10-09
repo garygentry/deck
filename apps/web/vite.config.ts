@@ -2,6 +2,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
+import { injectImportMap, SHARED_MODULES } from "./src/sdk/import-map";
 import { configDefaults, defineConfig } from "vitest/config";
 import { PRE_PAINT_MARKER, prePaintScript } from "./src/shell/theme-chain";
 
@@ -16,8 +17,57 @@ function prePaintTheme(): Plugin {
   };
 }
 
+const fromRoot = (path: string) => fileURLToPath(new URL(path, import.meta.url));
+
+/**
+ * The import map runtime modules resolve `react`, `react-dom`, `react/jsx-runtime` and
+ * `@deck/sdk` through (see src/sdk/import-map.ts). A build adds each shared module as an entry
+ * chunk with its exports kept, sharing chunks with the app, and maps each specifier to its
+ * hashed file; the dev server maps them to the sources, which it serves on the app's own deps.
+ */
+function deckImportMap(): Plugin {
+  let base = "/";
+  return {
+    name: "deck-import-map",
+    config(_config, { command }) {
+      if (command !== "build") return;
+      return {
+        build: {
+          rollupOptions: {
+            input: {
+              index: fromRoot("./index.html"),
+              ...Object.fromEntries(Object.values(SHARED_MODULES).map((source) => [`sdk-${source.split("/").pop()!.replace(/\.[jt]s$/, "")}`, fromRoot(`./${source}`)])),
+            },
+            // Keep every export of the shared entries: runtime modules import them by name.
+            preserveEntrySignatures: "strict",
+          },
+        },
+      };
+    },
+    configResolved(config) {
+      base = config.base;
+    },
+    transformIndexHtml: {
+      order: "post",
+      handler(html, context) {
+        const imports: Record<string, string> = {};
+        for (const [specifier, source] of Object.entries(SHARED_MODULES)) {
+          if (context.bundle === undefined) {
+            imports[specifier] = `${base}${source}`;
+            continue;
+          }
+          const chunk = Object.values(context.bundle).find((output) => output.type === "chunk" && output.isEntry && output.facadeModuleId === fromRoot(`./${source}`));
+          if (chunk === undefined) throw new Error(`deck-import-map: no entry chunk for ${specifier}`);
+          imports[specifier] = `${base}${chunk.fileName}`;
+        }
+        return injectImportMap(html, imports);
+      },
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), prePaintTheme()],
+  plugins: [react(), tailwindcss(), prePaintTheme(), deckImportMap()],
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
@@ -31,6 +81,8 @@ export default defineConfig({
     host: "127.0.0.1",
     proxy: {
       "/api": process.env.DECK_PROXY_TARGET ?? "http://127.0.0.1:8788",
+      // Runtime modules' web halves, which the server serves: `/modules` and below only.
+      "^/modules(/|$)": process.env.DECK_PROXY_TARGET ?? "http://127.0.0.1:8788",
     },
   },
   test: {

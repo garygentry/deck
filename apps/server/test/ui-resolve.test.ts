@@ -942,3 +942,31 @@ describe("capability-aware nav: disabled modules' pages and their switches", () 
     expect(body).not.toContain("tok-9f2c1e-s3cret");
   });
 });
+
+describe("runtime modules: web halves and contributed icons", () => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M1 1h22"/></svg>';
+
+  it("lists an enabled module's web half, and the icons of enabled modules only", () => {
+    const iconic = manifest("iconic", { icons: { "iconic/b": svg, "iconic/a": svg } });
+    const off = manifest("off", { icons: { "off/x": svg } });
+    const ui = resolve({
+      modules: [
+        { manifest: iconic, enabled: true, web: { script: "/modules/iconic/web.js" } },
+        { manifest: off, enabled: false, web: { script: "/modules/off/web.js" } },
+      ],
+    });
+    expect(ui.modules.find((module) => module.id === "iconic")?.web).toEqual({ script: "/modules/iconic/web.js" });
+    expect(ui.modules.find((module) => module.id === "off")?.web).toBeUndefined();
+    expect(ui.icons).toEqual({ "iconic/a": svg, "iconic/b": svg });
+    expect(Object.keys(ui.icons!)).toEqual(["iconic/a", "iconic/b"]);
+  });
+
+  it("sends no icons key when no enabled module contributes one", () => {
+    expect("icons" in resolve()).toBe(false);
+  });
+
+  it("refuses badly bounded icons as a manifest problem", () => {
+    expect(uiContributionProblem(manifest("iconic", { icons: { wrench: svg } }))).toMatch(/must be named iconic\/<kebab-name>/);
+    expect(uiContributionProblem(manifest("iconic", { icons: { "iconic/x": "<div/>" } }))).toMatch(/must be SVG markup/);
+  });
+});

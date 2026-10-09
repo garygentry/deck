@@ -297,7 +297,9 @@ stop_server
 # ---------------------------------------------------------------------------
 # 7. A runtime module under Bun: the example in examples/modules, imported from
 #    DECK_MODULES_DIR, adds its page and pill to /api/ui and serves its
-#    provider. With DECK_MODULES_ENABLED unset, the same module is listed off.
+#    provider and its web half (/modules/<id>/web.js; anything else there is a
+#    404). With DECK_MODULES_ENABLED unset, the same module is listed off and
+#    its web half 404s.
 # ---------------------------------------------------------------------------
 RT_CONFIG_DIR="${TMP_ROOT}/runtime-config"
 mkdir -p "${RT_CONFIG_DIR}"
@@ -324,6 +326,18 @@ for i in $(seq 1 40); do
   sleep 0.25
 done
 [ -n "${RT_DATA}" ] || fail "runtime module provider did not serve its data"
+printf '%s' "${RT_UI}" | grep -q '"web":{"script":"/modules/maintenance/web.js"' \
+  || fail "runtime module web half missing from /api/ui"
+RT_WEB_TYPE="$(curl -sS -o /dev/null -w '%{http_code} %{content_type}' \
+  "http://127.0.0.1:${PORTAL_PORT}/modules/maintenance/web.js")" || RT_WEB_TYPE=000
+case "${RT_WEB_TYPE}" in
+  "200 text/javascript"*) ;;
+  *) fail "runtime module web.js expected 200 text/javascript, got ${RT_WEB_TYPE}" ;;
+esac
+for RT_PATH in /modules/maintenance/server.mjs /modules/maintenance/missing.js /modules; do
+  RT_CODE="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORTAL_PORT}${RT_PATH}")" || RT_CODE=000
+  [ "${RT_CODE}" = "404" ] || fail "${RT_PATH} expected 404, got ${RT_CODE}"
+done
 stop_server
 
 DECK_MODULES_DIR="${REPO_ROOT}/examples/modules" \
@@ -336,6 +350,9 @@ curl -sS "http://127.0.0.1:${PORTAL_PORT}/api/ui" | grep -q '"reason":"not enabl
 RT_OFF="$(curl -sS -o /dev/null -w '%{http_code}' \
   "http://127.0.0.1:${PORTAL_PORT}/api/providers/maintenance")" || RT_OFF=000
 [ "${RT_OFF}" = "404" ] || fail "runtime module provider with modules off expected 404, got ${RT_OFF}"
+RT_OFF="$(curl -sS -o /dev/null -w '%{http_code}' \
+  "http://127.0.0.1:${PORTAL_PORT}/modules/maintenance/web.js")" || RT_OFF=000
+[ "${RT_OFF}" = "404" ] || fail "runtime module web.js with modules off expected 404, got ${RT_OFF}"
 stop_server
 
 printf 'SMOKE OK: portal GET 200; actions enabled end/succeeded; actions disabled 403 ACTIONS_DISABLED; sources manifest+file 200, traversal rejected; metrics 200 text/plain, off 404; configmap ..data swap reloaded under Bun; runtime module page+pill+provider, off when not enabled\n'

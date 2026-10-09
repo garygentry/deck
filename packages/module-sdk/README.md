@@ -18,7 +18,11 @@ A module has three parts:
 - **Web half.** `defineWebModule(manifest, { components })`. This is a table of components
   that the manifest's pages, extensions and widget types refer to by name. It reads only the
   manifest's identity and `contributes` (`WebModuleManifest`), so a full manifest works, and a
-  built-in shares just that part with the web (`@deck/contract/modules/<id>`).
+  built-in shares just that part with the web (`@deck/contract/modules/<id>`). A runtime module's
+  web half default-exports one from its `web.js`, importing it from `@deck/sdk`; see
+  [Run a runtime module](../../docs/guides/runtime-modules.md#add-a-web-half).
+- **Icons.** `contributes.icons` maps `<id>/<name>` to SVG markup, at most 64 icons of at most
+  16 KiB each (`contributedIconsProblem`). The web shell sanitises them before rendering.
 
 ## Server module context
 

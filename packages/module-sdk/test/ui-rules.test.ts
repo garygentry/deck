@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  contributedIconsProblem,
+  MAX_ICON_BYTES,
+  MAX_MODULE_ICONS,
   entitySectionName,
   entitySectionProblem,
   extensionIdProblem,
@@ -42,6 +45,9 @@ describe("shared UI rules", () => {
     expect(orderProblem(Number.NaN, "o")).toMatch(/finite/);
     expect(pagePathProblem("/lab", "p")).toBeNull();
     expect(pagePathProblem("/api/x", "p")).toMatch(/under \/api/);
+    expect(pagePathProblem("/modules", "p")).toMatch(/under \/modules/);
+    expect(pagePathProblem("/modules/x", "p")).toMatch(/under \/modules/);
+    expect(pagePathProblem("/modulesx", "p")).toBeNull();
     expect(pagePathProblem("/metrics", "p")).toMatch(/reserved root path/);
     expect(pagePathProblem("/metrics", "p", [])).toBeNull();
     expect(pagePathProblem("/kernel.txt", "p", ["/kernel.txt"])).toMatch(/reserved root path/);
@@ -93,5 +99,32 @@ describe("shared UI rules", () => {
     // …while explicit-to-explicit sharing is fine.
     expect(entitySectionProblem({ title: "Lint", section: "findings" }, "e")).toBeNull();
     expect(entitySectionProblem({ title: "Lint", section: "owned-configs" }, "e")).toBeNull();
+  });
+});
+
+describe("contributedIconsProblem", () => {
+  const svg = '<svg viewBox="0 0 24 24"><path d="M1 1h22"/></svg>';
+
+  it("accepts up to the bounds, named <module>/<kebab-name>", () => {
+    expect(contributedIconsProblem("mod", undefined)).toBeNull();
+    expect(contributedIconsProblem("mod", { "mod/wrench": svg, "mod/a-2": `  ${svg}` })).toBeNull();
+    const many = Object.fromEntries(Array.from({ length: MAX_MODULE_ICONS }, (_, index) => [`mod/i${index}`, svg]));
+    expect(contributedIconsProblem("mod", many)).toBeNull();
+    expect(contributedIconsProblem("mod", { "mod/big": `<svg>${"x".repeat(MAX_ICON_BYTES - 11)}</svg>` })).toBeNull();
+  });
+
+  it("refuses more icons, larger icons, other names and non-SVG markup", () => {
+    const many = Object.fromEntries(Array.from({ length: MAX_MODULE_ICONS + 1 }, (_, index) => [`mod/i${index}`, svg]));
+    expect(contributedIconsProblem("mod", many)).toMatch(/more than 64/);
+    expect(contributedIconsProblem("mod", { "mod/big": `<svg>${"x".repeat(MAX_ICON_BYTES - 10)}</svg>` })).toMatch(/larger than 16384 bytes/);
+    // Bytes, not characters.
+    expect(contributedIconsProblem("mod", { "mod/big": `<svg>${"é".repeat(MAX_ICON_BYTES / 2)}</svg>` })).toMatch(/larger than/);
+    for (const name of ["wrench", "other/wrench", "mod/Wrench", "mod/", "mod/a/b"]) {
+      expect(contributedIconsProblem("mod", { [name]: svg }), name).toMatch(/must be named mod\/<kebab-name>/);
+    }
+    for (const markup of [42, "<div></div>", "<svgx>", "<?xml version='1.0'?><svg/>"]) {
+      expect(contributedIconsProblem("mod", { "mod/x": markup }), String(markup)).toMatch(/must be SVG markup/);
+    }
+    expect(contributedIconsProblem("mod", ["x"])).toMatch(/must be an object/);
   });
 });

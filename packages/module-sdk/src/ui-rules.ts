@@ -56,6 +56,32 @@ export const KERNEL_ROOT_PATHS: readonly string[] = [];
  */
 export const BUILTIN_ROOT_PATHS: readonly string[] = ["/metrics"];
 
+/** Where the server serves runtime modules' web halves (`/modules/<id>/web.js`): no page or root path may sit under it. */
+export const MODULE_ASSETS_ROOT = "/modules";
+
+/** Bounds on a module's contributed icons (`contributes.icons`). */
+export const MAX_MODULE_ICONS = 64;
+export const MAX_ICON_BYTES = 16 * 1024;
+
+/**
+ * Why a module's contributed icons are unusable, or null: at most {@link MAX_MODULE_ICONS}, each
+ * named `<module>/<kebab-name>` and an SVG document (`<svg …>`) of at most
+ * {@link MAX_ICON_BYTES} UTF-8 bytes. The markup is sanitised where it renders.
+ */
+export function contributedIconsProblem(moduleId: string, icons: unknown): Problem {
+  if (icons === undefined) return null;
+  if (icons === null || typeof icons !== "object" || Array.isArray(icons)) return "contributes.icons must be an object of name → SVG";
+  const entries = Object.entries(icons);
+  if (entries.length > MAX_MODULE_ICONS) return `contributes.icons has more than ${MAX_MODULE_ICONS} icons`;
+  for (const [name, svg] of entries) {
+    const tail = name.startsWith(`${moduleId}/`) ? name.slice(moduleId.length + 1) : "";
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(tail)) return `icon "${name}" must be named ${moduleId}/<kebab-name>`;
+    if (typeof svg !== "string" || !/^\s*<svg[\s>]/.test(svg)) return `icon "${name}" must be SVG markup starting with <svg`;
+    if (new TextEncoder().encode(svg).length > MAX_ICON_BYTES) return `icon "${name}" is larger than ${MAX_ICON_BYTES} bytes`;
+  }
+  return null;
+}
+
 /** Every root path a page may never use: the kernel's and the built-in modules'. */
 export const RESERVED_PAGE_PATHS: readonly string[] = [...KERNEL_ROOT_PATHS, ...BUILTIN_ROOT_PATHS];
 
@@ -167,6 +193,7 @@ export function pagePathProblem(path: unknown, label: string, reservedRootPaths:
   const unroutable = routablePathProblem(path, label);
   if (unroutable !== null) return unroutable;
   if (path === "/api" || path.startsWith("/api/")) return `${label} path "${path}" is under /api, which the server answers`;
+  if (path === MODULE_ASSETS_ROOT || path.startsWith(`${MODULE_ASSETS_ROOT}/`)) return `${label} path "${path}" is under ${MODULE_ASSETS_ROOT}, which serves runtime modules' web halves`;
   if (reservedRootPaths.includes(path)) return `${label} path "${path}" is a reserved root path, which the server answers`;
   return null;
 }

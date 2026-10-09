@@ -22,6 +22,12 @@ export const MODULES_ENABLED_ENV = "DECK_MODULES_ENABLED";
 export const RUNTIME_MANIFEST_FILE = "deck-module.json";
 /** Server entry file names; a module has at most one. */
 export const SERVER_ENTRY_FILES: readonly string[] = ["server.js", "server.mjs", "server.ts"];
+/** The web half's script: native ESM, default-exporting the module's `defineWebModule(...)`. */
+export const WEB_SCRIPT_FILE = "web.js";
+/** The web half's optional stylesheet. */
+export const WEB_STYLES_FILE = "web.css";
+/** Bound on each web asset, which is held in memory from load to stop. */
+export const MAX_WEB_ASSET_BYTES = 8 * 1024 * 1024;
 /** An integrity pin: `sha256-` and the base64 digest {@link moduleDigest} computes. */
 export const INTEGRITY_PATTERN = /^sha256-[A-Za-z0-9+/]{43}=$/;
 /** How long a server entry may take to import (its top-level code included). */
@@ -61,6 +67,22 @@ export interface RuntimeModulePlan {
   readonly planOnly?: true;
 }
 
+/**
+ * A loaded runtime module's web half, read right after its integrity pin was checked, so what
+ * deck serves is what was pinned. Each file's bytes and their sha256 (hex, the ETag).
+ */
+export interface RuntimeWebAssets {
+  readonly script: WebAsset;
+  readonly styles?: WebAsset;
+  /** Its `deck-module.json`, which a web half may import as a JSON module. */
+  readonly manifest: WebAsset;
+}
+
+export interface WebAsset {
+  readonly body: Uint8Array;
+  readonly sha256: string;
+}
+
 export interface RuntimeModules extends RuntimeModulePlan {
   /** The modules directory as set; undefined when {@link MODULES_DIR_ENV} is unset. */
   readonly dir: string | undefined;
@@ -74,6 +96,8 @@ export interface RuntimeModules extends RuntimeModulePlan {
   readonly sections: ReadonlySet<string>;
   /** Directories left out entirely (named like a built-in or not plannable at all), each with why, for the log. */
   readonly rejected: readonly { id: string; detail: string }[];
+  /** The web halves of loaded modules that have one, by id: only a loaded module's is ever served. */
+  readonly web: ReadonlyMap<string, RuntimeWebAssets>;
 }
 
 /** The empty result: no runtime modules. */
@@ -88,6 +112,7 @@ export const NO_RUNTIME_MODULES: RuntimeModules = Object.freeze({
   pins: new Map<string, string>(),
   sections: new Set<string>(),
   rejected: [],
+  web: new Map<string, RuntimeWebAssets>(),
 });
 
 /** A failure of one runtime module: a public category, and the detail for the log. */
@@ -287,6 +312,36 @@ function idOnly(id: string): ServerModule {
   return standIn(Object.freeze({ id, version: "unknown", deckApi: "0" }));
 }
 
+/** One file of a module's web half, read whole; null when the module has no such file. */
+function readWebAsset(dir: string, name: string): WebAsset | null {
+  let file: string;
+  try {
+    file = realpathSync(join(dir, name));
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw new LoadError("unreadable", `its ${name} cannot be read: ${(cause as Error).message}`);
+  }
+  if (!inside(dir, file)) throw new LoadError("outside DECK_MODULES_DIR", `its ${name} resolves to ${file}, outside the module directory`);
+  let body: Uint8Array;
+  try {
+    if (!statSync(file).isFile()) throw new Error("not a regular file");
+    if (statSync(file).size > MAX_WEB_ASSET_BYTES) throw new Error(`larger than ${MAX_WEB_ASSET_BYTES} bytes`);
+    body = readFileSync(file);
+  } catch (cause) {
+    throw new LoadError("unreadable", `its ${name} cannot be read: ${(cause as Error).message}`);
+  }
+  return Object.freeze({ body, sha256: createHash("sha256").update(body).digest("hex") });
+}
+
+/** A module's web half, when it has a {@link WEB_SCRIPT_FILE}; a stylesheet alone is not one. */
+function readWebAssets(dir: string): RuntimeWebAssets | null {
+  const script = readWebAsset(dir, WEB_SCRIPT_FILE);
+  if (script === null) return null;
+  const styles = readWebAsset(dir, WEB_STYLES_FILE);
+  const manifest = readWebAsset(dir, RUNTIME_MANIFEST_FILE)!;
+  return Object.freeze({ script, manifest, ...(styles === null ? {} : { styles }) });
+}
+
 /** The default export of a server entry as a server module, checked against its manifest file. */
 function asServerModule(exported: unknown, manifest: ModuleManifest, name: string): ServerModule {
   if (exported === null || typeof exported !== "object") {
@@ -337,6 +392,7 @@ class Loading {
   readonly codeless = new Set<string>();
   readonly pins = new Map<string, string>();
   readonly rejected: { id: string; detail: string }[] = [];
+  readonly web = new Map<string, RuntimeWebAssets>();
   /** Modules whose config contribution does not compose on its own, from the admitting composition. */
   private invalid: ReadonlyMap<string, string> = new Map();
 
@@ -349,6 +405,7 @@ class Loading {
 
   /** Disable a module that failed to load: it keeps only its config section (see {@link sectionOnly}). */
   fail(id: string, problem: LoadError): void {
+    this.web.delete(id);
     this.loadProblems.set(id, problem.category);
     this.loadDetails.set(id, `${this.candidates.get(id)?.dir ?? id}: ${problem.message}`);
     this.codeless.add(id);
@@ -475,6 +532,7 @@ class Loading {
       pins: this.pins,
       sections: this.hints?.sections ?? new Set(),
       rejected: this.rejected,
+      web: this.web,
       ...(planOnly ? { planOnly: true as const } : {}),
     };
   }
@@ -528,6 +586,9 @@ export async function loadRuntimeModules(options: LoadRuntimeOptions): Promise<R
     try {
       // Immediately before the import, so an earlier module's import cannot change it unseen.
       loading.checkPin(id);
+      // Read now, with the pinned bytes, and served from memory: a later change is not served.
+      const web = readWebAssets(candidate.dir);
+      if (web !== null) loading.web.set(id, web);
       if (candidate.entry === null) {
         // No server code: a module of manifest contributions only.
         loading.modules.set(id, standIn(candidate.manifest!));

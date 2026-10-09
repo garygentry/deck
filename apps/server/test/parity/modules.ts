@@ -17,6 +17,9 @@
  *   `{state: "ok", detail: "not configured"}`. The data-source modules have no routes and
  *   report no health of their own.
  *
+ * - the route table: the kernel's `GET /modules` and `GET /modules/*`, which serve runtime
+ *   modules' web halves (and 404 everything else under `/modules`).
+ *
  * The legacy `/api/llm-usage` routes, their bodies and `/api/health.llmUsage` are compared
  * unchanged.
  *
@@ -97,6 +100,11 @@ const LLM_USAGE_ROUTES = [
   "GET /api/m/llm-usage/refresh",
 ];
 const UI_MANIFEST_ROUTE = "GET /api/ui";
+/**
+ * Runtime modules' web halves, `/modules/<id>/…`: mounted on every server, so the path is a
+ * 404 (never the SPA shell) whether or not any runtime module is loaded.
+ */
+const MODULE_ASSET_ROUTES = ["GET /modules", "GET /modules/*"];
 const LEGACY_INGEST = "POST /api/llm-usage/ingest ×3";
 
 const ACTIONS_ROUTES = [
@@ -135,6 +143,7 @@ export function withBuiltinModules(golden: unknown): unknown {
     result.routes = [
       ...routes.map((route) => (route === KERNEL_METRICS_ROUTE ? METRICS_ROOT_ROUTE : route)),
       UI_MANIFEST_ROUTE,
+      ...MODULE_ASSET_ROUTES,
       ...LLM_USAGE_ROUTES,
       ...(routes.includes(LEGACY_INGEST) ? [MODULE_INGEST] : []),
       ...ACTIONS_ROUTES,

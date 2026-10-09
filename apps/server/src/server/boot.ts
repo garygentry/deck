@@ -28,6 +28,7 @@ import { buildUiManifest } from "../ui/manifest.js";
 import { createUiReloader, etagOf, type LiveUi, type UiReloader } from "../ui/live.js";
 import { collectRuntimePages, runtimePageSources } from "../ui/runtime-pages.js";
 import { createModuleHost, startModules, type ModuleHost } from "../modules/host.js";
+import { servedWebModules } from "./module-assets.js";
 import { checkPins, loadRuntimeModules, MODULES_ENABLED_ENV, NO_RUNTIME_MODULES, type RuntimeModules } from "../modules/runtime.js";
 import { parseBool } from "../config/env.js";
 import { settlesWithin } from "./settle.js";
@@ -228,8 +229,10 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
   // Pages built-in modules contribute at runtime: a change to them rebuilds the manifest from
   // the config in force.
   const pageSources = runtimePageSources(modules);
+  // Runtime modules' web halves: served, and offered in the UI manifest, for the same modules.
+  const moduleWeb = servedWebModules(runtime.web, modules.plan);
   const buildUi = (config: typeof result.config) =>
-    buildUiManifest({ config, providers, modules, capabilities: {}, runtimePages: () => collectRuntimePages(pageSources) });
+    buildUiManifest({ config, providers, modules, capabilities: {}, runtimePages: () => collectRuntimePages(pageSources), web: moduleWeb });
   let ui: UiManifest;
   try {
     ui = buildUi(result.config);
@@ -270,7 +273,7 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
   // Mounting re-checks module routes against the live kernel table (a backstop).
   let app: ReturnType<typeof createApp>;
   try {
-    app = createApp({ ...kernelDeps, modules, ui, live: reloader === undefined ? () => fixedUi : reloader.current });
+    app = createApp({ ...kernelDeps, modules, ui, moduleWeb, live: reloader === undefined ? () => fixedUi : reloader.current });
   } catch (cause) {
     process.stderr.write(`${(cause as Error).message}\n`);
     process.exit(2);

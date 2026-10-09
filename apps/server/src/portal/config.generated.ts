@@ -1,4 +1,4 @@
-/* GENERATED from src/portal/schema.json by src/scripts/gen-module-types.ts — do not edit; run `pnpm gen:module-types`. */
+/* GENERATED from apps/server/src/portal/schema.json by apps/server/src/scripts/gen-module-types.ts — do not edit; run `pnpm gen:module-types`. */
 
 /**
  * A service reference, plain link, or one-level subgroup.

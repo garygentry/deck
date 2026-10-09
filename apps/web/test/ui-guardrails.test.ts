@@ -1,6 +1,6 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, relative } from "node:path";
 
 import {
   colourLiterals,
@@ -16,32 +16,72 @@ import {
 } from "@deck/sdk/lint";
 import { describe, expect, it } from "vitest";
 
+import { moduleWebDirs, REPO_ROOT, sourceRel, walkFiles, webSourceFiles } from "./support/source-roots.js";
+
 /**
- * Library guardrails: static checks over `src/` that keep feature code on the
- * `@/ui` library. The rules live in `@deck/sdk/lint`, which `deck-module lint`
- * also runs on runtime modules, so deck and its modules keep one set of rules.
- * The allowlists below only shrink, and a stale entry fails the test.
+ * Library guardrails: static checks over `src/` and the built-in modules' web halves
+ * (`modules/<id>/web`) that keep feature code on the `@/ui` library. The rules live in
+ * `@deck/sdk/lint`, which `deck-module lint` also runs on runtime modules, so deck and its
+ * modules keep one set of rules. The allowlists below only shrink, and a stale entry fails the
+ * test.
  */
 
-const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const srcRoot = resolve(webRoot, "src");
-
-function walk(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name);
-    return statSync(path).isDirectory() ? walk(path) : [path];
-  });
+/**
+ * The sources the rules run over, in a repository: the web app's own and every module web half's
+ * TS(X) and CSS (`webSourceRoots`), plus the token mapping deck shares with runtime modules.
+ */
+function collect(repo: string = REPO_ROOT) {
+  const read = (path: string) => ({ rel: sourceRel(path, repo), text: readFileSync(path, "utf8") });
+  const sources = webSourceFiles(repo);
+  const files = sources.filter((path) => /\.tsx?$/.test(path)).map(read);
+  const css = [...sources, ...walkFiles(join(repo, "packages/sdk/tailwind"))].filter((path) => path.endsWith(".css")).map(read);
+  return { files, css, tsx: files.filter(({ rel }) => rel.endsWith(".tsx")), appCss: read(join(repo, "apps/web/src/styles/app.css")) };
 }
 
-const read = (path: string) => ({ rel: relative(webRoot, path), text: readFileSync(path, "utf8") });
-const files = walk(srcRoot).filter((path) => /\.tsx?$/.test(path)).map(read);
-// deck's stylesheets: its own, and the token mapping it shares with runtime modules.
-const sdkTailwind = resolve(webRoot, "../../packages/sdk/tailwind");
-const css = [...walk(srcRoot), ...walk(sdkTailwind)].filter((path) => path.endsWith(".css")).map(read);
-const tsx = files.filter(({ rel }) => rel.endsWith(".tsx"));
+const { files, css, tsx, appCss } = collect();
 const inLibrary = (rel: string): boolean => rel.startsWith("src/ui/");
 
 const shown = (offences: readonly Offence[]) => offences.map(formatOffence);
+
+describe("scope", () => {
+  it("covers every built-in module's web half", () => {
+    const dirs = moduleWebDirs();
+    expect(dirs.map((dir) => relative(REPO_ROOT, dir))).toContain("modules/llm-usage/web");
+    for (const dir of dirs) {
+      const rel = relative(REPO_ROOT, dir);
+      expect(files.some((file) => file.rel.startsWith(`${rel}/`)), rel).toBe(true);
+    }
+  });
+
+  it("refuses an offending TSX or CSS line in a module's web half", () => {
+    const repo = mkdtempSync(join(tmpdir(), "guardrails-"));
+    try {
+      const put = (path: string, text: string) => {
+        mkdirSync(dirname(join(repo, path)), { recursive: true });
+        writeFileSync(join(repo, path), text);
+      };
+      put("apps/web/src/styles/app.css", "@import \"tailwindcss\";\n");
+      // Built from parts: Tailwind scans this file, and a literal class here would reach the app's CSS.
+      const offScale = ["rounded", "2xl"].join("-");
+      put("modules/llm-usage/web/Bad.tsx", [
+        'import { Button } from "@/ui/primitives/button";',
+        `export const Bad = () => <div className="${offScale}" style={{ color: "#ff0000" }} data-icon="x"><Button /></div>;`,
+      ].join("\n"));
+      put("modules/llm-usage/web/bad.css", ".bad { color: var(--inventory-ok); }\n");
+      const fake = collect(repo);
+      const at = (offences: readonly Offence[]) => offences.map(({ file }) => file);
+      const bad = "modules/llm-usage/web/Bad.tsx";
+      expect(at(deepUiImports(fake.files))).toContain(bad);
+      expect(at(colourLiterals(fake.tsx))).toContain(bad);
+      expect(at(offScaleRadii(fake.tsx))).toContain(bad);
+      expect(at(inlineStyles(fake.tsx))).toContain(bad);
+      expect(at(dataIconAttributes(fake.files))).toContain(bad);
+      expect(at(legacyTokens([...fake.files, ...fake.css]))).toContain("modules/llm-usage/web/bad.css");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("imports: features use the @/ui barrel", () => {
   it("never deep-imports @/ui/* outside the library without a justification", () => {
@@ -85,11 +125,11 @@ describe("library components", () => {
 
 describe("no legacy styling", () => {
   it("references no legacy tokens (--inventory-*, --freshness-*, --l-*)", () => {
-    expect(css.map(({ rel }) => rel)).toEqual(expect.arrayContaining(["../../packages/sdk/tailwind/theme.css", "src/styles/theme.css"]));
+    expect(css.map(({ rel }) => rel)).toEqual(expect.arrayContaining(["packages/sdk/tailwind/theme.css", "src/styles/theme.css"]));
     expect(shown(legacyTokens([...files, ...css]))).toEqual([]);
   });
 
   it("declares no legacy cascade layer and imports no legacy stylesheet", () => {
-    expect(shown(legacyStylesheets(read(resolve(srcRoot, "styles/app.css")), css))).toEqual([]);
+    expect(shown(legacyStylesheets(appCss, css))).toEqual([]);
   });
 });

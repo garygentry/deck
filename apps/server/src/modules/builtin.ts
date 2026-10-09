@@ -4,7 +4,7 @@ import { actionsModule } from "../actions/module.js";
 import type { DeckConfig } from "../contract/index.js";
 import { driftModule } from "../drift/module.js";
 import { inventoryModule } from "../inventory/module.js";
-import { llmUsageModule } from "../llm-usage/module.js";
+import { llmUsageModule } from "../../../../modules/llm-usage/server/module.js";
 import { metricsModule } from "../metrics/module.js";
 import { monitoringModule } from "../monitoring/module.js";
 import { alertmanagerModule } from "../providers/alertmanager/module.js";

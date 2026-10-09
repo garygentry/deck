@@ -43,8 +43,8 @@ describe("the @deck/server barrel (contract/index.ts)", () => {
   });
 
   it("flags a feature imported and then re-exported (guard self-test)", () => {
-    const feature = 'import type { LlmUsageResponse } from "../llm-usage/types.js";\nexport type { LlmUsageResponse };';
-    expect(reExportTargets(feature, BARREL).filter((target) => !isKernelPath(target))).toEqual(["apps/server/src/llm-usage/types.ts"]);
+    const feature = 'import type { LlmUsageResponse } from "../../../../modules/llm-usage/server/types.js";\nexport type { LlmUsageResponse };';
+    expect(reExportTargets(feature, BARREL).filter((target) => !isKernelPath(target))).toEqual(["modules/llm-usage/server/types.ts"]);
   });
 
   it("flags a feature re-export (guard self-test)", () => {

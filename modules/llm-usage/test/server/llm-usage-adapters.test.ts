@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { barsFromOauth, readStatusline, statuslinePlan } from "../src/llm-usage/claude/bars.js";
-import { mergeClaudeBars, STATUSLINE_FRESH_MS } from "../src/llm-usage/claude/merge.js";
-import { accumulateTranscriptLine, emptyTotals } from "../src/llm-usage/claude/transcripts.js";
+import { barsFromOauth, readStatusline, statuslinePlan } from "../../server/claude/bars.js";
+import { mergeClaudeBars, STATUSLINE_FRESH_MS } from "../../server/claude/merge.js";
+import { accumulateTranscriptLine, emptyTotals } from "../../server/claude/transcripts.js";
 import {
   barsFromSnapshotMap,
   codexPlan,
   historyFromUsage,
   parseRolloutTail,
   windowLabel,
-} from "../src/llm-usage/codex/bars.js";
-import { finalizeBars, severityFor, toEpochMs } from "../src/llm-usage/severity.js";
-import type { UsageBarDraft } from "../src/llm-usage/types.js";
+} from "../../server/codex/bars.js";
+import { finalizeBars, severityFor, toEpochMs } from "../../server/severity.js";
+import type { UsageBarDraft } from "../../server/types.js";
 
 const THRESHOLDS = { warn: 75, danger: 90 };
 const RESET_ISO = "2026-09-03T13:00:00Z";

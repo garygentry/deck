@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { OauthResult } from "../src/llm-usage/claude/oauth.js";
-import type { TranscriptScan } from "../src/llm-usage/claude/transcripts.js";
-import { AppServerRpcError, AppServerSpawnError, AUTH_REQUIRED_CODE } from "../src/llm-usage/codex/app-server.js";
-import type { RolloutResult } from "../src/llm-usage/codex/rollout.js";
-import { LlmUsageCollector, type AppServerClient, type CollectorDeps } from "../src/llm-usage/collector.js";
-import type { ResolvedLlmUsageConfig } from "../src/llm-usage/config.js";
+import type { OauthResult } from "../../../modules/llm-usage/server/claude/oauth.js";
+import type { TranscriptScan } from "../../../modules/llm-usage/server/claude/transcripts.js";
+import { AppServerRpcError, AppServerSpawnError, AUTH_REQUIRED_CODE } from "../../../modules/llm-usage/server/codex/app-server.js";
+import type { RolloutResult } from "../../../modules/llm-usage/server/codex/rollout.js";
+import { LlmUsageCollector, type AppServerClient, type CollectorDeps } from "../../../modules/llm-usage/server/collector.js";
+import type { ResolvedLlmUsageConfig } from "../../../modules/llm-usage/server/config.js";
 import { standaloneSchedule } from "./util/standalone-scheduler.js";
 
 const NOW = Date.parse("2026-09-24T12:00:00Z");

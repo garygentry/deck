@@ -1,7 +1,7 @@
 import { describe, expectTypeOf, it } from "vitest";
 
 import type { HealthResponse } from "../src/contract/index.js";
-import type { LlmUsageHealth } from "../src/llm-usage/types.js";
+import type { LlmUsageHealth } from "../../../modules/llm-usage/server/types.js";
 
 describe("HealthResponse typing", () => {
   it("keeps the kernel fields strict and types each module's legacy field", () => {

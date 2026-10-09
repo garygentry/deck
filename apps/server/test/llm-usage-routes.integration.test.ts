@@ -8,11 +8,11 @@ import type { Logger } from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DeckConfig, HealthResponse } from "../src/contract/index.js";
-import { LlmUsageCollector } from "../src/llm-usage/collector.js";
-import type { LlmUsageResponse } from "../src/llm-usage/types.js";
-import type { ResolvedLlmUsageConfig } from "../src/llm-usage/config.js";
-import { createLlmUsageModule } from "../src/llm-usage/module.js";
-import { bearerMatches, INGEST_MAX_BYTES } from "../src/llm-usage/routes.js";
+import { LlmUsageCollector } from "../../../modules/llm-usage/server/collector.js";
+import type { LlmUsageResponse } from "../../../modules/llm-usage/server/types.js";
+import type { ResolvedLlmUsageConfig } from "../../../modules/llm-usage/server/config.js";
+import { createLlmUsageModule } from "../../../modules/llm-usage/server/module.js";
+import { bearerMatches, INGEST_MAX_BYTES } from "../../../modules/llm-usage/server/routes.js";
 import { createApp, type AppDeps } from "../src/server/app.js";
 import { testHost } from "./util/modules.js";
 

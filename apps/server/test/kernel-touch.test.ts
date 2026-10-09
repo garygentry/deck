@@ -40,9 +40,9 @@ describe("kernel-touch", () => {
     // The guardrail test is listed explicitly, so it counts despite the test exclusion.
     expect(isKernelPath("apps/web/test/ui-guardrails.test.ts")).toBe(true);
 
-    expect(isKernelPath("apps/server/src/llm-usage/collector.ts")).toBe(false);
+    expect(isKernelPath("modules/llm-usage/server/collector.ts")).toBe(false);
     expect(isKernelPath("apps/server/src/providers/docker/index.ts")).toBe(false);
-    expect(isKernelPath("apps/web/src/features/llm-usage/LlmUsagePage.tsx")).toBe(false);
+    expect(isKernelPath("modules/llm-usage/web/LlmUsagePage.tsx")).toBe(false);
     expect(isKernelPath("apps/server/test/boot.test.ts")).toBe(false);
     expect(isKernelPath("packages/schema/src/fixtures/primary/00-base.yaml")).toBe(false);
     expect(isKernelPath("docs/guides/llm-usage.md")).toBe(false);
@@ -50,12 +50,12 @@ describe("kernel-touch", () => {
 
   it("reports the llm-usage feature's kernel seams and nothing feature-local", () => {
     const touched = kernelTouches([
-      "apps/server/src/llm-usage/collector.ts",
+      "modules/llm-usage/server/collector.ts",
       "apps/server/src/server/app.ts",
       "apps/server/src/server/boot.ts",
       "apps/server/src/contract/api.ts",
       "packages/schema/src/ownership.ts",
-      "apps/web/src/features/llm-usage/index.ts",
+      "modules/llm-usage/web/index.ts",
       "apps/web/src/shell/manifest-slot.ts",
       "apps/server/test/llm-usage-io.test.ts",
       "apps/server/src/server/app.ts",

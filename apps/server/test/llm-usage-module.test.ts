@@ -12,8 +12,8 @@ import type { Logger } from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DeckConfig } from "../src/contract/index.js";
-import { LlmUsageCollector } from "../src/llm-usage/collector.js";
-import { createLlmUsageModule, LLM_USAGE_MANIFEST, llmUsageModule } from "../src/llm-usage/module.js";
+import { LlmUsageCollector } from "../../../modules/llm-usage/server/collector.js";
+import { createLlmUsageModule, LLM_USAGE_MANIFEST, llmUsageModule } from "../../../modules/llm-usage/server/module.js";
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { ModuleInitError } from "../src/modules/host.js";
 import { createApp } from "../src/server/app.js";

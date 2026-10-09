@@ -6,7 +6,8 @@
   "workspaces": [
     "packages/*",
     "apps/*",
-    "examples/modules/*"
+    "examples/modules/*",
+    "modules/*"
   ],
   "scripts": {
     "typecheck": "pnpm -r typecheck",

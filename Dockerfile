@@ -1,5 +1,14 @@
 # syntax=docker/dockerfile:1
 
+# ---- manifests: the built-in modules' package.json files, and nothing else ----
+# Each modules/<id> is a workspace package, so `pnpm install` needs its manifest. Copying the
+# tree and deleting everything else keeps the install layer cached until a manifest changes,
+# without a COPY line per module.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS manifests
+WORKDIR /src
+COPY modules modules
+RUN find modules -type f ! -name package.json -delete
+
 # ---- builder: install workspace deps and build the web bundle ----
 # pnpm drives the workspace install + web build (vite). The server and
 # @deck/schema run from TypeScript source under Bun at runtime, so there is
@@ -23,6 +32,7 @@ COPY packages/sdk/package.json packages/sdk/package.json
 COPY examples/modules/hello/package.json examples/modules/hello/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY apps/server/package.json apps/server/package.json
+COPY --from=manifests /src/modules modules
 RUN pnpm install --frozen-lockfile
 
 # Source, then build the web app to apps/web/dist.

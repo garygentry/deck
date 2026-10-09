@@ -1,6 +1,8 @@
 import { getDuplicateEntitySectionTitles, getOrphanAttachments } from "./registry.js";
 
-const modules = import.meta.glob("../features/*/index.ts", { eager: true });
+// Each web half registers itself on import: the kernel's own features, and the built-in modules
+// co-located as modules/<id>/web.
+const modules = import.meta.glob(["../features/*/index.ts", "../../../../modules/*/web/index.ts"], { eager: true });
 
 export const discoveredFeatureCount = Object.keys(modules).length;
 

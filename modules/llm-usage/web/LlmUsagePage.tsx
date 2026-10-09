@@ -5,7 +5,7 @@ import type {
   LlmUsageResponse,
   UsageBar,
   UsageSourceStatus,
-} from "@deck/server/llm-usage";
+} from "../server/types.js";
 import { useState, type FunctionComponent, type JSX } from "react";
 import {
   Badge,

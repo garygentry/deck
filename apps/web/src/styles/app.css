@@ -8,6 +8,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
+/* Built-in modules' web halves live outside apps/web (modules/<id>/web), beyond automatic source detection. */
+@source "../../../../modules/*/web";
 
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";

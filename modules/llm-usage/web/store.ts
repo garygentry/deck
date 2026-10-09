@@ -1,9 +1,9 @@
 import { POLL_DEFAULTS } from "@deck/contract";
-import type { LlmUsageResponse } from "@deck/server/llm-usage";
+import type { LlmUsageResponse } from "../server/types.js";
 import { focusManager, QueryObserver, type Query, type QueryClient, type QueryState } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 
-import { getQueryClient } from "../../data/query-client.js";
+import { getQueryClient } from "@/data/query-client.js";
 
 /**
  * `GET /api/llm-usage` on the shared query client, read by the page, the header pill and the

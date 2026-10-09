@@ -10,7 +10,7 @@ import pino, { type Logger } from "pino";
 import { ACTIONS_MANIFEST } from "../../src/actions/module.js";
 import { DRIFT_MANIFEST } from "../../src/drift/module.js";
 import { INVENTORY_MANIFEST } from "../../src/inventory/module.js";
-import { LLM_USAGE_MANIFEST } from "../../src/llm-usage/module.js";
+import { LLM_USAGE_MANIFEST } from "../../../../modules/llm-usage/server/module.js";
 import { METRICS_MANIFEST } from "../../src/metrics/module.js";
 import { MONITORING_MANIFEST } from "../../src/monitoring/module.js";
 import { ALERTMANAGER_MANIFEST } from "../../src/providers/alertmanager/module.js";

@@ -123,6 +123,11 @@ gets the whole response.
                   - { field: state, header: State }
 ```
 
+JMESPath has no way to turn an object's keys into fields. Given `{"nas": {"ok": true}, "pi":
+{"ok": false}}`, `values(@)` gives rows without the names, and `keys(@)` gives the names alone. For
+a table that shows each name, the API has to return a list of objects that carry it. The
+example dashboard's provider table shows kinds and details for this reason.
+
 Options shape how the value reads: `format` (`number`, `bytes`, `percent`, `duration`,
 `relative-time`), `unit`, labels, and the columns or fields to show. A field (`field`,
 `titleField`, …) is a key or dotted keys (`power.watts`), never a query: shape the data in
@@ -197,17 +202,23 @@ ui:
                 height: lg            # sm, md (default), lg or xl
 ```
 
-- Without `allowUnsafeEmbeds: true`, a `core/embed` widget is `UI_EMBED_DISALLOWED` and deck
-  does not start.
+- Without `allowUnsafeEmbeds: true`, a `core/embed` widget frames nothing and says "Embeds are
+  off". `deck validate` notes it (`UI_EMBED_DISALLOWED`, info). Turning the setting off is a `ui`
+  edit, so it takes effect without a restart.
 - The frame is always sandboxed. By default the framed page may run its own scripts as its own
   origin (`allow-scripts allow-same-origin`), which most dashboards need. Set `sandbox` to
   replace that list: `sandbox: []` allows nothing. You can add `allow-forms`, `allow-popups`,
   `allow-popups-to-escape-sandbox` and `allow-downloads`. A framed page can never navigate
   deck's tab or open dialogs over it.
+- Avoid `allow-popups-to-escape-sandbox`. A popup the framed page opens with it is a normal,
+  unsandboxed window, which can reach back to the framed page through `window.opener`. Plain
+  `allow-popups` keeps popups sandboxed too.
 - The frame sends no referrer and loads when it scrolls into view. Its title is the widget's
   `title`, so give every embed one.
-- The URL must be an absolute `http(s)` URL on another origin than deck's. deck does not frame
-  its own pages; put their widgets on a dashboard instead.
+- The URL must be an absolute `http(s)` URL with a host and no `user:password@`, on another
+  origin than deck's. deck does not frame its own pages; put their widgets on a dashboard
+  instead. This checks the URL you configure only: if that site redirects, or its page
+  navigates, to one of deck's pages, deck does not stop it. Embed only sites that won't.
 - Many sites refuse to be framed (`X-Frame-Options` or a CSP `frame-ancestors`), and the frame
   then stays blank. Allow deck's origin in that site's settings (Grafana: `allow_embedding`),
   or use the **Open** link under the frame, which opens the page in a new tab.

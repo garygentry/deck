@@ -53,6 +53,10 @@ ui:
                   - { field: healthy, label: Healthy }
         - title: Providers
           widgets:
+            # `providers` is an object keyed by provider id. JMESPath cannot turn
+            # keys into row fields, so `values(providers)` rows show each
+            # provider's kind and detail, not its id. `keys(providers)` lists
+            # the ids alone, e.g. as a core/list.
             - id: providers
               type: core/table
               title: Provider health

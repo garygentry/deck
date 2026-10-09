@@ -579,18 +579,24 @@ Modules add their own types. The portal's:
 - A **`statusMap`** names one of `ui.statusMaps`, below.
 
 `core/embed` frames another site's page, so it is opt-in: a `core/embed` widget while
-`ui.allowUnsafeEmbeds` is not `true` is `UI_EMBED_DISALLOWED` (a warning: deck does not start
-with it). With it on:
+`ui.allowUnsafeEmbeds` is not `true` frames nothing and shows "Embeds are off", and `deck
+validate` notes it as `UI_EMBED_DISALLOWED` (info). The gate is checked on the merged document,
+so it may sit in another layer than the widget, and turning it off takes effect on hot reload.
+With it on:
 
 - The frame always has a `sandbox`. By default it is `allow-scripts allow-same-origin`: the page
   runs its own scripts as its own origin. `sandbox` replaces that list with tokens from
   `allow-scripts`, `allow-same-origin`, `allow-forms`, `allow-popups`,
   `allow-popups-to-escape-sandbox` and `allow-downloads`; `[]` allows nothing. Top navigation,
-  modals and the other sandbox tokens are never granted.
+  modals and the other sandbox tokens are never granted. `allow-popups-to-escape-sandbox` makes
+  the framed page's popups ordinary, unsandboxed windows with an opener; avoid it.
+- `url` is an absolute `http(s)` URL with a host (DNS name, IPv4, or bracketed IPv6), an
+  optional port 0–65535, and no `user:password@`; the schema and the browser check the same rule.
 - The frame sends no referrer, loads lazily and is titled by the widget's `title` (default "Page
   from" its host).
 - A URL on deck's own origin is refused in the browser ("Deck does not frame its own pages"),
-  since such a page could lift its own sandbox.
+  since such a page could lift its own sandbox. Only the configured URL is checked, not where
+  the framed site redirects or navigates afterwards.
 - A site that refuses to be framed (`X-Frame-Options`, CSP `frame-ancestors`) leaves the frame
   blank; the link under it opens the page in a new tab.
 

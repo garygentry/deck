@@ -130,6 +130,18 @@ describe("the remote provider: observedAt", () => {
     expect(read("ups")!.freshness.ageMs!).toBeGreaterThanOrEqual(89_000);
   });
 
+  it("data older than unreachableAfterMs from a source that answers is stale, never unreachable; health stays ok", async () => {
+    // 10 minutes old against a 60s ttl (unreachable after 3 × ttl): the poll itself succeeded.
+    const old = minutesAgo(10);
+    other.routes.set("/deck/v1/data", json({ data: { load: 3 }, observedAt: old }));
+    register(new RemoteProvider("ups", { url: other.url, request: {} }), { ttlMs: 60_000 });
+    startScheduler();
+    await vi.waitFor(() => expect(read("ups")?.data).toEqual({ load: 3 }), { timeout: 5_000 });
+    expect(read("ups")?.freshness).toMatchObject({ state: "stale", observedAt: new Date(old).toISOString() });
+    expect(read("ups")!.freshness.ageMs!).toBeGreaterThanOrEqual(599_000);
+    expect(listHealth().ups).toMatchObject({ ok: true });
+  });
+
   it("without observedAt the poll time is used, and a future observedAt counts as now", async () => {
     other.routes.set("/deck/v1/data", json({ data: { load: 1 } }));
     const future = new Date(Date.now() + 3_600_000).toISOString();

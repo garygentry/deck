@@ -415,3 +415,41 @@ describe("config directory watch", () => {
     await vi.waitFor(() => expect(onChange).toHaveBeenCalled(), { timeout: 5_000, interval: 20 });
   });
 });
+
+describe("ui hot reload of a config page", () => {
+  const waitFor = (check: () => Promise<void>) => vi.waitFor(check, { timeout: 10_000, interval: 50 });
+  const BINDING = { name: "nas", bindings: { link: { id: "nas-wiki", href: "https://wiki.example.net/nas", label: "Wiki" } } };
+  const lab = (select: string) => ({
+    schemaVersion: 2,
+    hosts: [BINDING],
+    ui: { pages: [{ id: "lab", path: "/lab", title: "Lab", sections: [{ title: "Links", widgets: [{ id: "wiki", type: "core/json", source: "nas-wiki", select }] }] }] },
+  });
+  const projections = async (request: Request_) =>
+    ((await (await request("/api/providers/nas-wiki")).json()) as { projections?: Record<string, unknown> }).projections;
+
+  it("re-derives the envelope projections with the manifest swap; an invalid edit keeps the last good ones", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "deck-reload-"));
+    cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+    writeFileSync(join(dir, "00-base.yaml"), stringify({ ...BASE, hosts: [{ name: "nas", kind: "vm", purpose: "Storage" }] }));
+    writeFileSync(join(dir, "10-overlay.yaml"), stringify(lab("href")));
+    const request = await bootOn(dir);
+    await waitFor(async () => expect(await projections(request)).toEqual({ "widget:ui/lab.wiki": { value: "https://wiki.example.net/nas" } }));
+    const before = await manifest(request);
+
+    // Only ui changed: the new select is projected as the new manifest is served.
+    writeFileSync(join(dir, "10-overlay.yaml"), stringify(lab("label")));
+    await waitFor(async () => expect((await manifest(request)).etag).not.toBe(before.etag));
+    expect(await projections(request)).toEqual({ "widget:ui/lab.wiki": { value: "Wiki" } });
+    expect((await manifest(request)).ui.pages.find((page) => page.id === "page:ui/lab")?.layout?.sections[0]?.widgets[0]?.select).toBe("label");
+
+    // An invalid select does not load: the last good manifest and its projections stay.
+    writeFileSync(join(dir, "10-overlay.yaml"), stringify(lab("lenght(label)")));
+    await waitFor(async () => expect((await manifest(request)).ui.findings.map((finding) => finding.code)).toEqual(["UI_CONFIG_INVALID"]));
+    expect(await projections(request)).toEqual({ "widget:ui/lab.wiki": { value: "Wiki" } });
+
+    // Removing the page removes its projection.
+    writeFileSync(join(dir, "10-overlay.yaml"), stringify({ schemaVersion: 2, hosts: [BINDING] }));
+    await waitFor(async () => expect((await manifest(request)).ui.pages.some((page) => page.id === "page:ui/lab")).toBe(false));
+    expect(await projections(request)).toBeUndefined();
+  });
+});

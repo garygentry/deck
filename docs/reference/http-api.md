@@ -18,9 +18,19 @@ follows the estate config schema.
 | --- | --- | --- | --- |
 | `GET` | `/api/config` | The loaded, merged estate config document. | `DeckConfig` |
 | `GET` | `/api/providers` | Registered providers' identities (id and kind), in deterministic id order. | `ProvidersResponse` |
-| `GET` | `/api/providers/:id` | One provider's cached envelope (data, freshness, error). Unknown id → 404 `PROVIDER_NOT_FOUND`. | `ProviderEnvelope` |
+| `GET` | `/api/providers/:id` | One provider's cached envelope (data, freshness, error, and the `select` results of the config page widgets that read it). Unknown id → 404 `PROVIDER_NOT_FOUND`. | `ProviderEnvelope` |
 | `GET` | `/api/health` | Cached readiness: overall status, uptime, provider count, and per-provider health. Performs no upstream I/O. | `HealthResponse` |
-| `GET` | `/api/ui` | The resolved UI manifest: brand, home page, modules, slots, pages, nav groups and entries, extensions and providers. Resolved at startup, and again when only `ui` config changes. Sent with an `ETag` and `Cache-Control: no-cache`; a matching `If-None-Match` gets `304`. | `UiManifest` (`@deck/module-sdk`) |
+| `GET` | `/api/ui` | The resolved UI manifest: brand, home page, modules, slots, pages (config pages with their layout), nav groups and entries, extensions, providers and widget types. Resolved at startup, and again when only `ui` config changes. Sent with an `ETag` and `Cache-Control: no-cache`; a matching `If-None-Match` gets `304`. | `UiManifest` (`@deck/module-sdk`) |
+
+A provider envelope's `projections`, present when a config page widget reads the provider with
+a `select`, maps each such widget's id (`widget:ui/<page>.<name>`) to the expression's result
+over the envelope's `data`: `{"value": …}` (plain JSON; `null` where it selects nothing) or
+`{"error": "…"}` when the expression fails on this data or exceeds its limits (10 000 values,
+depth 64, 256 KiB of UTF-8 JSON, 200 000 steps, 256 Ki characters of built text; see the
+estate configuration reference). The server compiles
+each select once and evaluates it each time the data changes, not per request; while there is
+no data the map is empty. A failing select never affects the provider's own `error` or health,
+or another projection.
 
 `HealthResponse.status` is `degraded` when any provider's latest health is not ok, otherwise `ok`.
 `HealthResponse.modules` lists every known module's state by id. A module with no health report
@@ -67,6 +77,19 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
   `label`. An override's `attachTo.group` moves a nav entry to that group.
 - `providers` lists the registered provider instances (id and kind), so the web polls only
   providers that exist.
+- `pages` also lists the config pages (`ui.pages`) that route, as pages of module `ui`
+  (`page:ui/<id>`, component `ConfigPage`) with a `layout`: their `sections` (`title`,
+  `columns`), each with its `widgets` in order. A widget has its `id`
+  (`widget:ui/<page>.<name>`, positional `…s<N>w<M>` without a configured id), `type`, `title`,
+  `options`, `span` (clamped to the section's columns), `rows`, and its `source` resolved to a
+  registered provider (`{id, kind}`), or `null`, with a `sourceProblem` to show when the
+  configured one did not resolve. A widget whose type no enabled module provides has a
+  `typeProblem`, no source and no projection: it renders as unavailable and reads nothing. A widget with a `select` has it, and `projection`: the key of
+  its result in that provider's envelope `projections`. Widgets an override switches off are
+  left out, and a section without widgets with them.
+- `widgetTypes` lists the widget types a config page may use: deck's own (`core/json`) and those
+  of enabled modules (`type`, `module`, and `sources`, the provider kinds a type renders, when it
+  limits them).
 - `findings` holds problems that never stop the UI from rendering:
   - `UI_UNKNOWN_EXTENSION`: an override for an unknown id, or a nav entry to an undeclared page;
   - `UI_UNKNOWN_SLOT`: an extension on an unknown slot;
@@ -83,7 +106,14 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
   - `UI_INVALID_OVERRIDE`: a malformed override (including an `attachTo.group` on anything but
     a nav entry);
   - `UI_INVALID_PAGE`: a disabled module's page whose path is not a usable page path, so it is
-    not listed in `disabledPages`.
+    not listed in `disabledPages`, or a config page whose path the server answers (under `/api`,
+    or a root path such as `/metrics`), so it is not routed;
+  - `UI_WIDGET_SOURCE_UNKNOWN`: a config page widget's `source` names no registered provider
+    (or no provider of its kind);
+  - `UI_WIDGET_SOURCE_KIND`: a widget's provider is of a kind its widget type cannot render;
+  - `UI_WIDGET_SPAN`: a widget spans more columns than its section has (it spans them all);
+  - `UI_OVERRIDE_POSITIONAL` (`severity: "info"`): an override targets a widget by its
+    positional id, which changes when its page's sections or widgets move;
   - `UI_CONFIG_INVALID`: the config directory changed and no longer loads, so the last good
     config is still served; the message names the problem by finding code and JSON pointer
     only (`deck validate` gives the details);

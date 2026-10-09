@@ -3,11 +3,13 @@ import type { ModuleManifest, UiManifest } from "@deck/module-sdk";
 import type { ModuleHost } from "../modules/host.js";
 import type { ProviderReader } from "../server/app.js";
 import { KERNEL_FEATURES } from "./kernel-features.js";
+import { configPagesOf, deriveProjections } from "./config-pages.js";
 import { estateNameOf, resolveUiManifest, uiConfigOf, uiOverridesOf, type UiModuleInput } from "./resolve.js";
 
 export interface UiManifestDeps {
   config: unknown;
-  providers: Pick<ProviderReader, "listProviders">;
+  /** The registered providers; their envelopes take the config pages' selects. */
+  providers: Pick<ProviderReader, "listProviders" | "setProjections">;
   /** The module host: its plan, the manifests it read, and which modules are built in. */
   modules?: Pick<ModuleHost, "plan" | "manifests" | "builtinIds">;
   /** Kernel capabilities by name. */
@@ -16,7 +18,8 @@ export interface UiManifestDeps {
 
 /**
  * The UI manifest for a booted kernel: every planned module (with its manifest when it was
- * usable), the kernel-wired features, the registered providers and the config's overrides.
+ * usable), the kernel-wired features, the registered providers, the config's overrides and its
+ * pages. It also sets the providers' projections to the selects of its config pages' widgets.
  */
 export function buildUiManifest(deps: UiManifestDeps): UiManifest {
   const modules: UiModuleInput[] = (deps.modules?.plan ?? []).map((entry) => {
@@ -32,7 +35,7 @@ export function buildUiManifest(deps: UiManifestDeps): UiManifest {
     };
   });
   const estateName = estateNameOf(deps.config);
-  return resolveUiManifest({
+  const ui = resolveUiManifest({
     modules,
     kernelFeatures: KERNEL_FEATURES,
     capabilities: deps.capabilities,
@@ -40,7 +43,12 @@ export function buildUiManifest(deps: UiManifestDeps): UiManifest {
     overrides: uiOverridesOf(deps.config),
     ...(estateName === undefined ? {} : { estateName }),
     ui: uiConfigOf(deps.config),
+    configPages: configPagesOf(deps.config),
   });
+  // The manifest's config pages decide what each envelope projects: a rebuilt manifest
+  // (a reloaded ui config) replaces the selects with its own.
+  deps.providers.setProjections(deriveProjections(ui));
+  return ui;
 }
 
 function unusableManifest(id: string): ModuleManifest {

@@ -22,6 +22,7 @@ export const IDENTITY = {
   integrations: ["id"],
   "ui.nav.groups": ["id"],
   "ui.nav.items": ["id"],
+  "ui.pages": ["id"],
 } as const satisfies Record<string, IdentitySpec>;
 
 /**

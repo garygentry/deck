@@ -4,7 +4,7 @@ import { vi } from "vitest";
 
 import type { DeckConfig } from "../../src/contract/index.js";
 import { registerAllProviders } from "../../src/providers/index.js";
-import { listHealth, listProviders, providerCount, read } from "../../src/providers/registry.js";
+import { listHealth, listProviders, providerCount, read, setProjections } from "../../src/providers/registry.js";
 import { createApp, planningRouteTable, RESERVED_ROOT_PATHS } from "../../src/server/app.js";
 import type { GitSpawner } from "../../src/sources/acquire.js";
 import { createFileTreeModule } from "../../src/providers/file-tree/module.js";
@@ -45,7 +45,7 @@ export async function sourcesApp(config: DeckConfig, options: SourcesAppOptions 
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger;
   const app = createApp({
     config,
-    providers: { read, count: providerCount, listHealth, listProviders },
+    providers: { read, count: providerCount, listHealth, listProviders, setProjections },
     logger,
     modules: fixture.host,
   });

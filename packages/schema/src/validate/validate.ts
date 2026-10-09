@@ -13,6 +13,7 @@ import { layers } from "./rules/layers.js";
 import { providerKinds } from "./rules/provider-kinds.js";
 import { references } from "./rules/references.js";
 import { secrets } from "./rules/secrets.js";
+import { uiWidgets } from "./rules/ui-widgets.js";
 import { checkVersion } from "./rules/version.js";
 import { mapAjvErrors } from "./shape.js";
 
@@ -23,7 +24,9 @@ function isObject(value: unknown): value is Record<string, unknown> {
 /**
  * Validate an already-parsed config document against the composed config contract
  * (`options.composed`, default: the kernel plus the built-in contributions). This
- * function never throws.
+ * function never throws. Widget `select` expressions are checked only when the composition
+ * carries the check: compose with `composeChecked()` from the server-only `@deck/schema/select`
+ * (as deck does); the default composition does not check them.
  */
 export function validate(
   document: unknown,
@@ -70,6 +73,7 @@ export function validate(
       ...(layer === "overlay" && isObject(options?.base) ? [] : references(doc, context, composed.references)),
       ...layers(doc, composed, layer, options?.base, strict),
       ...providerKinds(doc, composed, strict),
+      ...uiWidgets(doc, composed, strict),
       ...secrets(doc, context),
       // Module array identities: a duplicate the kernel rules already report is not repeated.
       ...composed.runChecks(document as JsonObject, layer, { disabledSections: strict ? "strict" : "advisory" }).filter(

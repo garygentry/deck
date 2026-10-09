@@ -11,15 +11,7 @@ import { BootFatalError } from "@deck/module-sdk";
 import { load } from "../src/config/load.js";
 import { builtinKindHandlers } from "../src/modules/builtin.js";
 import { registerAllProviders as registerWithKinds } from "../src/providers/index.js";
-import {
-  listEnvelopes,
-  listHealth,
-  listProviders,
-  providerCount,
-  read,
-  startScheduler,
-  stopScheduler,
-} from "../src/providers/registry.js";
+import { listEnvelopes, listHealth, listProviders, providerCount, read, setProjections, startScheduler, stopScheduler } from "../src/providers/registry.js";
 import { SnapshotReadFailure } from "../src/providers/snapshot/errors.js";
 import { SnapshotProvider } from "../src/providers/snapshot/index.js";
 import { createSnapshotSource } from "../src/providers/snapshot/source.js";
@@ -41,7 +33,7 @@ function loadPortalConfig(): DeckConfig {
 
 function makeApp(config: DeckConfig) {
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger;
-  return createApp({ config, providers: { read, count: providerCount, listHealth, listProviders }, logger });
+  return createApp({ config, providers: { read, count: providerCount, listHealth, listProviders, setProjections }, logger });
 }
 
 /** Register `config`'s providers with the built-in modules, the snapshot source set (or not). */

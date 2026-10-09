@@ -1,4 +1,4 @@
-import type { SlotDecl } from "@deck/module-sdk";
+import type { SlotDecl, WidgetTypeDecl } from "@deck/module-sdk";
 
 /**
  * The kernel-reserved slots, hosted by `core`: the shell's (`app/…`) and the entity detail
@@ -14,4 +14,23 @@ export const SHELL_SLOTS: readonly SlotDecl[] = [
   { id: "app/topbar.status", accepts: "pill" },
   { id: "entity:host/sections", accepts: "entity-section" },
   { id: "entity:service/sections", accepts: "entity-section" },
+];
+
+/**
+ * The kernel's own widget types, hosted by `core`, which config pages (`ui.pages`) may use
+ * like any module's: the server lists them in the UI manifest and the web registers a component
+ * for each. Their option schemas are the ones config validation composes (the schema library's
+ * own copy, kept equal to these by deck's tests). Data only.
+ * - `core/json`: the widget's selected value, as formatted JSON (`wrap` soft-wraps long lines).
+ */
+export const CORE_WIDGET_TYPES: readonly WidgetTypeDecl[] = [
+  {
+    type: "core/json",
+    optionsSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: { wrap: { type: "boolean", description: "Soft-wrap long lines instead of scrolling." } },
+    },
+    component: "JsonWidget",
+  },
 ];

@@ -1,1 +1,1 @@
-export type { FreshnessStamp, FreshnessState, ProviderEnvelope } from "@deck/contract";
+export type { FreshnessStamp, FreshnessState, ProviderEnvelope, ProviderProjection } from "@deck/contract";

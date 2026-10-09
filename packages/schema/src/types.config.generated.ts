@@ -98,6 +98,7 @@ config?: {
 export type JsonValue = (string | number | boolean | null | JsonValue[] | {
 [k: string]: JsonValue | undefined
 })
+export type UiWidget = UiWidget1
 
 /**
  * A merged deck config document containing projected estate inventory and presentation data.
@@ -474,6 +475,10 @@ nav?: UiNav
 extensions?: {
 [k: string]: UiOverride | undefined
 }
+/**
+ * Config-defined pages (dashboards): sections of widgets, each page routed as page:ui/<id>.
+ */
+pages?: UiPage[]
 }
 /**
  * The product name and mark the shell shows.
@@ -539,4 +544,103 @@ label?: string
  * An icon name from the shell's icon set.
  */
 icon?: string
+}
+export interface UiPage {
+/**
+ * The page's name; its id is page:ui/<id>.
+ */
+id: string
+/**
+ * The page's path, such as /lab: literal segments only.
+ */
+path: string
+/**
+ * The page heading, nav label and document title.
+ */
+title: string
+/**
+ * An icon name from the shell's icon set.
+ */
+icon?: string
+nav?: UiPageNav
+/**
+ * The page's sections, in reading order.
+ * 
+ * @minItems 1
+ */
+sections: [UiSection, ...(UiSection)[]]
+}
+/**
+ * The page's sidebar entry (nav:ui/<id>); without it the page has none.
+ */
+export interface UiPageNav {
+/**
+ * The nav group the entry belongs to.
+ */
+group: string
+/**
+ * The entry's label; default the page title.
+ */
+label?: string
+/**
+ * Order within the group; default 100.
+ */
+order?: number
+}
+export interface UiSection {
+/**
+ * The section heading.
+ */
+title: string
+/**
+ * Grid columns from the md breakpoint up (one column below it); default 1.
+ */
+columns?: number
+/**
+ * The section's widgets, in reading order.
+ * 
+ * @minItems 1
+ */
+widgets: [UiWidget, ...(UiWidget)[]]
+}
+export interface UiWidget1 {
+/**
+ * A stable name, unique on the page; its id is widget:ui/<page>.<id>. Without one, the id is positional (s<N>w<M>, a form an id may not take) and changes when widgets move.
+ */
+id?: string
+/**
+ * The widget type, <module>/<name>, such as core/json.
+ */
+type: string
+/**
+ * The widget's heading.
+ */
+title?: string
+/**
+ * The provider the widget reads: a provider id, or the first provider of a kind.
+ */
+source?: (string | {
+/**
+ * A provider kind.
+ */
+kind: string
+})
+/**
+ * A JMESPath expression over the provider's data, evaluated on the server when the data changes, within fixed size and work limits.
+ */
+select?: string
+/**
+ * Options of the widget type, checked against its schema.
+ */
+options?: {
+[k: string]: JsonValue | undefined
+}
+/**
+ * Columns the widget spans; default 1, at most the section's columns.
+ */
+span?: number
+/**
+ * Rows the widget spans; default 1.
+ */
+rows?: number
 }

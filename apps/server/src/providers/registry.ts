@@ -7,8 +7,10 @@ import {
   type ProviderDescriptor,
   type ProviderEnvelope,
   type ProviderHealthEntry,
+  type ProviderProjection,
 } from "../contract/index.js";
 import type { Cadence, ProviderStats, TaskHandle } from "@deck/module-sdk";
+import { evaluateSelect, type CompiledSelect } from "@deck/schema/select";
 
 import { logger, type ProviderPollEvent } from "../log/logger.js";
 import { createAdaptiveTask, isWithinRun, withinRun, type AdaptiveTask } from "../modules/scheduler.js";
@@ -55,7 +57,12 @@ interface Slot<T = unknown> {
   successCount: number;
   /** Completed polls that failed (threw, rejected, or timed out). */
   failureCount: number;
+  /** The projections last evaluated, and the data and projection set they were evaluated over. */
+  projected?: { data: unknown; selects: ProviderSelects | undefined; result: ProviderEnvelope["projections"] };
 }
+
+/** The selects over one provider: the projection's name (the widget id) → its compiled select. */
+export type ProviderSelects = ReadonlyMap<string, CompiledSelect>;
 
 /** Per-provider poll counters and last-poll latency, retained on the slot by tick(). */
 export interface ProviderPollMetrics {
@@ -68,6 +75,21 @@ export interface ProviderPollMetrics {
 }
 
 const slots = new Map<string, Slot<unknown>>();
+/** The selects to evaluate, by provider id; replaced whole by {@link setProjections}. */
+let selectsByProvider: ReadonlyMap<string, ProviderSelects> = new Map();
+
+/**
+ * Replace the selects every provider's envelope carries as `projections` (by provider id, then
+ * projection name → compiled select). Each is evaluated over the provider's data when that
+ * data changes and when the set changes, never per read, and never re-parsed; a provider
+ * registered later picks its selects up. A select that fails on the data, or exceeds its
+ * limits, yields `{ error }` in its projection; the other projections, the poll and the
+ * provider's health are unaffected.
+ */
+export function setProjections(selects: ReadonlyMap<string, ProviderSelects>): void {
+  selectsByProvider = selects;
+  for (const slot of slots.values()) publish(slot, slot.envelope.error);
+}
 
 /** Derive the public freshness state from cached success, age, and failure policy. */
 export function deriveState(input: DeriveInput): FreshnessState {
@@ -200,6 +222,7 @@ export function stopScheduler(): void {
     slot.adaptive?.stop().catch(() => {});
   }
   slots.clear();
+  selectsByProvider = new Map();
 }
 
 /** Return the number of providers currently held by the process-local registry. */
@@ -376,7 +399,27 @@ function publish<T>(slot: Slot<T>, error: { message: string } | null): void {
     },
     data: slot.retainedData,
     error,
+    ...projectionsOf(slot),
   });
+}
+
+/** The slot's projections, re-evaluated only when its data or the select set changed. */
+function projectionsOf<T>(slot: Slot<T>): Pick<ProviderEnvelope, "projections"> {
+  const selects = selectsByProvider.get(slot.provider.id);
+  if (slot.projected === undefined || slot.projected.data !== slot.retainedData || slot.projected.selects !== selects) {
+    let result: Record<string, ProviderProjection> | undefined;
+    if (selects !== undefined && selects.size > 0) {
+      result = {};
+      // No data yet (or none retained): nothing to project.
+      if (slot.retainedData !== null) {
+        for (const [name, select] of [...selects].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+          result[name] = evaluateSelect(select, slot.retainedData);
+        }
+      }
+    }
+    slot.projected = { data: slot.retainedData, selects, result };
+  }
+  return slot.projected.result === undefined ? {} : { projections: slot.projected.result };
 }
 
 function withTimeout<T>(promise: Promise<T>, signal: AbortSignal, timeoutMs: number): Promise<T> {

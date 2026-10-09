@@ -16,6 +16,9 @@ import { fixture as moduleUnknown } from "./module-unknown.js";
 import { fixture as providerBindingUnsupported } from "./provider-binding-unsupported.js";
 import { fixture as providerKindDisabled } from "./provider-kind-disabled.js";
 import { fixture as providerKindUnknown } from "./provider-kind-unknown.js";
+import { fixture as uiWidgetTypeUnknown } from "./ui-widget-type-unknown.js";
+import { fixture as uiWidgetTypeDisabled } from "./ui-widget-type-disabled.js";
+import { fixture as uiWidgetSelectInvalid } from "./ui-widget-select-invalid.js";
 import { fixture as secretValueSuspected } from "./secret-value-suspected.js";
 import { fixture as snapshotHostDuplicate } from "./snapshot-host-duplicate.js";
 import { fixture as snapshotServiceDuplicate } from "./snapshot-service-duplicate.js";
@@ -43,6 +46,9 @@ export const invalid: readonly InvalidFixture[] = [
   providerBindingUnsupported,
   providerKindDisabled,
   providerKindUnknown,
+  uiWidgetTypeUnknown,
+  uiWidgetTypeDisabled,
+  uiWidgetSelectInvalid,
   secretValueSuspected,
   snapshotHostDuplicate,
   snapshotServiceDuplicate,

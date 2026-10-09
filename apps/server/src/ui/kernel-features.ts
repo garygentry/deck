@@ -1,4 +1,4 @@
-import { SHELL_SLOTS } from "@deck/contract/modules/core";
+import { CORE_WIDGET_TYPES, SHELL_SLOTS } from "@deck/contract/modules/core";
 import { DECK_API_VERSION, type ModuleManifest } from "@deck/module-sdk";
 
 /**
@@ -30,5 +30,7 @@ export const KERNEL_FEATURES: readonly KernelFeature[] = [
     extensions: [
       { id: "action:core/theme-menu", kind: "action", attachTo: { slot: "app/topbar.actions" }, component: "ThemeMenu" },
     ],
+    // The kernel's own widget types, which config pages may use.
+    widgetTypes: [...CORE_WIDGET_TYPES],
   }),
 ];

@@ -18,6 +18,7 @@ import type {
   UiPage,
   UiProvider,
   UiSlot,
+  UiWidgetType,
 } from "@deck/module-sdk";
 
 import {
@@ -31,6 +32,7 @@ import {
   UI_CONFIG_NAV_ID_PATTERN,
 } from "@deck/module-sdk";
 
+import { buildLayout, CONFIG_PAGE_COMPONENT, configPageIds, configWidgetIds, type ConfigPage } from "./config-pages.js";
 import { DEFAULT_BRAND_TITLE, DEFAULT_UI, type UiDefaults, type UiNavGroupConfig, type UiNavItemConfig } from "./defaults.js";
 import type { KernelFeature } from "./kernel-features.js";
 import { isRecord, RESERVED_MODULE_IDS } from "./validate.js";
@@ -73,6 +75,8 @@ export interface ResolveUiInput {
   estateName?: string;
   /** The ui config the shell starts from; the built-in default when absent. */
   ui?: UiDefaults;
+  /** Config-defined pages (`ui.pages`), listed as pages of module `ui` with their layout. */
+  configPages?: readonly ConfigPage[];
 }
 
 interface Unit {
@@ -113,6 +117,11 @@ type NavEntryDecl = NavDecl & { separator?: true };
  * 5. Sort pages by id, nav by group/order/id, extensions by slot/order/id. Nav groups follow
  *    the ui config's group order, then the built-in groups it does not list, then any other
  *    group by id.
+ *
+ * Config pages (`ui.pages`) are pages of module `ui` (`page:ui/<id>`, with a `nav:ui/<id>`
+ * entry when they set `nav`), after every module's in precedence. Each routed one carries its
+ * layout; each of its widgets is addressable by id (`widget:ui/<page>.<name>`), and an override
+ * can switch it off. Widget types are those of enabled modules and the kernel, by type.
  */
 export function resolveUiManifest(input: ResolveUiInput): UiManifest {
   const findings: UiFinding[] = [];
@@ -143,6 +152,24 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
   for (const item of configNav) {
     declaredNav.add(item.id);
     knownIds.add(item.id);
+  }
+  const configPages = input.configPages ?? [];
+  const configPageIdSet = new Set<string>();
+  // Widget id → whether it is positional (changes when widgets move).
+  const widgetIds = new Map<string, boolean>();
+  for (const page of configPages) {
+    const ids = configPageIds(page);
+    knownIds.add(ids.page);
+    declaredPages.add(ids.page);
+    configPageIdSet.add(ids.page);
+    if (page.nav !== undefined) {
+      knownIds.add(ids.nav);
+      declaredNav.add(ids.nav);
+    }
+    for (const widget of configWidgetIds(page)) {
+      knownIds.add(widget.id);
+      widgetIds.set(widget.id, widget.positional);
+    }
   }
 
   const seen = new Map<string, string>();
@@ -178,17 +205,69 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
   // The config's entries are `nav:ui/…`, a namespace no module may use (`ui` is reserved).
   for (const item of configNav) if (claim(item.id, UI_CONFIG_MODULE)) navDecls.push({ ...item, module: UI_CONFIG_MODULE });
 
+  // Config pages come after every module's contributions, so a module keeps a contested id or path.
+  const configPageById = new Map<string, ConfigPage>();
+  for (const page of configPages) {
+    const ids = configPageIds(page);
+    const problem = pagePathProblem(page.path, `page "${ids.page}"`);
+    if (problem !== null) {
+      findings.push({ code: "UI_INVALID_PAGE", severity: "warning", message: `${problem}; it is not routed`, id: ids.page });
+      continue;
+    }
+    if (!claim(ids.page, UI_CONFIG_MODULE)) continue;
+    configPageById.set(ids.page, page);
+    pageDecls.push({
+      id: ids.page,
+      module: UI_CONFIG_MODULE,
+      path: page.path,
+      title: page.title,
+      ...(page.icon === undefined ? {} : { icon: page.icon }),
+      component: CONFIG_PAGE_COMPONENT,
+    });
+    if (page.nav !== undefined && claim(ids.nav, UI_CONFIG_MODULE)) {
+      navDecls.push({
+        id: ids.nav,
+        module: UI_CONFIG_MODULE,
+        page: ids.page,
+        group: page.nav.group,
+        ...(page.nav.label === undefined ? {} : { label: page.nav.label }),
+        ...(page.nav.order === undefined ? {} : { order: page.nav.order }),
+      });
+    }
+  }
+
+  // Widget types: the first by precedence keeps a type two modules declare.
+  const widgetTypes = new Map<string, UiWidgetType>();
+  for (const { manifest } of enabledUnits) {
+    for (const decl of manifest.contributes?.widgetTypes ?? []) {
+      const owner = widgetTypes.get(decl.type);
+      if (owner !== undefined) {
+        findings.push({ code: "UI_DUPLICATE_ID", severity: "warning", message: `widget type "${decl.type}" is already provided by module "${owner.module}"; module "${manifest.id}"'s is ignored`, id: decl.type });
+        continue;
+      }
+      widgetTypes.set(decl.type, { type: decl.type, module: manifest.id, ...(decl.sources === undefined ? {} : { sources: [...decl.sources] }) });
+    }
+  }
+
   const overrides = new Map<string, UiOverride>();
   for (const [id, value] of Object.entries(input.overrides ?? {}).sort(([a], [b]) => compareIds(a, b))) {
     if (!knownIds.has(id)) {
       findings.push({ code: "UI_UNKNOWN_EXTENSION", severity: "warning", message: `override "${id}" names no known extension, page or nav entry`, id });
       continue;
     }
-    const target: OverrideTarget = declaredPages.has(id) ? "page" : declaredNav.has(id) ? "nav" : "extension";
+    const target: OverrideTarget = declaredPages.has(id) ? "page" : declaredNav.has(id) ? "nav" : widgetIds.has(id) ? "widget" : "extension";
     const problem = overrideProblem(value, target);
     if (problem !== null) {
       findings.push({ code: "UI_INVALID_OVERRIDE", severity: "warning", message: `override "${id}" is ignored: ${problem}`, id });
       continue;
+    }
+    if (widgetIds.get(id) === true) {
+      findings.push({
+        code: "UI_OVERRIDE_POSITIONAL",
+        severity: "info",
+        message: `override "${id}" targets a widget by position, which changes when its page's sections or widgets move; give the widget an id`,
+        id,
+      });
     }
     // A replacement config must still be a usable entity section (it replaces, never merges).
     // Only the config is dropped: the rest of the override (`enabled: false` above all) holds.
@@ -266,6 +345,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
       continue;
     }
     pathOwner.set(decl.path, decl.id);
+    const configPage = decl.module === UI_CONFIG_MODULE ? configPageById.get(decl.id) : undefined;
     pages.push({
       id: decl.id,
       module: decl.module,
@@ -273,10 +353,25 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
       title: decl.title,
       ...(decl.icon === undefined ? {} : { icon: decl.icon }),
       component: decl.component,
+      ...(configPage === undefined
+        ? {}
+        : {
+            layout: buildLayout(configPage, {
+              providers: input.providers ?? [],
+              widgetTypes: [...widgetTypes.values()],
+              enabled: (id) => isEnabled(overrides.get(id), true),
+              findings,
+            }),
+          }),
     });
   }
   const routedPages = new Set<string>(pages.map((page) => page.id));
-  const home = resolveHome(ui.home, pages, (id) => unroutedReason(id, units, overrides), findings);
+  const home = resolveHome(
+    ui.home,
+    pages,
+    (id) => (configPageIdSet.has(id) ? configUnroutedReason(id, overrides) : unroutedReason(id, units, overrides)),
+    findings,
+  );
 
   // Pages of disabled modules, on paths nothing routed or root-served claims. The first by
   // precedence keeps a path two disabled modules declare.
@@ -381,6 +476,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
     providers: [...(input.providers ?? [])]
       .map(({ id, kind }) => ({ id, kind }))
       .sort((a, b) => compareIds(a.id, b.id)),
+    widgetTypes: [...widgetTypes.values()].sort((a, b) => compareIds(a.type, b.type)),
     findings,
   };
 }
@@ -493,6 +589,12 @@ function unroutedReason(id: string, units: readonly Unit[], overrides: ReadonlyM
   return "another contribution has its id, or another page or a module's root path has its path";
 }
 
+/** Why a config page is not routed. */
+function configUnroutedReason(id: string, overrides: ReadonlyMap<string, UiOverride>): string {
+  if (!isEnabled(overrides.get(id), true)) return "a ui.extensions override switches it off";
+  return "another contribution has its id, or another page or a module's root path has its path, or its path is unusable";
+}
+
 /** Modules, then the kernel features no module replaces, by id (a reserved id is listed twice, by origin). */
 function collectUnits(input: ResolveUiInput): Unit[] {
   const units: Unit[] = input.modules.map(({ manifest, enabled, reason, builtin, enabledBy }) => ({
@@ -532,16 +634,20 @@ function rank(unit: Unit): number {
   return unit.origin === "kernel" || unit.builtin === true ? 1 : 2;
 }
 
-type OverrideTarget = "page" | "nav" | "extension";
+type OverrideTarget = "page" | "nav" | "widget" | "extension";
 
-/** The override keys each target takes: a page can only be switched, a nav entry also re-attached. */
+/**
+ * The override keys each target takes: a page or a config page's widget can only be switched,
+ * a nav entry also re-attached.
+ */
 const OVERRIDE_KEYS: Readonly<Record<OverrideTarget, readonly string[]>> = {
   page: ["enabled"],
   nav: ["enabled", "attachTo"],
+  widget: ["enabled"],
   extension: ["enabled", "attachTo", "config"],
 };
 
-const TARGET_NAMES: Readonly<Record<OverrideTarget, string>> = { page: "a page", nav: "a nav entry", extension: "an extension" };
+const TARGET_NAMES: Readonly<Record<OverrideTarget, string>> = { page: "a page", nav: "a nav entry", widget: "a widget", extension: "an extension" };
 
 /** Why an override value is malformed for its target, or null. */
 function overrideProblem(value: unknown, target: OverrideTarget): string | null {

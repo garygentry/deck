@@ -1,3 +1,4 @@
+import { UI_CONFIG_MODULE } from "@deck/module-sdk";
 import { Suspense, useEffect } from "react";
 import { Callout, LoadingState, PageErrorBoundary, useDocumentTitle } from "@/ui";
 import { Route, Router, Switch, useLocation } from "./router.js";
@@ -5,12 +6,13 @@ import { getPages } from "../registry/registry.js";
 import { useRegistryVersion } from "../registry/use-registry.js";
 import { AppShell } from "./AppShell.js";
 import { bootHome } from "./boot.js";
+import { configPageRegistrations } from "./config-page/routes.js";
 import { useBrandTitle } from "./manifest-slot.js";
 import { ModuleNotEnabledPage } from "./ModuleNotEnabledPage.js";
 import { NotFoundPage } from "./NotFoundPage.js";
 import { ReloadNotice } from "./ReloadNotice.js";
 import { HOME_PATH, resolveRoutes, routeForPath, type ResolvedRoutes } from "./routes.js";
-import { useConfig, useUiManifest } from "../data/index.js";
+import { useConfig, useUiManifest, type UiManifestState } from "../data/index.js";
 
 export function App({ url }: { url?: string } = {}) {
   return (
@@ -25,10 +27,13 @@ export function App({ url }: { url?: string } = {}) {
 function Shell() {
   // Re-render when an extension registers late (a lazily loaded module).
   useRegistryVersion();
-  const routes = resolveRoutes(useUiManifest(), getPages(), bootHome());
+  const manifest = useUiManifest();
+  // Config pages (`ui.pages`) exist only in the manifest; they route like any module's page.
+  const routes = resolveRoutes(manifest, [...getPages(), ...configPageRegistrations(manifest)], bootHome());
   const { path } = useLocation();
   const config = useConfig();
-  const title = routeForPath(routes, path)?.label;
+  const pending = awaitingConfigPage(manifest, routes, path, bootHome());
+  const title = pending ? "Loading" : routeForPath(routes, path)?.label;
   useDocumentTitle(title ?? "Not found", useBrandTitle());
 
   return (
@@ -39,9 +44,21 @@ function Shell() {
         </Callout>
       )}
       <ReloadNotice />
-      <RoutedContent routes={routes} />
+      {pending ? <LoadingState label="Loading page…" /> : <RoutedContent routes={routes} />}
     </AppShell>
   );
+}
+
+/**
+ * Whether the page at `path` may be a config page the manifest has yet to deliver: while it
+ * loads, `/` when the server says the home page is a config page (`page:ui/…`), and any path
+ * no registered page matches. Rendering a loading state then, instead of the portal or "not
+ * found", keeps a config home page or a deep link to one from flashing the wrong page.
+ */
+export function awaitingConfigPage(manifest: UiManifestState, routes: ResolvedRoutes, path: string, home: string | null | undefined): boolean {
+  if (manifest.status !== "loading") return false;
+  if (path === HOME_PATH) return typeof home === "string" && home.startsWith(`page:${UI_CONFIG_MODULE}/`);
+  return routeForPath(routes, path) === undefined;
 }
 
 /**

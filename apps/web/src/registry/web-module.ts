@@ -13,12 +13,25 @@ import {
 } from "@deck/module-sdk";
 import type { ComponentType } from "react";
 
-import { defineSlot, getAllExtensions, getSlot, isComponent, registerExtension, registerPage, RegistrationError, type SlotAccepts } from "./registry.js";
+import {
+  defineSlot,
+  getAllExtensions,
+  getSlot,
+  hasWidgetType,
+  isComponent,
+  registerExtension,
+  registerPage,
+  registerWidgetType,
+  RegistrationError,
+  type SlotAccepts,
+  type WidgetProps,
+} from "./registry.js";
 import type { ExtensionId } from "./registry-types.js";
 
 /**
- * Register a module's web half: every page, nav entry, slot and extension its manifest
- * contributes, each rendering the component the manifest names from the module's table. The
+ * Register a module's web half: every page, nav entry, slot, extension and widget type its
+ * manifest contributes, each rendering the component the manifest names from the module's
+ * table (a widget type without a component is left to a later renderer). The
  * manifest is the only place these attach: the web adds no paths, slots or orders of its
  * own, and the UI manifest (`/api/ui`) still decides at runtime which of them render, where.
  *
@@ -31,7 +44,8 @@ import type { ExtensionId } from "./registry-types.js";
  * lacks, or holds as something other than a component; a table entry nothing names; an
  * extension that is neither rendered by a component nor a widget descriptor; nav entries the
  * registry cannot express (an `href` entry, one not named after its page, a second one for a
- * page); an extension, widget descriptors included, attaching to a core slot (`app/…`,
+ * page); a widget type outside the module's namespace or registered already; an extension,
+ * widget descriptors included, attaching to a core slot (`app/…`,
  * `entity:…`) that core does not declare, which would otherwise sit orphaned; and anything the
  * registry itself would refuse (ids, paths, orders, slot kinds, entity-section config,
  * duplicates).
@@ -66,7 +80,6 @@ export function registerWebModule(module: WebModule): void {
   const referenced = new Set([
     ...pages.map((page) => page.component),
     ...extensions.map((extension) => extension.component!),
-    // Widget types render once dashboards land; their components belong in the table already.
     ...(contributes.widgetTypes ?? []).flatMap((type) => (type.component === undefined ? [] : [type.component])),
   ]);
   for (const name of referenced) {
@@ -106,6 +119,14 @@ export function registerWebModule(module: WebModule): void {
     problem(orderProblem(navByPage.get(page.id)?.order, `nav entry for "${page.id}" order`));
     if (typeof page.title !== "string" || page.title === "") fail("MISSING_FIELD", `page "${page.id}" needs a title`);
   }
+  const typeNames = new Set<string>();
+  for (const { type } of contributes.widgetTypes ?? []) {
+    if (typeof type !== "string" || !type.startsWith(`${id}/`) || !/^[a-z0-9][a-z0-9-]*$/.test(type.slice(id.length + 1))) {
+      fail("INVALID_ID", `widget type "${String(type)}" must have the form ${id}/<name>`);
+    }
+    if (hasWidgetType(type) || typeNames.has(type)) fail("DUPLICATE_ID", `widget type "${type}" is already registered`);
+    typeNames.add(type);
+  }
   const accepts = new Map<string, string>();
   for (const slot of slots) {
     problem(slotIdProblem(slot.id, id) ?? slotAcceptsProblem(slot.accepts, slot.id));
@@ -139,6 +160,9 @@ export function registerWebModule(module: WebModule): void {
       ...(nav === undefined ? { nav: false } : { group: nav.group }),
       ...(nav?.order === undefined ? {} : { navOrder: nav.order }),
     });
+  }
+  for (const { type, component } of contributes.widgetTypes ?? []) {
+    if (component !== undefined) registerWidgetType({ type, module: id, component: table[component] as ComponentType<WidgetProps<any>> });
   }
   for (const extension of extensions) {
     registerExtension({

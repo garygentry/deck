@@ -50,6 +50,8 @@ export interface UiContributionOptions {
  * - a page path is not under `/api` or on a root path the kernel or a built-in module serves;
  * - a nav `href` is an `http(s):` URL or an absolute path, and its `group` a nav group id;
  * - an entity section's config has a `title` and, optionally, a `section` name to share (lowercase, no `.`);
+ * - a widget type is `<module>/<name>` in its own module, listed once, with an options schema
+ *   object, and optionally a component name and the provider kinds it renders;
  * - every field the resolver reads has the declared type.
  * Cross-module conflicts (an id or a path used twice) are left to the resolver, which reports
  * them as findings.
@@ -62,7 +64,9 @@ export function uiContributionProblem(manifest: ModuleManifest, options: UiContr
     listProblem(contributes.pages, "pages", (page) => pageProblem(manifest.id, page, options.reservedRootPaths ?? DEFAULT_RESERVED)) ??
     listProblem(contributes.nav, "nav", (nav) => navProblem(manifest.id, nav)) ??
     listProblem(contributes.slots, "slots", (slot) => slotProblem(manifest.id, slot, options)) ??
-    listProblem(contributes.extensions, "extensions", (extension) => extensionProblem(manifest.id, extension))
+    listProblem(contributes.extensions, "extensions", (extension) => extensionProblem(manifest.id, extension)) ??
+    listProblem(contributes.widgetTypes, "widgetTypes", (type) => widgetTypeProblem(manifest.id, type)) ??
+    duplicateWidgetTypeProblem(contributes.widgetTypes)
   );
 }
 
@@ -132,6 +136,31 @@ function extensionProblem(moduleId: string, extension: Record<string, unknown>):
     (extension.config === undefined || isRecord(extension.config) ? null : `${label} config must be an object`) ??
     (extension.kind === "entity-section" ? entitySectionProblem(extension.config, label) : null) ??
     (extension.enabled === undefined || typeof extension.enabled === "boolean" ? null : `${label} enabled must be a boolean`)
+  );
+}
+
+/** A widget type: `<module>/<name>`. */
+const WIDGET_TYPE = /^([a-z][a-z0-9-]*)\/[a-z0-9][a-z0-9-]*$/;
+
+/** A widget type the module lists twice: its own defect, so the module is disabled. */
+function duplicateWidgetTypeProblem(types: unknown): Problem {
+  if (!Array.isArray(types)) return null;
+  const seen = new Set<unknown>();
+  for (const { type } of types as Array<{ type?: unknown }>) {
+    if (seen.has(type)) return `contributes.widgetTypes: widget type "${String(type)}" is listed twice`;
+    seen.add(type);
+  }
+  return null;
+}
+
+function widgetTypeProblem(moduleId: string, type: Record<string, unknown>): Problem {
+  const label = `widget type "${String(type.type)}"`;
+  const match = typeof type.type === "string" ? WIDGET_TYPE.exec(type.type) : null;
+  return (
+    (match !== null && match[1] === moduleId ? null : `${label} must have the form ${moduleId}/<name>`) ??
+    (isRecord(type.optionsSchema) ? null : `${label} needs an optionsSchema object`) ??
+    optionalString(type.component, `${label} component`) ??
+    (type.sources === undefined || (Array.isArray(type.sources) && type.sources.every(nonEmpty)) ? null : `${label} sources must be a list of provider kinds`)
   );
 }
 

@@ -18,6 +18,7 @@ import {
   listProviders,
   providerCount,
   read,
+  setProjections,
   startScheduler,
   stopScheduler,
 } from "../providers/registry.js";
@@ -156,6 +157,7 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
     count: providerCount,
     listHealth,
     listProviders,
+    setProjections,
   };
 
   const kernelDeps: AppDeps = {

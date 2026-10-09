@@ -46,7 +46,7 @@ const stats: ProviderStats[] = [
   { id: "unpolled", kind: "gatus", successTotal: 0, failureTotal: 0, lastLatencyMs: null, ageMs: null },
 ];
 
-const providers = { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [] };
+const providers = { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [], setProjections: () => {} };
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger;
 
 const PAGER_PAGE: PageDecl = { id: "page:pager/metrics", path: "/metrics", title: "Metrics", component: "MetricsPage" };

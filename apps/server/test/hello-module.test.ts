@@ -9,7 +9,7 @@ import { load } from "../src/config/load.js";
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { createModuleHost, startModules } from "../src/modules/host.js";
 import { registerAllProviders } from "../src/providers/index.js";
-import { listHealth, listProviders, providerCount, read, startScheduler, stopScheduler } from "../src/providers/registry.js";
+import { listHealth, listProviders, providerCount, read, setProjections, startScheduler, stopScheduler } from "../src/providers/registry.js";
 import { createApp, planningRouteTable, RESERVED_ROOT_PATHS } from "../src/server/app.js";
 import { buildUiManifest } from "../src/ui/manifest.js";
 import { helloModule } from "./fixtures/modules/hello/module.js";
@@ -63,7 +63,7 @@ async function serve(configDir: string) {
   registerAllProviders(result.config, host.kindHandlers());
   await startModules(host);
   startScheduler();
-  const providers = { read, count: providerCount, listHealth, listProviders };
+  const providers = { read, count: providerCount, listHealth, listProviders, setProjections };
   const ui = buildUiManifest({ config: result.config, providers, modules: host, capabilities: {} });
   return createApp({ config: result.config, providers, logger, modules: host, ui });
 }

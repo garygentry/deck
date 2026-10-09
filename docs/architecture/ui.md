@@ -185,13 +185,15 @@ registerWebModule(defineWebModule(LLM_USAGE_UI, {
 
 `registerWebModule` derives every registration from the manifest: a page per `pages` entry
 (in its nav entry's group, or `nav: false` without one), a slot per `slots` entry, and an
-extension per `extensions` entry. Widget descriptors (a `widget` and no component) render
-through their widget type, not here; a widget type's component already belongs in the table.
+extension per `extensions` entry, and a widget type per `widgetTypes` entry that names a
+component (see "Config pages and widget types"). Widget descriptors (a `widget` and no
+component) render through their widget type, not here.
 The web adds no paths, slots or orders of its own. Everything is checked before anything
 registers, so a refused module leaves nothing behind. It refuses, naming the module and the
 component or extension: a name the manifest references that the table lacks (or holds
 something other than a component under), a table entry nothing references, any other extension without a component, a nav entry it cannot express
-(an `href` entry, one not named `nav:<page name>`, two for one page), an extension (widget
+(an `href` entry, one not named `nav:<page name>`, two for one page), a widget type outside
+the module's namespace (`<module>/<name>`) or registered already, an extension (widget
 descriptors included) on a core slot (`app/…`, `entity:…`) that core does not declare
 (`UNKNOWN_SLOT`, instead of an orphan that never renders), and whatever the registry itself refuses (ids, paths, orders, slot kinds, entity-section config, duplicates). The
 registrations are the defaults; at runtime the UI manifest still decides what renders, where
@@ -333,6 +335,43 @@ Heavy pages load on first visit. A feature's `pages.ts` wraps its page component
 markdown-it, DOMPurify, highlight.js and TanStack Table stay out of the main bundle. The dev-only
 component workbench (`/_ui`) is a lazy import inside an `import.meta.env.DEV` branch, so none of it
 ships.
+
+### Config pages and widget types
+
+A config page (`ui.pages`) has no web component of its own: the UI manifest lists it as a page
+of module `ui` with a `layout`, and the shell routes it (`shell/config-page/routes.tsx` turns
+each into a page registration whose component reads the page from the manifest). `ConfigPage`
+renders the layout: `PageHeader` (the one `h1`), a `Section` (`h2`) per section, and a
+`data-slot="widget-grid"` grid that is one column below `md` and the section's `columns` from
+`md` up. Column and row spans are static Tailwind class maps (`md:col-span-*`, `md:row-span-*`),
+never `style={}`, and the grid never reorders, so DOM order is reading order.
+
+Each widget renders in a `WidgetHost`: a card `Section` (`h3`, the widget's title, else its
+type) whose body is chosen by `widgetView` from the widget, its type and its provider
+(`useProvider(source.id)`): an `ErrorState` ("Widget unavailable") for a type the server says
+no enabled module provides (`typeProblem`), that the manifest's `widgetTypes` does not list, or
+that the web has not registered (it then reads no data), a source the server could not resolve
+(`sourceProblem`), a provider without data because it failed, or a
+`select` that failed on the data; a `LoadingState` until the first data; an `EmptyState` for a
+null or empty value; else the type's component. A non-fresh provider adds a `FreshnessBadge`.
+The body sits in a `FragmentBoundary` keyed on the envelope, so a widget that throws shows an
+inline error and retries when new data arrives.
+
+A widget type's component takes `WidgetProps`: `value` (the `select` result the server evaluated
+into the envelope's `projections`, or the provider's data whole; `null` for a widget without a
+source), `options` (already checked against the type's options schema at boot), `freshness` and
+the placed `widget`. A module declares its types in `contributes.widgetTypes` (`type`,
+`optionsSchema`, `component`, optionally the provider `sources` it renders) and puts the
+components in its table; `registerWebModule` registers them (`registerWidgetType`). Deck's own
+types are `CORE_WIDGET_TYPES` in `@deck/contract/modules/core`, registered by
+`features/core-widgets`. The browser never evaluates a `select`: the JMESPath engine is only in
+`@deck/schema/select`, which the server imports. `test/no-select-engine.test.ts` follows every
+runtime import from `src/` through the workspace packages to keep it out of the web, and CI
+greps the built bundle for it.
+
+Config pages exist only in the manifest, so while it loads the shell shows a loading state, not
+the portal or "not found", at `/` when the server's boot object names a config page as home,
+and at any path no registered page matches.
 
 ## Adding a page
 

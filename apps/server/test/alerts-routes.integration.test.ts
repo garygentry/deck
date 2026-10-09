@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { load } from "../src/config/load.js";
 import { registerAllProviders } from "../src/providers/index.js";
-import { listHealth, listProviders, providerCount, read, stopScheduler } from "../src/providers/registry.js";
+import { listHealth, listProviders, providerCount, read, setProjections, stopScheduler } from "../src/providers/registry.js";
 import { createApp } from "../src/server/app.js";
 
 function makeApp(fixture: string) {
@@ -19,7 +19,7 @@ function makeApp(fixture: string) {
   } as unknown as Logger;
   const app = createApp({
     config: result.config,
-    providers: { read, count: providerCount, listHealth, listProviders },
+    providers: { read, count: providerCount, listHealth, listProviders, setProjections },
     logger,
   });
   return { app, config: result.config };

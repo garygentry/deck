@@ -10,7 +10,7 @@ import { kindRuntimes, planModules } from "../src/modules/host.js";
 import { HttpJsonError, HttpJsonProvider, nestsDeeperThan, type HttpJsonConfig } from "../src/providers/http-json/index.js";
 import { credentialBodyKeys, isCredentialName } from "../src/providers/http-json/literal.js";
 import { registerAllProviders } from "../src/providers/index.js";
-import { listHealth, listProviders, providerCount, read, register, startScheduler, stopScheduler } from "../src/providers/registry.js";
+import { listHealth, listProviders, providerCount, read, register, setProjections, startScheduler, stopScheduler } from "../src/providers/registry.js";
 import { createApp } from "../src/server/app.js";
 import { makeConfigDir } from "./util/tmp-config.js";
 
@@ -283,7 +283,7 @@ describe("http-json provider: a response that echoes the credential", () => {
 describe("http-json provider: credential shape and wide bodies", () => {
   const app = () => createApp({
     config: { schemaVersion: 2, estate: { name: "hj" } } as never,
-    providers: { read, count: providerCount, listHealth, listProviders },
+    providers: { read, count: providerCount, listHealth, listProviders, setProjections },
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger,
   });
 
@@ -684,7 +684,7 @@ describe("the http-json kind in an estate", () => {
     // Nothing /api serves carries a credential value: not the envelopes, health or config.
     const app = createApp({
       config: result.config!,
-      providers: { read, count: providerCount, listHealth, listProviders },
+      providers: { read, count: providerCount, listHealth, listProviders, setProjections },
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger,
     });
     for (const path of ["/api/providers/ups", "/api/providers/down", "/api/providers/slow", "/api/health", "/api/config"]) {

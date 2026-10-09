@@ -30,7 +30,7 @@ writeFileSync(join(dist, "index.html"), TEMPLATE);
 afterAll(() => rmSync(dist, { recursive: true, force: true }));
 
 const logger = { info: () => undefined, warn: () => undefined, error: () => undefined, debug: () => undefined, child: () => logger } as unknown as Logger;
-const providers = { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [] };
+const providers = { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [], setProjections: () => {} };
 const manifest = (title: string, home: UiManifest["home"] = { page: "page:inventory/hosts", path: "/hosts" }) =>
   ({ brand: { title }, home }) as unknown as UiManifest;
 

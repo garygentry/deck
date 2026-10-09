@@ -1,3 +1,5 @@
+import { EMBED_URL_PATTERN } from "./embed.js";
+
 /**
  * Deck's own widget types (`core/…`), which config pages place like any module's: each type and
  * the JSON Schema of its `options`. The library's composition includes them
@@ -71,13 +73,6 @@ const FIELD_ITEM = {
 /** What a framed page may do (`core/embed`): never navigate deck's tab, open modals or lock the pointer. */
 const EMBED_SANDBOX = ["allow-scripts", "allow-same-origin", "allow-forms", "allow-popups", "allow-popups-to-escape-sandbox", "allow-downloads"] as const;
 
-/**
- * A `core/embed` url: http(s), a host (DNS labels, an IPv4 address or a bracketed IPv6 one) with
- * no user:password@, an optional port 0–65535, then a path, query or fragment without whitespace
- * or backslashes.
- */
-const EMBED_URL_PATTERN =
-  "^https?://(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*|\\[[0-9A-Fa-f:.]+\\])(?::(?:6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}|0))?(?:[/?#][^\\s\\\\]*)?$";
 
 const objectSchema = <P extends Record<string, unknown>>(properties: P) =>
   ({ type: "object", additionalProperties: false, properties }) as const;

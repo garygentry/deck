@@ -93,23 +93,27 @@ describe("@deck/contract", () => {
 });
 
 describe("core/embed's url check", () => {
-  const ACCEPTED = ["https://grafana.lab/d/ups?kiosk", "http://127.0.0.1:3000/x", "http://[::1]:8080/x", "https://h.lab:65535/#a", "https://wiki.lab/a@b"];
+  const ACCEPTED = [
+    "https://grafana.lab/d/ups?kiosk", "https://grafana.lab./", "http://my_grafana:3000/", "https://bücher.lab/",
+    "http://[::1]:3000/", "http://10.0.0.5/", "https://h.lab:65535/#a", "https://wiki.lab/a@b",
+  ];
+  // Refused by the loose pattern (shape) or by the URL parser behind it.
   const REFUSED = [
-    "https://x:99999/", "https://%/", "https://?q", "http://:80/", "http://#a", "https://user:pw@h.lab/", "https://user@h.lab/",
-    "https://\\evil.lab/", "//h.lab/x", "/hosts", "javascript:alert(1)", "data:text/html,x", "https://h.lab/a b", 42,
+    "https://999.1.1.1/", "http://x.123/", "https://[:::]/", "https://[1]/", "https://x:99999/", "https://%/", "https://?q",
+    "http://:80/", "http://#a", "https://user:pw@h.lab/", "https://user@h.lab/", "https://\\evil.lab/", "//h.lab/x", "/hosts",
+    "javascript:alert(1)", "data:text/html,x", "https://h.lab/a b", 42,
   ];
 
-  // The schema library's copy of the pattern is kept equal to this one by the server's tests.
-  it("accepts and refuses as the options schema's pattern does, and never a URL with user:password@", async () => {
-    const { embedUrlProblem, EMBED_URL_PATTERN } = await import("../src/modules/widgets.js");
-    const pattern = new RegExp(EMBED_URL_PATTERN, "u");
+  it("is the schema library's one rule: the options pattern's shape, then the URL parser, no user:password@", async () => {
+    const widgets = await import("../src/modules/widgets.js");
+    const embed = await import("@deck/schema/embed");
+    expect(widgets.embedUrlProblem).toBe(embed.embedUrlProblem);
+    const pattern = new RegExp(widgets.EMBED_URL_PATTERN, "u");
     for (const url of ACCEPTED) {
-      expect(embedUrlProblem(url), url).toBeNull();
+      expect(widgets.embedUrlProblem(url), url).toBeNull();
       expect(pattern.test(url), url).toBe(true);
     }
-    for (const url of REFUSED) {
-      expect(embedUrlProblem(url), String(url)).not.toBeNull();
-      if (typeof url === "string") expect(pattern.test(url), url).toBe(false);
-    }
+    for (const url of REFUSED) expect(widgets.embedUrlProblem(url), String(url)).not.toBeNull();
+    expect(widgets.embedUrlProblem("https://user:pw@h.lab/")).toMatch(/user:password/);
   });
 });

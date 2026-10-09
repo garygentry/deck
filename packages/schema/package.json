@@ -10,6 +10,7 @@
     "./deck.schema.json": "./schema/deck.schema.json",
     "./snapshot.schema.json": "./schema/snapshot.schema.json",
     "./select": "./src/select.ts",
+    "./embed": "./src/embed.ts",
     "./provider-ids": "./src/provider-ids.ts"
   },
   "files": [

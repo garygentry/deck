@@ -1,5 +1,6 @@
 import type { ComposedConfig } from "../../compose/compose.js";
 import { finding, type Finding } from "../../findings.js";
+import { embedUrlProblem } from "../../embed.js";
 import type { DeckConfigDocument, ValidateLayer } from "../../types.js";
 
 /**
@@ -17,7 +18,10 @@ import type { DeckConfigDocument, ValidateLayer } from "../../types.js";
  *   shows those values without a tone.
  * - a `core/embed` widget while `ui.allowUnsafeEmbeds` is not `true` (UI_EMBED_DISALLOWED, info:
  *   the widget shows that embeds are off), on the merged document only, since the gate and the
- *   widget may sit in different layers.
+ *   widget may sit in different layers;
+ * - a `core/embed` url the URL parser refuses, or that carries user:password@
+ *   (UI_EMBED_URL_INVALID, an error), on the merged document: the same check the web makes
+ *   before it frames anything (the options schema checks only the url's loose shape).
  * A widget's options are checked by the composed schema, against its type's options schema.
  */
 export function uiWidgets(
@@ -69,6 +73,11 @@ export function uiWidgets(
               `status map '${name}' is not declared in ui.statusMaps; the widget shows these values without a tone`,
             ));
           }
+        }
+        const url = (widget.options as { url?: unknown } | undefined)?.url;
+        if (widget.type === "core/embed" && layer === "merged" && typeof url === "string") {
+          const urlProblem = embedUrlProblem(url);
+          if (urlProblem !== null) findings.push(finding("UI_EMBED_URL_INVALID", `${path}/options/url`, `core/embed url ${JSON.stringify(url)}: ${urlProblem}`));
         }
         if (widget.type === "core/embed" && checkEmbeds) {
           findings.push(finding(

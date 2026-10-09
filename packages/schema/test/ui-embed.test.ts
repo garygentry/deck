@@ -67,7 +67,34 @@ describe("ui.allowUnsafeEmbeds and core/embed", () => {
     expect(result.findings.map((finding) => finding.path)).toContain(path);
   });
 
-  it.each(["http://127.0.0.1:3000/d/ups", "http://[::1]:8080/x", "https://grafana.lab:65535/d?a=b#c", "https://wiki.lab/a@b"])("accepts %s", (url) => {
+  it.each([
+    "https://999.1.1.1/",
+    "http://x.123/",
+    "https://[:::]/",
+    "https://[1]/",
+    "https://x:99999/",
+    "https://%/",
+  ])("refuses %s as the URL parser does (UI_EMBED_URL_INVALID, an error)", (url) => {
+    const result = validate(dashboard([embed({ url })], { allowUnsafeEmbeds: true }));
+    expect(located(result)).toEqual([{ code: "UI_EMBED_URL_INVALID", path: "/ui/pages/0/sections/0/widgets/0/options/url", severity: "error" }]);
+    expect(result.classification).toBe(1);
+  });
+
+  it("checks the url on the merged document only", () => {
+    const result = validate(dashboard([embed({ url: "https://999.1.1.1/" })], { allowUnsafeEmbeds: true }), { layer: "overlay" });
+    expect(result.findings.map((finding) => finding.code)).not.toContain("UI_EMBED_URL_INVALID");
+  });
+
+  it.each([
+    "https://grafana.lab./",
+    "http://my_grafana:3000/",
+    "https://bücher.lab/",
+    "http://[::1]:3000/",
+    "http://10.0.0.5/",
+    "http://127.0.0.1:3000/d/ups",
+    "https://grafana.lab:65535/d?a=b#c",
+    "https://wiki.lab/a@b",
+  ])("accepts %s", (url) => {
     expect(located(validate(dashboard([embed({ url })], { allowUnsafeEmbeds: true })))).toEqual([]);
   });
 

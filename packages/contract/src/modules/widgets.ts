@@ -1,6 +1,11 @@
+// The core/embed url rule is the schema library's, so validation and the renderer share it.
+import { EMBED_URL_PATTERN } from "@deck/schema/embed";
+
+export { EMBED_URL_PATTERN, embedUrlProblem } from "@deck/schema/embed";
+
 /**
  * The option schemas of deck's own widget types (`core/…`): the UI contract's copy, data only
- * (no imports) so the browser bundle can load it. Config validation composes the schema
+ * (its one import, `@deck/schema/embed`, has none) so the browser bundle can load it. Config validation composes the schema
  * library's own copy (`CORE_WIDGET_TYPE_SCHEMAS` in `@deck/schema`); a test keeps the two equal.
  * See that list for what each type shows.
  */
@@ -52,32 +57,6 @@ const FIELD_ITEM = {
 /** What a framed page may do (`core/embed`): never navigate deck's tab, open modals or lock the pointer. */
 export const EMBED_SANDBOX = ["allow-scripts", "allow-same-origin", "allow-forms", "allow-popups", "allow-popups-to-escape-sandbox", "allow-downloads"] as const;
 
-/**
- * A `core/embed` url: http(s), a host (DNS labels, an IPv4 address or a bracketed IPv6 one) with
- * no user:password@, an optional port 0–65535, then a path, query or fragment without whitespace
- * or backslashes.
- */
-export const EMBED_URL_PATTERN =
-  "^https?://(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*|\\[[0-9A-Fa-f:.]+\\])(?::(?:6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}|0))?(?:[/?#][^\\s\\\\]*)?$";
-const EMBED_URL = new RegExp(EMBED_URL_PATTERN, "u");
-
-/**
- * Why a `core/embed` url cannot be framed, or `null`: the options schema's pattern, then what the
- * URL parser makes of it (http(s), no user:password@). Config validation checks the pattern; the
- * web checks this before it frames anything.
- */
-export function embedUrlProblem(url: unknown): string | null {
-  if (typeof url !== "string" || url.length > 2048 || !EMBED_URL.test(url)) return "Its url is not an absolute http(s) URL with a host.";
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return "Its url is not an absolute http(s) URL with a host.";
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "Its url is not an absolute http(s) URL with a host.";
-  if (parsed.username !== "" || parsed.password !== "") return "Its url may not carry user:password@.";
-  return null;
-}
 
 
 const objectSchema = <P extends Record<string, unknown>>(properties: P) =>

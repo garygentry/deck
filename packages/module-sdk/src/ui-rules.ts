@@ -33,6 +33,13 @@ export const RESERVED_MODULE_IDS: readonly string[] = ["core", "ui"];
  */
 export const UI_CONFIG_MODULE = "ui";
 
+/**
+ * The module of the `remote` data source: each remote integration's page (`page:remote/<id>`,
+ * with `nav:remote/<id>`), its widgets (`widget:remote/<id>.<name>`) and its sidecar's nav
+ * entries (`nav:remote/<id>.<name>`). Its pages render like config pages (`ConfigPage`).
+ */
+export const REMOTE_MODULE = "remote";
+
 /** A `ui.nav.items` entry's id: always in the reserved `ui` namespace, `nav:ui/<name>`. */
 export const UI_CONFIG_NAV_ID_PATTERN = /^nav:ui\/[a-z0-9][a-z0-9.-]*$/;
 

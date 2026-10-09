@@ -279,7 +279,15 @@ export type UiFindingCode =
   | "UI_WIDGET_OPTION_UNKNOWN"
   /** A bindable, status-capable provider kind declares no `status`, so its bindings give cards none. */
   | "UI_STATUS_UNDECLARED"
-  | "UI_OVERRIDE_POSITIONAL";
+  | "UI_OVERRIDE_POSITIONAL"
+  /** A remote integration's latest describe was refused; its last good one (if any) still renders. */
+  | "REMOTE_DESCRIBE_INVALID"
+  /** A remote integration's sidecar could not be asked to describe itself; its last good describe (if any) still renders. */
+  | "REMOTE_DESCRIBE_UNREACHABLE"
+  /** A sidecar's describe names another id than its integration's, which deck uses. */
+  | "REMOTE_DESCRIBE_ID_MISMATCH"
+  /** A sidecar's describe lists nav entries, but its page has no sidebar entry to group them with. */
+  | "REMOTE_NAV_UNPLACED";
 
 export interface UiFinding {
   code: UiFindingCode;

@@ -172,6 +172,76 @@ describe("a config page", () => {
   });
 });
 
+/** A remote integration's page, as the server lists it: module `remote`, rendered as a config page. */
+const UPS: UiPage = {
+  id: "page:remote/ups",
+  module: "remote",
+  path: "/remote/ups",
+  title: "UPS",
+  component: "ConfigPage",
+  layout: {
+    sections: [
+      {
+        title: "UPS",
+        columns: 2,
+        widgets: [
+          { ...widget("load"), id: "widget:remote/ups.load", title: "Load", source: { id: "ups", kind: "remote" }, select: "load", projection: "widget:remote/ups.load" },
+          {
+            ...widget("links"),
+            id: "widget:remote/ups.links",
+            type: "core/link-tiles",
+            title: "Links",
+            span: 2,
+            options: { links: [{ title: "Looks internal", href: "http://localhost/portal", icon: "no-such-icon" }, { title: "Portal", href: "/portal" }] },
+          },
+        ],
+      },
+    ],
+  },
+};
+
+function servedRemote(): UiManifest {
+  return {
+    ...golden,
+    pages: [...golden.pages, UPS],
+    providers: [...golden.providers, { id: "ups", kind: "remote" }],
+    nav: [
+      ...golden.nav,
+      { id: "nav:remote/ups", module: "remote", slot: "app/nav", page: "page:remote/ups", group: "lab", label: "UPS", order: 0 },
+      { id: "nav:remote/ups.nut", module: "remote", slot: "app/nav", href: "http://localhost/nut", group: "lab", label: "NUT web UI", icon: "no-such-icon", order: 1 },
+    ],
+    navGroups: [...golden.navGroups, { id: "lab", label: "lab" }],
+  };
+}
+
+describe("a remote integration's page", () => {
+  it("routes like a config page, its widgets reading the integration's projections", async () => {
+    await renderApp("/remote/ups", servedRemote(), () => ({ ...envelope(), kind: "remote", projections: { "widget:remote/ups.load": { value: 23 } } }));
+    expect(await screen.findByRole("heading", { level: 1, name: "UPS" })).toBeInTheDocument();
+    const load = within(main()).getByRole("region", { name: "Load" });
+    await waitFor(() => expect(within(load).getByText("23")).toBeInTheDocument());
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    expect(within(nav).getByRole("link", { name: "UPS" })).toHaveAttribute("href", "/remote/ups");
+  });
+
+  it("shows a sidecar's http(s) links as external, even one that looks same-origin; a path stays in deck", async () => {
+    await renderApp("/remote/ups", servedRemote());
+    await screen.findByRole("heading", { level: 1, name: "UPS" });
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    const sidecarNav = within(nav).getByRole("link", { name: /NUT web UI/ });
+    expect(sidecarNav).toHaveAttribute("href", "http://localhost/nut");
+    expect(sidecarNav).toHaveAttribute("target", "_blank");
+    const tiles = within(main()).getByRole("region", { name: "Links" });
+    expect(within(tiles).getByRole("link", { name: /Looks internal/ })).toHaveAttribute("target", "_blank");
+    expect(within(tiles).getByRole("link", { name: /Portal/ })).not.toHaveAttribute("target");
+  });
+
+  it("is not routed as a config page when another module lists it", async () => {
+    await renderApp("/remote/ups", { ...servedRemote(), pages: [...golden.pages, { ...UPS, module: "portal" }] });
+    expect(await screen.findByText("Page not found")).toBeInTheDocument();
+  });
+});
+
 describe("widgetView", async () => {
   const { widgetView, isEmptyValue } = await import("../src/shell/config-page/WidgetHost.js");
   const type = { type: "core/json", module: "core", component: () => null };
@@ -333,6 +403,7 @@ describe("while the manifest loads", () => {
     const routes = { home: undefined, routed: [{ id: "page:portal/overview" as const, path: "/portal", label: "Portal", component: () => null }], notEnabled: [] };
     const loading = { status: "loading" } as const;
     expect(awaitingConfigPage(loading, routes, "/", "page:ui/lab")).toBe(true);
+    expect(awaitingConfigPage(loading, routes, "/", "page:remote/ups")).toBe(true);
     expect(awaitingConfigPage(loading, routes, "/", "page:portal/overview")).toBe(false);
     expect(awaitingConfigPage(loading, routes, "/", undefined)).toBe(false);
     expect(awaitingConfigPage(loading, routes, "/lab", undefined)).toBe(true);

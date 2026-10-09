@@ -90,8 +90,14 @@ export interface ResolveUiInput {
   estateName?: string;
   /** The ui config the shell starts from; the built-in default when absent. */
   ui?: UiDefaults;
-  /** Config-defined pages (`ui.pages`), listed as pages of module `ui` with their layout. */
+  /**
+   * Config-defined pages (`ui.pages`), listed as pages of module `ui` with their layout, then
+   * the pages modules contribute at runtime (each under its module), which the ui config's keep
+   * a contested id or path from.
+   */
   configPages?: readonly ConfigPage[];
+  /** Nav entries modules contribute at runtime, claimed after every page's entry. */
+  runtimeNav?: readonly (NavDecl & { module: string })[];
   /** The config's module sections (`modules`), which widget option references name entries of. */
   moduleSections?: Readonly<Record<string, unknown>>;
 }
@@ -243,26 +249,33 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
       findings.push({ code: "UI_INVALID_PAGE", severity: "warning", message: `${problem}; it is not routed`, id: ids.page });
       continue;
     }
-    if (!claim(ids.page, UI_CONFIG_MODULE)) continue;
+    const module = page.module ?? UI_CONFIG_MODULE;
+    if (!claim(ids.page, module)) continue;
     configPageById.set(ids.page, page);
     pageDecls.push({
       id: ids.page,
-      module: UI_CONFIG_MODULE,
+      module,
       path: page.path,
       title: page.title,
       ...(page.icon === undefined ? {} : { icon: page.icon }),
       component: CONFIG_PAGE_COMPONENT,
     });
-    if (page.nav !== undefined && claim(ids.nav, UI_CONFIG_MODULE)) {
+    if (page.nav !== undefined && claim(ids.nav, module)) {
       navDecls.push({
         id: ids.nav,
-        module: UI_CONFIG_MODULE,
+        module,
         page: ids.page,
         group: page.nav.group,
         ...(page.nav.label === undefined ? {} : { label: page.nav.label }),
         ...(page.nav.order === undefined ? {} : { order: page.nav.order }),
       });
     }
+  }
+
+  for (const entry of input.runtimeNav ?? []) {
+    knownIds.add(entry.id);
+    declaredNav.add(entry.id);
+    if (claim(entry.id, entry.module)) navDecls.push({ ...entry });
   }
 
   // Widget types: the first by precedence keeps a type two modules declare.
@@ -398,7 +411,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
       continue;
     }
     pathOwner.set(decl.path, decl.id);
-    const configPage = decl.module === UI_CONFIG_MODULE ? configPageById.get(decl.id) : undefined;
+    const configPage = configPageById.get(decl.id);
     const enabled = (id: ExtensionId): boolean => isEnabled(overrides.get(id), true);
     pages.push({
       id: decl.id,

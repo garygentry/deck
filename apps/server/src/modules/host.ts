@@ -197,6 +197,12 @@ export interface ModuleHost {
    * through `adopt` stops with its module, and `fail` disables the module before it starts.
    */
   kindHandlers(): ReadonlyMap<string, KindRuntime>;
+  /**
+   * The published offers of a service, in publish order, as `ctx.services.offers` reads them:
+   * the kernel's read (the UI manifest reads the remote integrations' directory). Empty before
+   * `start()` and after `stop()`.
+   */
+  serviceOffers(name: string): readonly ServiceOffer<unknown>[];
   /** Stop every started module in reverse init order (tasks drained first); never throws. */
   stop(): Promise<void>;
 }
@@ -1231,6 +1237,8 @@ export function createModuleHost(options: ModuleHostOptions): ModuleHost {
       }
       return snapshot;
     },
+
+    serviceOffers,
 
     kindHandlers() {
       return kindRuntimes(

@@ -25,8 +25,13 @@ export const CONFIG_PAGE_COMPONENT = "ConfigPage";
 
 /** A config page as the `ui.pages` config declares it (validated; read leniently anyway). */
 export interface ConfigPage {
-  /** The page's name: its id is `page:ui/<id>`. */
+  /** The page's name: its id is `page:<module>/<id>`. */
   id: string;
+  /**
+   * The module the page is listed under: `ui` (the default) for a `ui.pages` entry, `remote` for
+   * a remote integration's page.
+   */
+  module?: string;
   path: string;
   title: string;
   icon?: string;
@@ -52,24 +57,31 @@ export interface ConfigWidget {
 }
 
 /** A config page's extension ids. */
-export function configPageIds(page: Pick<ConfigPage, "id">): { page: ExtensionId; nav: ExtensionId } {
-  return { page: `page:${UI_CONFIG_MODULE}/${page.id}`, nav: `nav:${UI_CONFIG_MODULE}/${page.id}` };
+export function configPageIds(page: Pick<ConfigPage, "id" | "module">): { page: ExtensionId; nav: ExtensionId } {
+  const module = page.module ?? UI_CONFIG_MODULE;
+  return { page: `page:${module}/${page.id}`, nav: `nav:${module}/${page.id}` };
 }
 
 /**
- * A widget's extension id: `widget:ui/<page>.<id>` from its `id`; without one, positional
- * (`widget:ui/<page>.s<N>w<M>`, 1-based), which changes when sections or widgets move.
+ * A widget's extension id: `widget:<module>/<page>.<id>` from its `id`; without one, positional
+ * (`widget:<module>/<page>.s<N>w<M>`, 1-based), which changes when sections or widgets move.
  */
-export function configWidgetId(page: string, widget: Pick<ConfigWidget, "id">, section: number, index: number): { id: ExtensionId; positional: boolean } {
+export function configWidgetId(
+  page: string,
+  widget: Pick<ConfigWidget, "id">,
+  section: number,
+  index: number,
+  module: string = UI_CONFIG_MODULE,
+): { id: ExtensionId; positional: boolean } {
   return widget.id === undefined
-    ? { id: `widget:${UI_CONFIG_MODULE}/${page}.s${section + 1}w${index + 1}`, positional: true }
-    : { id: `widget:${UI_CONFIG_MODULE}/${page}.${widget.id}`, positional: false };
+    ? { id: `widget:${module}/${page}.s${section + 1}w${index + 1}`, positional: true }
+    : { id: `widget:${module}/${page}.${widget.id}`, positional: false };
 }
 
 /** Every widget id on a config page, with whether it is positional. */
 export function configWidgetIds(page: ConfigPage): Array<{ id: ExtensionId; positional: boolean }> {
   return page.sections.flatMap((section, sectionIndex) =>
-    section.widgets.map((widget, index) => configWidgetId(page.id, widget, sectionIndex, index)),
+    section.widgets.map((widget, index) => configWidgetId(page.id, widget, sectionIndex, index, page.module)),
   );
 }
 
@@ -93,7 +105,7 @@ export function buildLayout(
     const columns = clamp(section.columns ?? 1, 1, 4) as UiWidgetSection["columns"];
     const widgets: UiWidgetInstance[] = [];
     section.widgets.forEach((widget, index) => {
-      const { id } = configWidgetId(page.id, widget, sectionIndex, index);
+      const { id } = configWidgetId(page.id, widget, sectionIndex, index, page.module);
       if (!context.enabled(id)) return;
       const span = clamp(widget.span ?? 1, 1, 4);
       if (span > columns) {

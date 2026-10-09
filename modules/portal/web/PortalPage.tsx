@@ -1,7 +1,7 @@
 import { PORTAL_UI } from "@deck/contract/modules/portal";
 import type { FunctionComponent } from "react";
 import { PageHeader, usePageHeadingId } from "@/ui";
-import { PageLayoutSections, usePageLayout } from "../../shell/config-page/layout.js";
+import { PageLayoutSections, usePageLayout } from "@/shell/config-page/layout.js";
 
 /** The portal's page, whose default dashboard its manifest declares. */
 const PORTAL_PAGE = PORTAL_UI.contributes!.pages![0]!;

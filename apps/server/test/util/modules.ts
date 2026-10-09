@@ -25,7 +25,7 @@ import { PROMETHEUS_MANIFEST } from "../../src/providers/prometheus/module.js";
 import { REMOTE_MANIFEST } from "../../src/providers/remote/module.js";
 import { SNAPSHOT_MANIFEST } from "../../src/providers/snapshot/module.js";
 import { createModuleHost, type ModuleHostOptions } from "../../src/modules/host.js";
-import { PORTAL_MANIFEST } from "../../src/portal/module.js";
+import { PORTAL_MANIFEST } from "../../../../modules/portal/server/module.js";
 import { SOURCES_MANIFEST } from "../../src/sources/module.js";
 
 /** A test module: `deckApi: "^0.1"`, always on unless the manifest says otherwise. */

@@ -1,12 +1,12 @@
 import type { ProviderEnvelope } from "@deck/contract";
 import { PORTAL_UI } from "@deck/contract/modules/portal";
 import type { JSX } from "react";
-import { useProvider } from "../../data/index.js";
-import { HealthSummaryPill } from "../../shell/health-header/HealthSummaryPill.js";
+import { useProvider } from "@/data/index.js";
+import { HealthSummaryPill } from "@/shell/health-header/HealthSummaryPill.js";
 import type {
   HealthStatus,
   HealthSummary,
-} from "../../shell/health-header/health-summary.js";
+} from "@/shell/health-header/health-summary.js";
 import type { GatusResult } from "./card-status.js";
 
 /**

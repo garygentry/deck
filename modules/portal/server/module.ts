@@ -2,7 +2,7 @@ import { PORTAL_UI } from "@deck/contract/modules/portal";
 import { defineServerModule, type JsonSchema, type ModuleManifest } from "@deck/module-sdk";
 
 import type { PortalModuleConfig } from "./config.generated.js";
-import schema from "./schema.json" with { type: "json" };
+import schema from "../schema.json" with { type: "json" };
 
 /** The `ID_DUPLICATE` message for a group or subgroup id repeated anywhere in the tree. */
 const GROUP_ID_REPEATED = "Group or subgroup id {key} is used more than once across the groups tree.";

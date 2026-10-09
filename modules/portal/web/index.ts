@@ -1,7 +1,7 @@
 import { PORTAL_UI } from "@deck/contract/modules/portal";
 import { defineWebModule } from "@deck/module-sdk";
 
-import { registerWebModule } from "../../registry/web-module.js";
+import { registerWebModule } from "@/registry/web-module.js";
 import { EndpointStatusSummary } from "./EndpointStatusSummary.js";
 import { PortalGroupsWidget } from "./PortalGroupsWidget.js";
 import { PortalPage } from "./PortalPage.js";

@@ -1,15 +1,15 @@
 import type { Service } from "@deck/schema";
-import type { LinkItem, ServiceItem } from "@deck/server/portal";
+import type { LinkItem, ServiceItem } from "../../server/types.js";
 import { describe, expect, test } from "vitest";
 import { applyFilters, emptyCriteria, matchesCriteria, type FilterCriteria } from "@/ui";
-import type { CardStatus, CardViewModel } from "../src/features/portal/card-status.js";
+import type { CardStatus, CardViewModel } from "../../web/card-status.js";
 import {
   cardSearchFields,
   PORTAL_FACETS,
   PORTAL_FILTER_ACCESSORS,
   type IndexedCard,
   type PortalFacet,
-} from "../src/features/portal/search-filter.js";
+} from "../../web/search-filter.js";
 
 // The portal's keyboard grammar lives in the shared resolver now; its legacy
 // cases are ported in ui-list-navigation.test.ts ("ported: portal card grid").

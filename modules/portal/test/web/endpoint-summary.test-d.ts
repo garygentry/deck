@@ -1,8 +1,8 @@
 import type { ComponentType } from "react";
 import { expectTypeOf } from "vitest";
-import type { HealthSummary } from "../src/shell/health-header/health-summary.js";
-import { EndpointStatusSummary } from "../src/features/portal/EndpointStatusSummary.js";
-import type { GatusEndpoint, GatusResult } from "../src/features/portal/card-status.js";
+import type { HealthSummary } from "@/shell/health-header/health-summary.js";
+import { EndpointStatusSummary } from "../../web/EndpointStatusSummary.js";
+import type { GatusEndpoint, GatusResult } from "../../web/card-status.js";
 
 interface ServerGatusEndpoint {
   key: string;

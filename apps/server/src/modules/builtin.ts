@@ -18,7 +18,7 @@ import { markdownTreeModule } from "../providers/markdown-tree/module.js";
 import { prometheusModule } from "../providers/prometheus/module.js";
 import { remoteModule } from "../providers/remote/module.js";
 import { snapshotModule } from "../providers/snapshot/module.js";
-import { portalModule } from "../portal/module.js";
+import { portalModule } from "../../../../modules/portal/server/module.js";
 import { sourcesModule } from "../sources/module.js";
 import { kindRuntimes, planModules, type KindRuntime } from "./host.js";
 

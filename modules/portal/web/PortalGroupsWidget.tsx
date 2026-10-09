@@ -1,7 +1,7 @@
 import type { Host, Link, Service } from "@deck/schema";
 import type { FreshnessStamp } from "@deck/contract";
 import type { DeckConfig } from "@deck/server";
-import type { Group, GroupItem, PortalModuleConfig, ServiceItem, Subgroup } from "@deck/server/portal";
+import type { Group, GroupItem, PortalModuleConfig, ServiceItem, Subgroup } from "../server/types.js";
 import { useId, useMemo, useRef, type JSX, type ReactNode } from "react";
 import {
   ActiveFilters,
@@ -20,7 +20,7 @@ import {
   useListNavigation,
   type FacetOption,
 } from "@/ui";
-import type { WidgetProps } from "../../registry/registry-types.js";
+import type { WidgetProps } from "@/registry/registry-types.js";
 import {
   deriveCardStatus,
   resolveServiceBinding,

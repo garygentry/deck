@@ -12,7 +12,7 @@ import {
   useUiManifest,
   UI_MANIFEST_REFRESH_MS,
 } from "../src/data/index.js";
-import { usePortalData } from "../src/features/portal/usePortalData.js";
+import { usePortalData } from "../../../modules/portal/web/usePortalData.js";
 
 const CONFIG = {
   schemaVersion: 2,

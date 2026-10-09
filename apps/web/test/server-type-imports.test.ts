@@ -73,13 +73,13 @@ describe("imports: the server package is types only", () => {
       runtimeServerImports(readFileSync(path, "utf8"), serverCodeFrom(path)).map((offence) => `${sourceRel(path)}: ${offence}`),
     );
     expect(offenders).toEqual([]);
-    // The check has something to hold: the web takes wire types from the server barrel, the
-    // portal feature takes its section types from the module, and a module's web half takes its
-    // wire types from its own server half.
+    // The check has something to hold: the web takes wire types from the server barrel, and a
+    // module's web half takes its wire and section types from its own server half.
     expect(files.some((path) => /from "@deck\/server"/.test(readFileSync(path, "utf8")))).toBe(true);
-    expect(files.some((path) => /@deck\/server\/portal/.test(readFileSync(path, "utf8")))).toBe(true);
-    expect(files.map((path) => sourceRel(path))).toContain("modules/llm-usage/web/store.ts");
-    expect(readFileSync(join(REPO_ROOT, "modules/llm-usage/web/store.ts"), "utf8")).toMatch(/import type \{[^}]*\} from "\.\.\/server\/types\.js"/);
+    for (const file of ["modules/llm-usage/web/store.ts", "modules/portal/web/card-status.ts"]) {
+      expect(files.map((path) => sourceRel(path))).toContain(file);
+      expect(readFileSync(join(REPO_ROOT, file), "utf8")).toMatch(/import type \{[^}]*\} from "\.\.\/server\/types\.js"/);
+    }
   });
 
   it("refuses a runtime import of a module's server half from its web half", () => {

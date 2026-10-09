@@ -1,5 +1,5 @@
 import type { Service } from "@deck/schema";
-import type { LinkItem, ServiceItem } from "@deck/server/portal";
+import type { LinkItem, ServiceItem } from "../../server/types.js";
 import type { FreshnessState, ProviderEnvelope } from "@deck/contract";
 import { BUILTIN_STATUS_KINDS } from "@deck/contract/modules/data-sources";
 import type { UiStatusKind } from "@deck/module-sdk";
@@ -14,7 +14,7 @@ import {
   type CardStatus,
   type CardStatusContext,
   type GatusResult,
-} from "../src/features/portal/card-status.js";
+} from "../../web/card-status.js";
 
 const serviceItem: ServiceItem = { type: "service", host: "host", name: "service" };
 const linkItem: LinkItem = { type: "link", title: "Docs", href: "https://example.test" };
@@ -295,8 +295,8 @@ describe("domain mappings", () => {
 // dynamic import.
 describe("purity guard (G1)", () => {
   const pureSources: ReadonlyArray<readonly [string, Promise<{ default: string }>]> = [
-    ["card-status.ts", import("../src/features/portal/card-status.js?raw")],
-    ["search-filter.ts", import("../src/features/portal/search-filter.js?raw")],
+    ["card-status.ts", import("../../web/card-status.js?raw")],
+    ["search-filter.ts", import("../../web/search-filter.js?raw")],
   ];
 
   test.each(pureSources)("%s imports no React and calls no fetch", async (_name, loaded) => {

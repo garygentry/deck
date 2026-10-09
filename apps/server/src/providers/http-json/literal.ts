@@ -4,14 +4,34 @@
  * `credentialEnv` instead. Shared by config validation and the request boundary.
  */
 
-/** A header, query parameter or body key whose name suggests it carries a credential. */
-export const CREDENTIAL_NAME = /auth|cookie|token|secret|key|pass|session|credential/i;
+/** Words that name a credential wherever they appear as a whole token of a name. */
+const CREDENTIAL_TOKENS: ReadonlySet<string> = new Set([
+  "apikey", "auth", "authorization", "cookie", "credential", "credentials", "passphrase",
+  "passwd", "password", "secret", "session", "sig", "signature", "token",
+]);
+/** Token pairs that name a credential together (`api_key`, `X-Api-Key`, `accessToken`). */
+const CREDENTIAL_PAIRS: ReadonlySet<string> = new Set(["api key", "access token", "private key", "client secret"]);
+
+/** A name's tokens: split on `_`, `-`, `.` and whitespace, and at camelCase boundaries; lowercased. */
+function tokens(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .split(/[\s_.-]+/)
+    .filter((token) => token.length > 0)
+    .map((token) => token.toLowerCase());
+}
 
 /**
- * Provider ids built-in modules register under fixed names, which clients address literally.
- * An `http-json` instance under one of them would clash with that provider at boot.
+ * Whether a header, query parameter or body key name suggests a credential. Whole tokens
+ * only, so `author`, `keys`, `sort_key` or `passed` are not credentials, while `api_key`,
+ * `X-Api-Key`, `accessToken`, `Authorization` and a bare `key` are.
  */
-export const RESERVED_PROVIDER_IDS: ReadonlySet<string> = new Set(["alertmanager", "docker", "gatus", "prometheus", "snapshot"]);
+export function isCredentialName(name: string): boolean {
+  const parts = tokens(name);
+  if (parts.length === 1 && parts[0] === "key") return true;
+  return parts.some((part, index) => CREDENTIAL_TOKENS.has(part) || CREDENTIAL_PAIRS.has(`${part} ${parts[index + 1]}`));
+}
 
 /** Why `url` is not a pollable http(s) URL for the runtime's parser, or null. */
 export function urlProblem(url: string): string | null {
@@ -34,7 +54,13 @@ export function credentialQueryParams(url: string): string[] {
   } catch {
     return [];
   }
-  return [...new Set([...parsed.searchParams.keys()].filter((name) => CREDENTIAL_NAME.test(name)))];
+  return [...new Set(Array.from(parsed.searchParams.keys()).filter(isCredentialName))];
+}
+
+/** The literal header names that look like credentials. */
+export function credentialHeaderNames(headers: unknown): string[] {
+  if (headers === null || typeof headers !== "object" || Array.isArray(headers)) return [];
+  return Object.keys(headers).filter(isCredentialName);
 }
 
 /** The keys anywhere in a JSON body that look like credentials, once each. Iterative. */
@@ -43,10 +69,12 @@ export function credentialBodyKeys(body: unknown): string[] {
   const pending: unknown[] = [body];
   while (pending.length > 0) {
     const value = pending.pop();
-    if (Array.isArray(value)) pending.push(...value);
-    else if (value !== null && typeof value === "object") {
+    if (Array.isArray(value)) {
+      // Element by element: spreading a wide array into push() overflows the call stack.
+      for (const item of value) pending.push(item);
+    } else if (value !== null && typeof value === "object") {
       for (const [key, child] of Object.entries(value)) {
-        if (CREDENTIAL_NAME.test(key)) found.add(key);
+        if (isCredentialName(key)) found.add(key);
         pending.push(child);
       }
     }

@@ -3,6 +3,7 @@ import {
   type JsonObject,
   type JsonSchema,
   type ConfigRuleFinding,
+  type InstanceRuleContext,
   type ModuleManifest,
   type ProviderOffer,
   type ProviderTiming,
@@ -10,7 +11,7 @@ import {
 
 import { HttpJsonProvider, type HttpJsonAuth, type HttpJsonConfig } from "./index.js";
 import instanceSchema from "./instance.schema.json" with { type: "json" };
-import { CREDENTIAL_NAME, RESERVED_PROVIDER_IDS, credentialBodyKeys, credentialQueryParams, urlProblem } from "./literal.js";
+import { credentialBodyKeys, credentialHeaderNames, credentialQueryParams, isCredentialName, urlProblem } from "./literal.js";
 
 /**
  * The `http-json` data source: each `integrations[]` instance of kind `http-json` becomes a
@@ -37,13 +38,13 @@ export const HTTP_JSON_MANIFEST: ModuleManifest = {
         {
           code: "HTTP_JSON_LITERAL_CREDENTIAL",
           severity: "error",
-          summary: "An http-json integration's url query or body names what looks like a credential, which config may not hold.",
+          summary: "An http-json integration's header, url query or body names what looks like a credential, which config may not hold.",
           fix: "Put the credential in an environment variable, name it in credentialEnv, and send it with auth (scheme query for a query parameter).",
         },
         {
           code: "HTTP_JSON_ID_RESERVED",
           severity: "error",
-          summary: "An http-json integration's id is a provider id a built-in module registers under a fixed name.",
+          summary: "An http-json integration's id is the fixed provider id of another integration in the estate, so boot would fail.",
           fix: "Choose another id.",
         },
       ],
@@ -52,11 +53,22 @@ export const HTTP_JSON_MANIFEST: ModuleManifest = {
 };
 
 /** What config validation reports for one instance beyond its schema. Pure. */
-function validateInstance(instance: JsonObject): ConfigRuleFinding[] {
+function validateInstance(instance: JsonObject, { document, fixedIds }: InstanceRuleContext): ConfigRuleFinding[] {
   const findings: ConfigRuleFinding[] = [];
-  const { id, url, body } = instance;
-  if (typeof id === "string" && RESERVED_PROVIDER_IDS.has(id)) {
-    findings.push({ code: "HTTP_JSON_ID_RESERVED", path: "/id", message: `id "${id}" is the fixed provider id of the built-in ${id} module; boot would fail when both register.` });
+  const { id, url, body, headers } = instance;
+  // A fixed id clashes only when an instance of its kind is there to register it.
+  for (const [kind, fixedId] of fixedIds) {
+    if (id !== fixedId) continue;
+    const holds = ["integrations", "sources"].some((list) => {
+      const instances = document[list];
+      return Array.isArray(instances) && instances.some((other) => other !== null && typeof other === "object" && (other as JsonObject).kind === kind);
+    });
+    if (holds) {
+      findings.push({ code: "HTTP_JSON_ID_RESERVED", path: "/id", message: `id "${id}" is the fixed provider id of the ${kind} integration in this estate; boot would fail when both register.` });
+    }
+  }
+  for (const name of credentialHeaderNames(headers)) {
+    findings.push({ code: "HTTP_JSON_LITERAL_CREDENTIAL", path: `/headers/${name.replaceAll("~", "~0").replaceAll("/", "~1")}`, message: `header "${name}" names a credential; config may not hold one.`, hint: "Use credentialEnv with auth: { scheme: header, header: ... }." });
   }
   if (typeof url === "string") {
     const problem = urlProblem(url);
@@ -84,7 +96,7 @@ function auth(value: unknown): HttpJsonAuth | undefined {
 function headers(value: unknown): Record<string, string> | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   const entries = Object.entries(value).filter(
-    (entry): entry is [string, string] => typeof entry[1] === "string" && !CREDENTIAL_NAME.test(entry[0]),
+    (entry): entry is [string, string] => typeof entry[1] === "string" && !isCredentialName(entry[0]),
   );
   return entries.length === 0 ? undefined : Object.fromEntries(entries);
 }
@@ -108,7 +120,7 @@ function timing(instance: JsonObject): ProviderTiming | undefined {
 export const httpJsonModule = defineServerModule(HTTP_JSON_MANIFEST, () => {}, {
   kinds: {
     "http-json": {
-      validate: (instance) => validateInstance(instance),
+      validate: (instance, context) => validateInstance(instance, context),
       instances: (instances, { envFor, logger }) =>
         instances.flatMap((instance): ProviderOffer[] => {
           const { id, url } = instance;

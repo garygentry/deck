@@ -1,7 +1,7 @@
 import type { EnvReader, ProviderFetchContext, ProviderHealth, ProviderSpec } from "@deck/module-sdk";
 
 import { POLL_DEFAULTS } from "../../contract/index.js";
-import { credentialBodyKeys, credentialQueryParams } from "./literal.js";
+import { credentialBodyKeys, credentialHeaderNames, credentialQueryParams } from "./literal.js";
 
 /** How the credential `credentialEnv` names is sent. Without one, it is the raw `Authorization` value. */
 export type HttpJsonAuth =
@@ -53,6 +53,8 @@ export const HTTP_JSON_DEFAULT_MAX_BYTES = 1024 * 1024;
 export const HTTP_JSON_MAX_REDIRECTS = 5;
 /** The deepest nesting of arrays and objects accepted in a response. */
 export const HTTP_JSON_MAX_DEPTH = 64;
+/** The shortest credential accepted: a shorter one could not be told apart in an echo scan. */
+export const HTTP_JSON_MIN_CREDENTIAL_LENGTH = 8;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 /** What a header value may hold: tab, printable ASCII and the rest of Latin-1. */
 const HEADER_VALUE = /^[\t\x20-\x7E\x80-\xFF]*$/;
@@ -177,7 +179,9 @@ export class HttpJsonProvider implements ProviderSpec<unknown> {
  * Config validation refuses these too; the request boundary checks again, so a literal
  * credential is never sent whatever path the config took.
  */
-function refuseLiteralCredentials({ url, body }: HttpJsonConfig): void {
+function refuseLiteralCredentials({ url, body, headers }: HttpJsonConfig): void {
+  const [header] = credentialHeaderNames(headers);
+  if (header !== undefined) throw new HttpJsonError("credential", `header ${header} names a credential; credentials come from credentialEnv`);
   const [param] = credentialQueryParams(url);
   if (param !== undefined) {
     throw new HttpJsonError("credential", `url query parameter ${param} looks like a credential; use credentialEnv with auth.scheme query`);
@@ -197,6 +201,13 @@ function credentialFor({ credentialEnv, env, auth }: HttpJsonConfig): Credential
       `credential variable ${credentialEnv} is not set or not readable by this module (see MODULE_CREDENTIAL_ENV_REFUSED)`,
     );
   }
+  // A short or padded value cannot be reliably found in an echo (and a header trims padding).
+  if (value.length < HTTP_JSON_MIN_CREDENTIAL_LENGTH || value.trim() !== value) {
+    throw new HttpJsonError(
+      "credential",
+      `credential variable ${credentialEnv} must hold at least ${HTTP_JSON_MIN_CREDENTIAL_LENGTH} characters, without surrounding whitespace`,
+    );
+  }
   const raw = [value, encodeURIComponent(value), new URLSearchParams({ v: value }).toString().slice(2)];
   switch (auth?.scheme) {
     case "basic": {
@@ -214,24 +225,27 @@ function credentialFor({ credentialEnv, env, auth }: HttpJsonConfig): Credential
       const header = auth?.scheme === "bearer"
         ? { name: "Authorization", value: `Bearer ${value}` }
         : { name: auth?.scheme === "header" ? auth.header : "Authorization", value };
-      return { header, forms: [...raw, header.value] };
+      // Exactly what goes on the wire, after the runtime's own header normalisation.
+      const sent = new Headers([[header.name, header.value]]).get(header.name) ?? header.value;
+      return { header, forms: [...raw, header.value, sent] };
     }
   }
 }
 
 /** Whether any string or key in `data` contains one of the credential's forms. Iterative. */
 function echoes(data: unknown, forms: readonly string[]): boolean {
-  // A short form matches only a whole string, so a 3-character value cannot flag every body.
-  const long = forms.filter((form) => form.length >= 6);
-  const short = new Set(forms.filter((form) => form.length > 0 && form.length < 6));
-  const hit = (text: string) => short.has(text) || long.some((form) => text.includes(form));
+  // Every form of an accepted credential is long enough to match as a substring; a short
+  // fragment (a basic pair's password) is covered by the whole pair's forms.
+  const scanned = [...new Set(forms)].filter((form) => form.length >= HTTP_JSON_MIN_CREDENTIAL_LENGTH);
+  const hit = (text: string) => scanned.some((form) => text.includes(form));
   const pending: unknown[] = [data];
   while (pending.length > 0) {
     const value = pending.pop();
     if (typeof value === "string") {
       if (hit(value)) return true;
     } else if (Array.isArray(value)) {
-      pending.push(...value);
+      // Element by element: spreading a wide array into push() overflows the call stack.
+      for (const item of value) pending.push(item);
     } else if (value !== null && typeof value === "object") {
       for (const [key, child] of Object.entries(value)) {
         if (hit(key)) return true;

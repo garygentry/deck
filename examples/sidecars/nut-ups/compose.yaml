@@ -1,0 +1,26 @@
+# The NUT UPS sidecar beside deck. Merge into the compose file that runs deck:
+#
+#   docker compose -f compose.yaml -f sidecars/nut-ups/compose.yaml up --build
+#
+# The sidecar asks the NUT server named in NUT_UPS (upsd, port 3493) with upsc, and serves
+# deck's remote provider protocol on port 9000 of the compose network only: nothing is
+# published to the host. Deck sends the same token from UPS_SIDECAR_TOKEN (see README.md).
+services:
+  nut-ups:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM python:3.12-alpine
+        RUN apk add --no-cache nut
+        COPY nut_ups.py /app/nut_ups.py
+        USER nobody
+        CMD ["python3", "-I", "/app/nut_ups.py"]
+    environment:
+      NUT_UPS: ups@nut-server
+      PORT: "9000"
+      SIDECAR_TOKEN: ${UPS_SIDECAR_TOKEN:?set UPS_SIDECAR_TOKEN to a token of at least 8 characters}
+    read_only: true
+    restart: unless-stopped
+  deck:
+    environment:
+      UPS_SIDECAR_TOKEN: ${UPS_SIDECAR_TOKEN:?set UPS_SIDECAR_TOKEN to a token of at least 8 characters}

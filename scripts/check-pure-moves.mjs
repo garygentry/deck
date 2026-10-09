@@ -175,6 +175,9 @@ export class Tree {
 
   /** What `specifier` loads from `from`: `file:<path>`, `package:<name>`, or `unresolved:<base>`. */
   resolve(specifier, from) {
+    // A bundler query (Vite's `?raw`) loads the same file another way: resolve the path, keep the query.
+    const query = specifier.indexOf("?");
+    if (query > 0) return `${this.resolve(specifier.slice(0, query), from)}${specifier.slice(query)}`;
     let base;
     if (specifier === "." || specifier === ".." || specifier.startsWith("./") || specifier.startsWith("../")) {
       base = posix.normalize(posix.join(posix.dirname(from), specifier));
@@ -245,7 +248,9 @@ export function compareFile({ oldTree, newTree, from, to, renames }) {
     }
     const was = oldTree.resolve(x.specifier, from);
     const now = newTree.resolve(y.specifier, to);
-    const expected = was.startsWith("file:") ? `file:${renames.get(was.slice(5)) ?? was.slice(5)}` : was;
+    const at = was.indexOf("?");
+    const [target, query] = at < 0 ? [was, ""] : [was.slice(0, at), was.slice(at)];
+    const expected = target.startsWith("file:") ? `file:${renames.get(target.slice(5)) ?? target.slice(5)}${query}` : was;
     if (was.startsWith("unresolved:") || now !== expected) {
       problems.push(`specifier "${x.specifier}" → "${y.specifier}" loads ${now.replace(/^\w+:/, "")}, not ${expected.replace(/^\w+:/, "")}`);
     } else if (x.specifier !== y.specifier) {

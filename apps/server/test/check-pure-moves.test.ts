@@ -88,6 +88,48 @@ describe("check-pure-moves", () => {
     expect(result.stdout).toContain("FAIL: not a pure move");
   });
 
+  describe("a bundler query (?raw) on a specifier", () => {
+    /** Enough unchanged lines around the import for git to pair the move as a rename. */
+    const readsA = (specifier: string) => [
+      `export const raw = import("${specifier}");`,
+      ...["one", "two", "three", "four", "five", "six"].map((name) => `export const ${name} = "${name}".length;`),
+      "",
+    ].join("\n");
+
+    beforeEach(() => {
+      write("apps/server/src/grow/reads-a.ts", readsA("./a.js?raw"));
+      git("add", ".");
+      git("commit", "-qm", "reads-a");
+      git("branch", "-f", "base");
+    });
+
+    const moveReadsA = (specifier: string) => {
+      mkdirSync(join(repo, "modules/grow/test"), { recursive: true });
+      git("mv", "apps/server/src/grow/reads-a.ts", "modules/grow/test/reads-a.ts");
+      write("modules/grow/test/reads-a.ts", readsA(specifier));
+      git("add", "-A");
+      git("commit", "-qm", "move reads-a");
+    };
+
+    it("passes when it still loads the same file, through the renames, with the same query", () => {
+      moveReadsA("../../../apps/server/src/grow/a.js?raw");
+      const result = check();
+      expect(result.status, result.stdout).toBe(0);
+      expect(result.stdout).toMatch(/ok\s+apps\/server\/src\/grow\/reads-a\.ts -> modules\/grow\/test\/reads-a\.ts \(.*1 specifier\(s\) rewritten, same module\)/);
+    });
+
+    it.each([
+      ["another file", "../../../apps/server/src/grow/b.js?raw"],
+      ["another query", "../../../apps/server/src/grow/a.js?url"],
+      ["no query", "../../../apps/server/src/grow/a.js"],
+    ])("fails when it now loads %s", (_name, specifier) => {
+      moveReadsA(specifier);
+      const result = check();
+      expect(result.status, result.stdout).toBe(1);
+      expect(result.stdout).toMatch(/NOT PURE\s+apps\/server\/src\/grow\/reads-a\.ts/);
+    });
+  });
+
   describe("a byte-identical move still resolves its specifiers", () => {
     /** Move only uses-a.ts (an unchanged `./a.js` import), plus `also` (git mv pairs) and `add` (new files). */
     const moveUsesA = (also: string[], add: Record<string, string> = {}) => {

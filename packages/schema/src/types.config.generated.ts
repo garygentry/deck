@@ -488,6 +488,10 @@ extensions?: {
  */
 pages?: UiPage[]
 /**
+ * Let core/embed widgets show other sites' pages in sandboxed frames; default false, when each shows that embeds are off.
+ */
+allowUnsafeEmbeds?: boolean
+/**
  * Named maps from a widget's values to status tones, which widget options reference by name (statusMap).
  */
 statusMaps?: {

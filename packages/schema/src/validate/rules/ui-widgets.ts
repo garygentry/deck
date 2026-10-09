@@ -15,6 +15,8 @@ import type { DeckConfigDocument } from "../../types.js";
  * - a `statusMap` a core widget's options name (at any depth: a table column's, a stat-grid
  *   item's) that `ui.statusMaps` does not declare (UI_STATUS_MAP_UNKNOWN, a warning); the widget
  *   shows those values without a tone.
+ * - a `core/embed` widget while `ui.allowUnsafeEmbeds` is not `true` (UI_EMBED_DISALLOWED, a
+ *   warning, so deck does not start with it): framing another site's page is opt-in.
  * A widget's options are checked by the composed schema, against its type's options schema.
  */
 export function uiWidgets(
@@ -24,6 +26,7 @@ export function uiWidgets(
 ): Finding[] {
   const findings: Finding[] = [];
   const statusMaps = doc.ui?.statusMaps ?? {};
+  const embedsAllowed = doc.ui?.allowUnsafeEmbeds === true;
   for (const [pageIndex, page] of (doc.ui?.pages ?? []).entries()) {
     const ids = new Set<string>();
     for (const [sectionIndex, section] of (page.sections ?? []).entries()) {
@@ -63,6 +66,13 @@ export function uiWidgets(
               `status map '${name}' is not declared in ui.statusMaps; the widget shows these values without a tone`,
             ));
           }
+        }
+        if (widget.type === "core/embed" && !embedsAllowed) {
+          findings.push(finding(
+            "UI_EMBED_DISALLOWED",
+            `${path}/type`,
+            "core/embed shows another site's page in a frame, which needs ui.allowUnsafeEmbeds: true",
+          ));
         }
         const problem = widget.select === undefined ? null : composed.selectProblem?.(widget.select) ?? null;
         if (problem !== null) {

@@ -91,3 +91,25 @@ describe("@deck/contract", () => {
     }
   });
 });
+
+describe("core/embed's url check", () => {
+  const ACCEPTED = ["https://grafana.lab/d/ups?kiosk", "http://127.0.0.1:3000/x", "http://[::1]:8080/x", "https://h.lab:65535/#a", "https://wiki.lab/a@b"];
+  const REFUSED = [
+    "https://x:99999/", "https://%/", "https://?q", "http://:80/", "http://#a", "https://user:pw@h.lab/", "https://user@h.lab/",
+    "https://\\evil.lab/", "//h.lab/x", "/hosts", "javascript:alert(1)", "data:text/html,x", "https://h.lab/a b", 42,
+  ];
+
+  // The schema library's copy of the pattern is kept equal to this one by the server's tests.
+  it("accepts and refuses as the options schema's pattern does, and never a URL with user:password@", async () => {
+    const { embedUrlProblem, EMBED_URL_PATTERN } = await import("../src/modules/widgets.js");
+    const pattern = new RegExp(EMBED_URL_PATTERN, "u");
+    for (const url of ACCEPTED) {
+      expect(embedUrlProblem(url), url).toBeNull();
+      expect(pattern.test(url), url).toBe(true);
+    }
+    for (const url of REFUSED) {
+      expect(embedUrlProblem(url), String(url)).not.toBeNull();
+      if (typeof url === "string") expect(pattern.test(url), url).toBe(false);
+    }
+  });
+});

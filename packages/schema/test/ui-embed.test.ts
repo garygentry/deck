@@ -18,9 +18,16 @@ describe("ui.allowUnsafeEmbeds and core/embed", () => {
   it.each([
     ["no ui.allowUnsafeEmbeds", {}],
     ["ui.allowUnsafeEmbeds: false", { allowUnsafeEmbeds: false }],
-  ])("reports an embed with %s (UI_EMBED_DISALLOWED, a warning)", (_name, ui) => {
+  ])("notes an embed with %s (UI_EMBED_DISALLOWED, info: the config stays valid)", (_name, ui) => {
     const result = validate(dashboard([embed({ url: "https://grafana.lab/d/ups" })], ui));
-    expect(located(result)).toEqual([{ code: "UI_EMBED_DISALLOWED", path: "/ui/pages/0/sections/0/widgets/0/type", severity: "warning" }]);
+    expect(located(result)).toEqual([{ code: "UI_EMBED_DISALLOWED", path: "/ui/pages/0/sections/0/widgets/0/type", severity: "info" }]);
+    expect(result.classification).toBe(0);
+  });
+
+  it.each(["base", "overlay"] as const)("checks the gate on the merged document only, not the %s layer alone", (layer) => {
+    // The gate may sit in another layer than the widget.
+    const result = validate(dashboard([embed({ url: "https://grafana.lab/d/ups" })]), { layer });
+    expect(result.findings.map((finding) => finding.code)).not.toContain("UI_EMBED_DISALLOWED");
   });
 
   it("is overlay-owned, like the rest of ui", () => {
@@ -41,6 +48,13 @@ describe("ui.allowUnsafeEmbeds and core/embed", () => {
     ["a scheme-relative url", { url: "//grafana.lab/d/ups" }, "/ui/pages/0/sections/0/widgets/0/options/url"],
     ["a backslash host", { url: "https://\\\\evil.example/" }, "/ui/pages/0/sections/0/widgets/0/options/url"],
     ["a url with a space", { url: "https://grafana.lab/d/a b" }, "/ui/pages/0/sections/0/widgets/0/options/url"],
+    ["user:password@ in the url", { url: "https://user:pw@grafana.lab/d" }, "/ui/pages/0/sections/0/widgets/0/options/url"],
+    ["a user@ in the url", { url: "https://user@grafana.lab/d" }, "/ui/pages/0/sections/0/widgets/0/options/url"],
+    ["a port out of range", { url: "https://x:99999/" }, "/ui/pages/0/sections/0/widgets/0/options/url"],
+    ["a percent host", { url: "https://%/" }, "/ui/pages/0/sections/0/widgets/0/options/url"],
+    ["no host before a query", { url: "https://?q" }, "/ui/pages/0/sections/0/widgets/0/options/url"],
+    ["no host before a port", { url: "http://:80/" }, "/ui/pages/0/sections/0/widgets/0/options/url"],
+    ["no host before a fragment", { url: "http://#a" }, "/ui/pages/0/sections/0/widgets/0/options/url"],
     ["top navigation in the sandbox", { url: "https://grafana.lab", sandbox: ["allow-top-navigation"] }, "/ui/pages/0/sections/0/widgets/0/options/sandbox/0"],
     ["modals in the sandbox", { url: "https://grafana.lab", sandbox: ["allow-modals"] }, "/ui/pages/0/sections/0/widgets/0/options/sandbox/0"],
     ["a repeated sandbox token", { url: "https://grafana.lab", sandbox: ["allow-forms", "allow-forms"] }, "/ui/pages/0/sections/0/widgets/0/options/sandbox"],
@@ -51,6 +65,10 @@ describe("ui.allowUnsafeEmbeds and core/embed", () => {
     const result = validate(dashboard([embed(options)], { allowUnsafeEmbeds: true }));
     expect(result.classification).toBe(1);
     expect(result.findings.map((finding) => finding.path)).toContain(path);
+  });
+
+  it.each(["http://127.0.0.1:3000/d/ups", "http://[::1]:8080/x", "https://grafana.lab:65535/d?a=b#c", "https://wiki.lab/a@b"])("accepts %s", (url) => {
+    expect(located(validate(dashboard([embed({ url })], { allowUnsafeEmbeds: true })))).toEqual([]);
   });
 
   it("accepts an empty sandbox list (the frame may do nothing)", () => {

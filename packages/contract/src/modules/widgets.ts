@@ -50,7 +50,35 @@ const FIELD_ITEM = {
 } as const;
 
 /** What a framed page may do (`core/embed`): never navigate deck's tab, open modals or lock the pointer. */
-const EMBED_SANDBOX = ["allow-scripts", "allow-same-origin", "allow-forms", "allow-popups", "allow-popups-to-escape-sandbox", "allow-downloads"] as const;
+export const EMBED_SANDBOX = ["allow-scripts", "allow-same-origin", "allow-forms", "allow-popups", "allow-popups-to-escape-sandbox", "allow-downloads"] as const;
+
+/**
+ * A `core/embed` url: http(s), a host (DNS labels, an IPv4 address or a bracketed IPv6 one) with
+ * no user:password@, an optional port 0–65535, then a path, query or fragment without whitespace
+ * or backslashes.
+ */
+export const EMBED_URL_PATTERN =
+  "^https?://(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*|\\[[0-9A-Fa-f:.]+\\])(?::(?:6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}|0))?(?:[/?#][^\\s\\\\]*)?$";
+const EMBED_URL = new RegExp(EMBED_URL_PATTERN, "u");
+
+/**
+ * Why a `core/embed` url cannot be framed, or `null`: the options schema's pattern, then what the
+ * URL parser makes of it (http(s), no user:password@). Config validation checks the pattern; the
+ * web checks this before it frames anything.
+ */
+export function embedUrlProblem(url: unknown): string | null {
+  if (typeof url !== "string" || url.length > 2048 || !EMBED_URL.test(url)) return "Its url is not an absolute http(s) URL with a host.";
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return "Its url is not an absolute http(s) URL with a host.";
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "Its url is not an absolute http(s) URL with a host.";
+  if (parsed.username !== "" || parsed.password !== "") return "Its url may not carry user:password@.";
+  return null;
+}
+
 
 const objectSchema = <P extends Record<string, unknown>>(properties: P) =>
   ({ type: "object", additionalProperties: false, properties }) as const;
@@ -191,7 +219,7 @@ export const CORE_WIDGET_TYPE_SCHEMAS = [
         url: {
           type: "string",
           maxLength: 2048,
-          pattern: "^https?://[^/\\s\\\\]\\S*$",
+          pattern: EMBED_URL_PATTERN,
           description: "The http(s) URL of the page the frame shows; never one of deck's own pages.",
         },
         height: { type: "string", enum: ["sm", "md", "lg", "xl"], description: "The frame's height: sm (15rem), md (24rem, default), lg (36rem) or xl (48rem)." },

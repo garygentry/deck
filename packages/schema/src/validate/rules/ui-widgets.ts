@@ -1,6 +1,6 @@
 import type { ComposedConfig } from "../../compose/compose.js";
 import { finding, type Finding } from "../../findings.js";
-import type { DeckConfigDocument } from "../../types.js";
+import type { DeckConfigDocument, ValidateLayer } from "../../types.js";
 
 /**
  * Check the widgets of config pages (`ui.pages[].sections[].widgets[]`) beyond their shape:
@@ -15,18 +15,21 @@ import type { DeckConfigDocument } from "../../types.js";
  * - a `statusMap` a core widget's options name (at any depth: a table column's, a stat-grid
  *   item's) that `ui.statusMaps` does not declare (UI_STATUS_MAP_UNKNOWN, a warning); the widget
  *   shows those values without a tone.
- * - a `core/embed` widget while `ui.allowUnsafeEmbeds` is not `true` (UI_EMBED_DISALLOWED, a
- *   warning, so deck does not start with it): framing another site's page is opt-in.
+ * - a `core/embed` widget while `ui.allowUnsafeEmbeds` is not `true` (UI_EMBED_DISALLOWED, info:
+ *   the widget shows that embeds are off), on the merged document only, since the gate and the
+ *   widget may sit in different layers.
  * A widget's options are checked by the composed schema, against its type's options schema.
  */
 export function uiWidgets(
   doc: DeckConfigDocument,
   composed: Pick<ComposedConfig, "widgetTypes" | "disabledWidgetTypes" | "selectProblem">,
   strict: boolean,
+  layer: ValidateLayer = "merged",
 ): Finding[] {
   const findings: Finding[] = [];
   const statusMaps = doc.ui?.statusMaps ?? {};
-  const embedsAllowed = doc.ui?.allowUnsafeEmbeds === true;
+  // Whether a layer alone shuts the gate is unknowable: an earlier or later layer may open it.
+  const checkEmbeds = layer === "merged" && doc.ui?.allowUnsafeEmbeds !== true;
   for (const [pageIndex, page] of (doc.ui?.pages ?? []).entries()) {
     const ids = new Set<string>();
     for (const [sectionIndex, section] of (page.sections ?? []).entries()) {
@@ -67,11 +70,11 @@ export function uiWidgets(
             ));
           }
         }
-        if (widget.type === "core/embed" && !embedsAllowed) {
+        if (widget.type === "core/embed" && checkEmbeds) {
           findings.push(finding(
             "UI_EMBED_DISALLOWED",
             `${path}/type`,
-            "core/embed shows another site's page in a frame, which needs ui.allowUnsafeEmbeds: true",
+            "core/embed shows another site's page in a frame only when ui.allowUnsafeEmbeds is true; until then it shows that embeds are off",
           ));
         }
         const problem = widget.select === undefined ? null : composed.selectProblem?.(widget.select) ?? null;

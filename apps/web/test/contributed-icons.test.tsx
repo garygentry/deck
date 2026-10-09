@@ -1,14 +1,20 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { MAX_ICON_BYTES } from "@deck/module-sdk";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Icon, sanitizeIconSvg, setContributedIcons } from "@/ui";
 
-/** Icons modules contribute as SVG: checked, sanitised, and rendered by `Icon` like curated ones. */
+/** Icons modules contribute as SVG: rebuilt from an allowlist, and rendered by `Icon` like curated ones. */
 
+const TEST_FILE_URL = import.meta.url;
+const NS = 'xmlns="http://www.w3.org/2000/svg"';
 const PATH = '<path d="M4 4h16v16H4z"/>';
-const svg = (inner: string = PATH, attributes = "") => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"${attributes}>${inner}</svg>`;
+const svg = (inner: string = PATH, attributes = "") => `<svg ${NS} viewBox="0 0 24 24"${attributes}>${inner}</svg>`;
+const XLINK = ' xmlns:xlink="http://www.w3.org/1999/xlink"';
 
 afterEach(() => {
   cleanup();
@@ -17,32 +23,53 @@ afterEach(() => {
 });
 
 describe("sanitizeIconSvg", () => {
-  it("keeps a plain icon, and does not refuse a <use> of a local #id", () => {
-    const icon = sanitizeIconSvg(svg(`${PATH}<use href="#a"/><g id="a"><circle r="2"/></g>`))!;
+  it("keeps shapes, paint servers and local references", () => {
+    const icon = sanitizeIconSvg(
+      svg(`<defs><linearGradient id="g"><stop offset="0" stop-color="currentColor"/></linearGradient></defs><title>Box</title>${PATH}<use href="#a"/><g id="a" fill="url(#g)"><circle r="2"/></g>`),
+    )!;
     expect(icon.localName).toBe("svg");
     expect(icon.querySelector("path")?.getAttribute("d")).toBe("M4 4h16v16H4z");
-    expect(icon.querySelector("circle")).not.toBeNull();
+    expect(icon.querySelector("use")?.getAttribute("href")).toBe("#a");
+    expect(icon.querySelector("g#a")?.getAttribute("fill")).toBe("url(#g)");
+    expect(icon.querySelector("title")?.textContent).toBe("Box");
   });
 
-  it("drops scripts and event handlers", () => {
-    const icon = sanitizeIconSvg(svg(`${PATH}<script>alert(1)</script>`, ' onload="alert(1)"'))!;
-    expect(icon).not.toBeNull();
-    expect(icon.outerHTML).not.toMatch(/script|onload|alert/);
+  it("drops attributes outside the allowlist, comments and stray text", () => {
+    const icon = sanitizeIconSvg(svg(`<!-- hi --><path class="x" data-x="1" aria-label="y" d="M0 0"/>text`))!;
+    // Serialised into an HTML page, as `Icon` renders it: inline <svg> is SVG there without xmlns.
+    expect(icon.outerHTML).toBe('<svg viewBox="0 0 24 24"><path d="M0 0"></path></svg>');
   });
 
   it.each([
+    ["<script>", svg(`${PATH}<script>alert(1)</script>`)],
+    ["an event handler", svg(PATH, ' onload="alert(1)"')],
+    ["<style> with body{display:none}", svg(`<style>body{display:none}</style>${PATH}`)],
+    ["<style> with @import", svg(`<style>@import "https://evil.example/x.css";</style>${PATH}`)],
+    ["a u\\72 l( escape in a <style>", svg(`<style>path{fill:u\\72 l(https://evil.example/x)}</style>${PATH}`)],
+    ["a u\\72 l( escape in an attribute", svg(`<path fill="u\\72 l(https://evil.example/x)" d="M0 0"/>`)],
+    ["a style attribute", svg(`<path style="fill: red" d="M0 0"/>`)],
     ["a <foreignObject>", svg(`<foreignObject><div>hi</div></foreignObject>`)],
-    ["a <foreignObject> in another case", svg(`<foreignobject/>`)],
+    ["an external <image>", svg(`<image href="https://evil.example/x.png"/>`)],
+    ["an <feImage>", svg(`<filter id="f"><feImage href="https://evil.example/x.png"/></filter>`)],
+    ["an <a href>", svg(`<a href="https://evil.example/">${PATH}</a>`)],
+    ["a gradient href to another document", svg(`<defs><linearGradient id="g" href="https://evil.example/g.svg#x"/></defs>${PATH}`)],
     ["a <use> pointing at another document", svg(`<use href="sprite.svg#a"/>`)],
-    ["a <use> pointing at a data: URL", svg(`<use href="data:image/svg+xml,&lt;svg/&gt;#a"/>`)],
-    ["an xlink:href <use> pointing outside", svg(`<use xlink:href="https://evil.example/s.svg#a"/>`, ' xmlns:xlink="http://www.w3.org/1999/xlink"')],
-    ["a style attribute with url(", svg(`<path style="fill: URL(https://evil.example/x)" d="M0 0"/>`)],
-    ["a <style> with url(", svg(`<style>path { fill: url ( "https://evil.example/x" ) }</style>${PATH}`)],
+    ["a <use> pointing at a data: URL", svg(`<use href="data:image/svg+xml,x#a"/>`)],
+    ["an xlink:href <use> pointing outside", svg(`<use xlink:href="https://evil.example/s.svg#a"/>`, XLINK)],
+    ["a url() fill pointing outside", svg(`<path fill="url(https://evil.example/x#g)" d="M0 0"/>`)],
+    ["a url() in an attribute that takes none", svg(`<path d="url(#g)"/>`)],
+    ["a doctype (entities)", `<!DOCTYPE svg [<!ENTITY x "y">]>${svg()}`],
     ["markup that is not SVG", "<div>not an icon</div>"],
-    ["markup that is not well-formed", "<svg><path></svg>"],
+    ["an <svg> outside the SVG namespace", '<svg viewBox="0 0 1 1"><path d="M0 0"/></svg>'],
+    ["markup that is not well-formed", `<svg ${NS}><path></svg>`],
     ["markup over the size bound", svg(`<desc>${"x".repeat(MAX_ICON_BYTES)}</desc>`)],
   ])("refuses %s", (_label, markup) => {
     expect(sanitizeIconSvg(markup)).toBeNull();
+  });
+
+  it("does not use DOMPurify (it stays off the shell's eager load path)", () => {
+    const source = readFileSync(fileURLToPath(new URL("../src/ui/lib/contributed-icons.ts", TEST_FILE_URL)), "utf8");
+    expect(source).not.toMatch(/dompurify/i);
   });
 });
 
@@ -57,6 +84,26 @@ describe("Icon with contributed icons", () => {
     expect(icon.getAttribute("width")).toBe("20");
     expect(icon.getAttribute("height")).toBe("20");
     expect(icon.querySelector("path")).not.toBeNull();
+  });
+
+  it("gives each rendering its own ids, with its references rewritten to match", () => {
+    act(() => setContributedIcons({ "mod/grad": svg(`<defs><linearGradient id="g"/><clipPath id="c"><rect width="4" height="4"/></clipPath></defs><path fill="url(#g)" clip-path="url(#c)" d="M0 0"/><use href="#c"/>`) }));
+    const { container } = render(
+      <>
+        <Icon name="mod/grad" />
+        <Icon name="mod/grad" />
+      </>,
+    );
+    const ids = [...container.querySelectorAll("[id]")].map((element) => element.id);
+    expect(ids).toHaveLength(4);
+    expect(new Set(ids).size).toBe(4);
+    for (const icon of container.querySelectorAll("svg")) {
+      const gradient = icon.querySelector("linearGradient")!.id;
+      const clip = icon.querySelector("clipPath")!.id;
+      expect(icon.querySelector("path")!.getAttribute("fill")).toBe(`url(#${gradient})`);
+      expect(icon.querySelector("path")!.getAttribute("clip-path")).toBe(`url(#${clip})`);
+      expect(icon.querySelector("use")!.getAttribute("href")).toBe(`#${clip}`);
+    }
   });
 
   it("renders the fallback icon for a refused or unknown contributed icon", () => {

@@ -1,6 +1,6 @@
 import type { LucideProps } from "lucide-react";
-import { useMemo, useSyncExternalStore } from "react";
-import { getContributedIcon, getContributedIconsVersion, subscribeContributedIcons } from "@/ui/lib/contributed-icons";
+import { useId, useMemo, useSyncExternalStore } from "react";
+import { getContributedIcon, getContributedIconsVersion, scopeIconIds, subscribeContributedIcons } from "@/ui/lib/contributed-icons";
 import { FALLBACK_ICON, ICONS, isIconName, type IconName } from "@/ui/lib/icons";
 import { cn } from "@/ui/lib/utils";
 
@@ -34,15 +34,19 @@ export function Icon({ name, size = 16, ...props }: IconProps) {
   return <Component aria-hidden="true" focusable="false" size={size} data-slot="icon" {...props} />;
 }
 
-/** A contributed icon at `size`, its markup already sanitised; it inherits the text colour. */
+/**
+ * A contributed icon at `size`, its markup already sanitised; it inherits the text colour.
+ * Its ids are scoped to this rendering, so the same icon twice on a page never repeats an id.
+ */
 function ContributedIcon({ svg, size, className }: { svg: SVGSVGElement; size: number; className?: string | undefined }) {
+  const prefix = `icon${useId().replace(/[^A-Za-z0-9_-]/g, "")}-`;
   const markup = useMemo(() => {
-    const copy = svg.cloneNode(true) as SVGSVGElement;
+    const copy = scopeIconIds(svg, prefix);
     copy.setAttribute("width", String(size));
     copy.setAttribute("height", String(size));
     copy.setAttribute("aria-hidden", "true");
     copy.setAttribute("focusable", "false");
     return copy.outerHTML;
-  }, [svg, size]);
+  }, [svg, size, prefix]);
   return <span aria-hidden="true" data-slot="icon" className={cn("inline-flex shrink-0", className)} dangerouslySetInnerHTML={{ __html: markup }} />;
 }

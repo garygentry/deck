@@ -1,53 +1,106 @@
 /**
  * Icons modules contribute as SVG markup (`contributes.icons`, served in the UI manifest's
- * `icons`), for `Icon` names outside the curated set. Each is checked and sanitised once, when
- * the manifest delivers it; one that is refused renders the fallback icon like any unknown name.
+ * `icons`), for `Icon` names outside the curated set. Each is checked once, when the manifest
+ * delivers it, and rebuilt from an allowlist; one that is refused renders the fallback icon
+ * like any unknown name.
  */
 import { MAX_ICON_BYTES } from "@deck/module-sdk";
-import DOMPurify from "dompurify";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-let icons: ReadonlyMap<string, SVGSVGElement> = new Map();
-let version = 0;
-const listeners = new Set<() => void>();
+/** The elements an icon may hold: shapes, grouping, paint servers, clipping and text alternatives. */
+const ELEMENTS: ReadonlySet<string> = new Set([
+  "svg", "g", "path", "circle", "ellipse", "line", "polyline", "polygon", "rect", "defs",
+  "linearGradient", "radialGradient", "stop", "clipPath", "mask", "symbol", "use", "title", "desc",
+]);
+
+/** The attributes kept: geometry and paint. Any other attribute is dropped (or, if it is one below, refused). */
+const ATTRIBUTES: ReadonlySet<string> = new Set([
+  "id", "viewBox", "preserveAspectRatio", "width", "height", "x", "y", "x1", "y1", "x2", "y2",
+  "cx", "cy", "r", "rx", "ry", "fx", "fy", "fr", "d", "points", "pathLength", "transform",
+  "fill", "fill-opacity", "fill-rule", "stroke", "stroke-width", "stroke-linecap",
+  "stroke-linejoin", "stroke-miterlimit", "stroke-dasharray", "stroke-dashoffset",
+  "stroke-opacity", "opacity", "clip-path", "clip-rule", "mask", "color", "vector-effect",
+  "offset", "stop-color", "stop-opacity", "gradientUnits", "gradientTransform", "spreadMethod",
+  "clipPathUnits", "maskUnits", "maskContentUnits",
+]);
+
+/** Presentation attributes whose value may be a URL: only a local `url(#id)`. */
+const URL_ATTRIBUTES: ReadonlySet<string> = new Set(["fill", "stroke", "clip-path", "mask", "filter", "marker-start", "marker-mid", "marker-end"]);
+
+const LOCAL_ID = /^#[A-Za-z_][\w.-]*$/;
+const LOCAL_URL = /^url\(#[A-Za-z_][\w.-]*\)$/;
+
+/** Thrown inside the rebuild when the markup holds something an icon may never have. */
+class Refused extends Error {}
 
 /**
- * An icon's markup as a detached `<svg>` element, or null when it is refused:
- * - it is over the size bound, not well-formed XML, or not rooted in an `<svg>`;
- * - it holds a `<foreignObject>` (HTML inside the SVG);
- * - a `<use>` points anywhere but a local `#id` (another document, a `data:` URL);
- * - a `style` attribute or `<style>` element holds `url(`, which can fetch.
- * What remains is sanitised with DOMPurify's SVG profile: scripts, event handlers and
- * unknown elements are dropped.
+ * An icon's markup rebuilt from the allowlist as a detached `<svg>`, or null when it is refused.
+ * Refused outright:
+ * - markup over the size bound, not well-formed XML, with a doctype, or not rooted in an SVG `<svg>`;
+ * - any element outside the allowlist, such as `<style>`, `<script>`, `<a>`, `<image>`,
+ *   `<feImage>` or `<foreignObject>`;
+ * - a `style` or event-handler attribute;
+ * - an `href` or `xlink:href`, on any element, to anything but a local `#id`;
+ * - a `url(` anywhere but a URL-valued presentation attribute holding exactly `url(#id)`;
+ * - a backslash in any attribute (a CSS escape).
+ * Other attributes outside the allowlist, comments and text outside `<title>`/`<desc>` are dropped.
  */
 export function sanitizeIconSvg(markup: string): SVGSVGElement | null {
   if (typeof markup !== "string" || new TextEncoder().encode(markup).length > MAX_ICON_BYTES) return null;
   const parsed = new DOMParser().parseFromString(markup, "image/svg+xml");
   const root = parsed.documentElement;
-  if (parsed.getElementsByTagName("parsererror").length > 0 || root.localName !== "svg" || root.namespaceURI !== SVG_NS) return null;
-  if (refused(root)) return null;
-  const clean = DOMPurify.sanitize(markup, { USE_PROFILES: { svg: true, svgFilters: true }, RETURN_DOM: true }) as Element;
-  const svg = clean.localName === "svg" ? clean : clean.querySelector("svg");
-  // Checked again after sanitising, so the two parsers (XML above, HTML in DOMPurify) cannot disagree unseen.
-  if (svg === null || svg.namespaceURI !== SVG_NS || refused(svg)) return null;
-  return svg as SVGSVGElement;
+  if (parsed.doctype !== null || parsed.getElementsByTagName("parsererror").length > 0 || root.localName !== "svg") return null;
+  try {
+    return rebuild(root) as SVGSVGElement;
+  } catch (error) {
+    if (error instanceof Refused) return null;
+    throw error;
+  }
 }
 
-/** Whether an icon's tree holds anything {@link sanitizeIconSvg} refuses outright. */
-function refused(root: Element): boolean {
-  for (const element of [root, ...Array.from(root.querySelectorAll("*"))]) {
-    const name = element.localName.toLowerCase();
-    if (name === "foreignobject") return true;
-    // `href` and `xlink:href` alike (any attribute named href, in any namespace).
-    if (name === "use" && Array.from(element.attributes).some((attribute) => attribute.localName === "href" && !/^#[A-Za-z_][\w.-]*$/.test(attribute.value.trim()))) {
-      return true;
+function rebuild(source: Element): Element {
+  if (source.namespaceURI !== SVG_NS || !ELEMENTS.has(source.localName)) throw new Refused();
+  const element = document.createElementNS(SVG_NS, source.localName);
+  for (const attribute of Array.from(source.attributes)) {
+    const { localName: name, value } = attribute;
+    if (attribute.prefix === "xmlns" || name === "xmlns") continue;
+    if (name === "style" || /^on/i.test(name) || value.includes("\\")) throw new Refused();
+    if (name === "href") {
+      if (!LOCAL_ID.test(value.trim())) throw new Refused();
+      element.setAttribute("href", value.trim());
+      continue;
     }
-    if (/url\s*\(/i.test(element.getAttribute("style") ?? "")) return true;
-    if (name === "style" && /url\s*\(/i.test(element.textContent ?? "")) return true;
+    if (/url\s*\(/i.test(value) && !(URL_ATTRIBUTES.has(name) && LOCAL_URL.test(value.trim()))) throw new Refused();
+    if (attribute.namespaceURI === null && ATTRIBUTES.has(name)) element.setAttribute(name, value);
   }
-  return false;
+  for (const child of Array.from(source.childNodes)) {
+    if (child.nodeType === Node.ELEMENT_NODE) element.append(rebuild(child as Element));
+    else if (child.nodeType === Node.TEXT_NODE && (source.localName === "title" || source.localName === "desc")) element.append(child.textContent ?? "");
+  }
+  return element;
 }
+
+/**
+ * A copy of a sanitised icon whose ids are unique to one rendering: every `id` gets `prefix`,
+ * and so does every reference to one (`href="#id"`, `url(#id)`), so two copies on a page
+ * never share an id or point into each other.
+ */
+export function scopeIconIds(svg: SVGSVGElement, prefix: string): SVGSVGElement {
+  const copy = svg.cloneNode(true) as SVGSVGElement;
+  for (const element of [copy, ...Array.from(copy.querySelectorAll("*"))]) {
+    for (const attribute of Array.from(element.attributes)) {
+      if (attribute.name === "id") attribute.value = `${prefix}${attribute.value}`;
+      else if (attribute.name === "href") attribute.value = `#${prefix}${attribute.value.slice(1)}`;
+      else if (LOCAL_URL.test(attribute.value)) attribute.value = `url(#${prefix}${attribute.value.slice(5)}`;
+    }
+  }
+  return copy;
+}
+
+let icons: ReadonlyMap<string, SVGSVGElement> = new Map();
+let version = 0;
+const listeners = new Set<() => void>();
 
 /** Replace the contributed icons with the manifest's (unchecked input: a malformed value is ignored). */
 export function setContributedIcons(value: unknown): void {
@@ -59,12 +112,13 @@ export function setContributedIcons(value: unknown): void {
       else if (import.meta.env.DEV) console.warn(`[deck] contributed icon "${name}" was refused; rendering the fallback icon.`);
     }
   }
+  if (next.size === 0 && icons.size === 0) return;
   icons = next;
   version += 1;
   for (const listener of listeners) listener();
 }
 
-/** A contributed icon's sanitised `<svg>` (shared: clone it before changing it), or undefined. */
+/** A contributed icon's sanitised `<svg>` (shared: copy it before changing it), or undefined. */
 export function getContributedIcon(name: string): SVGSVGElement | undefined {
   return icons.get(name);
 }
@@ -76,4 +130,9 @@ export function subscribeContributedIcons(listener: () => void): () => void {
 
 export function getContributedIconsVersion(): number {
   return version;
+}
+
+/** Whether a name has the form of a module's icon, `<module>/<name>`. */
+export function isContributedIconName(name: string): boolean {
+  return /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/.test(name);
 }

@@ -103,22 +103,26 @@ describe("shared UI rules", () => {
 });
 
 describe("contributedIconsProblem", () => {
-  const svg = '<svg viewBox="0 0 24 24"><path d="M1 1h22"/></svg>';
+  const OPEN = '<svg xmlns="http://www.w3.org/2000/svg">';
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M1 1h22"/></svg>';
+  /** An icon of exactly `bytes` UTF-8 bytes. */
+  const sized = (bytes: number) => `${OPEN}${"x".repeat(bytes - OPEN.length - 6)}</svg>`;
 
   it("accepts up to the bounds, named <module>/<kebab-name>", () => {
     expect(contributedIconsProblem("mod", undefined)).toBeNull();
     expect(contributedIconsProblem("mod", { "mod/wrench": svg, "mod/a-2": `  ${svg}` })).toBeNull();
     const many = Object.fromEntries(Array.from({ length: MAX_MODULE_ICONS }, (_, index) => [`mod/i${index}`, svg]));
     expect(contributedIconsProblem("mod", many)).toBeNull();
-    expect(contributedIconsProblem("mod", { "mod/big": `<svg>${"x".repeat(MAX_ICON_BYTES - 11)}</svg>` })).toBeNull();
+    expect(contributedIconsProblem("mod", { "mod/big": sized(MAX_ICON_BYTES) })).toBeNull();
+    expect(contributedIconsProblem("mod", { "mod/use": `${OPEN}<use href="#a"/><g id="a"/></svg>` })).toBeNull();
   });
 
   it("refuses more icons, larger icons, other names and non-SVG markup", () => {
     const many = Object.fromEntries(Array.from({ length: MAX_MODULE_ICONS + 1 }, (_, index) => [`mod/i${index}`, svg]));
     expect(contributedIconsProblem("mod", many)).toMatch(/more than 64/);
-    expect(contributedIconsProblem("mod", { "mod/big": `<svg>${"x".repeat(MAX_ICON_BYTES - 10)}</svg>` })).toMatch(/larger than 16384 bytes/);
+    expect(contributedIconsProblem("mod", { "mod/big": sized(MAX_ICON_BYTES + 1) })).toMatch(/larger than 16384 bytes/);
     // Bytes, not characters.
-    expect(contributedIconsProblem("mod", { "mod/big": `<svg>${"é".repeat(MAX_ICON_BYTES / 2)}</svg>` })).toMatch(/larger than/);
+    expect(contributedIconsProblem("mod", { "mod/big": `${OPEN}${"é".repeat(MAX_ICON_BYTES / 2)}</svg>` })).toMatch(/larger than/);
     for (const name of ["wrench", "other/wrench", "mod/Wrench", "mod/", "mod/a/b"]) {
       expect(contributedIconsProblem("mod", { [name]: svg }), name).toMatch(/must be named mod\/<kebab-name>/);
     }
@@ -126,5 +130,23 @@ describe("contributedIconsProblem", () => {
       expect(contributedIconsProblem("mod", { "mod/x": markup }), String(markup)).toMatch(/must be SVG markup/);
     }
     expect(contributedIconsProblem("mod", ["x"])).toMatch(/must be an object/);
+  });
+
+  it("requires the SVG namespace on the root, so what is served renders as SVG", () => {
+    for (const markup of ['<svg viewBox="0 0 1 1"/>', '<svg xmlns="http://www.w3.org/1999/xhtml"/>', '<svg><g xmlns="http://www.w3.org/2000/svg"/></svg>']) {
+      expect(contributedIconsProblem("mod", { "mod/x": markup }), markup).toMatch(/must declare xmlns/);
+    }
+    expect(contributedIconsProblem("mod", { "mod/x": "<svg xmlns='http://www.w3.org/2000/svg'/>" })).toBeNull();
+  });
+
+  it.each([
+    ["a <style> element", `${OPEN}<style>body{display:none}</style></svg>`],
+    ["a style attribute", `${OPEN}<path style="fill:red"/></svg>`],
+    ["@import", `${OPEN}<desc>@import url(x)</desc></svg>`],
+    ["a backslash (a CSS escape)", `${OPEN}<path fill="u\\72 l(https://x)"/></svg>`],
+    ["an href to anything but a local #id", `${OPEN}<image href="https://evil.example/x.png"/></svg>`],
+    ["an href to anything but a local #id", `${OPEN}<a xlink:href='javascript:alert(1)'/></svg>`],
+  ])("refuses %s", (what, markup) => {
+    expect(contributedIconsProblem("mod", { "mod/x": markup })).toBe(`icon "mod/x" must not contain ${what}`);
   });
 });

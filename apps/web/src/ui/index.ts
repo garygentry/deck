@@ -11,7 +11,7 @@ export { cn } from "./lib/utils";
 export { useIsMobile } from "./hooks/use-mobile";
 export { FALLBACK_ICON, ICONS, isIconName, type IconName } from "./lib/icons";
 export { Icon, type IconProps } from "./patterns/icon";
-export { sanitizeIconSvg, setContributedIcons } from "./lib/contributed-icons";
+export { isContributedIconName, sanitizeIconSvg, scopeIconIds, setContributedIcons } from "./lib/contributed-icons";
 export { formatAge, formatRelative, formatTimestamp } from "./lib/format";
 export {
   TONES,

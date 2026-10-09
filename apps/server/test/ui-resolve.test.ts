@@ -944,7 +944,7 @@ describe("capability-aware nav: disabled modules' pages and their switches", () 
 });
 
 describe("runtime modules: web halves and contributed icons", () => {
-  const svg = '<svg viewBox="0 0 24 24"><path d="M1 1h22"/></svg>';
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M1 1h22"/></svg>';
 
   it("lists an enabled module's web half, and the icons of enabled modules only", () => {
     const iconic = manifest("iconic", { icons: { "iconic/b": svg, "iconic/a": svg } });

@@ -59,14 +59,25 @@ export const BUILTIN_ROOT_PATHS: readonly string[] = ["/metrics"];
 /** Where the server serves runtime modules' web halves (`/modules/<id>/web.js`): no page or root path may sit under it. */
 export const MODULE_ASSETS_ROOT = "/modules";
 
+/** What an icon's markup may not contain, whatever the sanitiser where it renders would do. */
+const ICON_MARKERS: readonly (readonly [RegExp, string])[] = [
+  [/<style/i, "a <style> element"],
+  [/\sstyle\s*=/i, "a style attribute"],
+  [/@import/i, "@import"],
+  [/\\/, "a backslash (a CSS escape)"],
+  [/href\s*=\s*(["'])(?!#)/i, "an href to anything but a local #id"],
+];
+
 /** Bounds on a module's contributed icons (`contributes.icons`). */
 export const MAX_MODULE_ICONS = 64;
 export const MAX_ICON_BYTES = 16 * 1024;
 
 /**
  * Why a module's contributed icons are unusable, or null: at most {@link MAX_MODULE_ICONS}, each
- * named `<module>/<kebab-name>` and an SVG document (`<svg …>`) of at most
- * {@link MAX_ICON_BYTES} UTF-8 bytes. The markup is sanitised where it renders.
+ * named `<module>/<kebab-name>` and an SVG document of at most {@link MAX_ICON_BYTES} UTF-8
+ * bytes whose root `<svg>` declares the SVG namespace. As defence in depth beside the web's
+ * allowlist sanitiser, markup with styles (`<style`, `style=`, `@import`), a backslash (a CSS
+ * escape) or an `href` to anything but a local `#id` is refused here too.
  */
 export function contributedIconsProblem(moduleId: string, icons: unknown): Problem {
   if (icons === undefined) return null;
@@ -77,6 +88,9 @@ export function contributedIconsProblem(moduleId: string, icons: unknown): Probl
     const tail = name.startsWith(`${moduleId}/`) ? name.slice(moduleId.length + 1) : "";
     if (!/^[a-z0-9][a-z0-9-]*$/.test(tail)) return `icon "${name}" must be named ${moduleId}/<kebab-name>`;
     if (typeof svg !== "string" || !/^\s*<svg[\s>]/.test(svg)) return `icon "${name}" must be SVG markup starting with <svg`;
+    if (!/^\s*<svg\b[^>]*\sxmlns\s*=\s*(["'])http:\/\/www\.w3\.org\/2000\/svg\1/.test(svg)) return `icon "${name}" must declare xmlns="http://www.w3.org/2000/svg" on its <svg>`;
+    const marker = ICON_MARKERS.find(([pattern]) => pattern.test(svg));
+    if (marker !== undefined) return `icon "${name}" must not contain ${marker[1]}`;
     if (new TextEncoder().encode(svg).length > MAX_ICON_BYTES) return `icon "${name}" is larger than ${MAX_ICON_BYTES} bytes`;
   }
   return null;

@@ -230,9 +230,10 @@ ui:
   (`UI_EMBED_NOT_FRAMEABLE`). Use a host name of letters, digits, `.` and `-`.
 - **A framed app that redirects to another origin needs that origin listed.** The frame may go
   only to the embeds' own origins, so an app behind single sign-on or forward-auth (Authelia,
-  Authentik, oauth2-proxy) that sends the frame to its sign-in portal, or a site that redirects
-  `http://` to `https://`, gets a refused frame. List each origin the frame must reach in
-  `ui.frameSources`:
+  Authentik, oauth2-proxy) that sends the frame to its sign-in portal, or a site whose `http://`
+  to `https://` redirect also changes the port (`http://nas.home.example:5000` to
+  `https://nas.home.example:5001`), gets a refused frame. A plain upgrade to `https://` on the
+  default port needs nothing. List each origin the frame must reach in `ui.frameSources`:
 
   ```yaml
   ui:
@@ -241,7 +242,9 @@ ui:
       - https://auth.home.example     # the sign-in portal Grafana's proxy redirects to
   ```
 
-  deck never adds its own origin, even through a wildcard such as `https://*.home.example`.
+  deck never adds its own origin. A wildcard that covers deck (`https://*.home.example` while
+  deck is `https://deck.home.example`) is ignored as a whole, and deck logs a warning
+  (`ui.frame-source-dropped`) naming it, so list hosts instead.
 - Many sites refuse to be framed (`X-Frame-Options` or a CSP `frame-ancestors`), and the frame
   then stays blank. Allow deck's origin in that site's settings (Grafana: `allow_embedding`),
   or use the **Open** link under the frame, which opens the page in a new tab.

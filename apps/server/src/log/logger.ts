@@ -139,6 +139,16 @@ export interface ModuleDisabledEvent {
   detail?: string;
 }
 
+export interface FrameSourceDroppedEvent {
+  /**
+   * A `ui.frameSources` entry covers deck's own origin as a request reached it (a wildcard such
+   * as `https://*.example.net`, say), so the page's `frame-src` leaves it out whole. Once per
+   * entry and config.
+   */
+  event: "ui.frame-source-dropped";
+  source: string;
+}
+
 export interface RuntimeModulesEvent {
   /**
    * The runtime modules directory was read: which modules' server code was imported, and

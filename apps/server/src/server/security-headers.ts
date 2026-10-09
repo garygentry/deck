@@ -65,6 +65,7 @@ const embedOrigins = new WeakMap<UiManifest, readonly string[]>();
  */
 export function sourceMatches(source: string, origin: string): boolean {
   const parsed = /^(https?):\/\/(\*\.)?([^:]+)(?::(\d+))?$/.exec(source);
+  const defaultPort = (scheme: string) => (scheme === "https" ? 443 : 80);
   if (parsed === null) return false;
   const [, scheme, wildcard, host, port] = parsed;
   let target: URL;
@@ -78,19 +79,32 @@ export function sourceMatches(source: string, origin: string): boolean {
   const targetHost = target.hostname.toLowerCase();
   const sourceHost = host!.toLowerCase();
   if (wildcard === undefined ? targetHost !== sourceHost : !targetHost.endsWith(`.${sourceHost}`)) return false;
-  const targetPort = target.port === "" ? (targetScheme === "https" ? "443" : "80") : target.port;
-  const sourcePort = port ?? (targetScheme === "https" ? "443" : "80");
-  return targetPort === sourcePort || (port === undefined && scheme === "http" && targetScheme === "https" && targetPort === "443");
+  // Ports compare as numbers (`0443` is 443), and an absent one is its scheme's default.
+  const targetPort = target.port === "" ? defaultPort(targetScheme) : Number(target.port);
+  const sourcePort = port === undefined ? defaultPort(targetScheme) : Number(port);
+  return targetPort === sourcePort || (port === undefined && scheme === "http" && targetScheme === "https" && targetPort === 443);
 }
 
 /**
  * The origins the shell may frame for a request: its manifest's embed origins and, while embeds
  * are on, `ui.frameSources`; never deck's own origin as the request reached it (`selfOrigins`),
- * nor a wildcard that covers it.
+ * nor a wildcard that covers it, which is dropped whole. `dropped` names what was left out:
+ * an embed's own origin (the widget then says deck does not frame its own pages) or a
+ * `ui.frameSources` entry.
  */
-export function frameOriginsFor(manifest: UiManifest | undefined, config: unknown, selfOrigins: readonly string[]): string[] {
-  const allowed = manifest?.allowUnsafeEmbeds === true ? [...embedOriginsOf(manifest), ...originSetting(config, "frameSources")] : [];
-  return [...new Set(allowed)].filter((source) => !selfOrigins.some((self) => sourceMatches(source, self))).sort();
+export function frameOriginsFor(
+  manifest: UiManifest | undefined,
+  config: unknown,
+  selfOrigins: readonly string[],
+): { allowed: string[]; dropped: { embeds: string[]; frameSources: string[] } } {
+  if (manifest?.allowUnsafeEmbeds !== true) return { allowed: [], dropped: { embeds: [], frameSources: [] } };
+  const isSelf = (source: string) => selfOrigins.some((self) => sourceMatches(source, self));
+  const embeds = embedOriginsOf(manifest);
+  const listed = originSetting(config, "frameSources");
+  return {
+    allowed: [...new Set([...embeds, ...listed])].filter((source) => !isSelf(source)).sort(),
+    dropped: { embeds: embeds.filter(isSelf), frameSources: listed.filter(isSelf) },
+  };
 }
 
 /**

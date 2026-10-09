@@ -17,7 +17,7 @@ import type {
 } from "../contract/index.js";
 import type { ModuleHost } from "../modules/host.js";
 import type { ProviderSelects } from "../providers/registry.js";
-import { requestLogger } from "../log/logger.js";
+import { requestLogger, type FrameSourceDroppedEvent } from "../log/logger.js";
 import { etagMatches, etagOf, type LiveUi } from "../ui/live.js";
 import type { RuntimeWebAssets } from "../modules/runtime.js";
 import { deckBootOf, renderIndexHtml } from "./index-html.js";
@@ -217,6 +217,17 @@ export function createApp(deps: AppDeps): Hono {
       context.req.path === "/" || context.req.path === "/index.html" ? next() : serveStatic(context, next),
     );
     const indexTemplate = cachedText(join(deps.webDistDir, "index.html"));
+    // A ui.frameSources entry that covers deck itself is dropped whole: said once per config.
+    const warned = new WeakMap<object, Set<string>>();
+    const warnDropped = (config: DeckConfig, entries: readonly string[]) => {
+      let seen = warned.get(config);
+      if (seen === undefined) warned.set(config, (seen = new Set()));
+      for (const source of entries) {
+        if (seen.has(source)) continue;
+        seen.add(source);
+        deps.logger.warn({ event: "ui.frame-source-dropped", source } satisfies FrameSourceDroppedEvent, "ui.frameSources entry covers deck's own origin, so it is ignored; list hosts instead");
+      }
+    };
     app.get("/*", async (context, next) => {
       // Reserved root paths (a disabled module's, say) must 404, not serve the SPA shell.
       if (context.req.path.startsWith("/api/") || reserved.has(context.req.path)) return next();
@@ -228,9 +239,12 @@ export function createApp(deps: AppDeps): Hono {
       const { ui, config } = current();
       const nonce = scriptNonce();
       // Never deck's own origin, as this request reached it (directly or through the proxy).
-      const frameOrigins = frameOriginsFor(ui, config, requestOrigins(context.req.url, (name) => context.req.header(name)));
+      const { allowed: frameOrigins, dropped } = frameOriginsFor(ui, config, requestOrigins(context.req.url, (name) => context.req.header(name)));
+      warnDropped(config, dropped.frameSources);
       context.header("Content-Security-Policy", shellPolicy({ nonce, frameOrigins }));
-      return context.html(renderIndexHtml(template, { ...deckBootOf(ui, config), frameOrigins }, nonce));
+      // `frameSelf`: embeds of deck's own origin, which the widget says deck does not frame.
+      const boot = { ...deckBootOf(ui, config), frameOrigins, ...(dropped.embeds.length === 0 ? {} : { frameSelf: dropped.embeds }) };
+      return context.html(renderIndexHtml(template, boot, nonce));
     });
   }
 

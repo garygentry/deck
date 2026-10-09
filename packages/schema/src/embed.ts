@@ -53,7 +53,8 @@ export function frameOriginOf(url: unknown): string | null {
 
 /**
  * An origin the operator lists in `ui.frameAncestors` or `ui.frameSources`: http(s), a host that
- * may start with a `*.` wildcard, an optional port, no path. The config schema holds the same
+ * may start with a `*.` wildcard, an optional port without leading zeros (`0443` would read as
+ * another port than the browser's 443), no path. The config schema holds the same
  * pattern (a test keeps them equal).
  */
-export const ORIGIN_SETTING_PATTERN = "^https?://(\\*\\.)?[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*(:[0-9]{1,5})?$";
+export const ORIGIN_SETTING_PATTERN = "^https?://(\\*\\.)?[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*(:[1-9][0-9]{0,4})?$";

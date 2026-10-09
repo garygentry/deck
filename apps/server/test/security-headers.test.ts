@@ -177,7 +177,41 @@ describe("the web shell's Content-Security-Policy", () => {
       expect(sourceMatches("http://deck.example.net", "https://deck.example.net")).toBe(true);
       expect(sourceMatches("https://deck.example.net:8443", "https://deck.example.net")).toBe(false);
       expect(sourceMatches("https://deck.example.net", "https://deck.example.net:443")).toBe(true);
-      expect(frameOriginsFor(manifestWith(false, ["https://a.example"]), { ui: { frameSources: ["https://b.example"] } }, [])).toEqual([]);
+      expect(frameOriginsFor(manifestWith(false, ["https://a.example"]), { ui: { frameSources: ["https://b.example"] } }, []).allowed).toEqual([]);
+    });
+
+    it("compares ports as numbers, and refuses a leading-zero port in the settings", () => {
+      // Deck at https://deck.example: `:0443` is its port 443, exact or through a wildcard.
+      expect(sourceMatches("https://deck.example:0443", "https://deck.example")).toBe(true);
+      expect(sourceMatches("https://*.example:0443", "https://deck.example")).toBe(true);
+      expect(sourceMatches("https://deck.example:443", "https://deck.example")).toBe(true);
+      expect(sourceMatches("https://deck.example:8443", "https://deck.example")).toBe(false);
+      for (const entry of ["https://deck.example:0443", "https://*.example:0443"]) {
+        expect(ORIGIN_SETTING.test(entry)).toBe(false);
+        for (const key of ["frameSources", "frameAncestors"]) {
+          expect(validate({ schemaVersion: 2, estate: { name: "lab" }, ui: { [key]: [entry] } }).findings).toContainEqual(expect.objectContaining({ code: "SCHEMA_INVALID" }));
+        }
+        const { allowed } = frameOriginsFor(manifestWith(true, ["https://grafana.example.net/d"]), { ui: { frameSources: [entry] } }, ["https://deck.example"]);
+        expect(allowed).not.toContain(entry);
+      }
+    });
+
+    it("publishes an embed of deck's own origin (behind the proxy) as frameSelf, for the widget to name", async () => {
+      const response = await appWith({ ui: manifestWith(true, ["http://deck.example/portal", "https://grafana.example.net/d"]) }).request("http://deck:8095/", { headers: { "X-Forwarded-Host": "deck.example", "X-Forwarded-Proto": "http" } });
+      const html = await response.text();
+      expect(html).toContain('"frameSelf":["http://deck.example"]');
+      expect(directives(response.headers.get("content-security-policy"))["frame-src"]).not.toContain("deck.example ");
+      const direct = await (await appWith({ ui: manifestWith(true, ["https://grafana.example.net/d"]) }).request("/")).text();
+      expect(direct).not.toContain("frameSelf");
+    });
+
+    it("warns once per config about a ui.frameSources entry that covers deck, naming it", async () => {
+      const warnings: unknown[] = [];
+      const capturing = { ...logger, warn: (line: unknown) => void warnings.push(line) } as unknown as Logger;
+      const config = { schemaVersion: 2, estate: { name: "lab" }, ui: { frameSources: ["https://*.example.net", "https://auth.example.org"] } } as DeckConfig;
+      const app = createApp({ config, providers, logger: capturing, ui: manifestWith(true, ["https://grafana.example.net/d"]), webDistDir: dist });
+      for (let i = 0; i < 3; i += 1) await app.request("https://deck.example.net/");
+      expect(warnings.filter((line) => (line as { event?: string }).event === "ui.frame-source-dropped")).toEqual([{ event: "ui.frame-source-dropped", source: "https://*.example.net" }]);
     });
   });
 
@@ -276,6 +310,6 @@ describe.each(["frameAncestors", "frameSources"] as const)("ui.%s", (key) => {
     expect(ORIGIN_SETTING.test(origin)).toBe(false);
     // Even past validation, a value the pattern refuses never reaches the header.
     if (key === "frameAncestors") expect(frameAncestorsOf(config([origin]))).toEqual([]);
-    else expect(frameOriginsFor({ allowUnsafeEmbeds: true, pages: [] } as unknown as UiManifest, config([origin]), [])).toEqual([]);
+    else expect(frameOriginsFor({ allowUnsafeEmbeds: true, pages: [] } as unknown as UiManifest, config([origin]), []).allowed).toEqual([]);
   });
 });

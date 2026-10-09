@@ -187,6 +187,19 @@ describe("ui hot reload", () => {
     expect(await policy("/api/health")).toBe("frame-ancestors 'self' https://ha.example.net");
     expect((await request("/api/health")).headers.get("X-Frame-Options")).toBeNull();
     expect(await policy("/")).toContain("frame-src https://grafana.example.net;");
+
+    // Only ui.frameSources changes: the next page's frame-src and boot frameOrigins follow it.
+    const embeds = { brand: { title: "Lab" }, frameAncestors: ["https://ha.example.net"], allowUnsafeEmbeds: true, pages: [page] };
+    const shell = async () => {
+      const response = await request("/");
+      return { policy: response.headers.get("Content-Security-Policy") ?? "", html: await response.text() };
+    };
+    cfg.writeOverlay(overlay({ ...embeds, frameSources: ["https://auth.example.net"] }));
+    await vi.waitFor(async () => expect((await shell()).policy).toContain("frame-src https://auth.example.net https://grafana.example.net;"), { timeout: 10_000, interval: 50 });
+    expect((await shell()).html).toContain('"frameOrigins":["https://auth.example.net","https://grafana.example.net"]');
+    cfg.writeOverlay(overlay(embeds));
+    await vi.waitFor(async () => expect((await shell()).policy).toContain("frame-src https://grafana.example.net;"), { timeout: 10_000, interval: 50 });
+    expect((await shell()).html).toContain('"frameOrigins":["https://grafana.example.net"]');
   });
 
   it("keeps the old UI and shows a finding for an invalid edit, then recovers", async () => {

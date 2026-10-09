@@ -22,3 +22,14 @@ export function bootFrameOrigins(): readonly string[] | undefined {
   frameOrigins ??= { value: typeof document === "undefined" ? undefined : readDeckBoot(document).frameOrigins };
   return frameOrigins.value;
 }
+
+let frameSelf: { value: readonly string[] } | undefined;
+
+/**
+ * The embed origins the server left out of this page's policy as deck's own (`DeckBoot.frameSelf`):
+ * deck as the page was requested, behind a proxy, say. Empty without any. Read once.
+ */
+export function bootFrameSelf(): readonly string[] {
+  frameSelf ??= { value: typeof document === "undefined" ? [] : readDeckBoot(document).frameSelf ?? [] };
+  return frameSelf.value;
+}

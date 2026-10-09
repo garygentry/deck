@@ -30,14 +30,14 @@ function widget(title: string | null): UiWidgetInstance {
 }
 
 /** Serve /api/ui as `ui` (a manifest, an HTTP status, or never), then render the widget (`null`: untitled). */
-function show(ui: UiManifest | number | "never", options: Partial<EmbedOptions> = {}, title: string | null = "UPS graph", frameOrigins?: readonly string[]) {
+function show(ui: UiManifest | number | "never", options: Partial<EmbedOptions> = {}, title: string | null = "UPS graph", frameOrigins?: readonly string[], frameSelf: readonly string[] = []) {
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
     if (String(input) !== "/api/ui") return new Response(null, { status: 404 });
     if (ui === "never") return new Promise<Response>(() => undefined);
     return typeof ui === "number" ? new Response(null, { status: ui }) : Response.json(ui);
   }));
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
-  return render(<EmbedWidget value={null} options={{ url: URL_, ...options }} freshness={null} widget={widget(title)} frameOrigins={frameOrigins} />);
+  return render(<EmbedWidget value={null} options={{ url: URL_, ...options }} freshness={null} widget={widget(title)} frameOrigins={frameOrigins} frameSelf={frameSelf} />);
 }
 
 const allowed: UiManifest = { ...golden, allowUnsafeEmbeds: true };
@@ -190,6 +190,14 @@ describe("core/embed under the page's frame policy", () => {
     expect(screen.queryByText("Reload to show this page")).toBeNull();
     expect(frame(container)).toBeNull();
     expect(screen.getByRole("link", { name: /^Open / })).toHaveAttribute("href", new URL(url).href);
+  });
+
+  it("says deck does not frame its own pages for an origin the server left out as deck's own (behind a proxy), never asking for a reload", async () => {
+    // The page is served at deck's internal origin; its public one is http://deck.example.
+    const { container } = show(allowed, { url: "http://deck.example/portal" }, "UPS graph", ["https://grafana.example.net"], ["http://deck.example"]);
+    expect(await screen.findByText("Deck does not frame its own pages; place their widgets on a dashboard instead.")).toBeInTheDocument();
+    expect(screen.queryByText("Reload to show this page")).toBeNull();
+    expect(frame(container)).toBeNull();
   });
 
   it("frameAllowed: any origin without a page policy (the dev server); else only a named one", () => {

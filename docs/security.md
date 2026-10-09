@@ -115,7 +115,8 @@ The web shell's page carries a Content-Security-Policy that browsers enforce:
   `ui.frameSources` lists (a sign-in portal a framed app redirects to), and none while
   `ui.allowUnsafeEmbeds` is off. deck's own origin is never among them: deck leaves out the
   origin each request reached it on, and, behind the reverse proxy, the one `X-Forwarded-Host`
-  and `X-Forwarded-Proto` name, so have the proxy send them.
+  and `X-Forwarded-Proto` name, so have the proxy send them. A `ui.frameSources` wildcard
+  that covers deck is ignored as a whole (and logged), so list hosts.
 - **Styles** may be inline as well as deck's own, and **images** may come from any `http(s)`
   URL (brand logos, images in docs). A sanitized page cannot inject a script, but it can show an
   image from another site.

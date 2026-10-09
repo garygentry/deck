@@ -463,8 +463,8 @@ ui:
 | `pages` | array | Config-defined pages (dashboards): sections of widgets. |
 | `statusMaps` | object | Named maps from widget values to status tones, which widgets name in their `statusMap` option. |
 | `allowUnsafeEmbeds` | boolean | Lets `core/embed` widgets show other sites' pages in sandboxed frames. Default `false`. |
-| `frameSources` | array of string | While `allowUnsafeEmbeds` is `true`, origins besides the `core/embed` URLs' own that a framed page may load or redirect to, such as a sign-in portal (`https://auth.example.net`); same form as `frameAncestors`. deck's own origin is never allowed, even through a wildcard. |
-| `frameAncestors` | array of string | Origins besides deck's own that may show deck in a frame, such as a Home Assistant panel: `https://ha.example.net`, or `https://*.example.net` for its subdomains. Each is an `http(s)` origin with an optional port and no path; at most 32. Default none: only deck's own origin may frame it. See [Security](../security.md#browser-policy). |
+| `frameSources` | array of string | While `allowUnsafeEmbeds` is `true`, origins besides the `core/embed` URLs' own that a framed page may load or redirect to, such as a sign-in portal (`https://auth.example.net`); same form as `frameAncestors`. deck's own origin is never allowed: a wildcard that covers it is ignored as a whole (logged as `ui.frame-source-dropped`), so list hosts. |
+| `frameAncestors` | array of string | Origins besides deck's own that may show deck in a frame, such as a Home Assistant panel: `https://ha.example.net`, or `https://*.example.net` for its subdomains. Each is an `http(s)` origin with an optional port (no leading zeros) and no path; at most 32. Default none: only deck's own origin may frame it. See [Security](../security.md#browser-policy). |
 
 `brand`:
 

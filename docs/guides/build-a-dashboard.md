@@ -208,11 +208,13 @@ ui:
 - The frame is always sandboxed. By default the framed page may run its own scripts as its own
   origin (`allow-scripts allow-same-origin`), which most dashboards need. Set `sandbox` to
   replace that list: `sandbox: []` allows nothing. You can add `allow-forms`, `allow-popups`,
-  `allow-popups-to-escape-sandbox` and `allow-downloads`. A framed page can never navigate
-  deck's tab or open dialogs over it.
-- Avoid `allow-popups-to-escape-sandbox`. A popup the framed page opens with it is a normal,
-  unsandboxed window, which can reach back to the framed page through `window.opener`. Plain
-  `allow-popups` keeps popups sandboxed too.
+  `allow-popups-to-escape-sandbox` and `allow-downloads`. Unless you grant
+  `allow-popups-to-escape-sandbox`, a framed page can never navigate deck's tab or open dialogs
+  over it.
+- Avoid `allow-popups-to-escape-sandbox`. A popup the framed page opens with it is an ordinary,
+  unsandboxed top-level window. Its `window.opener` is the frame, and that frame's `top` is deck's
+  own tab, so the sandbox no longer keeps the popup away from deck. Plain `allow-popups` keeps popups under the same
+  sandbox as the frame.
 - The frame sends no referrer and loads when it scrolls into view. Its title is the widget's
   `title`, so give every embed one.
 - The URL must be an absolute `http(s)` URL with a host and no `user:password@`, on another

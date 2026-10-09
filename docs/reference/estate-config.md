@@ -589,9 +589,14 @@ With it on:
   `allow-scripts`, `allow-same-origin`, `allow-forms`, `allow-popups`,
   `allow-popups-to-escape-sandbox` and `allow-downloads`; `[]` allows nothing. Top navigation,
   modals and the other sandbox tokens are never granted. `allow-popups-to-escape-sandbox` makes
-  the framed page's popups ordinary, unsandboxed windows with an opener; avoid it.
-- `url` is an absolute `http(s)` URL with a host (DNS name, IPv4, or bracketed IPv6), an
-  optional port 0–65535, and no `user:password@`; the schema and the browser check the same rule.
+  the framed page's popups ordinary, unsandboxed top-level windows whose opener chain reaches
+  deck's own tab, outside the sandbox; avoid it.
+- `url` must be an absolute `http(s)` URL that the URL parser accepts, with a non-empty host
+  and no `user:password@`. The parser refuses an invalid IPv4 or IPv6 host and a port past
+  65535, for example. The schema checks only the loose shape (`http(s)://`, then an authority
+  without `@`, whitespace or backslashes). `deck validate` then reports a URL the parser refuses
+  as `UI_EMBED_URL_INVALID` (an error), and the browser runs the same check before it frames
+  anything.
 - The frame sends no referrer, loads lazily and is titled by the widget's `title` (default "Page
   from" its host).
 - A URL on deck's own origin is refused in the browser ("Deck does not frame its own pages"),

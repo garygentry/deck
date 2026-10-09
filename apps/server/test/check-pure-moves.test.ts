@@ -182,12 +182,14 @@ describe("check-pure-moves", () => {
 
   it("reads the global git config but pins the diff settings it could change", () => {
     moveGrow((source) => source.replace("Doubles", "Doubles (moved)"));
-    const global = join(repo, ".global-gitconfig");
+    // Outside the repository: an untracked file in it would fail the check.
+    const global = `${repo}.gitconfig`;
     // Each would change or break the diff the check reads, if it were not pinned or disabled.
     writeFileSync(global, "[diff]\n\tnoprefix = true\n\trenames = false\n\texternal = false\n[core]\n\tquotePath = true\n");
     const result = spawnSync(process.execPath, [SCRIPT, "base"], { cwd: repo, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: global } });
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(result.stdout).toMatch(/ok\s+apps\/server\/src\/grow\/grow\.ts -> modules\/grow\/server\/grow\.ts/);
+    rmSync(global);
   });
 
   it("runs the same through a symlink and under diff.noprefix", () => {
@@ -226,6 +228,40 @@ describe("check-pure-moves", () => {
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(result.stdout).toContain("working tree against base");
     expect(result.stdout).toContain("additions under modules/ (1):\n  A modules/grow/package.json");
+  });
+
+  describe("refuses an OK that would vouch for nothing", () => {
+    it("fails checking HEAD with an uncommitted edit or an untracked file", () => {
+      moveGrow((source) => source);
+      expect(check().status).toBe(0);
+      write("apps/server/src/shared/helper.ts", "export const helper = (n: number) => n + 1;\n");
+      const edited = check();
+      expect(edited.status, edited.stdout).toBe(1);
+      expect(edited.stdout).toContain("NOT CHECKED: the working tree has uncommitted changes (1)");
+      expect(edited.stdout).toContain(" M apps/server/src/shared/helper.ts");
+      git("checkout", "--", "apps/server/src/shared/helper.ts");
+      write("modules/grow/server/forgotten.ts", "export const forgotten = 1;\n");
+      const untracked = check();
+      expect(untracked.status, untracked.stdout).toBe(1);
+      expect(untracked.stdout).toContain("?? modules/grow/server/forgotten.ts");
+      // --allow-empty does not excuse it; --worktree checks those changes instead.
+      expect(check("--allow-empty").status).toBe(1);
+    });
+
+    it("fails a change with no renames unless --allow-empty", () => {
+      write("apps/server/src/shared/helper.ts", "export const helper = (n: number) => n * 1;\n");
+      git("add", ".");
+      git("commit", "-qm", "edit only");
+      const empty = check();
+      expect(empty.status, empty.stdout).toBe(1);
+      expect(empty.stdout).toContain("renames (0):");
+      expect(empty.stdout).toContain("NOT PURE: no renames");
+      const allowed = check("--allow-empty");
+      expect(allowed.status, allowed.stdout).toBe(0);
+      expect(allowed.stdout).toContain("OK: every rename is a pure move");
+      expect(check("--worktree").status).toBe(1);
+      expect(check("--worktree", "--allow-empty").status).toBe(0);
+    });
   });
 
   it("rejects unknown flags and extra arguments", () => {

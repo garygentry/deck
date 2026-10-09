@@ -394,10 +394,17 @@ function timeoutError(timeoutMs: number): Error {
   return error;
 }
 
+/**
+ * Freeze `value` and everything reachable from it. Iterative, so provider data of any depth
+ * cannot overflow the stack on the publish path (an uncaught overflow there ends the process).
+ */
 function deepFreeze<T>(value: T): T {
-  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
-    for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child);
-    Object.freeze(value);
+  const pending: unknown[] = [value];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === null || typeof current !== "object" || Object.isFrozen(current)) continue;
+    Object.freeze(current);
+    for (const child of Object.values(current as Record<string, unknown>)) pending.push(child);
   }
   return value;
 }

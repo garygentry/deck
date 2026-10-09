@@ -105,12 +105,19 @@ export function moduleContribution(module: ServerModule<any>): ConfigContributio
     ...(manifest.providerKinds === undefined
       ? {}
       : {
-          providerKinds: manifest.providerKinds.map(({ kind, instanceSchema, instanceList, bindable }) => ({
-            kind,
-            ...(instanceSchema === undefined ? {} : { instanceSchema: instanceSchema as JsonObject }),
-            ...(instanceList === undefined ? {} : { instanceList }),
-            ...(bindable === undefined ? {} : { bindable }),
-          })),
+          providerKinds: manifest.providerKinds.map(({ kind, instanceSchema, instanceList, bindable, findings, fixedId }) => {
+            const validate = module.kinds?.[kind]?.validate;
+            return {
+              kind,
+              ...(instanceSchema === undefined ? {} : { instanceSchema: instanceSchema as JsonObject }),
+              ...(instanceList === undefined ? {} : { instanceList }),
+              ...(bindable === undefined ? {} : { bindable }),
+              ...(findings === undefined ? {} : { findings }),
+              ...(validate === undefined ? {} : { validate }),
+              // A fixed provider id is a built-in-only privilege.
+              ...(fixedId === undefined || !BUILTIN_SET.has(module) ? {} : { fixedId }),
+            };
+          }),
         }),
     ...(module.configRules === undefined ? {} : { rules: module.configRules }),
   };

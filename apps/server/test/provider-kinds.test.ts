@@ -42,7 +42,7 @@ function kindModule(
 }
 
 /** The kinds owned by built-in data-source modules. */
-const DATA_SOURCE_KINDS = ["link", "http-health", "docker", "gatus", "prometheus", "alertmanager", "markdown-tree", "file-tree", "snapshot"];
+const DATA_SOURCE_KINDS = ["link", "http-health", "http-json", "docker", "gatus", "prometheus", "alertmanager", "markdown-tree", "file-tree", "snapshot"];
 
 const estate = (extra: Partial<DeckConfig> = {}): DeckConfig =>
   ({ schemaVersion: 2, estate: { name: "kinds" }, ...extra }) as DeckConfig;
@@ -355,13 +355,122 @@ describe("the data-source modules", () => {
     const { composed } = builtinComposition({ sectionOf: () => undefined, env: {} });
     for (const kind of DATA_SOURCE_KINDS) {
       expect(composed.knownKinds.has(kind)).toBe(true);
-      expect(composed.bindableKinds.has(kind)).toBe(!["prometheus", "alertmanager", "markdown-tree", "file-tree", "snapshot"].includes(kind));
+      expect(composed.bindableKinds.has(kind)).toBe(!["http-json", "prometheus", "alertmanager", "markdown-tree", "file-tree", "snapshot"].includes(kind));
     }
     const defs = composed.schema.$defs as Record<string, unknown>;
     expect(defs.kind__docker).toBeDefined();
     expect(defs.kind__gatus).toBeDefined();
     expect(defs.kind__prometheus).toBeDefined();
     expect(defs.kind__alertmanager).toBeDefined();
+    expect(defs["kind__http-json"]).toBeDefined();
+  });
+});
+
+describe("a kind handler's validate rule", () => {
+  const feedKind = (validate: ProviderKindHandler["validate"]) =>
+    kindModule(
+      {
+        id: "feeds",
+        providerKinds: [{ kind: "feed", findings: [{ code: "FEED_BAD", severity: "error", summary: "bad feed", fix: "fix it" }] }],
+      },
+      { feed: { instances: () => [], validate } },
+    );
+  const loadWith = (module: ServerModule, extraIntegrations: unknown[] = []) => {
+    const estateDir = makeConfigDir({
+      "00-base.yaml": { schemaVersion: 2, estate: { name: "rules" } },
+      "10-overlay.yaml": {
+        schemaVersion: 2,
+        integrations: [
+          { id: "a", kind: "feed", title: "A", baseUrl: "http://feed" },
+          { id: "c", kind: "feed", title: "C", baseUrl: "http://feed" },
+          ...extraIntegrations,
+        ],
+      },
+    });
+    try {
+      return load({ arg: estateDir.dir, modules: [...BUILTIN_MODULES, module], env: {} });
+    } finally {
+      estateDir.cleanup();
+    }
+  };
+  const run = (module: ServerModule) => {
+    const estateDir = makeConfigDir({
+      "00-base.yaml": { schemaVersion: 2, estate: { name: "rules" } },
+      "10-overlay.yaml": {
+        schemaVersion: 2,
+        integrations: [
+          { id: "a", kind: "feed", title: "A", baseUrl: "http://feed" },
+          { id: "b", kind: "other", title: "B", baseUrl: "http://b" },
+          { id: "c", kind: "feed", title: "C", baseUrl: "http://feed" },
+        ],
+      },
+    });
+    try {
+      return load({ arg: estateDir.dir, modules: [...BUILTIN_MODULES, module], env: {} }).findings;
+    } finally {
+      estateDir.cleanup();
+    }
+  };
+
+  it("runs on each instance of its kind in the merged document, paths relative to the instance", () => {
+    const findings = run(feedKind((instance) => [{ code: "FEED_BAD", path: "/title", message: `bad ${String(instance.id)}` }]));
+    expect(findings.filter((finding) => finding.code === "FEED_BAD")).toEqual([
+      { code: "FEED_BAD", severity: "error", path: "/integrations/0/title", message: "bad a" },
+      { code: "FEED_BAD", severity: "error", path: "/integrations/2/title", message: "bad c" },
+    ]);
+  });
+
+  it("is MODULE_RULE_FAILED when it throws or reports a code its kind does not declare", () => {
+    const thrown = run(feedKind(() => {
+      throw new Error("boom");
+    }));
+    expect(thrown).toContainEqual(expect.objectContaining({ code: "MODULE_RULE_FAILED", path: "/integrations/0", message: expect.stringContaining("boom") }));
+    const undeclared = run(feedKind(() => [{ code: "NOT_DECLARED", path: "", message: "x" }]));
+    expect(undeclared).toContainEqual(expect.objectContaining({ code: "MODULE_RULE_FAILED", path: "/integrations/2", message: expect.stringContaining("NOT_DECLARED") }));
+  });
+
+  it.each([
+    ["throws", () => {
+      throw new Error("boom");
+    }],
+    ["reports an undeclared code", () => [{ code: "NOT_DECLARED", path: "", message: "x" }]],
+  ])("disables its owning module when it %s (not a module named by the path)", (_name, rule) => {
+    const module = feedKind(rule as ProviderKindHandler["validate"]);
+    const result = loadWith(module);
+    expect(result.exitClass).toBe(0);
+    if (result.exitClass !== 0) return;
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: "MODULE_RULE_FAILED", path: "/integrations/0", module: "feeds" }));
+    expect([...result.moduleProblems.keys()]).toEqual(["feeds"]);
+    const { host } = testHost([...BUILTIN_MODULES, module], { manifestProblems: result.moduleProblems });
+    expect(host.plan.find((entry) => entry.id === "feeds")).toMatchObject({ enabled: false });
+    expect(host.plan.filter((entry) => entry.id !== "feeds" && entry.id !== "actions" && entry.id !== "metrics").every((entry) => entry.enabled)).toBe(true);
+  });
+
+  it("sees the merged document and the built-in kinds' declared fixed ids, never another module's", () => {
+    let seen: string[] | undefined;
+    let documentInstances = 0;
+    const fixed = kindModule({ id: "fixed-feed", providerKinds: [{ kind: "fixed-feed", fixedId: "zzz" }] }, { "fixed-feed": { instances: () => [] } });
+    const probe = feedKind((_instance, context) => {
+      seen = [...context.fixedIds].map(([kind, id]) => `${kind}=${id}`).sort();
+      documentInstances = (context.document.integrations as unknown[]).length;
+      return [];
+    });
+    const estateDir = makeConfigDir({
+      "00-base.yaml": { schemaVersion: 2, estate: { name: "rules" } },
+      "10-overlay.yaml": { schemaVersion: 2, integrations: [{ id: "a", kind: "feed", title: "A", baseUrl: "http://feed" }, { id: "b", kind: "other", title: "B", baseUrl: "http://b" }] },
+    });
+    try {
+      load({ arg: estateDir.dir, modules: [...BUILTIN_MODULES, fixed, probe], env: {} });
+    } finally {
+      estateDir.cleanup();
+    }
+    expect(seen).toEqual(["alertmanager=alertmanager", "docker=docker", "gatus=gatus", "prometheus=prometheus", "snapshot=snapshot"]);
+    expect(documentInstances).toBe(2);
+  });
+
+  it("must be a function", () => {
+    const { host } = testHost([kindModule({ id: "feeds", providerKinds: [{ kind: "feed" }] }, { feed: { validate: "no" as never } })]);
+    expect(host.findings).toEqual([expect.objectContaining({ code: "MODULE_MANIFEST_INVALID", message: expect.stringContaining('the validate handler for "feed" must be a function') })]);
   });
 });
 

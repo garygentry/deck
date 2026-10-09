@@ -58,6 +58,12 @@
       "origin": "module"
     },
     {
+      "id": "http-json",
+      "version": "1.0.0",
+      "enabled": true,
+      "origin": "module"
+    },
+    {
       "id": "inventory",
       "version": "0.1.0",
       "enabled": true,

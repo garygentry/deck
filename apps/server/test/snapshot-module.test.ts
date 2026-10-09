@@ -44,7 +44,7 @@ describe("the snapshot module owns its kind and variable", () => {
     expect(BUILTIN_MODULES).toContain(snapshotModule);
     expect(SNAPSHOT_MANIFEST.env).toEqual(["DECK_SNAPSHOT_SOURCE"]);
     expect(KERNEL_ENV_NAMES.has("DECK_SNAPSHOT_SOURCE")).toBe(false);
-    expect(SNAPSHOT_MANIFEST.providerKinds).toEqual([{ kind: "snapshot", statusCapable: false }]);
+    expect(SNAPSHOT_MANIFEST.providerKinds).toEqual([{ kind: "snapshot", fixedId: "snapshot", statusCapable: false }]);
   });
 
   it("leaves no snapshot name in the kernel files it used to touch", () => {

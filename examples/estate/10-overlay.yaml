@@ -49,6 +49,22 @@ sources:
     kind: file-tree
     title: Host configs
     location: { path: examples/estate/configs }
+# Any HTTP API that answers JSON can be a data source: an `http-json`
+# integration polls its URL and serves the parsed body at
+# GET /api/providers/<id>. Commented out because it needs a reachable URL. The
+# credential comes only from the variable `credentialEnv` names (set
+# UPS_TOKEN in the environment, never here); literal `headers` are for
+# non-secret values only.
+# integrations:
+#   - id: ups
+#     kind: http-json
+#     title: UPS
+#     url: http://nut-exporter.home.example:9199/status.json
+#     headers: { X-Client: deck }
+#     credentialEnv: UPS_TOKEN
+#     auth: { scheme: bearer }   # or basic (user:password), or header + header: X-Api-Key
+#     pollIntervalMs: 15000
+#     timeoutMs: 3000
 # Presentation settings. The overlay owns `ui`, and every key is optional.
 ui:
   brand:

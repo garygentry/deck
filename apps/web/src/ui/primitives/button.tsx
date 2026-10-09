@@ -1,6 +1,15 @@
+/**
+ * Deck edit: `loading`. While loading the button shows a spinner, sets
+ * `aria-busy`/`aria-disabled`/`data-loading` and swallows clicks, but never sets
+ * `disabled`, so a focused button keeps focus while its action is in flight.
+ * With `asChild`, Radix `Slot` runs the child's own `onClick` before the swallowing
+ * handler and pointer-down triggers (menus) still open: use `loading` on a plain
+ * `Button` around an action, not on an `asChild` trigger.
+ */
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/ui/lib/utils"
+import { Icon } from "@/ui/patterns/icon"
 import { Slot } from "radix-ui"
 
 const buttonVariants = cva(
@@ -42,12 +51,38 @@ function Button({
   variant = "default",
   size = "default",
   asChild = false,
+  loading = false,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
+    /** Busy: spinner, `aria-busy`/`aria-disabled`, clicks swallowed; focus stays put. */
+    loading?: boolean
   }) {
   const Comp = asChild ? Slot.Root : "button"
+
+  if (loading) {
+    const { children, onClick: _onClick, ...rest } = props
+    return (
+      <Comp
+        data-slot="button"
+        data-variant={variant}
+        data-size={size}
+        data-loading=""
+        aria-busy="true"
+        aria-disabled="true"
+        className={cn(buttonVariants({ variant, size, className }))}
+        {...rest}
+        onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+          event.preventDefault()
+          event.stopPropagation()
+        }}
+      >
+        <Icon name="loader" className="animate-spin" data-slot="button-spinner" />
+        {asChild ? <Slot.Slottable>{children}</Slot.Slottable> : children}
+      </Comp>
+    )
+  }
 
   return (
     <Comp

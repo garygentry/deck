@@ -96,7 +96,7 @@ Beyond the schema, deck checks what a schema cannot say:
 - **Widget types are an allowlist** of deck's declarative types: `core/stat`, `core/stat-grid`,
   `core/meter`, `core/key-value`, `core/list`, `core/table`, `core/status-grid`,
   `core/link-tiles`, `core/markdown` and `core/json`. A sidecar cannot place `core/health-pills`,
-  another module's widget, or any framing type (an `embed`), whatever `ui.allowUnsafeEmbeds` says.
+  another module's widget, or `core/embed` (a frame), whatever `ui.allowUnsafeEmbeds` says.
 - Each widget's `options` must satisfy its type's options schema, and its `select` the same
   size and work limits as a config page's; deck evaluates it on the server at each poll.
 - `core/markdown` content goes through the same sanitiser as every markdown deck renders: raw

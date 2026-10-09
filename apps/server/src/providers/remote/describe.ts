@@ -6,7 +6,7 @@ import { selectProblem } from "@deck/schema/select";
 /**
  * The widget types a sidecar may place: deck's declarative `core/…` types, each rendered by
  * `@/ui` from data. Not a `core/` prefix: `core/health-pills` shows the shell's own state, and
- * a framing type (`core/embed`) is never one a sidecar can name, whatever the ui config allows.
+ * `core/embed` (a frame) is never one a sidecar can name, whatever `ui.allowUnsafeEmbeds` says.
  */
 export const REMOTE_WIDGET_TYPES: ReadonlySet<string> = new Set([
   "core/stat",

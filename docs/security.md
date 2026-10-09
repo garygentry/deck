@@ -45,7 +45,7 @@ can't escalate:
   config chooses what deck fetches on its network.
 - **A sidecar contributes data and declarations, never code.** A `remote` integration's requests
   get the same hardening as `http-json`'s, on both endpoints. Its describe document may place only
-  deck's declarative widget types (never an `embed` or another module's widget, whatever
+  deck's declarative widget types (never `core/embed` or another module's widget, whatever
   `ui.allowUnsafeEmbeds` says), with bounded strings, options checked against each type's schema,
   `select`s within the server's limits, and links that pass deck's link check; `http(s)` links
   always open as external links. Its markdown goes through the same DOMPurify boundary as all

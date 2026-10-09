@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
+import { CORE_WIDGET_TYPES } from "@deck/contract/modules/core";
 import type { UiManifest } from "@deck/module-sdk";
 import type { Logger } from "pino";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -105,6 +106,8 @@ describe("checkDescribe: declarative only, the config's own descriptors", () => 
   });
 
   it("allows only deck's declarative core types: never core/embed, health pills or another module's", () => {
+    // core/embed is a real core type (it frames other sites), yet never a sidecar's.
+    expect(CORE_WIDGET_TYPES.map((type) => type.type)).toContain("core/embed");
     expect([...REMOTE_WIDGET_TYPES]).not.toContain("core/embed");
     for (const type of ["core/embed", "core/health-pills", "portal/groups", "evil/script"]) {
       const result = checkDescribe({ ...DESCRIBE, widgets: [{ id: "w", type }] }, "ups");

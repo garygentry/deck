@@ -138,6 +138,13 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
     only (`deck validate` gives the details);
   - `UI_RESTART_REQUIRED`: the config directory changed outside `ui`, which applies only after
     a restart; the message names the changed keys.
+  - `REMOTE_DESCRIBE_INVALID`, `REMOTE_DESCRIBE_UNREACHABLE`: a remote integration's latest
+    describe was refused, or could not be fetched; its last good describe (if any) still renders
+    (see the [remote provider protocol](remote-provider-protocol.md));
+  - `REMOTE_DESCRIBE_ID_MISMATCH` (`severity: "info"`): a sidecar's describe names another id
+    than its integration's, which deck uses;
+  - `REMOTE_NAV_UNPLACED` (`severity: "info"`): a sidecar describes nav entries, but its page
+    has no sidebar entry (`page.nav`) to list them with.
 
   The shell shows the last two in a notice. They clear when the edit is fixed or reverted (see
   [hot reload](estate-config.md#hot-reload)).

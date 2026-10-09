@@ -1,0 +1,56 @@
+{
+  "name": "@deck/sdk",
+  "version": "0.3.2",
+  "private": true,
+  "description": "What a runtime module's web half builds against: the @deck/sdk types, the Tailwind preset for module styles, and deck-module lint.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts"
+    },
+    "./tailwind": {
+      "style": "./tailwind/index.css",
+      "default": "./tailwind/index.css"
+    },
+    "./tailwind/theme.css": {
+      "style": "./tailwind/theme.css",
+      "default": "./tailwind/theme.css"
+    },
+    "./lint": "./lint/index.ts"
+  },
+  "bin": {
+    "deck-module": "./lint/cli.ts"
+  },
+  "files": [
+    "index.d.ts",
+    "lint",
+    "tailwind"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "types:build": "node scripts/build-types.mjs"
+  },
+  "dependencies": {
+    "@tanstack/react-table": "^8.21.3",
+    "lucide-react": "^1.47.0",
+    "typescript": "^5.4.0"
+  },
+  "peerDependencies": {
+    "@types/react": "^19.3.0",
+    "tailwindcss": "^4.3.3"
+  },
+  "peerDependenciesMeta": {
+    "tailwindcss": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19.3.0",
+    "rollup": "^4.0.0",
+    "rollup-plugin-dts": "^6.5.1",
+    "tailwindcss": "^4.3.3",
+    "vitest": "^4.1.0"
+  }
+}

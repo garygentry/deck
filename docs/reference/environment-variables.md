@@ -38,6 +38,15 @@ and the action routes refuse with HTTP 403 (see [HTTP API reference](./http-api.
 When it is on, a missing or invalid required setting fails the boot rather than starting a
 half-configured write path.
 
+## Runtime modules
+
+| Name | Default | Purpose |
+| --- | --- | --- |
+| `DECK_MODULES_DIR` | unset | Directory of runtime modules, one subdirectory per module named by its id. Mount it read-only. When unset, deck loads no runtime modules. See [Run a runtime module](../guides/runtime-modules.md). |
+| `DECK_MODULES_ENABLED` | `false` | Switch for runtime modules. `true` or `1` (case-insensitive) lets deck import their server code. Any other value leaves every runtime module off: deck reads their manifests and imports no code. When it is on and `DECK_MODULES_DIR` cannot be read, boot fails with exit class 2. |
+
+A runtime module's code runs inside the deck process, with every privilege deck has.
+
 ## Container entrypoint
 
 This variable is read only by the container entrypoint script, not by the server itself.

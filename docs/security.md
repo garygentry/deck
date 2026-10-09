@@ -58,6 +58,12 @@ can't escalate:
   against a writable Codex home, which refreshes its own tokens. The Codex child inherits only a short env allowlist plus `CODEX_HOME`, so deck's
   other secrets never reach it. Anyone who can reach deck sees the usage numbers, never the
   tokens.
+- **Runtime modules are off unless you switch them on, and run with full trust.** deck imports
+  a runtime module's code from `DECK_MODULES_DIR` only while `DECK_MODULES_ENABLED` is on. That
+  code runs in the deck process with all of deck's privileges: no sandbox separates it from
+  deck's environment, files or network. An optional `moduleIntegrity` pin stops a module
+  directory that has changed since you pinned it from loading. See
+  [Run a runtime module](guides/runtime-modules.md).
 - **The one write route has its own gate.** `POST /api/llm-usage/ingest` exists only when its
   token env var is set. It checks the bearer token in constant time, caps bodies at 2 MB, and
   only ever updates the displayed statusLine numbers.
@@ -68,6 +74,8 @@ can't escalate:
 - Provide credentials only through the environment (never commit them into estate config).
 - Curate source `include`/`exclude` so the Configs/Docs surfaces expose only what you intend.
 - Leave actions disabled unless you've provisioned and reviewed the runner allowlist.
+- Leave runtime modules disabled unless you trust every module in `DECK_MODULES_DIR`. Mount
+  that directory read-only, and pin each module's digest in `moduleIntegrity`.
 - If you exempt the LLM usage ingest route from proxy auth, exempt exactly
   `POST /api/llm-usage/ingest`, and treat its token like any other credential.
 

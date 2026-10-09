@@ -408,7 +408,7 @@ describe("the embed gate in the UI manifest", () => {
       layers.cleanup();
     }
     expect(ui.allowUnsafeEmbeds).toBe(true);
-    expect(pageOf(ui, "page:ui/lab")?.layout?.sections[0]?.widgets[0]).toMatchObject({ type: "core/embed", source: null, options: embed.options });
+    expect(pageOf(ui, "page:ui/lab")?.layout?.sections.flatMap((section) => ("widgets" in section ? section.widgets : []))[0]).toMatchObject({ type: "core/embed", source: null, options: embed.options });
   });
 
   const EMBED_PAGE = { pages: [{ id: "lab", path: "/lab", title: "Lab", sections: [{ title: "S", widgets: [{ id: "graph", type: "core/embed", options: { url: "https://grafana.example.net/d/ups" } }] }] }] };
@@ -436,7 +436,7 @@ describe("the embed gate in the UI manifest", () => {
       layers.cleanup();
     }
     expect("allowUnsafeEmbeds" in ui).toBe(false);
-    expect(pageOf(ui, "page:ui/lab")?.layout?.sections[0]?.widgets[0]?.type).toBe("core/embed");
+    expect(pageOf(ui, "page:ui/lab")?.layout?.sections.flatMap((section) => ("widgets" in section ? section.widgets : []))[0]?.type).toBe("core/embed");
   });
 
   it("finds nothing when the gate and the embed are in different layers", () => {

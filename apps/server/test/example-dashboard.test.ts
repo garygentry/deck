@@ -57,7 +57,7 @@ describe("the example dashboard layer", () => {
     expect(Object.keys(ui.statusMaps ?? {})).toEqual(["deck-status", "healthy"]);
     expect(ui.findings).toEqual([]);
 
-    const widgets = page?.layout?.sections.flatMap((section) => section.widgets) ?? [];
+    const widgets = page?.layout?.sections.flatMap((section) => ("widgets" in section ? section.widgets : [])) ?? [];
     expect(widgets.map((widget) => widget.id)).toEqual(["status", "counts", "providers", "shortcuts", "notes"].map((id) => `widget:ui/pulse.${id}`));
     for (const widget of widgets) {
       expect(widget.typeProblem, widget.id).toBeUndefined();

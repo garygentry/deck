@@ -54,6 +54,7 @@ describe("built-in module packages", () => {
         compared++;
       }
     }
-    expect(compared).toBeGreaterThan(0);
+    // A module that declares only workspace packages shares nothing with the hosts to compare.
+    if (shared.length > 0) expect(compared).toBeGreaterThan(0);
   });
 });

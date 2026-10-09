@@ -241,20 +241,12 @@ importers:
       '@deck/module-sdk':
         specifier: workspace:*
         version: link:../../packages/module-sdk
-    devDependencies:
-      '@types/node':
-        specifier: ^22
-        version: 22.20.1
 
   modules/link:
     dependencies:
       '@deck/module-sdk':
         specifier: workspace:*
         version: link:../../packages/module-sdk
-    devDependencies:
-      '@types/node':
-        specifier: ^22
-        version: 22.20.1
 
   modules/llm-usage:
     dependencies:

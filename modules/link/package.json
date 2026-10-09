@@ -6,8 +6,5 @@
   "type": "module",
   "dependencies": {
     "@deck/module-sdk": "workspace:*"
-  },
-  "devDependencies": {
-    "@types/node": "^22"
   }
 }

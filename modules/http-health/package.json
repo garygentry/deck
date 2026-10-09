@@ -7,8 +7,5 @@
   "dependencies": {
     "@deck/contract": "workspace:*",
     "@deck/module-sdk": "workspace:*"
-  },
-  "devDependencies": {
-    "@types/node": "^22"
   }
 }

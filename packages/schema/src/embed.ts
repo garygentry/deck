@@ -1,7 +1,7 @@
 /**
- * The `core/embed` url rule, in one place: config validation (`ui-widgets`), the UI contract
- * (re-exported from `@deck/contract/modules/widgets`) and the web renderer all call
- * {@link embedUrlProblem}. It is the URL parser's rule, not a hand-written host grammar. It has no
+ * The `core/embed` url rule, in one place: config validation (`ui-widgets`) and the web renderer
+ * both call {@link embedUrlProblem}; the UI contract keeps a copy of {@link EMBED_URL_PATTERN}
+ * that a contract test holds equal to this one. It is the URL parser's rule, not a hand-written host grammar. It has no
  * imports, so the browser bundle can load it (`@deck/schema/embed`).
  */
 

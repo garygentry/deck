@@ -49,7 +49,10 @@ const FIELD_ITEM = {
   },
 } as const;
 
-/** What a framed page may do (`core/embed`): never navigate deck's tab, open modals or lock the pointer. */
+/**
+ * What a framed page may do (`core/embed`). None of these lets it navigate deck's tab, open modals
+ * or lock the pointer, except that `allow-popups-to-escape-sandbox` frees the popups it opens.
+ */
 /**
  * The loose shape of a `core/embed` url (`EMBED_URL_PATTERN` in `@deck/schema/embed`, whose
  * `embedUrlProblem` is the full rule that validation and the renderer run).

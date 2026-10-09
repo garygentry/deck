@@ -406,6 +406,7 @@ ui:
 | `extensions` | object | Overrides by extension, page, nav entry or widget id. |
 | `pages` | array | Config-defined pages (dashboards): sections of widgets. |
 | `statusMaps` | object | Named maps from widget values to status tones, which widgets name in their `statusMap` option. |
+| `allowUnsafeEmbeds` | boolean | Lets `core/embed` widgets show other sites' pages in sandboxed frames. Default `false`. |
 
 `brand`:
 
@@ -556,6 +557,7 @@ number or text; this widget's value is a list."), so a wrong `select` is easy to
 | `core/status-grid` | Named states as tiles, each with a status badge. The value is a list of objects, or an object of name → state. | `labelField` (default `name`), `statusField` (default `status`), `hrefField`, `statusMap`, `limit` (1–200, default 48) |
 | `core/link-tiles` | Links as tiles. | `links`: `{title, href, description?, icon?}`, 1–48; without it, the value, a list of objects with those keys |
 | `core/markdown` | Markdown, rendered and sanitised as the docs view does it. | `content`; without it, the value, which must be text |
+| `core/embed` | Another site's page in a sandboxed frame, with a link that opens it in a new tab. Reads no source. Needs `ui.allowUnsafeEmbeds: true` (below). | `url` (required): an absolute `http(s)` URL; `height`: `sm`, `md` (default), `lg` or `xl` (15, 24, 36 or 48 rem); `sandbox`: what the page may do (below) |
 | `core/health-pills` | The top bar's health pills, in its order. Reads no source. | `pills`: extension ids (`pill:drift/summary`) to show only those |
 | `core/json` | The value as formatted JSON, for looking at what a source and `select` give. | `wrap: true` soft-wraps long lines |
 
@@ -575,6 +577,33 @@ Modules add their own types. The portal's:
 - A **link** (`hrefField`, `links[].href`) is an `http(s)` URL, which opens in a new tab, or an
   absolute path in deck (`/hosts/nas-01`). A value from data that is neither is shown unlinked.
 - A **`statusMap`** names one of `ui.statusMaps`, below.
+
+`core/embed` frames another site's page, so it is opt-in: a `core/embed` widget while
+`ui.allowUnsafeEmbeds` is not `true` frames nothing and shows "Embeds are off", and `deck
+validate` notes it as `UI_EMBED_DISALLOWED` (info). The gate is checked on the merged document,
+so it may sit in another layer than the widget, and turning it off takes effect on hot reload.
+With it on:
+
+- The frame always has a `sandbox`. By default it is `allow-scripts allow-same-origin`: the page
+  runs its own scripts as its own origin. `sandbox` replaces that list with tokens from
+  `allow-scripts`, `allow-same-origin`, `allow-forms`, `allow-popups`,
+  `allow-popups-to-escape-sandbox` and `allow-downloads`; `[]` allows nothing. Top navigation,
+  modals and the other sandbox tokens are never granted. `allow-popups-to-escape-sandbox` makes
+  the framed page's popups ordinary, unsandboxed top-level windows whose opener chain reaches
+  deck's own tab, outside the sandbox; avoid it.
+- `url` must be an absolute `http(s)` URL that the URL parser accepts, with a non-empty host
+  and no `user:password@`. The parser refuses an invalid IPv4 or IPv6 host and a port past
+  65535, for example. The schema checks only the loose shape (`http(s)://`, then an authority
+  without `@`, whitespace or backslashes). `deck validate` then reports a URL the parser refuses
+  as `UI_EMBED_URL_INVALID` (an error), and the browser runs the same check before it frames
+  anything.
+- The frame sends no referrer, loads lazily and is titled by the widget's `title` (default "Page
+  from" its host).
+- A URL on deck's own origin is refused in the browser ("Deck does not frame its own pages"),
+  since such a page could lift its own sandbox. Only the configured URL is checked, not where
+  the framed site redirects or navigates afterwards.
+- A site that refuses to be framed (`X-Frame-Options`, CSP `frame-ancestors`) leaves the frame
+  blank; the link under it opens the page in a new tab.
 
 `statusMaps` maps a widget's values to status tones by name. A widget shows a toned value with
 the tone's icon and the value's own text, never by colour alone, and config never names a

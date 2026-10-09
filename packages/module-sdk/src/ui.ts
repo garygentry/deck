@@ -56,6 +56,11 @@ export interface UiManifest {
    * names, read with `statusTone`. Absent when the config declares none.
    */
   statusMaps?: Record<string, StatusMapData>;
+  /**
+   * `true` when the ui config allows embeds (`ui.allowUnsafeEmbeds`): only then does a
+   * `core/embed` widget frame its page. Absent otherwise.
+   */
+  allowUnsafeEmbeds?: true;
   /** Problems found while resolving; none of them stops the UI from rendering. */
   findings: UiFinding[];
 }

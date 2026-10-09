@@ -30,6 +30,7 @@
           "additionalProperties": { "$ref": "#/$defs/UiOverride" }
         },
         "pages": { "type": "array", "items": { "$ref": "#/$defs/UiPage" }, "description": "Config-defined pages (dashboards): sections of widgets, each page routed as page:ui/<id>." },
+        "allowUnsafeEmbeds": { "type": "boolean", "description": "Let core/embed widgets show other sites' pages in sandboxed frames; default false, when each shows that embeds are off." },
         "statusMaps": {
           "type": "object", "description": "Named maps from a widget's values to status tones, which widget options reference by name (statusMap).",
           "propertyNames": { "pattern": "^[a-z0-9][a-z0-9-]*$", "maxLength": 64 },

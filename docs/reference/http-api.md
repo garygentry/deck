@@ -103,6 +103,8 @@ no UI. Features not yet on the module contract declare theirs from the kernel an
   provider kinds a type renders, when it limits them).
 - `statusMaps`, present only when the config declares some, is `ui.statusMaps` by name (each
   with its `values` and `rules`): what a widget's `statusMap` option names.
+- `allowUnsafeEmbeds: true`, present only when the config sets `ui.allowUnsafeEmbeds: true`: the
+  web frames a `core/embed` widget's page only then.
 - `findings` holds problems that never stop the UI from rendering:
   - `UI_UNKNOWN_EXTENSION`: an override for an unknown id, or a nav entry to an undeclared page;
   - `UI_UNKNOWN_SLOT`: an extension on an unknown slot;

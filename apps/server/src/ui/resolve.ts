@@ -540,6 +540,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
     ...(statusKinds.size === 0 ? {} : { statusKinds: [...statusKinds.values()].sort((a, b) => compareIds(a.kind, b.kind)) }),
     widgetTypes: [...widgetTypes.values()].sort((a, b) => compareIds(a.type, b.type)),
     ...(ui.statusMaps === undefined || Object.keys(ui.statusMaps).length === 0 ? {} : { statusMaps: copyStatusMaps(ui.statusMaps) }),
+    ...(ui.allowUnsafeEmbeds === true ? { allowUnsafeEmbeds: true as const } : {}),
     findings,
   };
 }
@@ -805,7 +806,7 @@ export function estateNameOf(config: unknown): string | undefined {
  * dropped anyway rather than trusted (an entry missing what it needs is dropped whole).
  */
 export function uiConfigOf(config: unknown): UiDefaults {
-  const ui = (config as { ui?: { brand?: unknown; home?: unknown; nav?: unknown; statusMaps?: unknown } } | null)?.ui;
+  const ui = (config as { ui?: { brand?: unknown; home?: unknown; nav?: unknown; statusMaps?: unknown; allowUnsafeEmbeds?: unknown } } | null)?.ui;
   const brand = isRecord(ui?.brand) ? ui.brand : {};
   const picked = { title: text(brand.title), icon: text(brand.icon), logoUrl: text(brand.logoUrl) };
   const home = text(ui?.home);
@@ -832,6 +833,8 @@ export function uiConfigOf(config: unknown): UiDefaults {
     ...DEFAULT_UI,
     brand: defined(picked),
     ...(statusMaps === undefined ? {} : { statusMaps }),
+    // Only a literal true opens the gate.
+    ...(ui?.allowUnsafeEmbeds === true ? { allowUnsafeEmbeds: true } : {}),
     ...(home === undefined ? {} : { home }),
     nav: {
       ...DEFAULT_UI.nav,

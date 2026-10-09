@@ -371,7 +371,7 @@ the placed `widget`. A module declares its types in `contributes.widgetTypes` (`
 components in its table; `registerWebModule` registers them (`registerWidgetType`). Deck's own
 types are `CORE_WIDGET_TYPES` in `@deck/contract/modules/core`, registered by
 `features/core-widgets`: `core/stat`, `stat-grid`, `meter`, `key-value`, `list`, `table`,
-`status-grid`, `link-tiles`, `markdown`, `health-pills` and `json`. Their option schemas are
+`status-grid`, `link-tiles`, `markdown`, `embed`, `health-pills` and `json`. Their option schemas are
 data in two copies that a test keeps equal: the contract's (`modules/widgets.ts`, so the browser
 bundle needs no runtime import) and the schema library's, which config validation composes. Each is a pure renderer over `@/ui` patterns (`StatTile`,
 `Meter`, `KeyValueList`, `List`, `DataTable`, `CardGrid` of `LinkTile`s, `Prose`, the top bar's
@@ -379,7 +379,11 @@ bundle needs no runtime import) and the schema library's, which config validatio
 (`features/core-widgets/values.ts`) and links only `http(s)` URLs (in a new tab) or absolute
 in-app paths. Given a value it cannot show, it says so with a compact `ErrorState`. The
 `markdown` widget renders through the docs view's pipeline, so DOMPurify is its XSS boundary
-too.
+too. The `embed` widget (`EmbedWidget.tsx`) is the one that is not a pattern renderer: it frames
+another origin's page in an `iframe` whose `sandbox` it always sets (default `allow-scripts
+allow-same-origin`, never a token outside its schema's list), only when the UI manifest has
+`allowUnsafeEmbeds: true`. It waits for the manifest, shows "Embeds are off" when the manifest
+cannot be read or does not allow them, and refuses a URL on deck's own origin.
 
 Status in a widget comes from config, never from code: `ui.statusMaps` declares named maps
 (exact `values` and ordered numeric `rules`, read by `statusTone` in `@deck/module-sdk`), the

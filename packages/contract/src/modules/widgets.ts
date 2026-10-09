@@ -49,6 +49,20 @@ const FIELD_ITEM = {
   },
 } as const;
 
+/**
+ * What a framed page may do (`core/embed`). None of these lets it navigate deck's tab, open modals
+ * or lock the pointer, except that `allow-popups-to-escape-sandbox` frees the popups it opens.
+ */
+/**
+ * The loose shape of a `core/embed` url (`EMBED_URL_PATTERN` in `@deck/schema/embed`, whose
+ * `embedUrlProblem` is the full rule that validation and the renderer run).
+ */
+const EMBED_URL_PATTERN = "^https?://[^/?#@\\s\\\\]+(?:[/?#][^\\s\\\\]*)?$";
+
+export const EMBED_SANDBOX = ["allow-scripts", "allow-same-origin", "allow-forms", "allow-popups", "allow-popups-to-escape-sandbox", "allow-downloads"] as const;
+
+
+
 const objectSchema = <P extends Record<string, unknown>>(properties: P) =>
   ({ type: "object", additionalProperties: false, properties }) as const;
 
@@ -177,6 +191,30 @@ export const CORE_WIDGET_TYPE_SCHEMAS = [
     optionsSchema: objectSchema({
       content: { type: "string", minLength: 1, maxLength: 20000, description: "The markdown shown; without it the widget shows its value, which must be text." },
     }),
+  },
+  {
+    type: "core/embed",
+    optionsSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["url"],
+      properties: {
+        url: {
+          type: "string",
+          maxLength: 2048,
+          pattern: EMBED_URL_PATTERN,
+          description: "The http(s) URL of the page the frame shows; never one of deck's own pages.",
+        },
+        height: { type: "string", enum: ["sm", "md", "lg", "xl"], description: "The frame's height: sm (15rem), md (24rem, default), lg (36rem) or xl (48rem)." },
+        sandbox: {
+          type: "array",
+          maxItems: EMBED_SANDBOX.length,
+          uniqueItems: true,
+          items: { type: "string", enum: EMBED_SANDBOX },
+          description: "What the framed page may do, replacing the default [allow-scripts, allow-same-origin]; [] allows nothing.",
+        },
+      },
+    },
   },
   {
     type: "core/health-pills",

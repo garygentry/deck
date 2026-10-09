@@ -1,6 +1,7 @@
 import type { ComposedConfig } from "../../compose/compose.js";
 import { finding, type Finding } from "../../findings.js";
-import type { DeckConfigDocument } from "../../types.js";
+import { embedUrlProblem } from "../../embed.js";
+import type { DeckConfigDocument, ValidateLayer } from "../../types.js";
 
 /**
  * Check the widgets of config pages (`ui.pages[].sections[].widgets[]`) beyond their shape:
@@ -15,15 +16,24 @@ import type { DeckConfigDocument } from "../../types.js";
  * - a `statusMap` a core widget's options name (at any depth: a table column's, a stat-grid
  *   item's) that `ui.statusMaps` does not declare (UI_STATUS_MAP_UNKNOWN, a warning); the widget
  *   shows those values without a tone.
+ * - a `core/embed` widget while `ui.allowUnsafeEmbeds` is not `true` (UI_EMBED_DISALLOWED, info:
+ *   the widget shows that embeds are off), on the merged document only, since the gate and the
+ *   widget may sit in different layers;
+ * - a `core/embed` url the URL parser refuses, or that carries user:password@
+ *   (UI_EMBED_URL_INVALID, an error), on the merged document: the same check the web makes
+ *   before it frames anything (the options schema checks only the url's loose shape).
  * A widget's options are checked by the composed schema, against its type's options schema.
  */
 export function uiWidgets(
   doc: DeckConfigDocument,
   composed: Pick<ComposedConfig, "widgetTypes" | "disabledWidgetTypes" | "selectProblem">,
   strict: boolean,
+  layer: ValidateLayer = "merged",
 ): Finding[] {
   const findings: Finding[] = [];
   const statusMaps = doc.ui?.statusMaps ?? {};
+  // Whether a layer alone shuts the gate is unknowable: an earlier or later layer may open it.
+  const checkEmbeds = layer === "merged" && doc.ui?.allowUnsafeEmbeds !== true;
   for (const [pageIndex, page] of (doc.ui?.pages ?? []).entries()) {
     const ids = new Set<string>();
     for (const [sectionIndex, section] of (page.sections ?? []).entries()) {
@@ -63,6 +73,18 @@ export function uiWidgets(
               `status map '${name}' is not declared in ui.statusMaps; the widget shows these values without a tone`,
             ));
           }
+        }
+        const url = (widget.options as { url?: unknown } | undefined)?.url;
+        if (widget.type === "core/embed" && layer === "merged" && typeof url === "string") {
+          const urlProblem = embedUrlProblem(url);
+          if (urlProblem !== null) findings.push(finding("UI_EMBED_URL_INVALID", `${path}/options/url`, `core/embed url ${JSON.stringify(url)}: ${urlProblem}`));
+        }
+        if (widget.type === "core/embed" && checkEmbeds) {
+          findings.push(finding(
+            "UI_EMBED_DISALLOWED",
+            `${path}/type`,
+            "core/embed shows another site's page in a frame only when ui.allowUnsafeEmbeds is true; until then it shows that embeds are off",
+          ));
         }
         const problem = widget.select === undefined ? null : composed.selectProblem?.(widget.select) ?? null;
         if (problem !== null) {

@@ -73,7 +73,7 @@ export function validate(
       ...(layer === "overlay" && isObject(options?.base) ? [] : references(doc, context, composed.references)),
       ...layers(doc, composed, layer, options?.base, strict),
       ...providerKinds(doc, composed, strict),
-      ...uiWidgets(doc, composed, strict),
+      ...uiWidgets(doc, composed, strict, layer),
       ...secrets(doc, context),
       // Module array identities: a duplicate the kernel rules already report is not repeated.
       ...composed.runChecks(document as JsonObject, layer, { disabledSections: strict ? "strict" : "advisory" }).filter(

@@ -59,7 +59,7 @@ bun apps/server/src/cli/deck.ts render   examples/estate --out rendered.json
 Documentation lives under [`docs/`](docs/), organized by reader need:
 
 - **Get started:** [`docs/get-started.md`](docs/get-started.md) — clone to a running deck on the example estate
-- **How-to guides:** [`docs/guides/`](docs/guides/) — configure your estate, connect monitoring, serve docs & configs, governed actions, produce a snapshot, deploy, private-repo sources, LLM plan usage
+- **How-to guides:** [`docs/guides/`](docs/guides/) — configure your estate, connect monitoring, serve docs & configs, governed actions, produce a snapshot, deploy, private-repo sources, LLM plan usage, build a dashboard without code
 - **Reference:** [`docs/reference/`](docs/reference/) — estate config, snapshot contract, provider kinds, environment variables, CLI, HTTP API
 - **Explanation:** [`docs/explanation/`](docs/explanation/) — engine vs. estate, drift & coverage; plus [`docs/security.md`](docs/security.md) (access model)
 - **Architecture:** [`docs/architecture/`](docs/architecture/) — context & containers, building blocks, deployment view, per-feature notes, and [decisions](docs/architecture/decisions/)

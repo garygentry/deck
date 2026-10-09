@@ -20,6 +20,8 @@ import { fixture as uiWidgetTypeUnknown } from "./ui-widget-type-unknown.js";
 import { fixture as uiWidgetTypeDisabled } from "./ui-widget-type-disabled.js";
 import { fixture as uiWidgetSelectInvalid } from "./ui-widget-select-invalid.js";
 import { fixture as uiStatusMapUnknown } from "./ui-status-map-unknown.js";
+import { fixture as uiEmbedDisallowed } from "./ui-embed-disallowed.js";
+import { fixture as uiEmbedUrlInvalid } from "./ui-embed-url-invalid.js";
 import { fixture as secretValueSuspected } from "./secret-value-suspected.js";
 import { fixture as snapshotHostDuplicate } from "./snapshot-host-duplicate.js";
 import { fixture as snapshotServiceDuplicate } from "./snapshot-service-duplicate.js";
@@ -51,6 +53,8 @@ export const invalid: readonly InvalidFixture[] = [
   uiWidgetTypeDisabled,
   uiWidgetSelectInvalid,
   uiStatusMapUnknown,
+  uiEmbedDisallowed,
+  uiEmbedUrlInvalid,
   secretValueSuspected,
   snapshotHostDuplicate,
   snapshotServiceDuplicate,

@@ -28,6 +28,7 @@ const CORE_WIDGET_COMPONENTS: Readonly<Record<CoreWidgetType, string>> = {
   "core/status-grid": "StatusGridWidget",
   "core/link-tiles": "LinkTilesWidget",
   "core/markdown": "MarkdownWidget",
+  "core/embed": "EmbedWidget",
   "core/health-pills": "HealthPillsWidget",
   "core/json": "JsonWidget",
 };

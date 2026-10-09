@@ -568,6 +568,10 @@
   ],
   "widgetTypes": [
     {
+      "type": "core/embed",
+      "module": "core"
+    },
+    {
       "type": "core/health-pills",
       "module": "core"
     },

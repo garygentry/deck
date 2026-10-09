@@ -22,6 +22,7 @@ import { resolveUiManifest, uiConfigOf, type ResolveUiInput } from "../src/ui/re
 import { uiContributionProblem } from "../src/ui/validate.js";
 import { testHost, testModule } from "./util/modules.js";
 import { buildUiManifest } from "../src/ui/manifest.js";
+import { load } from "../src/config/load.js";
 import { capture, captureValidate, createdApps, layersDir, SETTLE_TIMEOUT_MS } from "./parity/harness.js";
 import { makeConfigDir } from "./util/tmp-config.js";
 
@@ -374,6 +375,83 @@ describe("status maps in the UI manifest", () => {
     }
     expect(ui.statusMaps).toEqual(MAPS);
     expect(sectionsOf(ui, "page:ui/lab")[0]?.widgets[0]?.options).toEqual({ statusMap: "outlet" });
+  });
+});
+
+describe("the embed gate in the UI manifest", () => {
+  it("publishes allowUnsafeEmbeds only when the config sets it to true", () => {
+    expect(resolveWith({ allowUnsafeEmbeds: true }).allowUnsafeEmbeds).toBe(true);
+    for (const ui of [{}, { allowUnsafeEmbeds: false }, { allowUnsafeEmbeds: "true" }, { allowUnsafeEmbeds: 1 }]) {
+      expect("allowUnsafeEmbeds" in resolveWith(ui)).toBe(false);
+    }
+  });
+
+  it("lists core/embed among core's widget types", () => {
+    expect(resolveWith({}).widgetTypes).toContainEqual({ type: "core/embed", module: "core" });
+  });
+
+  it("serves the gate and the embed's options in /api/ui, with no finding when it is open", async () => {
+    const embed = { id: "graph", type: "core/embed", title: "UPS graph", options: { url: "https://grafana.example.net/d/ups", height: "lg" } };
+    const layers = layersDir({
+      "00-base.yaml": { schemaVersion: 2, estate: { name: "embed-estate" } },
+      "10-overlay.yaml": { schemaVersion: 2, ui: { allowUnsafeEmbeds: true, pages: [{ id: "lab", path: "/lab", title: "Lab", sections: [{ title: "S", widgets: [embed] }] }] } },
+    });
+    let ui = {} as UiManifest;
+    try {
+      const projection = await capture({ id: "ui-embed", dir: layers.dir }, {
+        onApp: async (app) => {
+          ui = (await (await app.request("/api/ui")).json()) as UiManifest;
+        },
+      });
+      expect(projection.validate).toMatchObject({ exitClass: 0 });
+    } finally {
+      layers.cleanup();
+    }
+    expect(ui.allowUnsafeEmbeds).toBe(true);
+    expect(pageOf(ui, "page:ui/lab")?.layout?.sections.flatMap((section) => ("widgets" in section ? section.widgets : []))[0]).toMatchObject({ type: "core/embed", source: null, options: embed.options });
+  });
+
+  const EMBED_PAGE = { pages: [{ id: "lab", path: "/lab", title: "Lab", sections: [{ title: "S", widgets: [{ id: "graph", type: "core/embed", options: { url: "https://grafana.example.net/d/ups" } }] }] }] };
+  const codes = (findings: ReadonlyArray<{ code: string }>) => findings.filter((finding) => finding.code === "UI_EMBED_DISALLOWED");
+
+  it("boots with an embed while the gate is shut, noting it once (UI_EMBED_DISALLOWED, info), and serves no gate", async () => {
+    const layers = layersDir({
+      "00-base.yaml": { schemaVersion: 2, estate: { name: "embed-estate" } },
+      "10-overlay.yaml": { schemaVersion: 2, ui: EMBED_PAGE },
+    });
+    let ui = {} as UiManifest;
+    try {
+      const projection = await capture({ id: "ui-embed-shut", dir: layers.dir }, {
+        onApp: async (app) => {
+          ui = (await (await app.request("/api/ui")).json()) as UiManifest;
+        },
+      });
+      expect(projection.validate.exitClass).toBe(0);
+      expect(projection.validate.stdout).toContain("UI_EMBED_DISALLOWED");
+      const loaded = load({ arg: layers.dir, env: {}, boot: true });
+      expect(loaded.exitClass).toBe(0);
+      // Reported for the merged document only, not again for the overlay layer.
+      expect(codes(loaded.findings)).toEqual([expect.objectContaining({ severity: "info", path: "/ui/pages/0/sections/0/widgets/0/type" })]);
+    } finally {
+      layers.cleanup();
+    }
+    expect("allowUnsafeEmbeds" in ui).toBe(false);
+    expect(pageOf(ui, "page:ui/lab")?.layout?.sections.flatMap((section) => ("widgets" in section ? section.widgets : []))[0]?.type).toBe("core/embed");
+  });
+
+  it("finds nothing when the gate and the embed are in different layers", () => {
+    const layers = layersDir({
+      "00-base.yaml": { schemaVersion: 2, estate: { name: "embed-estate" } },
+      "10-o.yaml": { schemaVersion: 2, ui: { allowUnsafeEmbeds: true } },
+      "20-d.yaml": { schemaVersion: 2, ui: EMBED_PAGE },
+    });
+    try {
+      const loaded = load({ arg: layers.dir, env: {} });
+      expect(loaded.exitClass).toBe(0);
+      expect(codes(loaded.findings)).toEqual([]);
+    } finally {
+      layers.cleanup();
+    }
   });
 });
 

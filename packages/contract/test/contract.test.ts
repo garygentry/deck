@@ -91,3 +91,29 @@ describe("@deck/contract", () => {
     }
   });
 });
+
+describe("core/embed's url check", () => {
+  const ACCEPTED = [
+    "https://grafana.lab/d/ups?kiosk", "https://grafana.lab./", "http://my_grafana:3000/", "https://bücher.lab/",
+    "http://[::1]:3000/", "http://10.0.0.5/", "https://h.lab:65535/#a", "https://wiki.lab/a@b",
+  ];
+  // Refused by the loose pattern (shape) or by the URL parser behind it.
+  const REFUSED = [
+    "https://999.1.1.1/", "http://x.123/", "https://[:::]/", "https://[1]/", "https://x:99999/", "https://%/", "https://?q",
+    "http://:80/", "http://#a", "https://user:pw@h.lab/", "https://user@h.lab/", "https://\\evil.lab/", "//h.lab/x", "/hosts",
+    "javascript:alert(1)", "data:text/html,x", "https://h.lab/a b", 42,
+  ];
+
+  it("is the schema library's one rule (the contract's options pattern equals it), then the URL parser", async () => {
+    const { CORE_WIDGET_TYPE_SCHEMAS } = await import("../src/modules/widgets.js");
+    const { EMBED_URL_PATTERN, embedUrlProblem } = await import("@deck/schema/embed");
+    const embedType = CORE_WIDGET_TYPE_SCHEMAS.find(({ type }) => type === "core/embed");
+    expect((embedType?.optionsSchema as { properties: { url: { pattern: string } } }).properties.url.pattern).toBe(EMBED_URL_PATTERN);
+    const pattern = new RegExp(EMBED_URL_PATTERN, "u");
+    for (const url of ACCEPTED) {
+      expect(embedUrlProblem(url), url).toBeNull();
+      expect(pattern.test(url), url).toBe(true);
+    }
+    for (const url of REFUSED) expect(embedUrlProblem(url), String(url)).not.toBeNull();
+  });
+});

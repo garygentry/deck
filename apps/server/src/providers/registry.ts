@@ -309,7 +309,7 @@ async function poll<T>(slot: Slot<T>): Promise<boolean> {
       controller.signal,
       slot.timing.timeoutMs,
     );
-    slot.lastSuccessAt = new Date().toISOString();
+    slot.lastSuccessAt = new Date(observedAtOf(slot.provider, Date.now())).toISOString();
     slot.retainedData = data;
     publish(slot, null);
     ok = true;
@@ -347,6 +347,21 @@ async function poll<T>(slot: Slot<T>): Promise<boolean> {
     }
   }
   return ok;
+}
+
+/**
+ * When the data a successful fetch returned was observed: the provider's own report, never
+ * after `now` (a future time counts as now), else `now`. A throwing or invalid report is `now`.
+ */
+function observedAtOf<T>(provider: Provider<T>, now: number): number {
+  let reported: unknown;
+  try {
+    reported = provider.observedAt?.();
+  } catch {
+    return now;
+  }
+  if (typeof reported !== "number" || Number.isNaN(new Date(reported).getTime())) return now;
+  return Math.min(reported, now);
 }
 
 /** Read the now non-I/O provider health, isolating a rejecting or invalid snapshot. */

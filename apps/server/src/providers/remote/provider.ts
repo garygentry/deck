@@ -2,29 +2,32 @@ import type { ProviderFetchContext, ProviderHealth, ProviderSpec } from "@deck/m
 import { isRfc3339DateTime } from "@deck/schema";
 
 import { fetchJson, HttpJsonError, type HttpJsonConfig } from "../http-json/index.js";
+import type { InstanceRequest } from "../http-json/request-config.js";
 
 /** The protocol's data path, under the integration's base URL. */
 export const REMOTE_DATA_PATH = "/deck/v1/data";
 
+/** The longest `observedAt` accepted: an RFC 3339 time with a millisecond fraction and an offset fits. */
+export const REMOTE_OBSERVED_AT_MAX_LENGTH = 40;
+
 export interface RemoteConfig {
   /** The sidecar's base URL; the protocol's paths go under it. */
   url: string;
-  /** The credential, its scheme and the env reader. */
-  request: Pick<HttpJsonConfig, "credentialEnv" | "auth" | "env">;
-  timeoutMs?: number;
-  /** The largest data response accepted, in bytes. */
-  maxBytes?: number;
+  /** The instance's request settings: the credential, its scheme, the env reader, timeout and body cap. */
+  request: InstanceRequest;
 }
 
 /**
  * A `remote` integration's provider. Each poll reads `GET <url>/deck/v1/data`, a
  * `{ data, observedAt? }` envelope, through the same hardened request as `http-json`; the
- * provider's data is its `data`.
+ * provider's data is its `data`, and the sidecar's `observedAt` is when it was observed, so
+ * the envelope's age and staleness follow the sidecar's clock, not the poll's.
  */
 export class RemoteProvider implements ProviderSpec<unknown> {
   readonly kind = "remote";
 
   private latestHealth: ProviderHealth = { ok: false, detail: "awaiting first poll" };
+  private latestObservedAt: number | null = null;
 
   constructor(
     readonly id: string,
@@ -35,11 +38,17 @@ export class RemoteProvider implements ProviderSpec<unknown> {
     return { ...this.latestHealth };
   }
 
+  observedAt(): number | null {
+    return this.latestObservedAt;
+  }
+
   async fetch(context?: ProviderFetchContext): Promise<unknown> {
     try {
-      const { status, data } = await fetchJson(this.request(REMOTE_DATA_PATH, this.cfg.maxBytes), context);
+      const { status, data } = await fetchJson(this.request(REMOTE_DATA_PATH), context);
       const envelope = dataEnvelope(data);
-      this.latestHealth = { ok: true, detail: `HTTP ${status}${envelope.observedAt === undefined ? "" : `, observed ${envelope.observedAt}`}` };
+      this.latestObservedAt = envelope.observedAt ?? null;
+      const observed = envelope.observedAt === undefined ? "" : `, observed ${new Date(envelope.observedAt).toISOString()}`;
+      this.latestHealth = { ok: true, detail: `HTTP ${status}${observed}` };
       return envelope.data;
     } catch (error) {
       this.latestHealth = { ok: false, detail: (error as Error).message };
@@ -47,13 +56,8 @@ export class RemoteProvider implements ProviderSpec<unknown> {
     }
   }
 
-  private request(path: string, maxBytes: number | undefined): HttpJsonConfig {
-    return {
-      url: endpoint(this.cfg.url, path),
-      ...this.cfg.request,
-      ...(this.cfg.timeoutMs === undefined ? {} : { timeoutMs: this.cfg.timeoutMs }),
-      ...(maxBytes === undefined ? {} : { maxBytes }),
-    };
+  private request(path: string): HttpJsonConfig {
+    return { url: endpoint(this.cfg.url, path), ...this.cfg.request };
   }
 }
 
@@ -62,15 +66,21 @@ export function endpoint(base: string, path: string): string {
   return `${base.replace(/\/+$/, "")}${path}`;
 }
 
-/** The data response's envelope; anything else is a classified failure. */
-function dataEnvelope(body: unknown): { data: unknown; observedAt?: string } {
+/**
+ * The data response's envelope, with `observedAt` as epoch milliseconds; anything else is a
+ * classified failure whose message never repeats the sidecar's text.
+ */
+function dataEnvelope(body: unknown): { data: unknown; observedAt?: number } {
   if (body === null || typeof body !== "object" || Array.isArray(body) || !("data" in body)) {
     throw new HttpJsonError("not-json", "sidecar data response is not a { data } envelope");
   }
   const { data, observedAt } = body as { data: unknown; observedAt?: unknown };
   if (observedAt === undefined) return { data };
-  if (typeof observedAt !== "string" || !isRfc3339DateTime(observedAt)) {
-    throw new HttpJsonError("not-json", "sidecar data response's observedAt is not an RFC 3339 time");
-  }
-  return { data, observedAt };
+  // Bounded before it is parsed: a long fraction is refused, never scanned.
+  const time =
+    typeof observedAt === "string" && observedAt.length <= REMOTE_OBSERVED_AT_MAX_LENGTH && isRfc3339DateTime(observedAt)
+      ? Date.parse(observedAt)
+      : Number.NaN;
+  if (Number.isNaN(time)) throw new HttpJsonError("not-json", "sidecar data response's observedAt is not an RFC 3339 time");
+  return { data, observedAt: time };
 }

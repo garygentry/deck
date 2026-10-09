@@ -10,7 +10,7 @@ import { kindRuntimes, planModules } from "../src/modules/host.js";
 import { HttpJsonError } from "../src/providers/http-json/index.js";
 import { registerAllProviders } from "../src/providers/index.js";
 import { RemoteProvider } from "../src/providers/remote/provider.js";
-import { listHealth, listProviders, providerCount, read, setProjections, startScheduler, stopScheduler } from "../src/providers/registry.js";
+import { listHealth, listProviders, providerCount, read, register, setProjections, startScheduler, stopScheduler } from "../src/providers/registry.js";
 import { createApp } from "../src/server/app.js";
 import { makeConfigDir } from "./util/tmp-config.js";
 
@@ -78,7 +78,7 @@ describe("the remote provider: data", () => {
     const remote = new RemoteProvider("ups", { url: `${sidecar.url}/`, request: {} });
     await expect(remote.fetch()).resolves.toEqual(DATA.data);
     expect(sidecar.seen.map((seen) => seen.path)).toEqual(["/deck/v1/data"]);
-    expect(await remote.health()).toEqual({ ok: true, detail: "HTTP 200, observed 2026-10-09T09:00:00Z" });
+    expect(await remote.health()).toEqual({ ok: true, detail: "HTTP 200, observed 2026-10-09T09:00:00.000Z" });
   });
 
   it.each([
@@ -111,8 +111,64 @@ describe("the remote provider: data", () => {
 
   it("times out on its own timeoutMs", async () => {
     other.routes.set("/deck/v1/data", () => {});
-    const remote = new RemoteProvider("ups", { url: other.url, request: {}, timeoutMs: 200 });
+    const remote = new RemoteProvider("ups", { url: other.url, request: { timeoutMs: 200 } });
     await expect(remote.fetch()).rejects.toThrow("timed out after 200ms");
+  });
+});
+
+describe("the remote provider: observedAt", () => {
+  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+
+  it("the sidecar's observedAt sets the envelope's observedAt and age: old data is stale", async () => {
+    // Past the 60s ttl, inside the default unreachable bound.
+    const old = minutesAgo(1.5);
+    other.routes.set("/deck/v1/data", json({ data: { load: 1 }, observedAt: old }));
+    register(new RemoteProvider("ups", { url: other.url, request: {} }), { ttlMs: 60_000 });
+    startScheduler();
+    await vi.waitFor(() => expect(read("ups")?.data).toEqual({ load: 1 }), { timeout: 5_000 });
+    expect(read("ups")?.freshness).toMatchObject({ state: "stale", observedAt: new Date(old).toISOString() });
+    expect(read("ups")!.freshness.ageMs!).toBeGreaterThanOrEqual(89_000);
+  });
+
+  it("without observedAt the poll time is used, and a future observedAt counts as now", async () => {
+    other.routes.set("/deck/v1/data", json({ data: { load: 1 } }));
+    const future = new Date(Date.now() + 3_600_000).toISOString();
+    const ahead = new Sidecar();
+    await ahead.start();
+    try {
+      ahead.routes.set("/deck/v1/data", json({ data: { load: 2 }, observedAt: future }));
+      register(new RemoteProvider("ups", { url: other.url, request: {} }), { ttlMs: 60_000 });
+      register(new RemoteProvider("pdu", { url: ahead.url, request: {} }), { ttlMs: 60_000 });
+      const before = Date.now();
+      startScheduler();
+      await vi.waitFor(() => {
+        expect(read("ups")?.data).toEqual({ load: 1 });
+        expect(read("pdu")?.data).toEqual({ load: 2 });
+      }, { timeout: 5_000 });
+      for (const id of ["ups", "pdu"]) {
+        const { state, observedAt } = read(id)!.freshness;
+        expect(state, id).toBe("fresh");
+        expect(Date.parse(observedAt!), id).toBeGreaterThanOrEqual(before);
+        expect(Date.parse(observedAt!), id).toBeLessThanOrEqual(Date.now());
+      }
+    } finally {
+      await ahead.stop();
+    }
+  });
+
+  it("is shown normalised, and an overlong one is refused without being echoed", async () => {
+    other.routes.set("/deck/v1/data", json({ data: 1, observedAt: "2026-10-09T11:00:00+02:00" }));
+    const remote = new RemoteProvider("ups", { url: other.url, request: {} });
+    await remote.fetch();
+    expect(await remote.health()).toEqual({ ok: true, detail: "HTTP 200, observed 2026-10-09T09:00:00.000Z" });
+    expect(remote.observedAt()).toBe(Date.parse("2026-10-09T09:00:00Z"));
+
+    const long = `2026-10-09T09:00:00.${"1".repeat(900_000)}Z`;
+    other.routes.set("/deck/v1/data", json({ data: 1, observedAt: long }));
+    const started = Date.now();
+    await expect(remote.fetch()).rejects.toThrow("sidecar data response's observedAt is not an RFC 3339 time");
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(JSON.stringify(await remote.health())).not.toContain("1111111111");
   });
 });
 
@@ -157,6 +213,46 @@ describe("the remote kind in an estate", () => {
     expect(result.findings).toContainEqual(expect.objectContaining({ code: "REMOTE_ID_RESERVED", severity: "error" }));
   });
 
+  it("wires credentialEnv, auth, maxBytes and timeoutMs from the estate through to each request", async () => {
+    const seenAuth: Array<string | undefined> = [];
+    other.routes.set("/deck/v1/data", (req, res) => {
+      seenAuth.push(req.headers.authorization);
+      json({ data: { ok: true } })(req, res);
+    });
+    const big = new Sidecar();
+    const slow = new Sidecar();
+    await big.start();
+    await slow.start();
+    try {
+      big.routes.set("/deck/v1/data", json({ data: { pad: "x".repeat(4_096) } }));
+      slow.routes.set("/deck/v1/data", () => {});
+      const hostEnv = { UPS_TOKEN: SECRET };
+      const result = load({
+        arg: configDir([
+          instance({ url: other.url, credentialEnv: "UPS_TOKEN", auth: { scheme: "bearer" }, pollIntervalMs: 60_000 }),
+          instance({ id: "big", title: "Big", url: big.url, maxBytes: 1_024, pollIntervalMs: 60_000 }),
+          instance({ id: "slow", title: "Slow", url: slow.url, timeoutMs: 200, pollIntervalMs: 60_000 }),
+        ]),
+        env: hostEnv,
+      });
+      expect(errors(result)).toEqual([]);
+      const { plan, usable } = planModules({ modules: BUILTIN_MODULES, sectionOf: () => undefined, env: hostEnv });
+      registerAllProviders(result.config!, kindRuntimes(plan.filter((e) => e.enabled).map((e) => usable.get(e.id)!), hostEnv));
+      startScheduler();
+      await vi.waitFor(() => {
+        expect(read("ups")?.data).toEqual({ ok: true });
+        expect(read("big")?.error).not.toBeNull();
+        expect(read("slow")?.error).not.toBeNull();
+      }, { timeout: 5_000 });
+      expect(seenAuth).toEqual([`Bearer ${SECRET}`]);
+      expect(read("big")?.error).toEqual({ message: "upstream response exceeds 1024 bytes" });
+      expect(read("slow")?.error?.message).toMatch(/timed out after 200ms/);
+    } finally {
+      await big.stop();
+      await slow.stop();
+    }
+  });
+
   it("registers each sidecar as its own provider: one down degrades only its own health entry", async () => {
     other.routes.set("/deck/v1/data", json({}, 503));
     const result = load({ arg: configDir([instance({ pollIntervalMs: 1_000 }), instance({ id: "pdu", title: "PDU", url: other.url, pollIntervalMs: 1_000 })]), env: {} });
@@ -176,7 +272,7 @@ describe("the remote kind in an estate", () => {
     });
     const health = (await (await app.request("/api/health")).json()) as { status: string; providers: Record<string, { ok: boolean; detail?: string }> };
     expect(health.status).toBe("degraded");
-    expect(health.providers.ups).toMatchObject({ ok: true, detail: "HTTP 200, observed 2026-10-09T09:00:00Z" });
+    expect(health.providers.ups).toMatchObject({ ok: true, detail: "HTTP 200, observed 2026-10-09T09:00:00.000Z" });
     expect(health.providers.pdu).toMatchObject({ ok: false, detail: "upstream answered HTTP 503" });
   });
 });

@@ -8,13 +8,9 @@ import {
   type ProviderOffer,
 } from "@deck/module-sdk";
 
-import httpJsonSchema from "../http-json/instance.schema.json" with { type: "json" };
 import { urlProblem } from "../http-json/literal.js";
-import { auth, fixedIdFindings, integer, timing } from "../http-json/module.js";
+import { fixedIdFindings, instanceRequest, sharedInstanceProperties as shared } from "../http-json/request-config.js";
 import { RemoteProvider } from "./provider.js";
-
-const httpJson = httpJsonSchema as unknown as { properties: Record<string, unknown> };
-const shared = (names: readonly string[]) => Object.fromEntries(names.map((name) => [name, httpJson.properties[name]]));
 
 /**
  * A `remote` integration: the http-json instance's own credential, timing and size settings
@@ -97,24 +93,10 @@ export const remoteModule = defineServerModule(REMOTE_MANIFEST, () => {}, {
             logger.warn({ event: "remote.instance.skipped", ...(typeof id === "string" ? { id } : {}) }, "remote instance skipped");
             return [];
           }
-          const instanceTiming = timing(instance);
-          const instanceAuth = auth(instance.auth);
-          const maxBytes = integer(instance.maxBytes);
-          const provider = new RemoteProvider(
-            id,
-            {
-              url,
-              request: {
-                ...(typeof instance.credentialEnv === "string" ? { credentialEnv: instance.credentialEnv } : {}),
-                ...(instanceAuth === undefined ? {} : { auth: instanceAuth }),
-                // Only this instance's credential: another instance's is never readable here.
-                env: envFor(instance),
-              },
-              ...(instanceTiming?.timeoutMs === undefined ? {} : { timeoutMs: instanceTiming.timeoutMs }),
-              ...(maxBytes === undefined ? {} : { maxBytes }),
-            },
-          );
-          return [{ provider, ...(instanceTiming ? { timing: instanceTiming } : {}) }];
+          // Only this instance's credential: another instance's is never readable here.
+          const { request, timing } = instanceRequest(instance, envFor);
+          const provider = new RemoteProvider(id, { url, request });
+          return [{ provider, ...(timing === undefined ? {} : { timing }) }];
         }),
     },
   },

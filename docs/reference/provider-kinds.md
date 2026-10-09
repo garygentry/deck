@@ -274,8 +274,10 @@ unhealthy only when every query is unreachable.
 
 A sidecar: a small service, in any language, that deck polls at `<url>/deck/v1/data`. It
 answers `{ "data": <any JSON>, "observedAt"?: "<RFC 3339 time>" }`; the provider's data is
-`data`, and `observedAt` shows in the provider's health detail. A body without `data`, or with
-an `observedAt` that is not an RFC 3339 time, fails the poll. Backed by an integration; each
+`data`. `observedAt` (at most 40 characters) is when the sidecar took it: the envelope's
+`observedAt` and age, and so its staleness, follow it rather than the poll time, and a time in
+the future counts as now. A body without `data`, or with an `observedAt` that is not an RFC 3339
+time, fails the poll. Backed by an integration; each
 instance is its own provider, registered under its `id`.
 
 The request goes through `http-json`'s hardening (above): the credential comes only from the

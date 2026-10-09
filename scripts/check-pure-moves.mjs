@@ -6,7 +6,8 @@
 // <base-ref> to HEAD (or, with --worktree, to the working tree: tracked and staged files, so
 // `git mv` first):
 //   - each renamed source file is parsed, old and new, with the TypeScript compiler, and the two
-//     token streams must be equal. Comments and whitespace are trivia and may change. A module
+//     streams (tree shape, tokens, directive comments such as `// @ts-expect-error`) must be
+//     equal, even for a byte-identical file. Other comments and whitespace may change. A module
 //     specifier (`import`/`export … from`, `import()`, `require()`, `import("…")` types,
 //     `declare module`) may change only when it resolves, from the file's new path, to the
 //     module the old one resolved to from the old path (through the renames): the same file,
@@ -14,7 +15,8 @@
 //     path aliases and workspace packages' `exports`. JSON compares as data; any other file
 //     must be byte-identical.
 //   - a deleted file whose content reappears in an added file is a move git did not detect as
-//     a rename (so `git log --follow` would lose its history): not pure.
+//     a rename (so `git log --follow` would lose its history): not pure. So is any other deleted
+//     source under apps/*/src or apps/*/test, which no rename accounts for.
 //   - every other change is listed, with modified source files marked when their only edits are
 //     specifiers to the same modules, so the non-move edits are easy to review.
 // Its output is meant to be pasted into the PR body.
@@ -24,16 +26,15 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { devNull } from "node:os";
 import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import ts from "typescript";
 
 /**
- * Run git with every knob that could change its diff output pinned: fixed a/ b/ prefixes,
- * unquoted paths, renames on, no global or system config and no external diff (the diff
- * commands also pass --no-ext-diff and --no-textconv).
+ * Run git with every knob that could change its diff output pinned (fixed a/ b/ prefixes,
+ * unquoted paths, renames on, no external diff; the diff commands also pass --no-ext-diff and
+ * --no-textconv). Other config, global and system included, still applies (`safe.directory`).
  */
 export function git(cwd, args, { binary = false } = {}) {
   const pinned = [
@@ -43,14 +44,25 @@ export function git(cwd, args, { binary = false } = {}) {
     "-c", "diff.renames=true",
     "-c", "diff.relative=false",
   ];
-  const env = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: devNull };
+  const env = { ...process.env };
   delete env.GIT_EXTERNAL_DIFF;
   return execFileSync("git", [...pinned, ...args], { cwd, env, maxBuffer: 512 * 1024 * 1024, ...(binary ? {} : { encoding: "utf8" }) });
 }
 
 const SOURCE = /\.(?:[cm]?[jt]sx?)$/;
 
-/** Every source leaf (a token, identifier or literal) of `text`, comments and whitespace aside. */
+/**
+ * Comments that are code: tool directives (`// @ts-expect-error`, `/* @vite-ignore *\/`,
+ * `/*#__PURE__*\/`, `/** @vitest-environment jsdom *\/`, `/// <reference …>`).
+ */
+export const DIRECTIVE = /^\s*(?:\/\/\/\s*<|\/\/\s*[@#]|\/\*\*?\s*[@#])/;
+
+/**
+ * The source of `text` as a stream to compare: every node's kind and child count (so the tree's
+ * shape, which line breaks can change through ASI, is part of it), every leaf (a token,
+ * identifier or literal) with its text, and every directive comment. Other comments and
+ * whitespace are left out. Module specifiers stand as `{ specifier }` entries.
+ */
 export function sourceLeaves(path, text) {
   const kind = /\.tsx$/.test(path) ? ts.ScriptKind.TSX : /\.jsx$/.test(path) ? ts.ScriptKind.JSX : /\.[cm]?js$/.test(path) ? ts.ScriptKind.JS : ts.ScriptKind.TS;
   const file = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, kind);
@@ -68,17 +80,24 @@ export function sourceLeaves(path, text) {
   };
   find(file);
   const leaves = [];
+  const directives = (ranges) => {
+    for (const range of ranges ?? []) {
+      const comment = text.slice(range.pos, range.end);
+      if (DIRECTIVE.test(comment)) leaves.push({ kind: "directive", text: comment.trim() });
+    }
+  };
   const walk = (node) => {
     if (node.kind >= ts.SyntaxKind.FirstJSDocNode && node.kind <= ts.SyntaxKind.LastJSDocNode) return;
-    if (specifiers.has(node)) {
-      leaves.push({ specifier: node.text });
-      return;
-    }
-    const children = node.getChildren(file);
+    const children = specifiers.has(node) ? [] : node.getChildren(file);
     if (children.length === 0) {
-      if (node.kind !== ts.SyntaxKind.EndOfFileToken) leaves.push({ kind: node.kind, text: node.getText(file) });
+      // A leaf owns the comments before it (from the line after the previous token) and after it on its line.
+      directives(ts.getLeadingCommentRanges(text, node.pos));
+      if (specifiers.has(node)) leaves.push({ specifier: node.text });
+      else if (node.kind !== ts.SyntaxKind.EndOfFileToken) leaves.push({ kind: node.kind, text: node.getText(file) });
+      directives(ts.getTrailingCommentRanges(text, node.end));
       return;
     }
+    leaves.push({ kind: node.kind, text: `(${children.length}` });
     for (const child of children) walk(child);
   };
   walk(file);
@@ -194,7 +213,10 @@ const show = (leaf) => ("specifier" in leaf ? `specifier "${leaf.specifier}"` : 
  */
 export function compareFile({ oldTree, newTree, from, to, renames }) {
   const [before, after] = [oldTree.read(from), newTree.read(to)];
-  if (Buffer.compare(before, after) === 0) return { problems: [], specifiers: 0, trivia: false };
+  const source = SOURCE.test(from) && SOURCE.test(to);
+  // A source file is compared even when byte-identical: an unchanged relative specifier loads
+  // another module once the file has moved.
+  if (!source && Buffer.compare(before, after) === 0) return { problems: [], specifiers: 0, trivia: false };
   if (from.endsWith(".json") && to.endsWith(".json")) {
     try {
       return sameJson(JSON.parse(before.toString("utf8")), JSON.parse(after.toString("utf8")))
@@ -204,7 +226,7 @@ export function compareFile({ oldTree, newTree, from, to, renames }) {
       return { problems: ["JSON does not parse"], specifiers: 0, trivia: false };
     }
   }
-  if (!SOURCE.test(from) || !SOURCE.test(to)) return { problems: ["content differs (not a source file, so it must be byte-identical)"], specifiers: 0, trivia: false };
+  if (!source) return { problems: ["content differs (not a source file, so it must be byte-identical)"], specifiers: 0, trivia: false };
   const a = sourceLeaves(from, before.toString("utf8"));
   const b = sourceLeaves(to, after.toString("utf8"));
   const problems = [];
@@ -221,7 +243,6 @@ export function compareFile({ oldTree, newTree, from, to, renames }) {
       problems.push(`token ${index}: ${show(x)} → ${show(y)}`);
       continue;
     }
-    if (x.specifier === y.specifier && from === to) continue;
     const was = oldTree.resolve(x.specifier, from);
     const now = newTree.resolve(y.specifier, to);
     const expected = was.startsWith("file:") ? `file:${renames.get(was.slice(5)) ?? was.slice(5)}` : was;
@@ -231,7 +252,7 @@ export function compareFile({ oldTree, newTree, from, to, renames }) {
       specifiers++;
     }
   }
-  return { problems, specifiers, trivia: problems.length === 0 && specifiers === 0 };
+  return { problems, specifiers, trivia: problems.length === 0 && specifiers === 0 && Buffer.compare(before, after) !== 0 };
 }
 
 /** Parse `git diff --name-status -z` output into `[status, path, path?]` entries. */
@@ -290,6 +311,16 @@ export function check(cwd, base, { worktree = false } = {}) {
     failed = true;
     lines.push("", `NOT PURE: moves git did not detect as renames (${undetected.length}); history would not follow them:`);
     for (const [from, to] of undetected) lines.push(`  ${from} -> ${to}`);
+  }
+
+  // A deleted app source or test that nothing pairs may have moved with edits too large for
+  // rename detection: its history and its purity are both unchecked.
+  const paired = new Set(undetected.map(([from]) => from));
+  const unpaired = deleted.filter((path) => !paired.has(path) && SOURCE.test(path) && /^apps\/[^/]+\/(?:src|test)\//.test(path));
+  if (unpaired.length > 0) {
+    failed = true;
+    lines.push("", `NOT PURE: deleted app sources no rename pairs (${unpaired.length}); move them with git mv, or delete them in a separate change:`);
+    for (const path of unpaired) lines.push(`  D ${path}`);
   }
 
   const additions = added.filter((path) => path.startsWith("modules/"));

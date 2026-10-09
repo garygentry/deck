@@ -21,6 +21,8 @@ const GROW = [
   "  return helper(size) * 2 + a + b + login(label) + tool;",
   "}",
   "",
+  "export const made = /*#__PURE__*/ helper(1);",
+  "",
 ].join("\n");
 
 describe("check-pure-moves", () => {
@@ -75,12 +77,75 @@ describe("check-pure-moves", () => {
     ["an import-like string literal", (source: string) => source.replace(`'import "./a.js"'`, `'import "./b.js"'`)],
     ["a specifier retargeted to another module", (source: string) => source.replace('"./auth.js"', '"./auth-noop.js"')],
     ["two specifiers swapped", (source: string) => source.replace('"./a.js"', '"./TMP"').replace('"./b.js"', '"./a.js"').replace('"./TMP"', '"./b.js"')],
+    ["a line break that ends a statement (ASI)", (source: string) => source.replace("  return helper(size)", "  return\n  helper(size)")],
+    ["an added directive comment", (source: string) => source.replace("  return helper", "  // @ts-expect-error\n  return helper")],
+    ["a dropped directive comment", (source: string) => source.replace("/*#__PURE__*/ ", "")],
   ])("fails %s", (_name, edit) => {
     moveGrow(edit);
     const result = check();
     expect(result.status, result.stdout).toBe(1);
     expect(result.stdout).toMatch(/NOT PURE\s+apps\/server\/src\/grow\/grow\.ts -> modules\/grow\/server\/grow\.ts/);
     expect(result.stdout).toContain("FAIL: not a pure move");
+  });
+
+  describe("a byte-identical move still resolves its specifiers", () => {
+    /** Move only uses-a.ts (an unchanged `./a.js` import), plus `also` (git mv pairs) and `add` (new files). */
+    const moveUsesA = (also: string[], add: Record<string, string> = {}) => {
+      mkdirSync(join(repo, "modules/grow/server"), { recursive: true });
+      for (const name of ["uses-a.ts", ...also]) git("mv", `apps/server/src/grow/${name}`, `modules/grow/server/${name}`);
+      for (const [path, text] of Object.entries(add)) write(path, text);
+      git("add", "-A");
+      git("commit", "-qm", "move uses-a");
+    };
+
+    beforeEach(() => {
+      write("apps/server/src/grow/uses-a.ts", 'import { a } from "./a.js";\nexport const twice = a * 2;\n');
+      git("add", ".");
+      git("commit", "-qm", "uses-a");
+      git("branch", "-f", "base");
+    });
+
+    it("fails when the unchanged specifier now loads another file", () => {
+      moveUsesA([], { "modules/grow/server/a.ts": "export const a = 2;\n" });
+      const result = check();
+      expect(result.status, result.stdout).toBe(1);
+      expect(result.stdout).toContain('specifier "./a.js" → "./a.js" loads modules/grow/server/a.ts, not apps/server/src/grow/a.ts');
+    });
+
+    it("fails when the unchanged specifier now resolves to nothing", () => {
+      moveUsesA([]);
+      const result = check();
+      expect(result.status, result.stdout).toBe(1);
+      expect(result.stdout).toMatch(/NOT PURE\s+apps\/server\/src\/grow\/uses-a\.ts/);
+    });
+
+    it("passes when the imported sibling moves with it", () => {
+      moveUsesA(["a.ts"]);
+      const result = check();
+      expect(result.status, result.stdout).toBe(0);
+    });
+  });
+
+  it("fails a deleted app source that no rename pairs", () => {
+    mkdirSync(join(repo, "modules/grow/server"), { recursive: true });
+    git("rm", "-q", "apps/server/src/grow/b.ts");
+    write("modules/grow/server/b.ts", "export const b = { rewritten: true, entirely: [1, 2, 3] };\nexport const extra = () => b;\n");
+    git("add", "-A");
+    git("commit", "-qm", "rewrite b");
+    const result = check();
+    expect(result.status, result.stdout).toBe(1);
+    expect(result.stdout).toContain("deleted app sources no rename pairs (1)");
+    expect(result.stdout).toContain("  D apps/server/src/grow/b.ts");
+  });
+
+  it("reads the global git config but pins the diff settings it could change", () => {
+    moveGrow((source) => source.replace("Doubles", "Doubles (moved)"));
+    const global = join(repo, ".global-gitconfig");
+    // Each would change or break the diff the check reads, if it were not pinned or disabled.
+    writeFileSync(global, "[diff]\n\tnoprefix = true\n\trenames = false\n\texternal = false\n[core]\n\tquotePath = true\n");
+    const result = spawnSync(process.execPath, [SCRIPT, "base"], { cwd: repo, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: global } });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/ok\s+apps\/server\/src\/grow\/grow\.ts -> modules\/grow\/server\/grow\.ts/);
   });
 
   it("runs the same through a symlink and under diff.noprefix", () => {

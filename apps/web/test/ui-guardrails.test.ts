@@ -35,7 +35,9 @@ function walk(dir: string): string[] {
 
 const read = (path: string) => ({ rel: relative(webRoot, path), text: readFileSync(path, "utf8") });
 const files = walk(srcRoot).filter((path) => /\.tsx?$/.test(path)).map(read);
-const css = walk(srcRoot).filter((path) => path.endsWith(".css")).map(read);
+// deck's stylesheets: its own, and the token mapping it shares with runtime modules.
+const sdkTailwind = resolve(webRoot, "../../packages/sdk/tailwind");
+const css = [...walk(srcRoot), ...walk(sdkTailwind)].filter((path) => path.endsWith(".css")).map(read);
 const tsx = files.filter(({ rel }) => rel.endsWith(".tsx"));
 const inLibrary = (rel: string): boolean => rel.startsWith("src/ui/");
 
@@ -83,6 +85,7 @@ describe("library components", () => {
 
 describe("no legacy styling", () => {
   it("references no legacy tokens (--inventory-*, --freshness-*, --l-*)", () => {
+    expect(css.map(({ rel }) => rel)).toEqual(expect.arrayContaining(["../../packages/sdk/tailwind/theme.css", "src/styles/theme.css"]));
     expect(shown(legacyTokens([...files, ...css]))).toEqual([]);
   });
 

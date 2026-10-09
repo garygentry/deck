@@ -11,7 +11,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { builtWebJs, formatOffence, lintModule, type ModuleLintOptions } from "./index.ts";
+import { builtModules, formatOffence, lintModule, moduleWebSources, type ModuleLintOptions } from "./index.ts";
 
 const USAGE = "usage: deck-module lint [dir]";
 
@@ -60,8 +60,8 @@ function main(argv: readonly string[]): number {
     return 2;
   }
   const offences = lintModule(dir, options);
-  if (existsSync(join(dir, "src")) && builtWebJs(dir) === undefined) {
-    console.log("deck-module lint: no built web.js found (web.js or dist/<id>/web.js): build the module to check what deck will serve");
+  if (moduleWebSources(dir).length > 0 && !builtModules(dir).some(({ webJs }) => webJs !== undefined)) {
+    console.log("deck-module lint: no built web.js found (beside deck-module.json, or in dist/<id>/): build the module to check what deck will serve");
   }
   for (const offence of offences) console.error(formatOffence(offence));
   if (offences.length > 0) {

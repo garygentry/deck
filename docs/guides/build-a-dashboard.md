@@ -249,7 +249,8 @@ ui:
 - `portal/groups` shows the portal's cards, with its search and its status and group filters.
   It reads `modules.portal.groups` itself, so it takes no `source`.
 - `groups` lists the top-level group ids (`modules.portal.groups[].id`) to show, in that order.
-  Without it, the widget shows every group. An id that no group has is skipped.
+  Without it, the widget shows every group. An id that no group has is skipped, and
+  `GET /api/ui` reports it (`UI_WIDGET_OPTION_UNKNOWN`).
 - `home` takes any page without path parameters. The page also stays at its own path, here
   `/start`.
 - To keep the built-in portal and change only part of it, hide pieces by id instead. For

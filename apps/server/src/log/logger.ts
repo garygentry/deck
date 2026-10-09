@@ -131,6 +131,27 @@ export interface ModuleDisabledEvent {
   reason: string;
   /** Module-host finding code when the host refused it; absent when simply not enabled. */
   code?: string;
+  /**
+   * For a runtime module that failed to load: the full cause (its directory, the error its
+   * code threw). The log only: `reason`, which the HTTP API serves, names a category.
+   */
+  detail?: string;
+}
+
+export interface RuntimeModulesEvent {
+  /**
+   * The runtime modules directory was read: which modules' server code was imported, and
+   * which failed to load (each also logs `module.disabled`). Imported code runs inside deck
+   * with all of its privileges.
+   */
+  event: "modules.runtime";
+  dir: string;
+  /** Whether DECK_MODULES_ENABLED is on; when off, no runtime module code is loaded. */
+  enabled: boolean;
+  loaded: string[];
+  failed: string[];
+  /** Directories left out entirely (named like a built-in module, say), with why. */
+  rejected: { id: string; detail: string }[];
 }
 
 export function createLogger(options: LoggerOptions = {}): Logger {

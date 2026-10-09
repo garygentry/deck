@@ -5,6 +5,7 @@ import {
   merge,
   MergeError,
   MIGRATABLE_CONFIG_VERSION,
+  MODULE_HOST_FINDING_CATALOG,
   validate,
   type ComposedConfig,
   type DisabledSections,
@@ -17,6 +18,7 @@ import type { DeckConfig } from "../contract/config.js";
 import type { ServerModule } from "@deck/module-sdk";
 import { builtinComposition, composeModules, credentialEnvFindings, type CredentialOwners } from "../modules/config.js";
 import { ModuleManifestError } from "../modules/host.js";
+import type { RuntimeModulePlan } from "../modules/runtime.js";
 import { planningRouteTable, RESERVED_ROOT_PATHS } from "../server/app.js";
 import { resolveConfigDir } from "./resolve-dir.js";
 
@@ -60,6 +62,8 @@ export interface LoadOptions {
   composed?: ComposedConfig;
   /** The server modules config is composed for; default: the built-in modules. */
   modules?: readonly ServerModule<any>[];
+  /** How the runtime modules among `modules` loaded (see `loadRuntimeModules`). */
+  runtime?: RuntimeModulePlan;
   /**
    * How a section for a module that will not run is checked. `advisory` (default, what boot
    * uses: a switched-off module never blocks boot): its problems are info findings.
@@ -137,6 +141,7 @@ export function load(options: LoadOptions = {}): LoaderResult {
         env: options.env ?? process.env,
         kernelRoutes: planningRouteTable(),
         reservedRootPaths: RESERVED_ROOT_PATHS,
+        ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
       };
       const composition = options.modules === undefined
         ? builtinComposition(context)
@@ -177,7 +182,10 @@ export function load(options: LoadOptions = {}): LoaderResult {
   results.push(validate(accumulator, { layer: "merged", composed, disabledSections }));
   // A refused instance credential: what boot logs as a warning, reported against the merged config.
   const boot = options.boot === true;
-  const refused = credentials === undefined ? [] : credentialEnvFindings(accumulator, credentials, { boot, disabledSections });
+  const refused = [
+    ...(credentials === undefined ? [] : credentialEnvFindings(accumulator, credentials, { boot, disabledSections })),
+    ...runtimeLoadFindings(options.runtime, boot),
+  ];
   if (boot) results = results.map((result) => (result.classification === 2 ? result : { ...result, findings: result.findings.map(advisory) }));
   const exitClass = Math.max(maxClassification(results), classify(refused)) as ExitClass;
   const findings = [...collectFindings(results), ...refused];
@@ -193,6 +201,23 @@ export function load(options: LoadOptions = {}): LoaderResult {
     if (!moduleProblems.has(id)) moduleProblems.set(id, finding.message);
   }
   return { exitClass: 0, config: deepFreeze(accumulator) as unknown as DeckConfig, findings, moduleProblems };
+}
+
+/**
+ * Planning from manifests only (`deck validate`, `deck render`): each runtime module that would
+ * fail to load (an integrity pin that does not match, say) as MODULE_LOAD_FAILED. Boot logs
+ * these from the module host instead, and goes on, so for boot they are info.
+ */
+function runtimeLoadFindings(runtime: RuntimeModulePlan | undefined, boot: boolean): Finding[] {
+  if (runtime?.planOnly !== true) return [];
+  const { severity, fix } = MODULE_HOST_FINDING_CATALOG.MODULE_LOAD_FAILED;
+  return [...runtime.loadProblems].map(([id, category]) => ({
+    code: "MODULE_LOAD_FAILED",
+    severity: boot ? "info" : severity,
+    path: `/modules/${id}`,
+    message: `Module "${id}" failed to load: ${category}.`,
+    hint: runtime.loadDetails?.get(id) ?? fix,
+  }));
 }
 
 /** A boot-advisory finding as info. */

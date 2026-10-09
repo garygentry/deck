@@ -26,6 +26,7 @@ The top-level document is an object with no additional properties.
 | `integrations` | array of Integration | no | External tool integrations; absent is empty. |
 | `ui` | object | no | Presentation settings: brand, theme, home page, navigation and extension overrides (see [ui](#ui)). Owned by the overlay layer. |
 | `modules` | object | no | Module settings, one section per module id (see [Modules](#modules)). |
+| `moduleIntegrity` | object | no | Integrity pins for runtime modules, keyed by module id (see [Runtime module integrity](#runtime-module-integrity)). Either layer may set it. |
 
 ### Modules
 
@@ -43,6 +44,32 @@ module's schema and rules would report once it is enabled. The built-in sections
 | `modules.llm-usage` | object | Claude Code and Codex plan-usage tracking (see [llm-usage](#modulesllm-usage)); absent turns the feature off. |
 
 All three sections are owned by the overlay layer.
+
+A runtime module in `DECK_MODULES_DIR` adds its own section, whose schema comes from its
+`deck-module.json`. That holds whether or not the module runs (see
+[Run a runtime module](../guides/runtime-modules.md)). A runtime module that was meant to run but
+failed to load is disabled, and boot continues, but its section is still checked at its real
+severity: an invalid section fails boot as it would if the module were running.
+
+### Runtime module integrity
+
+`moduleIntegrity` maps a runtime module's id to the digest its directory must have before deck
+imports any of its code: `sha256-` followed by a base64 SHA-256, as
+`deck module digest <dir>` prints it ([CLI reference](./cli.md#deck-module-digest)). The digest
+covers every file under the module directory, by path and content. A directory that holds a
+symbolic link cannot be pinned.
+
+```yaml
+moduleIntegrity:
+  maintenance: sha256-+rd/dMOKSiSEVKyxblPM62ORGo/aq2/tM1KdfzBU2Ww=   # what `deck module digest` printed
+```
+
+A pinned module whose directory does not match its pin is disabled with `MODULE_LOAD_FAILED`, and
+boot continues. `deck validate` reports the same mismatch. A module with no pin loads without a
+check. A pin for a module that is not installed has no effect. A value that is not a
+`sha256-<base64>` digest fails validation. Either layer may pin a module. Pins merge per module id: a
+later layer's pin for a module replaces an earlier layer's, and modules pinned in different
+layers are all pinned.
 
 ### Layer merge
 

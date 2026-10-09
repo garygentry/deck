@@ -182,6 +182,17 @@ module API freezes at `deckApi` 1.0, and it may be replaced by a narrower router
 An error response uses deck's envelope, built with `apiErrorBody(error, code?)`
 (`{"error": …, "code": …}`), the same helper the kernel's routes use.
 
+## Runtime modules
+
+An external module can be installed without rebuilding deck. Its directory goes under
+`DECK_MODULES_DIR`, named by its id, with the manifest as `deck-module.json` and an optional
+server entry (`server.js`, `server.mjs` or `server.ts`). The entry's default export is the
+server module, and its `manifest` must equal `deck-module.json`. The host plans the module
+from `deck-module.json` exactly as it plans a built-in. It imports the entry only when
+`DECK_MODULES_ENABLED` is on and nothing else keeps the module off (see step 2 below). A module
+that cannot be loaded is disabled with `MODULE_LOAD_FAILED`. The operator guide is
+`docs/guides/runtime-modules.md`.
+
 ## Lifecycle
 
 The kernel's module host goes through these steps:

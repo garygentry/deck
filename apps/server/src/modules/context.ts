@@ -38,6 +38,8 @@ export const KERNEL_ENV_NAMES: ReadonlySet<string> = new Set([
   "DECK_CONFIG_DIR",
   "DECK_DATA_DIR",
   "DECK_LOG_LEVEL",
+  "DECK_MODULES_DIR",
+  "DECK_MODULES_ENABLED",
   "DECK_PORT",
   "DECK_SNAPSHOT_OUT",
   "DECK_WEB_DIST",

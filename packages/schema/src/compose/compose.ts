@@ -83,6 +83,13 @@ export interface ConfigContribution {
    * identities would raise is reported too, at info ("would fail when <id> is enabled").
    */
   disabled?: string;
+  /**
+   * With `disabled`: the module was meant to run but its code could not be loaded, so its
+   * section is checked at the severity its problems would have when it runs, whatever
+   * `disabledSections` says. Config that is wrong for a module stays a config error even when
+   * the module itself is broken.
+   */
+  strictSection?: boolean;
   /** Schema of the `modules.<id>` section. Absent: the contribution has no section. */
   schema?: JsonObject;
   /** Ownership rows relative to the section (`""` is the section itself; default overlay). */
@@ -173,6 +180,11 @@ export interface ComposedConfig {
   /** Ids of disabled modules: their sections are exempt from layer ownership checks. */
   readonly disabledModuleIds: ReadonlySet<string>;
   /**
+   * The disabled modules whose sections are checked as if they ran (`strictSection`): their
+   * layer ownership and host/service references are checked whatever `disabledSections` says.
+   */
+  readonly strictModuleIds: ReadonlySet<string>;
+  /**
    * The checks composed from contributions, for one validated document:
    * - duplicate identity tuples in module arrays, and duplicate ids in a declared
    *   namespace (ID_DUPLICATE);
@@ -231,6 +243,19 @@ const INSTANCE_CORE: JsonObject = {
  * closed, so an unknown key or module is still rejected. Throws {@link ComposeError}.
  */
 export function composeConfig(contributions: readonly ConfigContribution[], options: ComposeOptions = {}): ComposedConfig {
+  return compose(contributions, options, true)!;
+}
+
+/**
+ * Throw what {@link composeConfig} would throw for contributions that cannot coexist (a
+ * duplicate id, finding code or provider kind), without compiling any schema: a cheap check
+ * for trying combinations of contributions.
+ */
+export function assertComposable(contributions: readonly ConfigContribution[]): void {
+  compose(contributions, {}, false);
+}
+
+function compose(contributions: readonly ConfigContribution[], options: ComposeOptions, compile: boolean): ComposedConfig | null {
   const schema = structuredClone(kernelSchema) as unknown as KernelSchemaShape;
   const ownership: Record<string, Owner> = { ...OWNERSHIP };
   const identity: Record<string, IdentitySpec> = { ...IDENTITY };
@@ -267,7 +292,7 @@ export function composeConfig(contributions: readonly ConfigContribution[], opti
       // Known but not running: its section is accepted as-is in the composed document.
       schema.properties.modules.properties[id] = { description: `Settings of module ${id}, which is not enabled.` };
       ownership[prefix] = "overlay";
-      disabled.set(id, { reason: contribution.disabled!, def: undefined, codes: new Set(), rules: [], identity: [], unique: [], references: [] });
+      disabled.set(id, { reason: contribution.disabled!, strict: contribution.strictSection === true, def: undefined, codes: new Set(), rules: [], identity: [], unique: [], references: [] });
     }
 
     if (contribution.schema !== undefined) {
@@ -393,6 +418,7 @@ export function composeConfig(contributions: readonly ConfigContribution[], opti
     );
   }
 
+  if (!compile) return null;
   // A widget of a declared type must have options its type accepts. Omitted options are `{}`:
   // when the type's schema (whole, through any allOf, $ref or minProperties) refuses `{}`, the
   // widget must set them. Any other type keeps the generic shape (UI_WIDGET_TYPE_UNKNOWN reports it).
@@ -479,15 +505,16 @@ export function composeConfig(contributions: readonly ConfigContribution[], opti
     moduleIds: Object.freeze([...moduleIds].sort()),
     knownModuleIds: Object.freeze([...moduleIds, ...disabled.keys()].sort()),
     disabledModuleIds: new Set(disabled.keys()),
+    strictModuleIds: new Set([...disabled].filter(([, section]) => section.strict).map(([id]) => id)),
     runChecks(document: JsonObject, layer: ValidateLayer, options: { disabledSections?: DisabledSections } = {}): Finding[] {
       const advisory = (options.disabledSections ?? "advisory") === "advisory";
       const sections = isObject(document.modules) ? document.modules : {};
       const findings: Finding[] = [...duplicateIdentities(document, checkedIdentity), ...duplicateIds(document, namespaces)];
       // Strictly, a disabled section's duplicates are checked in each authored layer too, as an
       // enabled module's are: a merge pairs elements by identity and would hide them.
-      if (!advisory && layer !== "merged") {
+      if (layer !== "merged") {
         for (const [id, section] of disabled) {
-          if (!Object.prototype.hasOwnProperty.call(sections, id)) continue;
+          if ((advisory && !section.strict) || !Object.prototype.hasOwnProperty.call(sections, id)) continue;
           findings.push(...duplicateIdentities(document, section.identity), ...duplicateIds(document, section.unique));
         }
       }
@@ -522,7 +549,7 @@ export function composeConfig(contributions: readonly ConfigContribution[], opti
           findings.push(moduleFinding("MODULE_SECTION_DISABLED", id, `modules.${id} is set, but module "${id}" is not enabled (${section.reason}); the section is ignored.`));
           // What enabling the module would report, so a disabled section is still checked:
           // advisory, at info; strict, exactly as reported (an error fails validation).
-          const wouldFail = (item: Finding): Finding => (advisory
+          const wouldFail = (item: Finding): Finding => (advisory && !section.strict
             ? {
               code: "MODULE_SECTION_DISABLED",
               severity: catalogued.MODULE_SECTION_DISABLED!.severity,
@@ -613,6 +640,8 @@ function instanceFindings(
 /** A disabled module's section: why it is off, and what it would be checked against if on. */
 interface DisabledSection {
   reason: string;
+  /** Checked at real severity even when disabled sections are advisory (see `strictSection`). */
+  strict: boolean;
   /** The hoisted section schema, when the module contributes one that composes. */
   def: string | undefined;
   codes: ReadonlySet<string>;

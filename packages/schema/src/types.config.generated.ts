@@ -140,6 +140,18 @@ ui?: Ui
 modules?: {
 [k: string]: unknown | undefined
 }
+/**
+ * Integrity pins for runtime modules in DECK_MODULES_DIR, keyed by module id: a pinned module's code loads only when its directory matches the digest.
+ */
+moduleIntegrity?: {
+/**
+ * sha256-<base64> digest of the module directory, as `deck module digest <dir>` prints it.
+ * 
+ * This interface was referenced by `undefined`'s JSON-Schema definition
+ * via the `patternProperty` "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$".
+ */
+[k: string]: string | undefined
+}
 }
 /**
  * Estate-wide identity and conventions.

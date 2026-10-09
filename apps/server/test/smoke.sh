@@ -11,6 +11,8 @@
 #   4. Sources read path serves a fixture markdown tree with confinement intact.
 #   5. With DECK_METRICS_ENABLED=true, GET /metrics serves Prometheus text; the
 #      default (off) returns 404.
+#   6. ui hot reload follows a Kubernetes ConfigMap ..data swap.
+#   7. A runtime module from DECK_MODULES_DIR adds a page, a pill and a provider.
 #
 # It runs one server at a time, on distinct ports, cleaning each up before the
 # next. Any failed assertion exits non-zero so impl-verify treats it as a failure.
@@ -292,4 +294,48 @@ done
 [ -n "${SWAPPED}" ] || fail "configmap ..data swap was not reloaded within 10 s"
 stop_server
 
-printf 'SMOKE OK: portal GET 200; actions enabled end/succeeded; actions disabled 403 ACTIONS_DISABLED; sources manifest+file 200, traversal rejected; metrics 200 text/plain, off 404; configmap ..data swap reloaded under Bun\n'
+# ---------------------------------------------------------------------------
+# 7. A runtime module under Bun: the example in examples/modules, imported from
+#    DECK_MODULES_DIR, adds its page and pill to /api/ui and serves its
+#    provider. With DECK_MODULES_ENABLED unset, the same module is listed off.
+# ---------------------------------------------------------------------------
+RT_CONFIG_DIR="${TMP_ROOT}/runtime-config"
+mkdir -p "${RT_CONFIG_DIR}"
+printf 'schemaVersion: 2\nestate:\n  name: smoke\n' >"${RT_CONFIG_DIR}/00-base.yaml"
+printf 'schemaVersion: 2\nmodules:\n  maintenance:\n    windows:\n      - name: smoke\n        start: 2999-01-01T00:00:00Z\n        durationMinutes: 5\n' \
+  >"${RT_CONFIG_DIR}/10-overlay.yaml"
+
+DECK_MODULES_DIR="${REPO_ROOT}/examples/modules" DECK_MODULES_ENABLED=true \
+DECK_CONFIG_DIR="${RT_CONFIG_DIR}" DECK_PORT="${PORTAL_PORT}" bun "${BOOT}" &
+SRV=$!
+wait_ready "http://127.0.0.1:${PORTAL_PORT}/api/ui" \
+  || fail "runtime-module server did not become ready"
+RT_UI="$(curl -sS "http://127.0.0.1:${PORTAL_PORT}/api/ui")"
+printf '%s' "${RT_UI}" | grep -q '"id":"page:maintenance/windows"' \
+  || fail "runtime module page missing from /api/ui"
+printf '%s' "${RT_UI}" | grep -q '"id":"pill:maintenance/next"' \
+  || fail "runtime module pill missing from /api/ui"
+RT_DATA=""
+for i in $(seq 1 40); do
+  if curl -sS "http://127.0.0.1:${PORTAL_PORT}/api/providers/maintenance" 2>/dev/null | grep -q '"name":"smoke"'; then
+    RT_DATA=1
+    break
+  fi
+  sleep 0.25
+done
+[ -n "${RT_DATA}" ] || fail "runtime module provider did not serve its data"
+stop_server
+
+DECK_MODULES_DIR="${REPO_ROOT}/examples/modules" \
+DECK_CONFIG_DIR="${RT_CONFIG_DIR}" DECK_PORT="${PORTAL_PORT}" bun "${BOOT}" &
+SRV=$!
+wait_ready "http://127.0.0.1:${PORTAL_PORT}/api/ui" \
+  || fail "runtime-modules-off server did not become ready"
+curl -sS "http://127.0.0.1:${PORTAL_PORT}/api/ui" | grep -q '"reason":"not enabled: DECK_MODULES_ENABLED is not true"' \
+  || fail "runtime module not reported off with DECK_MODULES_ENABLED unset"
+RT_OFF="$(curl -sS -o /dev/null -w '%{http_code}' \
+  "http://127.0.0.1:${PORTAL_PORT}/api/providers/maintenance")" || RT_OFF=000
+[ "${RT_OFF}" = "404" ] || fail "runtime module provider with modules off expected 404, got ${RT_OFF}"
+stop_server
+
+printf 'SMOKE OK: portal GET 200; actions enabled end/succeeded; actions disabled 403 ACTIONS_DISABLED; sources manifest+file 200, traversal rejected; metrics 200 text/plain, off 404; configmap ..data swap reloaded under Bun; runtime module page+pill+provider, off when not enabled\n'

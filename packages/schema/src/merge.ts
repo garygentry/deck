@@ -1,7 +1,7 @@
 import type { JsonObject, JsonValue } from "./types.js";
 import { composeDefault } from "./compose/builtin.js";
 import type { ComposedConfig } from "./compose/compose.js";
-import { REPLACED, resolveOwner, type IdentitySpec, type Owner } from "./ownership.js";
+import { LATER_WINS, REPLACED, resolveOwner, type IdentitySpec, type Owner } from "./ownership.js";
 
 /**
  * Thrown by `merge` on a precondition failure (REQ-LAYER-07), before any output is
@@ -148,7 +148,9 @@ function mergeObject(
       continue;
     }
     const owner = resolveOwner(childPath, tables.ownership);
-    if (owner === "overlay" && replaced.includes(key)) {
+    if (LATER_WINS.includes(childPath) && isPlainObject(base[key]) && isPlainObject(overlay[key])) {
+      output[key] = { ...clone(base[key]) as JsonObject, ...clone(overlay[key]) as JsonObject };
+    } else if (owner === "overlay" && replaced.includes(key)) {
       output[key] = clone(overlay[key]);
     } else if (owner === "overlay" && entryFields !== undefined && isPlainObject(base[key]) && isPlainObject(overlay[key])) {
       output[key] = mergeObject(tables, base[key], overlay[key], childPath, entryFields);

@@ -21,7 +21,8 @@ export function layers(
   // A disabled module's section is not part of the document deck runs with, so where it
   // sits is not checked (switching a module off must not fail validation), unless disabled
   // sections are validated strictly, as if their modules were on.
-  const exempt = strict ? [] : [...composed.disabledModuleIds].map((id) => `modules.${id}`);
+  // A module that failed to load is never exempt (its section is checked as if it ran).
+  const exempt = strict ? [] : [...composed.disabledModuleIds].filter((id) => !composed.strictModuleIds.has(id)).map((id) => `modules.${id}`);
   walkLeaves(doc as unknown as JsonObject, "", "", (ownerPath, pointer) => {
     if (exempt.some((prefix) => ownerPath === prefix || ownerPath.startsWith(`${prefix}.`) || ownerPath.startsWith(`${prefix}[`))) return;
     const owner = resolveOwner(ownerPath, composed.ownership);
@@ -45,7 +46,10 @@ export function layers(
   });
 
   if (layer === "overlay" && isObject(base)) {
-    findings.push(...danglingReferences(doc, base, strict ? [...composed.references, ...composed.disabledReferences] : composed.references));
+    const checked = strict
+      ? [...composed.references, ...composed.disabledReferences]
+      : [...composed.references, ...composed.disabledReferences.filter((reference) => [...composed.strictModuleIds].some((id) => reference.path.startsWith(`modules.${id}.`)))];
+    findings.push(...danglingReferences(doc, base, checked));
   }
   return findings;
 }

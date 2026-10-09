@@ -1,4 +1,5 @@
 import {
+  assertComposable,
   BUILTIN_CONTRIBUTIONS,
   ComposeError,
   composeConfig,
@@ -15,7 +16,7 @@ import { MODULE_ID_PATTERN, type ModuleManifest, type ServerModule, type WidgetT
 import { BUILTIN_MODULES } from "./builtin.js";
 import { credentialEnvRefusal, declaredCredentialEnv } from "./context.js";
 import { RESERVED_MODULE_IDS } from "../ui/validate.js";
-import { moduleKindsProblem, planModules, type PlanOptions } from "./host.js";
+import { ModuleManifestError, moduleKindsProblem, planModules, type PlanOptions } from "./host.js";
 
 const BUILTIN_SET: ReadonlySet<ServerModule<any>> = new Set(BUILTIN_MODULES);
 
@@ -131,6 +132,30 @@ function widgetTypeContributions(types: readonly WidgetTypeDecl[]): ConfigContri
   return types.map(({ type, optionsSchema }) => ({ type, ...(optionsSchema === undefined ? {} : { optionsSchema: optionsSchema as JsonObject }) }));
 }
 
+/** Whether each module's contribution composes on its own, by module, then by disabled reason. */
+const composedAlone = new WeakMap<ServerModule<any>, Map<string, Error | null>>();
+
+/**
+ * Compose one module's contribution on its own, throwing what composition throws. A module
+ * is frozen data plus functions, so the outcome is remembered: composing every built-in again
+ * for each plan (the runtime module loader plans several times) costs an ajv compile apiece.
+ */
+function composeAlone(module: ServerModule<any>, contribution: ConfigContribution): void {
+  let outcomes = composedAlone.get(module);
+  if (outcomes === undefined) composedAlone.set(module, (outcomes = new Map()));
+  const key = contribution.disabled ?? "";
+  if (!outcomes.has(key)) {
+    try {
+      composeConfig([contribution]);
+      outcomes.set(key, null);
+    } catch (error) {
+      outcomes.set(key, error as Error);
+    }
+  }
+  const error = outcomes.get(key);
+  if (error) throw error;
+}
+
 /**
  * Compose the kernel, the built-in contributions not yet carried by a module, and the
  * modules the host would enable. Planning reads manifests only (as the host does, without
@@ -142,9 +167,44 @@ function widgetTypeContributions(types: readonly WidgetTypeDecl[]): ConfigContri
  */
 export function composeModules(
   modules: readonly ServerModule<any>[],
-  context: Pick<PlanOptions, "sectionOf" | "env" | "kernelRoutes" | "reservedRootPaths">,
+  context: Pick<PlanOptions, "sectionOf" | "env" | "kernelRoutes" | "reservedRootPaths" | "runtime">,
   cache?: Map<string, ComposedConfig>,
 ): ModuleComposition {
+  const { contributions, invalid, credentials } = planComposition(modules, context);
+  const key = JSON.stringify(contributions.map(({ id, disabled, strictSection }) => [id, disabled ?? null, strictSection ?? false]));
+  let composed = cache?.get(key);
+  if (composed === undefined) {
+    // Always with the select check: every server validation goes through this composition.
+    composed = composeChecked([...BUILTIN_CONTRIBUTIONS, ...contributions]);
+    cache?.set(key, composed);
+  }
+  return { composed, invalid, credentials };
+}
+
+/**
+ * Whether `modules` can be composed together, without compiling the composed schema: the
+ * message of the conflict {@link composeModules} would throw, or null, with the modules whose
+ * contribution is unusable on its own.
+ */
+export function compositionConflict(
+  modules: readonly ServerModule<any>[],
+  context: Pick<PlanOptions, "sectionOf" | "env" | "kernelRoutes" | "reservedRootPaths" | "runtime">,
+): { conflict: string | null; invalid: ReadonlyMap<string, string> } {
+  try {
+    const { contributions, invalid } = planComposition(modules, context);
+    assertComposable([...BUILTIN_CONTRIBUTIONS, ...contributions]);
+    return { conflict: null, invalid };
+  } catch (cause) {
+    if (cause instanceof ComposeError || cause instanceof ModuleManifestError) return { conflict: cause.message, invalid: new Map() };
+    throw cause;
+  }
+}
+
+/** The contributions {@link composeModules} composes, in plan order, without composing them. */
+function planComposition(
+  modules: readonly ServerModule<any>[],
+  context: Pick<PlanOptions, "sectionOf" | "env" | "kernelRoutes" | "reservedRootPaths" | "runtime">,
+): { contributions: ConfigContribution[]; invalid: Map<string, string>; credentials: CredentialOwners } {
   const invalid = new Map<string, string>();
   const contributions = new Map<string, ConfigContribution>();
   for (const module of modules) {
@@ -154,12 +214,14 @@ export function composeModules(
     // A module-local kind defect (a kind declared twice, say) disables the module, as the
     // host would, rather than surfacing as a conflict from composition.
     // Its declared kinds are kept, so config validation can name their owner as off.
-    const kindProblem = moduleKindsProblem(module);
+    // A runtime module present by its manifest only has its kind declarations checked, not
+    // its handlers (code that was not loaded).
+    const kindProblem = moduleKindsProblem(module, context.runtime?.codeless.has(id) !== true);
     if (kindProblem !== null) {
       invalid.set(id, kindProblem);
       try {
         const contribution = moduleContribution(module);
-        composeConfig([{ ...contribution, disabled: kindProblem }]);
+        composeAlone(module, { ...contribution, disabled: kindProblem });
         contributions.set(id, contribution);
       } catch {
         // Unusable on other counts too: it composes as an id only.
@@ -168,7 +230,7 @@ export function composeModules(
     }
     try {
       const contribution = moduleContribution(module);
-      composeConfig([contribution]);
+      composeAlone(module, contribution);
       contributions.set(id, contribution);
     } catch (error) {
       if (error instanceof ComposeError && error.code === "MODULE_MANIFEST_CONFLICT") throw error;
@@ -189,24 +251,22 @@ export function composeModules(
       }
     }
   }
-  const composedModules: ConfigContribution[] = [];
+  const composed: ConfigContribution[] = [];
   for (const entry of plan) {
     if (!MODULE_ID_PATTERN.test(entry.id)) continue;
     // A module may not take a kernel id (the host refuses it); the kernel's `core` contributes.
     if (RESERVED_MODULE_IDS.has(entry.id)) continue;
     const contribution = contributions.get(entry.id);
-    if (entry.enabled && contribution !== undefined) composedModules.push(contribution);
-    // Off, but with a contribution that composes: its section is still checked, at info.
-    else composedModules.push({ ...(contribution ?? { id: entry.id }), disabled: entry.reason ?? "not enabled" });
+    if (entry.enabled && contribution !== undefined) composed.push(contribution);
+    // Off, but with a contribution that composes: its section is still checked, at info,
+    // except for a module that was meant to run but failed to load: its section is config the
+    // operator wrote for it, checked at its real severity (when its schema is known).
+    else {
+      const strict = context.runtime?.loadProblems.has(entry.id) === true && contribution?.schema !== undefined;
+      composed.push({ ...(contribution ?? { id: entry.id }), disabled: entry.reason ?? "not enabled", ...(strict ? { strictSection: true } : {}) });
+    }
   }
-  const key = JSON.stringify(composedModules.map(({ id, disabled }) => [id, disabled ?? null]));
-  let composed = cache?.get(key);
-  if (composed === undefined) {
-    // Always with the select check: every server validation goes through this composition.
-    composed = composeChecked([...BUILTIN_CONTRIBUTIONS, ...composedModules]);
-    cache?.set(key, composed);
-  }
-  return { composed, invalid, credentials: { kinds, envOwners } };
+  return { contributions: composed, invalid, credentials: { kinds, envOwners } };
 }
 
 const builtinCache = new Map<string, ComposedConfig>();

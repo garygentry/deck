@@ -1,0 +1,50 @@
+{
+  "id": "maintenance",
+  "version": "1.0.0",
+  "deckApi": "^0.1",
+  "enabledBy": { "config": true },
+  "config": {
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["windows"],
+      "properties": {
+        "windows": {
+          "type": "array",
+          "description": "Planned maintenance windows.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "start", "durationMinutes"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "start": { "type": "string", "description": "ISO 8601 date-time with an offset, e.g. 2026-10-10T02:00:00Z." },
+              "durationMinutes": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    },
+    "ownership": { "": "overlay" },
+    "identity": { "windows": ["name"] },
+    "findings": [
+      {
+        "code": "MAINTENANCE_START_INVALID",
+        "severity": "error",
+        "summary": "A maintenance window's start is not a date-time with an offset.",
+        "fix": "Write the start as an ISO 8601 date-time with an offset, such as 2026-10-10T02:00:00Z."
+      }
+    ]
+  },
+  "contributes": {
+    "pages": [
+      { "id": "page:maintenance/windows", "path": "/maintenance", "title": "Maintenance", "icon": "calendar-clock", "component": "MaintenancePage" }
+    ],
+    "nav": [
+      { "id": "nav:maintenance/windows", "page": "page:maintenance/windows", "group": "operate" }
+    ],
+    "extensions": [
+      { "id": "pill:maintenance/next", "kind": "pill", "attachTo": { "slot": "app/topbar.status", "order": 60 }, "component": "MaintenancePill" }
+    ]
+  }
+}

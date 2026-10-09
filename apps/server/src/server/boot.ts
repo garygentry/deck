@@ -8,6 +8,7 @@ import { load, type LoaderResult } from "../config/load.js";
 import {
   createLogger,
   type ConfigLoadEvent,
+  type RuntimeModulesEvent,
   type ServerStartEvent,
   type ServerStopForcedEvent,
   type ServerStopStageTimeoutEvent,
@@ -26,6 +27,8 @@ import { BUILTIN_MODULES } from "../modules/builtin.js";
 import { buildUiManifest } from "../ui/manifest.js";
 import { createUiReloader, type UiReloader } from "../ui/live.js";
 import { createModuleHost, startModules, type ModuleHost } from "../modules/host.js";
+import { checkPins, loadRuntimeModules, MODULES_ENABLED_ENV, NO_RUNTIME_MODULES, type RuntimeModules } from "../modules/runtime.js";
+import { parseBool } from "../config/env.js";
 import { settlesWithin } from "./settle.js";
 import { FORCE_CLOSE_WAIT_MS, resolveStopTimings, type StopTimings } from "./stop-timings.js";
 import { installShutdown, type ShutdownOptions } from "./shutdown.js";
@@ -42,7 +45,10 @@ export interface BootOptions {
   configDir?: string;
   port?: number;
   webDistDir?: string;
-  /** The server modules to run (default: the built-in modules). */
+  /**
+   * The server modules to run (default: the built-in modules). Runtime modules from
+   * DECK_MODULES_DIR are added to them.
+   */
   modules?: readonly ServerModule<any>[];
   /** Shutdown stage bounds; defaults in `stop-timings.ts`. */
   shutdown?: StopTimings;
@@ -52,6 +58,8 @@ export interface BootOptions {
    * be quiet before it is read again.
    */
   uiReload?: false | { debounceMs?: number };
+  /** Bound on importing each runtime module's server entry (default 10 s; tests shorten it). */
+  runtimeImportTimeoutMs?: number;
 }
 
 /** What a request that arrives once shutdown has begun gets. */
@@ -90,11 +98,41 @@ export function failFast(
  */
 export async function boot(options: BootOptions = {}): Promise<BootHandle> {
   const startedAtMs = Date.now();
-  const serverModules = options.modules ?? BUILTIN_MODULES;
-  const stopTimings = resolveStopTimings(options.shutdown);
-  const loadOptions = { arg: options.configDir, boot: true, ...(options.modules === undefined ? {} : { modules: options.modules }) };
-  const result = load(loadOptions);
   const logger = createLogger();
+  // Runtime modules load before config, since their manifests and rules are part of the
+  // contract config is validated against. Only a module that would run has its code imported,
+  // and one that fails to load is disabled (logged below) while boot goes on.
+  let runtime: RuntimeModules = NO_RUNTIME_MODULES;
+  try {
+    runtime = await loadRuntimeModules({
+      env: process.env,
+      ...(options.configDir === undefined ? {} : { configDir: options.configDir }),
+      ...(options.runtimeImportTimeoutMs === undefined ? {} : { importTimeoutMs: options.runtimeImportTimeoutMs }),
+    });
+  } catch (cause) {
+    process.stderr.write(`${(cause as Error).message}\n`);
+    process.exit(2);
+  }
+  if (runtime.dir !== undefined) {
+    const event = {
+      event: "modules.runtime",
+      dir: runtime.dir,
+      enabled: parseBool(process.env[MODULES_ENABLED_ENV], false),
+      loaded: [...runtime.loaded],
+      failed: [...runtime.loadProblems.keys()],
+      rejected: [...runtime.rejected],
+    } satisfies RuntimeModulesEvent;
+    if (runtime.rejected.length > 0) logger.warn(event, "runtime modules read; some directories left out");
+    else logger.info(event, "runtime modules read");
+  }
+  const serverModules = [...(options.modules ?? BUILTIN_MODULES), ...runtime.modules];
+  const stopTimings = resolveStopTimings(options.shutdown);
+  const loadOptions = {
+    arg: options.configDir,
+    boot: true,
+    ...(options.modules === undefined && runtime.modules.length === 0 ? {} : { modules: serverModules, runtime }),
+  };
+  const result = load(loadOptions);
   const configDir = resolve(
     options.configDir ?? process.env.DECK_CONFIG_DIR ?? "config",
   );
@@ -109,6 +147,13 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
   );
 
   failFast(result);
+  // What was loaded was decided from the config as read before validation; it must be the
+  // config that validated.
+  const changed = checkPins(runtime, result.config as Parameters<typeof checkPins>[1]);
+  if (changed !== null) {
+    process.stderr.write(`${changed}\n`);
+    process.exit(2);
+  }
 
   // Plan modules from their manifests against the kernel's planning route table (the one
   // config validation used). Modules that cannot coexist fail fast (classified stderr,
@@ -125,6 +170,7 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
       instancesOf: (list) => result.config[list] ?? [],
       env: process.env,
       builtins: new Set(BUILTIN_MODULES),
+      runtime,
       logger,
       // Modules config validation found broken (a contribution that did not compose, a
       // config rule that failed) are disabled here, before their code runs.

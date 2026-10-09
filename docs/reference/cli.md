@@ -2,13 +2,14 @@
 
 The `deck` binary loads an estate config directory and either reports its findings or writes the
 canonical merged document, and can rewrite a schemaVersion 1 config directory as version 2.
-This page covers `validate`, `render` and `config migrate`.
+This page covers `validate`, `render`, `config migrate` and `module digest`.
 
 The general form is:
 
 ```text
 deck <validate|render> [dir] [--config <dir>] [--out <file>] [--advisory-disabled]
 deck config migrate <dir> [--dry-run]
+deck module digest <dir>
 ```
 
 An unrecognized subcommand prints the usage line to standard error and exits with class 2.
@@ -68,6 +69,14 @@ A binding or integration of a provider kind that only a module that is not runni
 so an off data-source module never stops deck from starting; `deck validate` reports it as a
 warning (exit 1) unless `--advisory-disabled` is given.
 
+When `DECK_MODULES_DIR` is set, `deck validate` reads each runtime module's `deck-module.json`,
+so a runtime module's section is checked against the schema its manifest declares rather than
+rejected as `MODULE_UNKNOWN`. It plans runtime modules as boot would, and checks each module boot
+would import against its integrity pin: a mismatch is `MODULE_LOAD_FAILED`, a warning (info for
+`deck render`, since boot goes on without the module). It never imports a runtime module's
+code, so a runtime module's config rules run only at boot. `deck render` reads runtime modules
+the same way.
+
 ```bash
 bun apps/server/src/cli/deck.ts validate --config examples/estate
 ```
@@ -122,6 +131,18 @@ bun apps/server/src/cli/deck.ts config migrate examples/estate --dry-run
 bun apps/server/src/cli/deck.ts config migrate examples/estate
 ```
 
+## deck module digest
+
+`deck module digest <dir>` prints the integrity pin of a runtime module directory: the
+`sha256-<base64>` value to set at `moduleIntegrity.<id>` in the config (see
+[Runtime module integrity](./estate-config.md#runtime-module-integrity)). Run it on the
+directory exactly as deck will mount it. It exits 0, or 2 with `MODULE_DIGEST_FAILED` on standard
+error for a directory it cannot read or digest (one holding a symbolic link, for example).
+
+```bash
+bun apps/server/src/cli/deck.ts module digest examples/modules/maintenance
+```
+
 ## Exit classes
 
 `validate` and `render` share one exit-class scheme, defined by the config loader.
@@ -130,7 +151,7 @@ bun apps/server/src/cli/deck.ts config migrate examples/estate
 | --- | --- | --- |
 | `0` | clean | Config loaded and validated; `render` wrote its output. Advisory findings may be present. |
 | `1` | findings | Blocking validation findings; diagnostics on standard error. |
-| `2` | tool error | Config directory missing or empty, YAML parse failure, merge conflict, a schemaVersion 1 config, a module conflict, or an unknown subcommand. |
+| `2` | tool error | Config directory missing or empty, YAML parse failure, merge conflict, a schemaVersion 1 config, a module conflict, an unreadable `DECK_MODULES_DIR` while runtime modules are on (`MODULES_DIR_UNREADABLE`), or an unknown subcommand. |
 
 ## Related references
 

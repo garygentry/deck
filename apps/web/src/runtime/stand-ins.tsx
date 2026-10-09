@@ -9,8 +9,8 @@ import {
   getRuntimeModuleState,
   getRuntimeModulesVersion,
   loadRuntimeWebModules,
+  runtimeWebModulesOf,
   subscribeRuntimeModules,
-  type RuntimeModuleState,
 } from "./runtime-modules.js";
 
 /**
@@ -34,10 +34,20 @@ export function useRuntimeModulesVersion(): number {
   return useSyncExternalStore(subscribeRuntimeModules, getRuntimeModulesVersion, getRuntimeModulesVersion);
 }
 
-/** Ids of the modules the manifest offers a web half for. */
+/** Ids of the modules whose web half the shell loads (the loader's own test). */
 export function runtimeModuleIds(manifest: UiManifestState): Set<string> {
-  if (manifest.status !== "ready" || !Array.isArray(manifest.manifest.modules)) return new Set();
-  return new Set(manifest.manifest.modules.filter((module) => module?.enabled === true && module.web !== undefined).map((module) => module.id));
+  return manifest.status === "ready" ? new Set(runtimeWebModulesOf(manifest.manifest).map((module) => module.id)) : new Set();
+}
+
+/**
+ * What stands in for a runtime module's contribution the web has not registered: nothing to
+ * show yet while its web half loads (or has yet to start), else the problem it ended with. A
+ * module that loaded but registered nothing for the contribution has failed for it.
+ */
+function terminalState(module: string): "incompatible" | "failed" | undefined {
+  const state = getRuntimeModuleState(module);
+  if (state === undefined || state === "pending") return undefined;
+  return state === "incompatible" ? "incompatible" : "failed";
 }
 
 /** One stand-in route component per page id, kept across renders so the router never remounts it. */
@@ -48,8 +58,8 @@ function pageStandIn(id: string, module: string, title: string): ComponentType {
   if (component === undefined) {
     component = function RuntimePageStandIn() {
       useRuntimeModulesVersion();
-      const state = getRuntimeModuleState(module);
-      return state === "incompatible" || state === "failed" ? <ModuleProblemPage module={module} state={state} title={title} /> : <LoadingState label="Loading page…" />;
+      const state = terminalState(module);
+      return state === undefined ? <LoadingState label="Loading page…" /> : <ModuleProblemPage module={module} state={state} title={title} />;
     };
     pageStandIns.set(id, component);
   }
@@ -92,13 +102,13 @@ function tileStandIn(module: string, state: "incompatible" | "failed"): Componen
 
 /**
  * What a slot renders for a manifest entry the web registered nothing for: the module-problem
- * tile when the entry's module is a runtime module whose web half cannot render; nothing
- * otherwise (still loading, or not a runtime module).
+ * tile once the entry's runtime module has settled without it; nothing while it loads, or for
+ * a module that is not a runtime one.
  */
 export function runtimeExtensionStandIn(entry: UiExtension, runtimeModules: ReadonlySet<string>): Extension | undefined {
   if (!runtimeModules.has(entry.module) || entry.component === undefined) return undefined;
-  const state: RuntimeModuleState | undefined = getRuntimeModuleState(entry.module);
-  if (state !== "incompatible" && state !== "failed") return undefined;
+  const state = terminalState(entry.module);
+  if (state === undefined) return undefined;
   return {
     id: entry.id as ExtensionId,
     kind: entry.kind,

@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
 /**
@@ -8,11 +9,13 @@ import { expect, test, type Page } from "@playwright/test";
  * served by the test, so the shared API fixture (and every other spec) stays as it is.
  */
 
-const STAR = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 7h7l-5.5 4.5 2 7.5-6.5-4.5-6.5 4.5 2-7.5L2 9h7z"/></svg>';
+// An icon with ids of its own (a gradient), so two renderings on one page must not repeat them.
+const STAR =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="url(#s)" stroke-width="2"><defs><linearGradient id="s"><stop offset="0" stop-color="currentColor"/></linearGradient></defs><path d="M12 2l3 7h7l-5.5 4.5 2 7.5-6.5-4.5-6.5 4.5 2-7.5L2 9h7z"/></svg>';
 
-/** A web half as a module author writes it: plain ESM importing only bare, import-mapped specifiers. */
-function webJs(id: string, title: string, deckApi: string): string {
-  const manifest = {
+/** A module's deck-module.json, as the server would serve it: the web half's manifest must match it. */
+function manifestOf(id: string, title: string, deckApi: string) {
+  return {
     id,
     version: "1.0.0",
     deckApi,
@@ -21,10 +24,18 @@ function webJs(id: string, title: string, deckApi: string): string {
       extensions: [{ id: `pill:${id}/status`, kind: "pill", attachTo: { slot: "app/topbar.status", order: 90 }, component: "StatusPill" }],
     },
   };
+}
+
+/**
+ * A web half as a module author writes it: plain ESM importing only bare, import-mapped
+ * specifiers. `extraImport` names an extra `@deck/sdk` import (one deck may not have).
+ */
+function webJs(id: string, title: string, deckApi: string, extraImport = ""): string {
+  const manifest = manifestOf(id, title, deckApi);
   return `
 import { jsx, jsxs } from "react/jsx-runtime";
 import { useState } from "react";
-import { defineWebModule, PageHeader, Section, StatusBadge, useUiManifest } from "@deck/sdk";
+import { defineWebModule, Icon, PageHeader, Section, StatusBadge, useUiManifest${extraImport === "" ? "" : `, ${extraImport}`} } from "@deck/sdk";
 
 const manifest = ${JSON.stringify(manifest)};
 
@@ -39,6 +50,7 @@ function MainPage() {
     jsxs(Section, { title: "Host state", children: [
       jsx("p", { children: "Brand from the host: " + brand }),
       jsx("button", { type: "button", onClick: () => setCount((n) => n + 1), children: "Clicked " + count }),
+      jsxs("p", { "data-testid": "icons", children: [jsx(Icon, { name: "${id}/star" }), jsx(Icon, { name: "${id}/star" })] }),
     ] }),
   ] });
 }
@@ -51,11 +63,15 @@ export default defineWebModule(manifest, { components: { MainPage, StatusPill } 
 `;
 }
 
-/** Add runtime modules `good` (compatible) and `skew` (deckApi ^9) to the real UI manifest, and serve their web halves. */
+/**
+ * Add runtime modules to the real UI manifest and serve their web halves: `good` (compatible),
+ * `skew` (its web half is for deckApi ^9) and `nope` (it imports a name `@deck/sdk` lacks).
+ */
 async function withRuntimeModules(page: Page): Promise<void> {
   const modules = [
-    { id: "good", title: "Good module", deckApi: "^0.1" },
-    { id: "skew", title: "Skewed module", deckApi: "^9.0" },
+    { id: "good", title: "Good module", deckApi: "^0.1", webApi: "^0.1", extraImport: "" },
+    { id: "skew", title: "Skewed module", deckApi: "^0.1", webApi: "^9.0", extraImport: "" },
+    { id: "nope", title: "Newer module", deckApi: "^0.1", webApi: "^0.1", extraImport: "WidgetOfTheFuture" },
   ];
   await page.route("**/api/ui", async (route) => {
     const body = (await (await route.fetch()).json()) as Record<string, unknown[]> & { icons?: Record<string, string> };
@@ -67,13 +83,14 @@ async function withRuntimeModules(page: Page): Promise<void> {
         navGroups: [...body.navGroups!, { id: "runtime", label: "Runtime" }],
         nav: [...body.nav!, ...modules.map(({ id, title }, index) => ({ id: `nav:${id}/main`, module: id, slot: "app/nav", page: `page:${id}/main`, group: "runtime", label: title, order: index }))],
         extensions: [...body.extensions!, ...modules.map(({ id }) => ({ id: `pill:${id}/status`, kind: "pill", module: id, slot: "app/topbar.status", order: 90, component: "StatusPill" }))],
-        icons: { ...body.icons, "good/star": STAR, "skew/star": STAR },
+        icons: { ...body.icons, ...Object.fromEntries(modules.map(({ id }) => [`${id}/star`, STAR])) },
       },
     }).catch(() => undefined);
   });
-  for (const { id, title, deckApi } of modules) {
+  for (const { id, title, deckApi, webApi, extraImport } of modules) {
+    await page.route(`**/modules/${id}/deck-module.json`, (route) => route.fulfill({ json: manifestOf(id, title, deckApi) }));
     // Under the dev server, Vite tags a dynamic import's URL with `?import`; the server ignores it.
-    await page.route(new RegExp(`/modules/${id}/web\\.js(\\?.*)?$`), (route) => route.fulfill({ contentType: "text/javascript", body: webJs(id, title, deckApi) }));
+    await page.route(new RegExp(`/modules/${id}/web\\.js(\\?.*)?$`), (route) => route.fulfill({ contentType: "text/javascript", body: webJs(id, title, webApi, extraImport) }));
   }
 }
 
@@ -137,4 +154,27 @@ test("a runtime module built for another module API shows 'module incompatible',
   expect(errors.filter((text) => text.startsWith("pageerror"))).toEqual([]);
   // The cause is in the console, once.
   expect(errors.filter((text) => text.includes('runtime module "skew" is incompatible'))).toHaveLength(1);
+});
+
+test("a runtime module importing a name @deck/sdk lacks is incompatible, not a crash", async ({ page }) => {
+  const errors = collectErrors(page);
+  await withRuntimeModules(page);
+  await page.goto("/nope");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Newer module" })).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("Module incompatible");
+  await expect(page.locator('[data-slot="module-problem-tile"]').getByText("nope: incompatible")).toBeVisible();
+  expect(errors.filter((text) => text.startsWith("pageerror"))).toEqual([]);
+  expect(errors.filter((text) => text.includes('runtime module "nope" is incompatible'))).toHaveLength(1);
+});
+
+test("a contributed icon rendered several times keeps every id on the page unique", async ({ page }) => {
+  await withRuntimeModules(page);
+  await page.goto("/good");
+  await expect(page.getByTestId("icons").locator("svg")).toHaveCount(2);
+
+  const ids = await page.evaluate(() => [...document.querySelectorAll("[id]")].map((element) => element.id));
+  expect(ids.length - new Set(ids).size).toBe(0);
+  const { violations } = await new AxeBuilder({ page }).include('[data-slot="good-page"]').include('[data-slot="health-header"]').analyze();
+  expect(violations.filter((violation) => violation.id.startsWith("duplicate-id")).map((violation) => violation.id)).toEqual([]);
 });

@@ -143,3 +143,7 @@ For the full command, flags, and exit classes, see the [CLI reference](../refere
   [Connect monitoring and alerts](connect-monitoring.md).
 - Turn on governed actions:
   [Enable and define governed actions](governed-actions.md).
+- Rename, re-theme and rearrange deck's UI:
+  [Customise the UI](customise-the-ui.md).
+- Add pages of your own, from any JSON API:
+  [Build a dashboard without code](build-a-dashboard.md).

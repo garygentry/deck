@@ -64,7 +64,7 @@ modules:
 - `deck validate` reports malformed or zero durations and a `warn` above `danger`
   (`LLM_USAGE_INVALID`); deck refuses to start with them too.
 
-See the [estate configuration reference](../reference/estate-config.md#llmusage) for every key.
+See the [estate configuration reference](../reference/estate-config.md#modulesllm-usage) for every key.
 
 ## Mount the credentials and data
 

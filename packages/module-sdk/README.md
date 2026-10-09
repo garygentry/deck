@@ -298,7 +298,7 @@ this package as a type). Resolution reads manifests only:
    features still wired into the kernel and the built-in modules, then other modules, each by
    id. The newcomer gets a finding.
 2. Apply overrides by id. Overrides come from the `ui.extensions` map of the `ui` config
-   section, which config cannot set yet; until it can, nothing is overridden. They replace and
+   section (see [Customise the UI](../../docs/guides/customise-the-ui.md)). They replace and
    never merge:
    - `false` disables an extension, page or nav entry, and disabling a page also removes the
      nav entries to it;

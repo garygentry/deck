@@ -6,7 +6,8 @@ you declare. There is no module to write and no container to add.
 
 It assumes you have an estate config directory (see
 [Configure your estate](configure-your-estate.md)) and are comfortable with YAML.
-For every key, see the [`ui` section of the estate configuration reference](../reference/estate-config.md#ui).
+For every key, see the [`ui` section of the estate configuration reference](../reference/estate-config.md#ui),
+and for every widget type and its options, the [widget types reference](../reference/widget-types.md).
 
 A finished example is in [`examples/dashboard/20-dashboard.yaml`](../../examples/dashboard/20-dashboard.yaml):
 a page built over deck's own `/api/health`. [Try the example](#try-the-example) shows how to
@@ -330,3 +331,7 @@ page away again.
 - [Provider kinds: http-json](../reference/provider-kinds.md#http-json): polling, auth and
   failure handling.
 - [HTTP API](../reference/http-api.md): `GET /api/ui` and provider envelopes.
+- [Widget types reference](../reference/widget-types.md): every type, its options and the value
+  formats.
+- [Customise the UI](customise-the-ui.md): brand, theme, home page, sidebar and overrides.
+- [Write a sidecar module](write-a-sidecar-module.md): when the data needs code.

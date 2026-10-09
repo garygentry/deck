@@ -333,9 +333,11 @@ const KIND_PATTERN = /^[a-z][a-z0-9-]*$/;
 /**
  * Why a module's provider kinds and their handlers do not fit together, or null: a kind
  * declared twice or badly named, a `bindable` kind without a binding handler, a handler for
- * a kind the manifest does not declare, or instances handled for a `static` kind.
+ * a kind the manifest does not declare, or instances handled for a `static` kind. With
+ * `handlersLoaded` false (a runtime module present by its manifest only), only the
+ * declarations are checked: its handlers are code that was not loaded.
  */
-function kindsProblem(manifest: ModuleManifest, kinds: Readonly<Record<string, ProviderKindHandler>>): string | null {
+function kindsProblem(manifest: ModuleManifest, kinds: Readonly<Record<string, ProviderKindHandler>>, handlersLoaded = true): string | null {
   const declared = new Map<string, NonNullable<ModuleManifest["providerKinds"]>[number]>();
   const providerKinds = manifest.providerKinds ?? [];
   if (!Array.isArray(providerKinds)) return "providerKinds must be a list";
@@ -360,7 +362,7 @@ function kindsProblem(manifest: ModuleManifest, kinds: Readonly<Record<string, P
     }
   }
   for (const [kind, decl] of declared) {
-    if (decl.bindable === true && handlers[kind]?.binding === undefined) {
+    if (handlersLoaded && decl.bindable === true && handlers[kind]?.binding === undefined) {
       return `provider kind "${kind}" is bindable, but the module has no binding handler for it`;
     }
   }
@@ -441,13 +443,14 @@ function snapshotKinds(module: ServerModule<any>): { kinds: Readonly<Record<stri
  * twice), or null. Config composition checks this before composing the module, so a
  * module-local kind defect disables the module instead of failing boot.
  */
-export function moduleKindsProblem(module: ServerModule<any>): string | null {
+export function moduleKindsProblem(module: ServerModule<any>, handlersLoaded = true): string | null {
   let manifest: ModuleManifest;
   try {
     manifest = jsonSnapshot(module.manifest);
   } catch {
     return null; // The host reports an unserialisable manifest itself.
   }
+  if (!handlersLoaded) return kindsProblem(manifest, {}, false);
   const snapshot = snapshotKinds(module);
   return "problem" in snapshot ? snapshot.problem : kindsProblem(manifest, snapshot.kinds);
 }
@@ -665,6 +668,15 @@ export function planModules(options: PlanOptions): ModulePlanning {
     disabled.set(id, message);
   };
 
+  // A runtime module whose kernel switch (DECK_MODULES_ENABLED) is off is inert: it is planned
+  // off for that switch, and takes no part in any check between modules (it claims no env
+  // name, path or key), so nothing in it can refuse another module or fail boot.
+  const inert = (id: string): boolean => {
+    const gate = options.runtime?.envGates.get(id);
+    return gate !== undefined && !parseBool(options.env[gate], false);
+  };
+  const inertUnusable = new Set<string>();
+
   // Snapshot every manifest once: planning, mounting and health read only these copies.
   const snapshots: { module: ServerModule<any>; id: string; manifest: ModuleManifest; builtin: boolean }[] = [];
   const seenIds = new Set<string>();
@@ -696,21 +708,25 @@ export function planModules(options: PlanOptions): ModulePlanning {
   for (const { module, id, manifest, builtin } of snapshots) {
     const loadProblem = options.runtime?.loadProblems.get(id);
     if (loadProblem !== undefined) {
+      // A fixed category: what the module's code threw, and where it lives, stay in the log.
       refuse(id, "MODULE_LOAD_FAILED", `Module "${id}" failed to load: ${loadProblem}.`);
       continue;
     }
-    // A module present by its manifest only has no handlers to check (it never runs).
-    const kinds = options.runtime?.codeless.has(id) === true ? { kinds: {} } : snapshotKinds(module);
+    // A module present by its manifest only has its kind declarations checked, not handlers.
+    const codeless = options.runtime?.codeless.has(id) === true;
+    const kinds = codeless ? { kinds: {} } : snapshotKinds(module);
     const problem = manifestProblem(manifest, reservedPagePaths)
       // Only a built-in has data that predates modules.
       ?? (manifest.dataDir !== undefined && !builtin ? "dataDir.legacyPath is reserved for built-in modules" : null)
       // A fixed id is honoured for built-ins only, so another module's status cannot read one.
       ?? (builtin ? null : fixedStatusProblem(manifest))
-      ?? ("problem" in kinds ? kinds.problem : kindsProblem(manifest, kinds.kinds))
+      ?? ("problem" in kinds ? kinds.problem : kindsProblem(manifest, kinds.kinds, !codeless))
       ?? options.manifestProblems?.get(id)
       ?? kernelCollision(manifest, options.kernelRoutes ?? [], reservedRootPaths);
     if (problem !== null) {
-      refuse(id, "MODULE_MANIFEST_INVALID", `Module "${id}" has an invalid manifest: ${problem}.`);
+      // A switched-off runtime module is inert: off for its switch, whatever its manifest says.
+      if (inert(id)) inertUnusable.add(id);
+      else refuse(id, "MODULE_MANIFEST_INVALID", `Module "${id}" has an invalid manifest: ${problem}.`);
       continue;
     }
     usable.set(id, { manifest, init: module.init, kinds: "kinds" in kinds ? kinds.kinds : {} });
@@ -732,7 +748,7 @@ export function planModules(options: PlanOptions): ModulePlanning {
     for (const page of manifest.contributes?.pages ?? []) protectedPages.push({ pattern: page.path, page: page.id, owner: "the kernel" });
   }
   for (const [id, { manifest }] of [...usable]) {
-    if (builtinIds.has(id)) continue;
+    if (builtinIds.has(id) || inert(id)) continue;
     let problem: string | null = null;
     for (const path of manifest.contributes?.routes?.rootPaths ?? []) {
       const servedBy = builtinRootPaths.get(path);
@@ -747,7 +763,7 @@ export function planModules(options: PlanOptions): ModulePlanning {
   }
 
   const manifests = [...usable.values()].map((entry) => entry.manifest);
-  assertCompatible(manifests);
+  assertCompatible(manifests.filter((manifest) => !inert(manifest.id)));
 
   /** A module's own `enabledBy` switches that are unmet: its config section, then its env flag. */
   const unmetSwitches = (manifest: ModuleManifest): ModuleGate[] => {
@@ -859,14 +875,14 @@ export function planModules(options: PlanOptions): ModulePlanning {
   const builtinShared = new Set([...builtinIds].flatMap((id) => usable.get(id)!.manifest.sharedEnv ?? []));
   const envLosers = new Map<string, string>();
   for (const [id, { manifest }] of usable) {
-    if (builtinIds.has(id)) continue;
+    if (builtinIds.has(id) || inert(id)) continue;
     const claimed = (manifest.env ?? []).find((name) => builtinShared.has(name));
     if (claimed !== undefined) envLosers.set(id, `env name "${claimed}" is a setting built-in modules share`);
   }
   // A service edge never puts a built-in in a cycle: the other module on such an edge is
   // refused (and its edges dropped), one at a time, until no such cycle is left.
   for (;;) {
-    const live = manifests.filter((manifest) => !envLosers.has(manifest.id));
+    const live = manifests.filter((manifest) => !envLosers.has(manifest.id) && !inert(manifest.id));
     const loser = builtinServiceCycle(live, builtinIds);
     if (loser === null) break;
     envLosers.set(loser.id, `service "${loser.service}" would put built-in module "${loser.builtin}" in a dependency cycle`);
@@ -877,7 +893,7 @@ export function planModules(options: PlanOptions): ModulePlanning {
     if (round > usable.size) throw new Error("module env claims did not settle (a host bug)");
     envOwners = new Map();
     const claimants = [...usable.keys()]
-      .filter((id) => !envLosers.has(id) && !resolved.refused.has(findingPath(id)))
+      .filter((id) => !envLosers.has(id) && !inert(id) && !resolved.refused.has(findingPath(id)))
       .sort((a, b) => Number(builtinIds.has(b)) - Number(builtinIds.has(a)) || compareText(a, b));
     const losers = new Map<string, string>();
     for (const id of claimants) {
@@ -902,6 +918,12 @@ export function planModules(options: PlanOptions): ModulePlanning {
   findings.push(...resolved.findings);
   for (const [id, reason] of resolved.disabled) disabled.set(id, reason);
   const { order } = resolved;
+  for (const id of inertUnusable) {
+    const gate = options.runtime!.envGates.get(id)!;
+    const reason = `not enabled: ${gate} is not true`;
+    disabled.set(id, reason);
+    gates.set(id, { reason, gates: [{ env: gate }] });
+  }
 
   const plan: ModulePlanEntry[] = [
     ...order.filter((id) => !disabled.has(id)).map((id) => ({ id, enabled: true })),
@@ -1038,7 +1060,8 @@ export function createModuleHost(options: ModuleHostOptions): ModuleHost {
   for (const entry of plan) {
     if (entry.enabled) continue;
     const code = findings.find((f) => f.path === findingPath(entry.id))?.code;
-    const event: ModuleDisabledEvent = { event: "module.disabled", module: entry.id, reason: entry.reason!, ...(code ? { code } : {}) };
+    const detail = options.runtime?.loadDetails?.get(entry.id);
+    const event: ModuleDisabledEvent = { event: "module.disabled", module: entry.id, reason: entry.reason!, ...(code ? { code } : {}), ...(detail === undefined ? {} : { detail }) };
     if (code) logger.warn(event, "module disabled");
     else logger.info(event, "module not enabled");
   }

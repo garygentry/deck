@@ -15,7 +15,7 @@ import { MODULE_ID_PATTERN, type ModuleManifest, type ServerModule, type WidgetT
 import { BUILTIN_MODULES } from "./builtin.js";
 import { credentialEnvRefusal, declaredCredentialEnv } from "./context.js";
 import { RESERVED_MODULE_IDS } from "../ui/validate.js";
-import { moduleKindsProblem, planModules, type PlanOptions } from "./host.js";
+import { moduleKindsProblem, planModules, type ModulePlanEntry, type PlanOptions } from "./host.js";
 
 const BUILTIN_SET: ReadonlySet<ServerModule<any>> = new Set(BUILTIN_MODULES);
 
@@ -30,6 +30,8 @@ export interface ModuleComposition {
   invalid: ReadonlyMap<string, string>;
   /** What checking instances' `credentialEnv` needs: see {@link credentialEnvFindings}. */
   credentials: CredentialOwners;
+  /** The module plan the contract was composed for (enabled modules first, in init order). */
+  plan: readonly ModulePlanEntry[];
 }
 
 /** A provider kind's owning module, the instance list it reads, and whether the module runs. */
@@ -131,6 +133,30 @@ function widgetTypeContributions(types: readonly WidgetTypeDecl[]): ConfigContri
   return types.map(({ type, optionsSchema }) => ({ type, ...(optionsSchema === undefined ? {} : { optionsSchema: optionsSchema as JsonObject }) }));
 }
 
+/** Whether each module's contribution composes on its own, by module, then by disabled reason. */
+const composedAlone = new WeakMap<ServerModule<any>, Map<string, Error | null>>();
+
+/**
+ * Compose one module's contribution on its own, throwing what composition throws. A module
+ * is frozen data plus functions, so the outcome is remembered: composing every built-in again
+ * for each plan (the runtime module loader plans several times) costs an ajv compile apiece.
+ */
+function composeAlone(module: ServerModule<any>, contribution: ConfigContribution): void {
+  let outcomes = composedAlone.get(module);
+  if (outcomes === undefined) composedAlone.set(module, (outcomes = new Map()));
+  const key = contribution.disabled ?? "";
+  if (!outcomes.has(key)) {
+    try {
+      composeConfig([contribution]);
+      outcomes.set(key, null);
+    } catch (error) {
+      outcomes.set(key, error as Error);
+    }
+  }
+  const error = outcomes.get(key);
+  if (error) throw error;
+}
+
 /**
  * Compose the kernel, the built-in contributions not yet carried by a module, and the
  * modules the host would enable. Planning reads manifests only (as the host does, without
@@ -154,13 +180,14 @@ export function composeModules(
     // A module-local kind defect (a kind declared twice, say) disables the module, as the
     // host would, rather than surfacing as a conflict from composition.
     // Its declared kinds are kept, so config validation can name their owner as off.
-    // A runtime module present by its manifest only has no handlers, and never runs.
-    const kindProblem = context.runtime?.codeless.has(id) === true ? null : moduleKindsProblem(module);
+    // A runtime module present by its manifest only has its kind declarations checked, not
+    // its handlers (code that was not loaded).
+    const kindProblem = moduleKindsProblem(module, context.runtime?.codeless.has(id) !== true);
     if (kindProblem !== null) {
       invalid.set(id, kindProblem);
       try {
         const contribution = moduleContribution(module);
-        composeConfig([{ ...contribution, disabled: kindProblem }]);
+        composeAlone(module, { ...contribution, disabled: kindProblem });
         contributions.set(id, contribution);
       } catch {
         // Unusable on other counts too: it composes as an id only.
@@ -169,7 +196,7 @@ export function composeModules(
     }
     try {
       const contribution = moduleContribution(module);
-      composeConfig([contribution]);
+      composeAlone(module, contribution);
       contributions.set(id, contribution);
     } catch (error) {
       if (error instanceof ComposeError && error.code === "MODULE_MANIFEST_CONFLICT") throw error;
@@ -212,7 +239,7 @@ export function composeModules(
     composed = composeChecked([...BUILTIN_CONTRIBUTIONS, ...composedModules]);
     cache?.set(key, composed);
   }
-  return { composed, invalid, credentials: { kinds, envOwners } };
+  return { composed, invalid, credentials: { kinds, envOwners }, plan };
 }
 
 const builtinCache = new Map<string, ComposedConfig>();

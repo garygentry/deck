@@ -12,11 +12,9 @@ import { formatFindings, formatToolError } from "./findings-format.js";
  */
 export function runRender(argv: readonly string[]): ExitClass {
   const { dir, out = "deck.config.json" } = parseArgs(argv);
-  let runtime: ReturnType<typeof manifestLoadOptions>;
-  try {
-    runtime = manifestLoadOptions(dir);
-  } catch (cause) {
-    process.stderr.write(`${formatToolError({ code: "MODULES_DIR_UNREADABLE", message: (cause as Error).message })}\n`);
+  const runtime = runtimeOptions(dir);
+  if ("toolError" in runtime) {
+    process.stderr.write(`${runtime.toolError}\n`);
     return 2;
   }
   const result = load({ arg: dir, ...runtime, boot: true });
@@ -35,10 +33,21 @@ export function runRender(argv: readonly string[]): ExitClass {
 
 /** {@link runRender} as a string: the canonical document boot would serve. */
 export function renderConfig(dir: string): string {
-  const result = load({ arg: dir, ...manifestLoadOptions(dir), boot: true });
+  const runtime = runtimeOptions(dir);
+  if ("toolError" in runtime) throw new Error(runtime.toolError);
+  const result = load({ arg: dir, ...runtime, boot: true });
   if (result.exitClass === 0) return canonicalize(result.config);
   const diagnostic = result.exitClass === 1
     ? formatFindings(result.findings)
     : formatToolError(result.toolError);
   throw new Error(diagnostic);
+}
+
+/** The runtime modules' load options, or the classified tool error for an unreadable DECK_MODULES_DIR. */
+function runtimeOptions(dir: string | undefined): ReturnType<typeof manifestLoadOptions> | { toolError: string } {
+  try {
+    return manifestLoadOptions(dir);
+  } catch (cause) {
+    return { toolError: formatToolError({ code: "MODULES_DIR_UNREADABLE", message: (cause as Error).message }) };
+  }
 }

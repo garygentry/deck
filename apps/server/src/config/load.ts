@@ -5,6 +5,7 @@ import {
   merge,
   MergeError,
   MIGRATABLE_CONFIG_VERSION,
+  MODULE_HOST_FINDING_CATALOG,
   validate,
   type ComposedConfig,
   type DisabledSections,
@@ -181,7 +182,10 @@ export function load(options: LoadOptions = {}): LoaderResult {
   results.push(validate(accumulator, { layer: "merged", composed, disabledSections }));
   // A refused instance credential: what boot logs as a warning, reported against the merged config.
   const boot = options.boot === true;
-  const refused = credentials === undefined ? [] : credentialEnvFindings(accumulator, credentials, { boot, disabledSections });
+  const refused = [
+    ...(credentials === undefined ? [] : credentialEnvFindings(accumulator, credentials, { boot, disabledSections })),
+    ...runtimeLoadFindings(options.runtime, boot),
+  ];
   if (boot) results = results.map((result) => (result.classification === 2 ? result : { ...result, findings: result.findings.map(advisory) }));
   const exitClass = Math.max(maxClassification(results), classify(refused)) as ExitClass;
   const findings = [...collectFindings(results), ...refused];
@@ -197,6 +201,23 @@ export function load(options: LoadOptions = {}): LoaderResult {
     if (!moduleProblems.has(id)) moduleProblems.set(id, finding.message);
   }
   return { exitClass: 0, config: deepFreeze(accumulator) as unknown as DeckConfig, findings, moduleProblems };
+}
+
+/**
+ * Planning from manifests only (`deck validate`, `deck render`): each runtime module that would
+ * fail to load (an integrity pin that does not match, say) as MODULE_LOAD_FAILED. Boot logs
+ * these from the module host instead, and goes on, so for boot they are info.
+ */
+function runtimeLoadFindings(runtime: RuntimeModulePlan | undefined, boot: boolean): Finding[] {
+  if (runtime?.planOnly !== true) return [];
+  const { severity, fix } = MODULE_HOST_FINDING_CATALOG.MODULE_LOAD_FAILED;
+  return [...runtime.loadProblems].map(([id, category]) => ({
+    code: "MODULE_LOAD_FAILED",
+    severity: boot ? "info" : severity,
+    path: `/modules/${id}`,
+    message: `Module "${id}" failed to load: ${category}.`,
+    hint: runtime.loadDetails?.get(id) ?? fix,
+  }));
 }
 
 /** A boot-advisory finding as info. */

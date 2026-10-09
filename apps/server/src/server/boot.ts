@@ -58,6 +58,8 @@ export interface BootOptions {
    * be quiet before it is read again.
    */
   uiReload?: false | { debounceMs?: number };
+  /** Bound on importing each runtime module's server entry (default 10 s; tests shorten it). */
+  runtimeImportTimeoutMs?: number;
 }
 
 /** What a request that arrives once shutdown has begun gets. */
@@ -102,19 +104,26 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
   // and one that fails to load is disabled (logged below) while boot goes on.
   let runtime: RuntimeModules = NO_RUNTIME_MODULES;
   try {
-    runtime = await loadRuntimeModules({ env: process.env, ...(options.configDir === undefined ? {} : { configDir: options.configDir }) });
+    runtime = await loadRuntimeModules({
+      env: process.env,
+      ...(options.configDir === undefined ? {} : { configDir: options.configDir }),
+      ...(options.runtimeImportTimeoutMs === undefined ? {} : { importTimeoutMs: options.runtimeImportTimeoutMs }),
+    });
   } catch (cause) {
     process.stderr.write(`${(cause as Error).message}\n`);
     process.exit(2);
   }
   if (runtime.dir !== undefined) {
-    logger.info({
+    const event = {
       event: "modules.runtime",
       dir: runtime.dir,
       enabled: parseBool(process.env[MODULES_ENABLED_ENV], false),
       loaded: [...runtime.loaded],
       failed: [...runtime.loadProblems.keys()],
-    } satisfies RuntimeModulesEvent, "runtime modules read");
+      rejected: [...runtime.rejected],
+    } satisfies RuntimeModulesEvent;
+    if (runtime.rejected.length > 0) logger.warn(event, "runtime modules read; some directories left out");
+    else logger.info(event, "runtime modules read");
   }
   const serverModules = [...(options.modules ?? BUILTIN_MODULES), ...runtime.modules];
   const stopTimings = resolveStopTimings(options.shutdown);

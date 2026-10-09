@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { stringify } from "yaml";
 
 import { main as cli } from "../src/cli/deck.js";
+import { renderConfig } from "../src/cli/render.js";
 import { moduleDigest } from "../src/modules/runtime.js";
 import { stopScheduler } from "../src/providers/registry.js";
 import { boot, type BootHandle } from "../src/server/boot.js";
@@ -71,7 +72,7 @@ function modulesEnv(dir: string, enabled = true): void {
 type Request_ = (path: string) => Promise<Response>;
 
 /** Boot deck on `dir` with the HTTP listener stubbed; requests go straight to its fetch handler. */
-async function bootOn(dir: string): Promise<Request_> {
+async function bootOn(dir: string, options: { runtimeImportTimeoutMs?: number } = {}): Promise<Request_> {
   let fetchHandler: ((request: Request) => Response | Promise<Response>) | undefined;
   vi.stubGlobal("Bun", {
     serve: (serveOptions: { fetch: (request: Request) => Response | Promise<Response> }) => {
@@ -79,19 +80,19 @@ async function bootOn(dir: string): Promise<Request_> {
       return { stop: async () => undefined };
     },
   });
-  const handle: BootHandle = await boot({ configDir: dir, port: 0, uiReload: false });
+  const handle: BootHandle = await boot({ configDir: dir, port: 0, uiReload: false, ...options });
   cleanup.push(() => handle.stop());
   return (path) => Promise.resolve(fetchHandler!(new Request(`http://deck${path}`)));
 }
 
 /** Boot expecting an exit: the code and what was printed. */
-async function bootFails(dir: string): Promise<{ code: string; stderr: string }> {
+async function bootFails(dir: string, options: { runtimeImportTimeoutMs?: number } = {}): Promise<{ code: string; stderr: string }> {
   vi.stubGlobal("Bun", { serve: () => ({ stop: async () => undefined }) });
   const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   vi.spyOn(process, "exit").mockImplementation(((code: number) => {
     throw new Error(`exit:${code}`);
   }) as never);
-  const error = await boot({ configDir: dir, port: 0, uiReload: false }).then(() => null, (cause: Error) => cause);
+  const error = await boot({ configDir: dir, port: 0, uiReload: false, ...options }).then(() => null, (cause: Error) => cause);
   return { code: error?.message ?? "booted", stderr: stderr.mock.calls.map(([text]) => String(text)).join("") };
 }
 
@@ -189,13 +190,14 @@ describe("a runtime module that fails to load", () => {
     const request = await bootOn(configDir({ modules: { maintenance: { windows: WINDOWS }, broken: { size: 3 } } }));
 
     const disabled = logLines.find((line) => line.event === "module.disabled" && line.module === "broken");
-    expect(disabled).toMatchObject({ code: "MODULE_LOAD_FAILED", level: 40 });
-    expect(String(disabled!.reason)).toContain("its server entry failed to import: cannot start: missing native addon");
+    expect(disabled).toMatchObject({ code: "MODULE_LOAD_FAILED", level: 40, reason: 'Module "broken" failed to load: import error.' });
+    // The log keeps the cause; the API never sees it.
+    expect(String(disabled!.detail)).toContain("its server entry failed to import: cannot start: missing native addon");
     expect(logLines.find((line) => line.event === "modules.runtime")).toMatchObject({ loaded: ["maintenance"], failed: ["broken"] });
 
     const health = await json<{ modules: Record<string, { state: string; detail?: string }> }>(request, "/api/health");
     expect(health.modules.broken).toMatchObject({ state: "disabled" });
-    expect(health.modules.broken!.detail).toContain('Module "broken" failed to load');
+    expect(health.modules.broken!.detail).toBe('Module "broken" failed to load: import error.');
     expect(health.modules.maintenance).toMatchObject({ state: "ok" });
 
     const ui = await json<UiManifest>(request, "/api/ui");
@@ -225,9 +227,61 @@ describe("a runtime module that fails to load", () => {
     writeFileSync(join(root, "broken", "extra.mjs"), "export {};\n");
     const request = await bootOn(configDir({ moduleIntegrity: { broken: pin } }));
     const disabled = logLines.find((line) => line.event === "module.disabled" && line.module === "broken");
-    expect(disabled).toMatchObject({ code: "MODULE_LOAD_FAILED" });
-    expect(String(disabled!.reason)).toContain(`does not match the pinned ${pin}`);
+    expect(disabled).toMatchObject({ code: "MODULE_LOAD_FAILED", reason: 'Module "broken" failed to load: pin mismatch.' });
+    expect(String(disabled!.detail)).toContain(`does not match the pinned ${pin}`);
     expect((await json<UiManifest>(request, "/api/ui")).pages.map((page) => page.id)).not.toContain("page:broken/main");
+  });
+
+  it("keeps the module's error text and directory out of /api/health and /api/ui", async () => {
+    const SENTINEL = "sentinel-7f3a-secret-token";
+    const root = modulesWithBroken(`throw new Error("${SENTINEL} at " + import.meta.url);\n`);
+    modulesEnv(root);
+    const request = await bootOn(configDir());
+    for (const path of ["/api/health", "/api/ui"]) {
+      const body = await (await request(path)).text();
+      expect(body, path).toContain("import error");
+      expect(body, path).not.toContain(SENTINEL);
+      expect(body, path).not.toContain(root);
+    }
+    expect(JSON.stringify(logLines)).toContain(SENTINEL);
+  });
+
+  it("stops boot (exit 2) when a server entry never finishes loading, naming the module", async () => {
+    modulesEnv(modulesWithBroken(`await new Promise(() => {});\nexport default {};\n`));
+    const failed = await bootFails(configDir(), { runtimeImportTimeoutMs: 200 });
+    expect(failed.code).toBe("exit:2");
+    expect(failed.stderr).toContain('runtime module "broken": its server entry did not finish loading within 200 ms');
+  });
+
+  it("checks a failed module's section as if it ran: layer ownership and overlay references too", async () => {
+    const root = tempDir("deck-rtb-mods-");
+    mkdirSync(join(root, "ref"));
+    writeFileSync(join(root, "ref", "deck-module.json"), JSON.stringify({
+      id: "ref",
+      version: "1.0.0",
+      deckApi: "^0.1",
+      config: {
+        schema: { type: "object", properties: { target: { type: "object" }, note: { type: "string" } } },
+        ownership: { "": "overlay" },
+        references: ["target"],
+      },
+    }));
+    writeFileSync(join(root, "ref", "server.mjs"), `throw new Error("broken");\n`);
+    modulesEnv(root);
+    // In the base layer, the overlay-owned section is a layer problem, as it would be if the module ran.
+    const base = tempDir("deck-rtb-cfg-");
+    writeFileSync(join(base, "00-base.yaml"), stringify({ schemaVersion: 2, estate: { name: "lab" }, modules: { ref: { note: "x" } } }));
+    const layered = await bootFails(base);
+    expect(layered.code).toBe("exit:1");
+    expect(layered.stderr).toContain("LAYER_OVERLAY_KEY_IN_BASE");
+    // An overlay reference to a host the base does not declare dangles.
+    const dangling = await bootFails(configDir({ modules: { ref: { target: { host: "ghost" } } } }));
+    expect(dangling.code).toBe("exit:1");
+    expect(dangling.stderr).toContain("OVERLAY_DANGLING_REF");
+
+    // Switched off, the same section is advisory.
+    delete process.env.DECK_MODULES_ENABLED;
+    await bootOn(base);
   });
 
   it("rejects a malformed pin in config", async () => {
@@ -243,6 +297,39 @@ describe("a runtime module that fails to load", () => {
     expect(failed.code).toBe("exit:2");
     expect(failed.stderr).toContain("DECK_MODULES_DIR");
   });
+});
+
+describe("runtime modules that collide with built-ins", () => {
+  function collidingRoot(): string {
+    const root = tempDir("deck-rtb-mods-");
+    mkdirSync(join(root, "portal")); // empty, named like a built-in
+    for (const [id, extra] of [
+      ["legacy-key", { health: { legacyKey: "llmUsage" } }],
+      ["kind-thief", { providerKinds: [{ kind: "prometheus" }] }],
+    ] as const) {
+      mkdirSync(join(root, id));
+      writeFileSync(join(root, id, "deck-module.json"), JSON.stringify({ id, version: "1.0.0", deckApi: "^0.1", ...extra }));
+    }
+    return root;
+  }
+
+  for (const enabled of [true, false]) {
+    it(`never abort boot (DECK_MODULES_ENABLED ${enabled ? "on" : "off"})`, async () => {
+      modulesEnv(collidingRoot(), enabled);
+      const request = await bootOn(configDir());
+      const health = await json<{ modules: Record<string, { state: string; detail?: string }> }>(request, "/api/health");
+      // The built-in portal is untouched.
+      expect(health.modules.portal).toMatchObject({ state: "ok" });
+      const ui = await json<UiManifest>(request, "/api/ui");
+      for (const id of ["legacy-key", "kind-thief"]) {
+        const module = ui.modules.find((candidate) => candidate.id === id)!;
+        expect(module.enabled).toBe(false);
+        expect(module.reason).toBe(enabled ? `Module "${id}" failed to load: collision.` : "not enabled: DECK_MODULES_ENABLED is not true");
+      }
+      const event = logLines.find((line) => line.event === "modules.runtime");
+      expect(event).toMatchObject({ level: 40, rejected: [{ id: "portal" }] });
+    });
+  }
 });
 
 describe("the deck CLI with DECK_MODULES_DIR", () => {
@@ -284,6 +371,51 @@ describe("the deck CLI with DECK_MODULES_DIR", () => {
     delete process.env.DECK_MODULES_ENABLED;
     expect(cli(["validate", config])).toBe(1);
     expect(stderr.mock.calls.map(([text]) => String(text)).join("")).toContain("/integrations/0/url  SCHEMA_UNKNOWN_PROPERTY");
+  });
+
+  it("plans a bindable runtime kind as boot does: validate, render and boot agree", async () => {
+    const root = tempDir("deck-rtb-mods-");
+    mkdirSync(join(root, "probe"));
+    writeFileSync(join(root, "probe", "deck-module.json"), JSON.stringify({ id: "probe", version: "1.0.0", deckApi: "^0.1", providerKinds: [{ kind: "probe", bindable: true }] }));
+    writeFileSync(join(root, "probe", "server.mjs"), `import manifest from "./deck-module.json" with { type: "json" };\nexport default { manifest, init() {}, kinds: { probe: { binding: () => [] } } };\n`);
+    const config = tempDir("deck-rtb-cfg-");
+    writeFileSync(join(config, "00-base.yaml"), stringify({ schemaVersion: 2, estate: { name: "lab" }, hosts: [{ name: "h1", kind: "vm", purpose: "test" }] }));
+    writeFileSync(join(config, "10-overlay.yaml"), stringify({ schemaVersion: 2, hosts: [{ name: "h1", bindings: { probe: { target: "x" } } }] }));
+    modulesEnv(root);
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    expect(cli(["validate", config])).toBe(0);
+    expect(() => renderConfig(config)).not.toThrow();
+    const request = await bootOn(config);
+    expect((await json<UiManifest>(request, "/api/ui")).modules.find((module) => module.id === "probe")).toMatchObject({ enabled: true });
+    expect(stderr.mock.calls.map(([text]) => String(text)).join("")).not.toContain("PROVIDER_KIND");
+  });
+
+  it("reports a runtime module whose directory does not match its pin, as boot would refuse it", () => {
+    const root = tempDir("deck-rtb-mods-");
+    cpSync(join(EXAMPLES, "maintenance"), join(root, "maintenance"), { recursive: true });
+    modulesEnv(root);
+    const pinned = (pin: string) => configDir({ moduleIntegrity: { maintenance: pin }, modules: { maintenance: { windows: WINDOWS } } });
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    expect(cli(["validate", pinned(moduleDigest(join(root, "maintenance")))])).toBe(0);
+    const stale = pinned(`sha256-${"A".repeat(43)}=`);
+    expect(cli(["validate", stale])).toBe(1);
+    const printed = stderr.mock.calls.map(([text]) => String(text)).join("");
+    expect(printed).toContain("MODULE_LOAD_FAILED");
+    expect(printed).toContain('Module "maintenance" failed to load: pin mismatch.');
+    // Boot goes on without the module, and so does render.
+    expect(cli(["render", stale, "--out", join(tempDir("deck-rtb-out-"), "out.json")])).toBe(0);
+  });
+
+  it("render reports an unreadable DECK_MODULES_DIR as a tool error, exit 2", () => {
+    modulesEnv(join(tempDir("deck-rtb-"), "absent"));
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const config = configDir();
+    expect(cli(["render", config, "--out", join(tempDir("deck-rtb-out-"), "out.json")])).toBe(2);
+    expect(String(stderr.mock.calls[0]![0])).toContain("MODULES_DIR_UNREADABLE");
+    expect(() => renderConfig(config)).toThrow("MODULES_DIR_UNREADABLE");
+    expect(cli(["validate", config])).toBe(2);
   });
 
   it("prints a module directory's integrity pin", () => {

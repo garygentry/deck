@@ -131,6 +131,11 @@ export interface ModuleDisabledEvent {
   reason: string;
   /** Module-host finding code when the host refused it; absent when simply not enabled. */
   code?: string;
+  /**
+   * For a runtime module that failed to load: the full cause (its directory, the error its
+   * code threw). The log only: `reason`, which the HTTP API serves, names a category.
+   */
+  detail?: string;
 }
 
 export interface RuntimeModulesEvent {
@@ -145,6 +150,8 @@ export interface RuntimeModulesEvent {
   enabled: boolean;
   loaded: string[];
   failed: string[];
+  /** Directories left out entirely (named like a built-in module, say), with why. */
+  rejected: { id: string; detail: string }[];
 }
 
 export function createLogger(options: LoggerOptions = {}): Logger {

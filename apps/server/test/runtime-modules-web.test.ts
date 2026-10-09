@@ -5,6 +5,7 @@
  */
 
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +14,7 @@ import type { UiManifest, UiModule } from "@deck/module-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stringify } from "yaml";
 
-import { moduleDigest } from "../src/modules/runtime.js";
+import { moduleDigest, readWebAssets } from "../src/modules/runtime.js";
 import { stopScheduler } from "../src/providers/registry.js";
 import { boot, type BootHandle } from "../src/server/boot.js";
 
@@ -33,6 +34,8 @@ afterEach(async () => {
   delete process.env.DECK_MODULES_DIR;
   delete process.env.DECK_MODULES_ENABLED;
 });
+
+const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 
 function tempDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -173,6 +176,25 @@ describe("a module deck did not load: no web entry, and every file 404s", () => 
     const request = await bootOn(configDir({ modules: { maintenance: { windows: WINDOWS } }, moduleIntegrity: { maintenance: pin } }), root);
     expect((await moduleOf(request, "maintenance"))?.web).toBeDefined();
     expect((await request("/modules/maintenance/web.js")).status).toBe(200);
+  });
+});
+
+describe("a pinned module's web half", () => {
+  it("is refused when a file changes between the pin walk and the asset read", () => {
+    const root = exampleRoot();
+    const dir = join(root, "maintenance");
+    // The per-file hashes the pin walk saw, as checkPin returns them.
+    const pinned = new Map([
+      ["web.js", sha256(readFileSync(join(dir, "web.js")))],
+      ["web.css", sha256(readFileSync(join(dir, "web.css")))],
+      ["deck-module.json", sha256(readFileSync(join(dir, "deck-module.json")))],
+    ]);
+    expect(readWebAssets(dir, pinned)?.script.sha256).toBe(pinned.get("web.js"));
+    // Swapped after the walk, before the read.
+    writeFileSync(join(dir, "web.js"), "export default 'swapped';\n");
+    expect(() => readWebAssets(dir, pinned)).toThrow(/web\.js changed after its directory digest was checked/);
+    // Unpinned, the bytes are whatever is there at load.
+    expect(readWebAssets(dir, null)?.script.body.toString()).toContain("swapped");
   });
 });
 

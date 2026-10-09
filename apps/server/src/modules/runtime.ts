@@ -148,20 +148,30 @@ const inside = (parent: string, child: string) => child.startsWith(`${parent}${s
  * outside what the digest covers.
  */
 export function moduleDigest(dir: string): string {
+  return digestWalk(dir).digest;
+}
+
+/** {@link moduleDigest}, with the sha256 (hex) of each file it covered, by relative path. */
+function digestWalk(dir: string): { digest: string; files: ReadonlyMap<string, string> } {
   const root = realpathSync(dir);
   const outer = createHash("sha256");
+  const files = new Map<string, string>();
   const walk = (current: string) => {
     for (const name of readdirSync(current).sort()) {
       const path = join(current, name);
       const stats = lstatSync(path);
       const rel = relative(root, path).split(sep).join("/");
       if (stats.isDirectory()) walk(path);
-      else if (stats.isFile()) outer.update(`${rel}\0${createHash("sha256").update(readFileSync(path)).digest("hex")}\n`);
+      else if (stats.isFile()) {
+        const hash = createHash("sha256").update(readFileSync(path)).digest("hex");
+        files.set(rel, hash);
+        outer.update(`${rel}\0${hash}\n`);
+      }
       else throw new LoadError("unreadable", `"${rel}" is not a regular file or directory, so the integrity digest cannot cover it`);
     }
   };
   walk(root);
-  return `sha256-${outer.digest("base64")}`;
+  return { digest: `sha256-${outer.digest("base64")}`, files };
 }
 
 /** Whether `value` nests no deeper than `max` (iteratively: a deep value cannot overflow the stack). */
@@ -312,8 +322,12 @@ function idOnly(id: string): ServerModule {
   return standIn(Object.freeze({ id, version: "unknown", deckApi: "0" }));
 }
 
-/** One file of a module's web half, read whole; null when the module has no such file. */
-function readWebAsset(dir: string, name: string): WebAsset | null {
+/**
+ * One file of a module's web half, read whole; null when the module has no such file. With
+ * `pinned` (the per-file hashes of a pinned directory's digest), its bytes must be the ones
+ * the digest covered: a file changed between the two reads is a pin mismatch.
+ */
+function readWebAsset(dir: string, name: string, pinned: ReadonlyMap<string, string> | null): WebAsset | null {
   let file: string;
   try {
     file = realpathSync(join(dir, name));
@@ -330,15 +344,20 @@ function readWebAsset(dir: string, name: string): WebAsset | null {
   } catch (cause) {
     throw new LoadError("unreadable", `its ${name} cannot be read: ${(cause as Error).message}`);
   }
-  return Object.freeze({ body, sha256: createHash("sha256").update(body).digest("hex") });
+  const sha256 = createHash("sha256").update(body).digest("hex");
+  if (pinned !== null && pinned.get(name) !== sha256) throw new LoadError("pin mismatch", `its ${name} changed after its directory digest was checked`);
+  return Object.freeze({ body, sha256 });
 }
 
-/** A module's web half, when it has a {@link WEB_SCRIPT_FILE}; a stylesheet alone is not one. */
-function readWebAssets(dir: string): RuntimeWebAssets | null {
-  const script = readWebAsset(dir, WEB_SCRIPT_FILE);
+/**
+ * A module's web half, when it has a {@link WEB_SCRIPT_FILE}; a stylesheet alone is not one.
+ * `pinned`: the per-file hashes its pin was checked against, or null when it has no pin.
+ */
+export function readWebAssets(dir: string, pinned: ReadonlyMap<string, string> | null): RuntimeWebAssets | null {
+  const script = readWebAsset(dir, WEB_SCRIPT_FILE, pinned);
   if (script === null) return null;
-  const styles = readWebAsset(dir, WEB_STYLES_FILE);
-  const manifest = readWebAsset(dir, RUNTIME_MANIFEST_FILE)!;
+  const styles = readWebAsset(dir, WEB_STYLES_FILE, pinned);
+  const manifest = readWebAsset(dir, RUNTIME_MANIFEST_FILE, pinned)!;
   return Object.freeze({ script, manifest, ...(styles === null ? {} : { styles }) });
 }
 
@@ -490,19 +509,23 @@ class Loading {
     return conflict;
   }
 
-  /** Check a module's directory against its pin, now; throws a LoadError when it does not match. */
-  checkPin(id: string): void {
+  /**
+   * Check a module's directory against its pin, now; throws a LoadError when it does not match.
+   * Returns the per-file hashes the digest covered, or null when the module has no pin.
+   */
+  checkPin(id: string): ReadonlyMap<string, string> | null {
     const pin = this.hints?.pins.get(id);
-    if (pin === undefined) return;
+    if (pin === undefined) return null;
     if (typeof pin !== "string" || !INTEGRITY_PATTERN.test(pin)) throw new LoadError("pin mismatch", "its integrity pin is not a sha256-<base64> digest");
     this.pins.set(id, pin);
-    let digest: string;
+    let walked: ReturnType<typeof digestWalk>;
     try {
-      digest = moduleDigest(this.candidates.get(id)!.dir);
+      walked = digestWalk(this.candidates.get(id)!.dir);
     } catch (cause) {
       throw cause instanceof LoadError ? cause : new LoadError("unreadable", `its directory cannot be read: ${(cause as Error).message}`);
     }
-    if (digest !== pin) throw new LoadError("pin mismatch", `its directory digest ${digest} does not match the pinned ${pin}`);
+    if (walked.digest !== pin) throw new LoadError("pin mismatch", `its directory digest ${walked.digest} does not match the pinned ${pin}`);
+    return walked.files;
   }
 
   /**
@@ -585,9 +608,10 @@ export async function loadRuntimeModules(options: LoadRuntimeOptions): Promise<R
     const candidate = loading.candidates.get(id)!;
     try {
       // Immediately before the import, so an earlier module's import cannot change it unseen.
-      loading.checkPin(id);
-      // Read now, with the pinned bytes, and served from memory: a later change is not served.
-      const web = readWebAssets(candidate.dir);
+      const pinned = loading.checkPin(id);
+      // Read now and served from memory, so a later change is not served; when pinned, each
+      // file must hash as it did in the digest just checked.
+      const web = readWebAssets(candidate.dir, pinned);
       if (web !== null) loading.web.set(id, web);
       if (candidate.entry === null) {
         // No server code: a module of manifest contributions only.

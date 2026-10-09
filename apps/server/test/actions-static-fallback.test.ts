@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { DeckConfig } from "../src/contract/index.js";
 import { ACTIONS_FIXTURES_DIR, actionsApp } from "./util/actions-module.js";
-import { createFakeSpawner } from "./util/fake-spawner.js";
+import { createFakeSpawner } from "../../../modules/actions/test/server/util/fake-spawner.js";
 import { makeDataDir } from "./util/tmp-data.js";
 
 /**

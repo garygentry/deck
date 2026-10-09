@@ -1,4 +1,4 @@
-import type { RunnerSpawner, SpawnedRun } from "../../../../modules/actions/server/spawn.js";
+import type { RunnerSpawner, SpawnedRun } from "../../../server/spawn.js";
 
 /**
  * Scripted behaviour for one fake spawn call. Reused by the executor tests (item 004)

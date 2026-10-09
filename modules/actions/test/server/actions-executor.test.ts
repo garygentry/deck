@@ -12,7 +12,7 @@ import {
   type ActionExecutorOptions,
   type ResolvedInvocation,
 } from "../../server/executor.js";
-import { createFakeSpawner, type FakeSpawnerScript } from "../../../../apps/server/test/util/fake-spawner.js";
+import { createFakeSpawner, type FakeSpawnerScript } from "./util/fake-spawner.js";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 

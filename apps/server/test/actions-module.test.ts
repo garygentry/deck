@@ -19,7 +19,7 @@ import { ACTIONS_MANIFEST, actionsModule, createActionsModule } from "../../../m
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { ModuleInitError } from "../src/modules/host.js";
 import { ACTIONS_FIXTURES_DIR, actionsApp } from "./util/actions-module.js";
-import { createFakeSpawner, type FakeSpawner } from "./util/fake-spawner.js";
+import { createFakeSpawner, type FakeSpawner } from "../../../modules/actions/test/server/util/fake-spawner.js";
 import { testHost } from "./util/modules.js";
 import { serverOnlyFields } from "./util/shared-ui.js";
 import { makeDataDir } from "./util/tmp-data.js";

@@ -14,7 +14,7 @@ import type { ActionsDeps, ActionsRuntime } from "../../../modules/actions/serve
 import { createApp, type AppDeps, type ProviderReader } from "../src/server/app.js";
 import type { DeckConfig } from "../src/contract/index.js";
 import { actionsApp } from "./util/actions-module.js";
-import { createFakeSpawner, type FakeSpawner, type FakeSpawnerScript } from "./util/fake-spawner.js";
+import { createFakeSpawner, type FakeSpawner, type FakeSpawnerScript } from "../../../modules/actions/test/server/util/fake-spawner.js";
 import { makeDataDir } from "./util/tmp-data.js";
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures/actions-estate");

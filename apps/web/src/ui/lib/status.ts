@@ -12,6 +12,8 @@ export interface StatusPresentation {
   label: string;
   /** Live-region role when the state should be announced; omit for static text. */
   role?: "status" | "alert";
+  /** Badge shape for this state (e.g. outline for a suppressed state); omit for the default, soft. */
+  variant?: "soft" | "outline" | "dot";
 }
 
 export type StatusMap<S extends string> = Readonly<Record<S, StatusPresentation>>;

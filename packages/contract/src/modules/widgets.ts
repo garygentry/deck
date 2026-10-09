@@ -1,11 +1,6 @@
-// The core/embed url rule is the schema library's, so validation and the renderer share it.
-import { EMBED_URL_PATTERN } from "@deck/schema/embed";
-
-export { EMBED_URL_PATTERN, embedUrlProblem } from "@deck/schema/embed";
-
 /**
  * The option schemas of deck's own widget types (`core/…`): the UI contract's copy, data only
- * (its one import, `@deck/schema/embed`, has none) so the browser bundle can load it. Config validation composes the schema
+ * (no imports) so the browser bundle can load it. Config validation composes the schema
  * library's own copy (`CORE_WIDGET_TYPE_SCHEMAS` in `@deck/schema`); a test keeps the two equal.
  * See that list for what each type shows.
  */
@@ -55,6 +50,12 @@ const FIELD_ITEM = {
 } as const;
 
 /** What a framed page may do (`core/embed`): never navigate deck's tab, open modals or lock the pointer. */
+/**
+ * The loose shape of a `core/embed` url (`EMBED_URL_PATTERN` in `@deck/schema/embed`, whose
+ * `embedUrlProblem` is the full rule that validation and the renderer run).
+ */
+const EMBED_URL_PATTERN = "^https?://[^/?#@\\s\\\\]+(?:[/?#][^\\s\\\\]*)?$";
+
 export const EMBED_SANDBOX = ["allow-scripts", "allow-same-origin", "allow-forms", "allow-popups", "allow-popups-to-escape-sandbox", "allow-downloads"] as const;
 
 

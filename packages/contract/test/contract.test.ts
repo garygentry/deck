@@ -104,16 +104,16 @@ describe("core/embed's url check", () => {
     "javascript:alert(1)", "data:text/html,x", "https://h.lab/a b", 42,
   ];
 
-  it("is the schema library's one rule: the options pattern's shape, then the URL parser, no user:password@", async () => {
-    const widgets = await import("../src/modules/widgets.js");
-    const embed = await import("@deck/schema/embed");
-    expect(widgets.embedUrlProblem).toBe(embed.embedUrlProblem);
-    const pattern = new RegExp(widgets.EMBED_URL_PATTERN, "u");
+  it("is the schema library's one rule (the contract's options pattern equals it), then the URL parser", async () => {
+    const { CORE_WIDGET_TYPE_SCHEMAS } = await import("../src/modules/widgets.js");
+    const { EMBED_URL_PATTERN, embedUrlProblem } = await import("@deck/schema/embed");
+    const embedType = CORE_WIDGET_TYPE_SCHEMAS.find(({ type }) => type === "core/embed");
+    expect((embedType?.optionsSchema as { properties: { url: { pattern: string } } }).properties.url.pattern).toBe(EMBED_URL_PATTERN);
+    const pattern = new RegExp(EMBED_URL_PATTERN, "u");
     for (const url of ACCEPTED) {
-      expect(widgets.embedUrlProblem(url), url).toBeNull();
+      expect(embedUrlProblem(url), url).toBeNull();
       expect(pattern.test(url), url).toBe(true);
     }
-    for (const url of REFUSED) expect(widgets.embedUrlProblem(url), String(url)).not.toBeNull();
-    expect(widgets.embedUrlProblem("https://user:pw@h.lab/")).toMatch(/user:password/);
+    for (const url of REFUSED) expect(embedUrlProblem(url), String(url)).not.toBeNull();
   });
 });

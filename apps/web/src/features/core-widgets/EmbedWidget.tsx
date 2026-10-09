@@ -1,4 +1,6 @@
-import { EMBED_SANDBOX, embedUrlProblem } from "@deck/contract/modules/widgets";
+import { EMBED_SANDBOX } from "@deck/contract/modules/widgets";
+// The one url rule (dependency-free), which config validation runs too.
+import { embedUrlProblem } from "@deck/schema/embed";
 import { EmptyState, ErrorState, ExternalLink, LoadingState, cn } from "@/ui";
 
 import { useUiManifest } from "../../data/index.js";

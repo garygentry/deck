@@ -23,13 +23,13 @@ const TOKEN = "sk-ant-oat01-SECRET";
 describe("fetchOauthUsage", () => {
   const creds = JSON.stringify({ claudeAiOauth: { accessToken: TOKEN, subscriptionType: "max", expiresAt: NOW - 1 } });
 
-  function deps(response: Response | Error, file: string | Error = creds): OauthDeps & { fetch: Mock<Parameters<typeof fetch>, Promise<Response>> } {
+  function deps(response: Response | Error, file: string | Error = creds): OauthDeps & { fetch: Mock<typeof fetch> } {
     return {
       readFile: vi.fn(async () => {
         if (file instanceof Error) throw file;
         return file;
       }),
-      fetch: vi.fn<Parameters<typeof fetch>, Promise<Response>>(async () => {
+      fetch: vi.fn<typeof fetch>(async () => {
         if (response instanceof Error) throw response;
         return response;
       }),

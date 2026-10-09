@@ -276,6 +276,7 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
   const identity: Record<string, IdentitySpec> = { ...IDENTITY };
   const catalog: Record<string, FindingCodeEntry> = { ...FINDING_CATALOG, ...MODULE_HOST_FINDING_CATALOG };
   const kindOwners = new Map<string, string>();
+  const kindLists = new Map<string, "integrations" | "sources">();
   const bindableKinds = new Set<string>();
   const disabledKinds = new Map<string, string>();
   const widgetOwners = new Map<string, string>();
@@ -369,6 +370,7 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
         throw new ComposeError("MODULE_MANIFEST_CONFLICT", id, `provider kind "${declared.kind}" is already declared by "${owner}"`);
       }
       kindOwners.set(declared.kind, id);
+      kindLists.set(declared.kind, declared.instanceList ?? "integrations");
       if (declared.bindable === true) bindableKinds.add(declared.kind);
       const kindCodes = new Set<string>();
       for (const { code, severity, summary, fix } of declared.findings ?? []) {
@@ -560,7 +562,7 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
         }
       }
       if (layer === "merged") findings.push(...instanceFindings(document, layer, instanceRules, catalogued, moduleFinding, fixedIds));
-      if (layer === "merged") findings.push(...reservedIdFindings(document, fixedIds, fixedIdEnvs, options.env ?? {}, catalogued));
+      if (layer === "merged") findings.push(...reservedIdFindings(document, { lists: kindLists, bindable: bindableKinds, fixedIds, fixedIdEnvs }, options.env ?? {}, catalogued));
       if (layer === "merged") {
         for (const [id, section] of disabled) {
           if (!Object.prototype.hasOwnProperty.call(sections, id)) continue;
@@ -610,21 +612,31 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
 }
 
 /**
- * PROVIDER_ID_RESERVED for each `integrations[]` / `sources[]` instance or host/service binding,
- * of a kind without a fixed id (one with a fixed id registers under that, never its own), whose id
- * is a fixed provider id while that id registers: the kind has an instance in
- * the estate, or its `fixedIdEnv` is set in `env`. Boot would fail on the pair with
- * PROVIDER_DUPLICATE_ID, so validation reports it first.
+ * PROVIDER_ID_RESERVED for each id that would register beside a fixed provider id: an
+ * `integrations[]` / `sources[]` instance of an enabled kind without a fixed id, in that kind's
+ * list (an instance of a fixed-id kind registers under that id, never its own), or a host or
+ * service binding of an enabled, bindable kind without one. A fixed id registers while its kind
+ * has an instance in its list, or while its `fixedIdEnv` is set in `env`. Boot would fail on the
+ * pair with PROVIDER_DUPLICATE_ID, so validation reports it first. Ids nothing registers (an
+ * unknown or disabled kind's, an unsupported binding's) are left to their own findings.
  */
 export function reservedIdFindings(
   document: JsonObject,
-  fixedIds: ReadonlyMap<string, string>,
-  fixedIdEnvs: ReadonlyMap<string, string>,
+  kinds: { readonly lists: ReadonlyMap<string, "integrations" | "sources">; readonly bindable: ReadonlySet<string>; readonly fixedIds: ReadonlyMap<string, string>; readonly fixedIdEnvs: ReadonlyMap<string, string> },
   env: Readonly<Record<string, string | undefined>>,
   catalogued: Readonly<Record<string, FindingCodeEntry>>,
 ): Finding[] {
-  const lists = (["integrations", "sources"] as const).map((list) => [list, Array.isArray(document[list]) ? (document[list] as unknown[]) : []] as const);
-  const kindsPresent = new Set(lists.flatMap(([, instances]) => instances.filter(isObject).map((instance) => instance.kind)));
+  const { lists, bindable, fixedIds, fixedIdEnvs } = kinds;
+  // The instances an enabled kind's handler is given: those of its kind in its own list.
+  const handled: Array<{ path: string; id: string; kind: string }> = [];
+  for (const list of ["integrations", "sources"] as const) {
+    const instances = Array.isArray(document[list]) ? (document[list] as unknown[]) : [];
+    instances.forEach((instance, index) => {
+      if (!isObject(instance) || typeof instance.kind !== "string" || lists.get(instance.kind) !== list) return;
+      handled.push({ path: `/${list}/${index}/id`, id: typeof instance.id === "string" ? instance.id : "", kind: instance.kind });
+    });
+  }
+  const kindsPresent = new Set(handled.map((instance) => instance.kind));
   const registered = new Map<string, string>();
   for (const [kind, id] of fixedIds) {
     const variable = fixedIdEnvs.get(kind);
@@ -639,20 +651,15 @@ export function reservedIdFindings(
     hint: "Choose another id.",
   });
   const findings: Finding[] = [];
-  for (const [list, instances] of lists) {
-    instances.forEach((instance, index) => {
-      if (!isObject(instance) || typeof instance.id !== "string") return;
-      // An instance of a fixed-id kind registers under that id, never its own.
-      const owner = registered.get(instance.id);
-      if (owner === undefined || fixedIds.has(instance.kind as string)) return;
-      findings.push(reserved(`/${list}/${index}/id`, instance.id, owner));
-    });
+  for (const { path, id, kind } of handled) {
+    const owner = registered.get(id);
+    if (owner !== undefined && !fixedIds.has(kind)) findings.push(reserved(path, id, owner));
   }
   // A binding that registers a provider does so under its own id (or `<kind>:<owner>`, which
   // never equals a fixed id), so it is checked the same way.
   for (const binding of estateBindings(document as Pick<DeckConfigDocument, "hosts" | "services">)) {
     const owner = registered.get(binding.id);
-    if (owner !== undefined && !fixedIds.has(binding.kind)) findings.push(reserved(`${binding.path}/id`, binding.id, owner));
+    if (owner !== undefined && bindable.has(binding.kind) && !fixedIds.has(binding.kind)) findings.push(reserved(`${binding.path}/id`, binding.id, owner));
   }
   return findings;
 }

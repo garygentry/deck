@@ -11,7 +11,7 @@ export const FINDING_CATALOG = {
   SERVICE_DUPLICATE: { severity: "error", summary: "More than one service has the same identity on a host.", fix: "Give every service on the host a unique name." },
   ID_DUPLICATE: { severity: "error", summary: "An identifier is used more than once where it must be unique.", fix: "Replace the duplicate identifier with a unique value." },
   PROVIDER_ID_SHARED: { severity: "warning", summary: "Two estate declarations in different collections, or two bindings, have the same provider id.", fix: "Give every integration, source and binding its own id; if both register a provider, deck cannot start." },
-  PROVIDER_ID_RESERVED: { severity: "error", summary: "An integration or source takes the fixed provider id of another kind while that id registers, so boot would fail.", fix: "Choose another id." },
+  PROVIDER_ID_RESERVED: { severity: "error", summary: "An integration, source or binding takes the fixed provider id of another kind while that id registers, so boot would fail.", fix: "Choose another id." },
   REF_HOST_UNRESOLVED: { severity: "error", summary: "A host reference does not resolve to a declared host.", fix: "Point the reference to an existing host or declare the missing host." },
   REF_SERVICE_UNRESOLVED: { severity: "error", summary: "A service reference does not resolve to a declared service.", fix: "Point the reference to an existing service or declare the missing service." },
   LAYER_OVERLAY_KEY_IN_BASE: { severity: "warning", summary: "The base layer contains a property owned by the overlay.", fix: "Move the reported presentation property to the overlay layer." },

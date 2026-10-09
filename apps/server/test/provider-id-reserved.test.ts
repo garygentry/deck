@@ -1,3 +1,4 @@
+import { defineServerModule, type ServerModule } from "@deck/module-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { load } from "../src/config/load.js";
@@ -19,11 +20,29 @@ const httpJson = (id: string) => ({ id, kind: "http-json", title: id, url: "http
 const remote = (id: string) => ({ id, kind: "remote", title: id, url: "http://sidecar.lan:9000" });
 const upstream = (kind: string) => ({ id: `${kind}-main`, kind, title: kind, baseUrl: `http://${kind}.lan` });
 
+/**
+ * A module with its own `feeder` kind, switched on by FEEDER_ON, whose instances handler
+ * registers each instance under its own id.
+ */
+const feeder: ServerModule<any> = defineServerModule(
+  { id: "feeder", version: "1.0.0", deckApi: "^0.1", enabledBy: { env: "FEEDER_ON" }, providerKinds: [{ kind: "feeder", instanceSchema: { type: "object" }, statusCapable: false }] },
+  () => {},
+  {
+    kinds: {
+      feeder: {
+        instances: (instances) => instances.map((instance) => ({
+          provider: { id: String(instance.id), kind: "feeder", fetch: async () => ({}), health: async () => ({ ok: true }) },
+        })),
+      },
+    },
+  },
+);
+
 /** What `deck validate` reports as PROVIDER_ID_RESERVED for `document` under `env`. */
-function reserved(document: Record<string, unknown>, env: Env): { severity: string; path: string }[] {
+function reserved(document: Record<string, unknown>, env: Env, modules?: readonly ServerModule<any>[]): { severity: string; path: string }[] {
   const dir = makeConfigDir({ "00-base.yaml": document });
   try {
-    return load({ arg: dir.dir, env, disabledSections: "strict" })
+    return load({ arg: dir.dir, env, disabledSections: "strict", ...(modules === undefined ? {} : { modules }) })
       .findings.filter((finding) => finding.code === "PROVIDER_ID_RESERVED")
       .map(({ severity, path }) => ({ severity, path }));
   } finally {
@@ -32,8 +51,8 @@ function reserved(document: Record<string, unknown>, env: Env): { severity: stri
 }
 
 /** Whether boot's provider registration fails on `document` under `env` with PROVIDER_DUPLICATE_ID. */
-function bootFails(document: Record<string, unknown>, env: Env): boolean {
-  const { plan, usable, envOwners, builtinIds } = planModules({ modules: BUILTIN_MODULES, sectionOf: () => undefined, env, builtins: new Set(BUILTIN_MODULES) });
+function bootFails(document: Record<string, unknown>, env: Env, modules: readonly ServerModule<any>[] = BUILTIN_MODULES): boolean {
+  const { plan, usable, envOwners, builtinIds } = planModules({ modules, sectionOf: () => undefined, env, builtins: new Set(BUILTIN_MODULES) });
   const runtimes = kindRuntimes(plan.filter((entry) => entry.enabled).map((entry) => usable.get(entry.id)!), env, undefined, undefined, envOwners, undefined, builtinIds);
   try {
     registerAllProviders(document as unknown as DeckConfig, runtimes);
@@ -74,6 +93,27 @@ describe("PROVIDER_ID_RESERVED: validation reserves every fixed provider id that
   // refuses would fail boot with PROVIDER_DUPLICATE_ID.
   it.each(cases)("boot agrees: %s", (_label, document, env, paths) => {
     expect(bootFails(document, env)).toBe(paths.length > 0);
+  });
+
+  // Only what can register is reserved: an id nothing registers is left to its own findings.
+  const nothingRegisters: Array<[string, Record<string, unknown>]> = [
+    [
+      "a binding of a kind that takes no bindings (prometheus), with id `gatus`",
+      estate({ integrations: [upstream("gatus")], hosts: [{ name: "alpha", kind: "vm", purpose: "p", bindings: { prometheus: { id: "gatus" } } }] }),
+    ],
+    ["an integration of an unknown kind with id `gatus`", estate({ integrations: [upstream("gatus"), { id: "gatus", kind: "mystery-kind", title: "Odd", baseUrl: "http://odd.lan" }] })],
+    ["an integration of a kind whose module is off, with id `gatus`", estate({ integrations: [upstream("gatus"), { id: "gatus", kind: "feeder", title: "Feed" }] })],
+  ];
+
+  it.each(nothingRegisters)("%s: not reserved, and boot agrees", (_label, document) => {
+    expect(reserved(document, {}, [...BUILTIN_MODULES, feeder])).toEqual([]);
+    expect(bootFails(document, {}, [...BUILTIN_MODULES, feeder])).toBe(false);
+  });
+
+  it("an integration of that kind once its module is on: reserved, and boot agrees", () => {
+    const document = nothingRegisters[2]![1];
+    expect(reserved(document, { FEEDER_ON: "true" }, [...BUILTIN_MODULES, feeder])).toEqual([{ severity: "error", path: "/integrations/1/id" }]);
+    expect(bootFails(document, { FEEDER_ON: "true" }, [...BUILTIN_MODULES, feeder])).toBe(true);
   });
 
   it("does not reserve `snapshot` for an empty DECK_SNAPSHOT_SOURCE (which fails boot on its own)", () => {

@@ -294,7 +294,11 @@ export interface InstanceRuleContext {
   layer: ConfigLayer;
   /** The merged document being validated, read-only. */
   document: Readonly<JsonObject>;
-  /** The fixed provider id each built-in kind declares (`ProviderKindDecl.fixedId`), by kind. */
+  /**
+   * The fixed provider id each built-in kind declares (`ProviderKindDecl.fixedId`), by kind.
+   * @deprecated Config validation reserves fixed ids for every kind itself
+   * (PROVIDER_ID_RESERVED); a kind's rule no longer needs them.
+   */
   fixedIds: ReadonlyMap<string, string>;
 }
 

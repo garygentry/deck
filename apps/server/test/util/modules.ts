@@ -17,9 +17,9 @@ import { ALERTMANAGER_MANIFEST } from "../../src/providers/alertmanager/module.j
 import { DOCKER_MANIFEST } from "../../src/providers/docker/module.js";
 import { FILE_TREE_MANIFEST } from "../../src/providers/file-tree/module.js";
 import { GATUS_MANIFEST } from "../../src/providers/gatus/module.js";
-import { HTTP_HEALTH_MANIFEST } from "../../src/providers/http-health/module.js";
+import { HTTP_HEALTH_MANIFEST } from "../../../../modules/http-health/server/module.js";
 import { HTTP_JSON_MANIFEST } from "../../src/providers/http-json/module.js";
-import { LINK_MANIFEST } from "../../src/providers/link/module.js";
+import { LINK_MANIFEST } from "../../../../modules/link/server/module.js";
 import { MARKDOWN_TREE_MANIFEST } from "../../src/providers/markdown-tree/module.js";
 import { PROMETHEUS_MANIFEST } from "../../src/providers/prometheus/module.js";
 import { REMOTE_MANIFEST } from "../../src/providers/remote/module.js";

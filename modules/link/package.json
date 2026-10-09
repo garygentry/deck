@@ -1,0 +1,10 @@
+{
+  "name": "@deck/module-link",
+  "version": "0.3.2",
+  "private": true,
+  "description": "deck's built-in link module: the static `link` data source behind portal links.",
+  "type": "module",
+  "dependencies": {
+    "@deck/module-sdk": "workspace:*"
+  }
+}

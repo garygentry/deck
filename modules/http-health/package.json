@@ -1,0 +1,11 @@
+{
+  "name": "@deck/module-http-health",
+  "version": "0.3.2",
+  "private": true,
+  "description": "deck's built-in http-health module: the `http-health` data source that probes a URL on every poll.",
+  "type": "module",
+  "dependencies": {
+    "@deck/contract": "workspace:*",
+    "@deck/module-sdk": "workspace:*"
+  }
+}

@@ -221,7 +221,7 @@ defineServerModule(manifest, init, {
 The kernel calls the handlers before any `init`, and registers what they offer. `envFor`
 unlocks only the credential variable that one instance names. See
 [Provider kinds](../../packages/module-sdk/README.md#provider-kinds) in the SDK README and the
-`apps/server/src/providers/*` modules.
+`apps/server/src/providers/*` modules, and the co-located `modules/http-health`.
 
 ## Test it
 

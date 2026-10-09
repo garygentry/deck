@@ -3,9 +3,9 @@ import type { EnvReader } from "@deck/module-sdk";
 import { AlertmanagerProvider, type AlertmanagerConfig } from "../../src/providers/alertmanager/index.js";
 import { DockerProvider, type DockerConfig } from "../../src/providers/docker/index.js";
 import { GatusProvider, type GatusConfig } from "../../src/providers/gatus/index.js";
-import { HttpHealthProvider, type HttpHealthConfig } from "../../src/providers/http-health/index.js";
-import { LinkProvider, type LinkDescriptor } from "../../src/providers/link/index.js";
-import { LINK_MANIFEST } from "../../src/providers/link/module.js";
+import { HttpHealthProvider, type HttpHealthConfig } from "../../../../modules/http-health/server/index.js";
+import { LinkProvider, type LinkDescriptor } from "../../../../modules/link/server/index.js";
+import { LINK_MANIFEST } from "../../../../modules/link/server/module.js";
 import { PrometheusProvider, type PrometheusConfig } from "../../src/providers/prometheus/index.js";
 import { register } from "../../src/providers/registry.js";
 

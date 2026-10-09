@@ -1,7 +1,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { afterAll, describe, expect, it } from "vitest";
@@ -126,6 +126,13 @@ describe("examples/sidecars/nut-ups: the compose snippet and the README's integr
     expect(service.ports).toBeUndefined();
     expect(service.read_only).toBe(true);
     expect(service.build.dockerfile_inline).toContain('CMD ["python3", "-I", "/app/nut_ups.py"]');
+    // Run as documented (from examples/, after examples/compose.yaml), Compose resolves the
+    // context against examples/: every COPY source must be there.
+    expect(readFileSync(join(EXAMPLE, "README.md"), "utf8")).toContain("docker compose -f compose.yaml -f sidecars/nut-ups/compose.yaml");
+    const context = resolve(EXAMPLE, "../..", service.build.context);
+    for (const [, source] of (service.build.dockerfile_inline as string).matchAll(/^\s*COPY\s+(\S+)\s+\S+$/gm)) {
+      expect(existsSync(join(context, source!)), `COPY ${source} from ${context}`).toBe(true);
+    }
     expect(service.environment.SIDECAR_TOKEN).toMatch(/^\$\{UPS_SIDECAR_TOKEN:\?/);
     expect(compose.services.deck!.environment.UPS_SIDECAR_TOKEN).toMatch(/^\$\{UPS_SIDECAR_TOKEN:\?/);
   });

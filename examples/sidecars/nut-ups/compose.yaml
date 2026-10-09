@@ -1,6 +1,9 @@
-# The NUT UPS sidecar beside deck. Merge into the compose file that runs deck:
+# The NUT UPS sidecar beside deck, merged into examples/compose.yaml. From examples/:
 #
 #   docker compose -f compose.yaml -f sidecars/nut-ups/compose.yaml up --build
+#
+# Compose resolves every relative path against the first file's directory (examples/), so the
+# build context below is written from there. This is the one supported layout.
 #
 # The sidecar asks the NUT server named in NUT_UPS (upsd, port 3493) with upsc, and serves
 # deck's remote provider protocol on port 9000 of the compose network only: nothing is
@@ -8,7 +11,7 @@
 services:
   nut-ups:
     build:
-      context: .
+      context: sidecars/nut-ups
       dockerfile_inline: |
         FROM python:3.12-alpine
         RUN apk add --no-cache nut

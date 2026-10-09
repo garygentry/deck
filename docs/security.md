@@ -42,14 +42,16 @@ can't escalate:
   configured origin. A response that contains the credential, nests deeper than 64 levels or
   exceeds the size cap (1 MiB by default) is refused, not published, and poll errors name the
   failure class only, never the credential, body or runtime error text. The URL is reached from the deck server, so whoever edits the estate
-  config chooses what deck fetches on its network.
+  config chooses what deck fetches on its network. A `remote` integration's requests to its sidecar go through the same
+  request path with the same guarantees: the credential from `credentialEnv` only, no redirect off
+  the configured origin when authenticated, and the same size, depth and timeout bounds.
 - **A sidecar contributes data and declarations, never code.** A `remote` integration's requests
   get the same hardening as `http-json`'s, on both endpoints. Its describe document may place only
   deck's declarative widget types (never `core/embed` or another module's widget, whatever
   `ui.allowUnsafeEmbeds` says), with bounded strings, options checked against each type's schema,
   `select`s within the server's limits, and links that pass deck's link check; `http(s)` links
   always open as external links. Its markdown goes through the same DOMPurify boundary as all
-  markdown. A refused document is dropped whole, and the last good one stays. Its widgets read
+  markdown, and keeps only absolute http(s) links, shown as external; any other becomes text. A refused document is dropped whole, and the last good one stays. Its widgets read
   only its own integration, and its page path and sidebar placement come from estate config,
   never from the sidecar.
 - **Source paths are confined.** Every file a source exposes is resolved through a single

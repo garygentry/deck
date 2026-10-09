@@ -20,8 +20,15 @@ Use it as a template for any sidecar: deck renders the widgets, so the sidecar h
 | `SIDECAR_TOKEN` | unset | When set, both endpoints require `Authorization: Bearer <token>`. |
 | `SIDECAR_ID` | `ups` | The `id` its describe reports: set it to the integration's id. |
 
-With Docker Compose, merge [`compose.yaml`](compose.yaml) into the file that runs deck. Without
-it, run `python3 -I nut_ups.py` on a machine with `upsc` installed.
+With Docker Compose, run it beside the example deck from `examples/`:
+
+```sh
+cd examples
+UPS_SIDECAR_TOKEN=<8+ characters> docker compose -f compose.yaml -f sidecars/nut-ups/compose.yaml up --build
+```
+
+Compose resolves the snippet's paths against `examples/`, the first file's directory. Without
+Compose, run `python3 -I nut_ups.py` on a machine with `upsc` installed.
 
 ## Point deck at it
 

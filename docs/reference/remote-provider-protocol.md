@@ -56,8 +56,10 @@ credential.
 ```
 
 `data` (any JSON) is the provider's data: what widgets read and their `select` shapes. The
-optional `observedAt` (RFC 3339) is when the sidecar took it; it shows in the provider's health
-detail. A body without `data`, or with a malformed `observedAt`, fails the poll.
+optional `observedAt` (RFC 3339, at most 40 characters) is when the sidecar took it: the
+envelope's `observedAt` and age, and so its staleness, follow it rather than the poll time (a
+time in the future counts as now), and the health detail shows it normalised. A body without
+`data`, or with a malformed `observedAt`, fails the poll.
 
 ### `GET /deck/v1/describe`
 
@@ -102,6 +104,13 @@ Beyond the schema, deck checks what a schema cannot say:
 - `core/markdown` content goes through the same sanitiser as every markdown deck renders: raw
   HTML is parsed, then DOMPurify keeps only what it allows (no scripts, styles, frames, objects,
   embeds or forms, and no event handlers). There is no raw-HTML path for a sidecar.
+- **Markdown links are external only.** Every target in a `core/markdown` widget's `content`
+  (markdown links and images, reference definitions, autolinks, raw HTML `href`/`src`) must be
+  an absolute `http(s)` URL, or the document is refused. Where it renders, every sidecar widget
+  applies the same policy to whatever markdown it shows (its content, raw HTML in it, or text
+  from the sidecar's data): an absolute `http(s)` link opens in a new tab with the external-link
+  marker; any other (a path, a fragment, a protocol-relative `//host`, another scheme) becomes
+  plain text. Markdown in your own `ui.pages` is unaffected.
 - **Links:** a link's `href` is an `http(s)` URL or an absolute path in deck, and must pass
   deck's link check (no control characters, whitespace or backslashes, no protocol-relative
   `//host`, nothing that resolves off deck's origin). An `http(s)` URL always opens in a new tab
@@ -117,12 +126,17 @@ Any failed check refuses the whole document, never part of it.
 ## What deck does with it
 
 - **The page.** Each integration has a page, `page:remote/<id>`, at its `page.path`. It holds
-  the sidecar's widgets in one section and its links below; until the first good describe it
-  shows a placeholder. Widget ids are `widget:remote/<id>.<widget id>`. Like any page or widget,
-  `ui.extensions` can switch one off, and a `ui.pages` page keeps a contested path from it.
-- **Describe has its own cadence.** It runs beside the data polls, with its own timeout: a slow
-  or failing describe never delays a poll or fails the provider's health. After a good describe
-  deck asks again every `describeIntervalMs`; after a failure, at the next poll.
+  the sidecar's widgets in one section and its links below; until a describe gives it widgets it
+  shows a fixed placeholder that says only which case it is (not described yet, unreachable,
+  refused, or no widgets), never the problem itself. Widget ids are `widget:remote/<id>.<widget id>`. Like any page or widget,
+  `ui.extensions` can switch one off, and a `ui.pages` page keeps a contested path from it. The
+  sidecar's nav entries go with the page: while it is switched off or not routed, they are not
+  listed.
+- **Describe has its own cadence.** A poll starts it when it is due and never waits for it, and
+  neither does boot. It has its own timeout: a slow or failing describe never delays a poll or
+  fails the provider's health. After a good describe deck asks again every `describeIntervalMs`;
+  after a failure it backs off, 5 s then doubling, up to `describeIntervalMs`. When deck stops,
+  a describe in flight is cancelled and changes nothing.
 - **The last good describe stands.** A describe that is refused (`REMOTE_DESCRIBE_INVALID`) or
   cannot be fetched (`REMOTE_DESCRIBE_UNREACHABLE`) leaves the last good one rendering, with the
   problem as a warning in `GET /api/ui` until a describe succeeds again.

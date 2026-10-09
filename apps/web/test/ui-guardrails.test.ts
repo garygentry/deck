@@ -58,6 +58,7 @@ describe("styling: tokens, not literals", () => {
     "src/ui/primitives/sidebar.tsx": "vendored shadcn: sidebar width CSS vars",
     "src/ui/primitives/toggle-group.tsx": "vendored shadcn: --gap CSS var",
     "src/ui/patterns/code-block.tsx": "maxHeight prop (dynamic geometry)",
+    "src/ui/patterns/data-table.tsx": "virtualized row min-height and spacer heights (dynamic geometry)",
     "src/ui/patterns/log-output.tsx": "maxHeight prop (dynamic geometry)",
     "src/ui/patterns/meter.tsx": "fill width from the value (dynamic geometry)",
     "src/ui/patterns/tree-view.tsx": "--tree-depth CSS var per row (indentation geometry)",

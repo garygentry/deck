@@ -383,7 +383,7 @@ describe("workbench §E section", () => {
     const { Demo } = collections;
     render(<Demo />);
     expect(screen.getAllByRole("figure").length).toBeGreaterThanOrEqual(14);
-    expect(screen.getAllByRole("table")).toHaveLength(4);
+    expect(screen.getAllByRole("table")).toHaveLength(5);
     expect(screen.getAllByRole("tree")).toHaveLength(2);
     expect(screen.getByRole("link", { name: "Upstream docs (opens in new tab)" })).toBeInTheDocument();
   });

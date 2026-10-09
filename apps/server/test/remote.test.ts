@@ -208,14 +208,15 @@ describe("the remote provider: describe on its own cadence", () => {
   it("a hung describe never delays a poll, nor fails its health", async () => {
     other.routes.set("/deck/v1/describe", () => {});
     other.routes.set("/deck/v1/data", json(DATA));
-    const { provider: remote } = provider(other.url, { timeoutMs: 300 });
+    const { provider: remote } = provider(other.url, { timeoutMs: 2_000 });
     const started = Date.now();
     await expect(remote.fetch()).resolves.toEqual(DATA.data);
-    expect(Date.now() - started).toBeLessThan(250);
-    await remote.describe();
+    // Well inside the describe's own 2s timeout: the poll never waited for it.
+    expect(Date.now() - started).toBeLessThan(1_500);
+    await remote.describing();
     const health = await remote.health();
     expect(health.ok).toBe(true);
-    expect(health.detail).toMatch(/describe: unreachable \(timed out after 300ms\)$/);
+    expect(health.detail).toMatch(/describe: unreachable \(timed out after 2000ms\)$/);
   });
 
   it("an invalid describe keeps the last good one, with the problem", async () => {
@@ -361,7 +362,8 @@ describe("the remote kind in an estate", () => {
     const { host, directory, manifest } = await boot([instance({ page: { nav: { group: "health" } } })]);
     try {
       startScheduler();
-      await vi.waitFor(() => expect(directory.snapshot()[0]?.describe).toBeDefined());
+      // The first poll starts the describe; a loaded CI runner can take a few seconds.
+      await vi.waitFor(() => expect(directory.snapshot()[0]?.describe).toBeDefined(), { timeout: 10_000 });
       const ui = manifest();
       expect(page(ui, "page:remote/ups")).toMatchObject({
         module: "remote",
@@ -387,7 +389,7 @@ describe("the remote kind in an estate", () => {
         expect.objectContaining({ id: "nav:remote/ups.nut", href: "https://nut.example/ui", group: "health", label: "NUT web UI" }),
       ]);
       // The select is evaluated server-side into the envelope, like a config page's.
-      await vi.waitFor(() => expect(read("ups")?.projections?.["widget:remote/ups.load"]).toEqual({ value: 42 }));
+      await vi.waitFor(() => expect(read("ups")?.projections?.["widget:remote/ups.load"]).toEqual({ value: 42 }), { timeout: 10_000 });
       expect(ui.findings.filter((finding) => finding.code.startsWith("REMOTE_"))).toEqual([]);
     } finally {
       await host.stop();

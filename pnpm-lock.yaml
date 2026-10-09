@@ -145,6 +145,9 @@ importers:
       '@playwright/test':
         specifier: ^1
         version: 1.63.0
+      '@tailwindcss/oxide':
+        specifier: ^4.3.3
+        version: 4.3.3
       '@tailwindcss/typography':
         specifier: ^0.5.20
         version: 0.5.20(tailwindcss@4.3.3)

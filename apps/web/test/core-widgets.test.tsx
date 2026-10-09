@@ -253,6 +253,81 @@ describe("core/markdown", () => {
   });
 });
 
+describe("core/markdown from a sidecar (linkPolicy external)", () => {
+  const sidecarWidget = (value: unknown, options: Record<string, unknown> = {}) =>
+    render(
+      <Suspense fallback={null}>
+        <MarkdownWidget value={value} options={options} freshness={null} widget={{ ...widget("core/markdown", "Notes"), linkPolicy: "external" }} />
+      </Suspense>,
+    );
+  const content = [
+    "[evil](//evil.example/)",
+    '<a href="http://deck.local/api/health">raw</a>',
+    "[health](/api/health)",
+    "[frag](#top)",
+    "[mail](mailto:x@example.com)",
+    "[vendor](https://vendor.example/)",
+  ].join(" ");
+
+  it("keeps only absolute http(s) links, each external; every other becomes plain text", () => {
+    const { container } = sidecarWidget(null, { content });
+    const links = screen.getAllByRole("link");
+    expect(links.map((link) => link.getAttribute("href"))).toEqual(["http://deck.local/api/health", "https://vendor.example/"]);
+    for (const link of links) {
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+      expect(link).toHaveTextContent("(opens in new tab)");
+    }
+    for (const text of ["evil", "health", "frag", "mail"]) {
+      expect(screen.getByText(text).closest("a")?.hasAttribute("href") ?? false, text).toBe(false);
+    }
+    expect(container.innerHTML).not.toContain("//evil.example");
+    expect(container.innerHTML).not.toContain('href="/api/health"');
+  });
+
+  it("covers every element and attribute that navigates or fetches, not only <a>", () => {
+    const { container } = sidecarWidget(null, {
+      content: [
+        '<map name="m"><area shape="rect" coords="0,0,1,1" href="/api/actions" alt="area"></map>',
+        '<img src="/api/health" alt="internal"><img src="https://cdn.example/x.png" srcset="/a.png 1x" alt="external">',
+        '<svg><a xlink:href="/api/config"><text>svg link</text></a></svg>',
+        '<button formaction="/api/actions/run">go</button>',
+      ].join(""),
+    });
+    expect(container.querySelector("area")?.hasAttribute("href")).toBe(false);
+    expect(container.querySelector('img[alt="internal"]')?.hasAttribute("src")).toBe(false);
+    expect(container.querySelector('img[alt="external"]')?.getAttribute("src")).toBe("https://cdn.example/x.png");
+    expect(container.querySelector('img[alt="external"]')?.hasAttribute("srcset")).toBe(false);
+    expect(container.innerHTML).not.toContain("/api/");
+  });
+
+  it("leaves no URL in CSS or SVG references: no style, no url(), no animation that rewrites a link", () => {
+    const { container } = sidecarWidget(null, {
+      content: [
+        '<p style="background:url(/api/health)">styled</p>',
+        '<svg><rect fill="url(/api/config#p)" width="1" height="1"></rect>',
+        '<a href="https://ok.example/"><set attributeName="href" to="/api/actions"></set><animate attributeName="href" values="/api/actions"></animate>a</a>',
+        '<use href="/api/sprite.svg#i"></use></svg>',
+      ].join(""),
+    });
+    expect(container.querySelector("[style]")).toBeNull();
+    expect(container.querySelector("rect")?.hasAttribute("fill")).toBe(false);
+    expect(container.querySelector("set, animate, use")).toBeNull();
+    expect(container.innerHTML).not.toContain("/api/");
+  });
+
+  it("applies the policy to markdown from its source's data too", () => {
+    sidecarWidget("see [the API](/api/config) or [docs](https://docs.example/)");
+    expect(screen.getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual(["https://docs.example/"]);
+    expect(screen.getByText("the API").closest("a")?.hasAttribute("href") ?? false).toBe(false);
+  });
+
+  it("leaves operator markdown (no link policy) as it was", () => {
+    show(MarkdownWidget, "core/markdown", null, { content: "[health](/api/health)" });
+    expect(screen.getByRole("link", { name: "health" })).toHaveAttribute("href", "/api/health");
+  });
+});
+
 describe("round 1 fixes", () => {
   it("A: never links a data value a browser would take off deck (http-json-shaped item)", () => {
     // As an http-json provider might serve it: a tab, a line break, a backslash in the path.

@@ -1,4 +1,4 @@
-import { UI_CONFIG_MODULE, type UiPage } from "@deck/module-sdk";
+import { CONFIG_PAGE_COMPONENT, type UiPage } from "@deck/module-sdk";
 import type { ComponentType } from "react";
 
 import { useUiManifest, type UiManifestState } from "../../data/index.js";
@@ -23,13 +23,17 @@ function routeComponent(id: string): ComponentType {
   return component;
 }
 
-/** The config pages a ready manifest routes: its pages of module `ui` with a well-formed layout. */
+/**
+ * The config pages a ready manifest routes: its pages whose component is the kernel's
+ * `ConfigPage` (which the server gives only to `ui.pages` pages and pages modules contribute at
+ * runtime), with a well-formed layout.
+ */
 function configPagesOf(manifest: UiManifestState): UiPage[] {
   if (manifest.status !== "ready" || !Array.isArray(manifest.manifest.pages)) return [];
   // A malformed entry is not routed (the server's never is); the page boundary covers the rest.
   return manifest.manifest.pages.filter(
     (page) =>
-      page?.module === UI_CONFIG_MODULE &&
+      page?.component === CONFIG_PAGE_COMPONENT &&
       typeof page.path === "string" &&
       typeof page.title === "string" &&
       isRenderableLayout(page.layout, { slots: false }),
@@ -37,8 +41,8 @@ function configPagesOf(manifest: UiManifestState): UiPage[] {
 }
 
 /**
- * Page registrations for the config pages (`ui.pages`) the UI manifest routes, so the router
- * and the fallback nav treat them like any module's page. None until the manifest loads, or
+ * Page registrations for the config pages (`ui.pages`, and pages modules contribute at runtime)
+ * the UI manifest routes, so the router and the fallback nav treat them like any module's page. None until the manifest loads, or
  * when it cannot be read: config pages exist only in the manifest.
  */
 export function configPageRegistrations(manifest: UiManifestState): PageRegistration[] {

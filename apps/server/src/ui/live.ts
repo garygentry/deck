@@ -57,6 +57,12 @@ export interface UiReloader {
   current(): LiveUi;
   /** Read the config directory again now (the watch calls it, debounced). */
   reload(): ReloadOutcome;
+  /**
+   * Resolve the manifest again from the last good config, for a change outside config (a
+   * remote integration's describe). A finding a failed reload left stays. A build that throws
+   * keeps the manifest served.
+   */
+  rebuild(): void;
   /** Stop watching; a pending reload is dropped. */
   stop(): void;
 }
@@ -97,6 +103,8 @@ export function createUiReloader(options: UiReloaderOptions): UiReloader {
   const bootCold = coldPart(options.config);
   let good = { config: options.config, ui: options.ui, canonical: canonicalize(options.config) };
   let live: LiveUi = snapshot(options.config, options.ui);
+  // The finding a failed reload serves beside the last good manifest, until a reload succeeds.
+  let notice: UiFinding | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
 
@@ -113,11 +121,12 @@ export function createUiReloader(options: UiReloaderOptions): UiReloader {
   };
 
   const invalid = (reason: string): ReloadOutcome => {
-    publish(good.config, withFinding(good.ui, {
+    notice = {
       code: "UI_CONFIG_INVALID",
       severity: "warning",
       message: `The config changed but does not load, so deck still serves the last good config: ${reason}. Run deck validate for the details.`,
-    }));
+    };
+    publish(good.config, withFinding(good.ui, notice));
     log({ result: "invalid", reason }, "config reload failed; keeping the last good config");
     return "invalid";
   };
@@ -134,11 +143,12 @@ export function createUiReloader(options: UiReloaderOptions): UiReloader {
     const candidate = result.config;
     const changedKeys = changedColdKeys(bootCold, coldPart(candidate));
     if (changedKeys.length > 0) {
-      publish(good.config, withFinding(good.ui, {
+      notice = {
         code: "UI_RESTART_REQUIRED",
         severity: "warning",
         message: `The config changed outside ui (${changedKeys.join(", ")}): restart deck to apply it. Until then deck serves the last good config, and ui changes wait for the restart too.`,
-      }));
+      };
+      publish(good.config, withFinding(good.ui, notice));
       log({ result: "restart-required", changedKeys }, "restart required");
       return "restart-required";
     }
@@ -146,6 +156,7 @@ export function createUiReloader(options: UiReloaderOptions): UiReloader {
     const canonical = canonicalize(candidate);
     if (canonical === good.canonical) {
       // Clears a finding an earlier (reverted) edit left.
+      notice = undefined;
       publish(good.config, good.ui);
       log({ result: "unchanged" }, "config reloaded; no ui change");
       return "unchanged";
@@ -160,6 +171,7 @@ export function createUiReloader(options: UiReloaderOptions): UiReloader {
       return invalid("the UI manifest could not be resolved from it");
     }
     good = { config: candidate, ui, canonical };
+    notice = undefined;
     // A ui change that leaves the manifest as it was (a theme default, say) still swaps: the
     // config, and the page's boot object rendered from it, change.
     publish(candidate, ui, true);
@@ -181,9 +193,23 @@ export function createUiReloader(options: UiReloaderOptions): UiReloader {
   // read the directory once more, so an edit made meanwhile is not missed.
   schedule();
 
+  const rebuild = (): void => {
+    if (stopped) return;
+    let ui: UiManifest;
+    try {
+      ui = options.build(good.config);
+    } catch {
+      logger.warn({ event: "ui.rebuild", result: "failed" }, "UI manifest rebuild failed; keeping the one served");
+      return;
+    }
+    good = { ...good, ui };
+    publish(good.config, notice === undefined ? ui : withFinding(ui, notice));
+  };
+
   return {
     current: () => live,
     reload,
+    rebuild,
     stop() {
       stopped = true;
       if (timer !== undefined) clearTimeout(timer);

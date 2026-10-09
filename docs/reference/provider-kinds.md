@@ -272,38 +272,12 @@ unhealthy only when every query is unreachable.
 
 ## remote
 
-A sidecar: a small service, in any language, that deck polls at `<url>/deck/v1/data`. It
-answers `{ "data": <any JSON>, "observedAt"?: "<RFC 3339 time>" }`; the provider's data is
-`data`. `observedAt` (at most 40 characters) is when the sidecar took it: the envelope's
-`observedAt` and age, and so its staleness, follow it rather than the poll time, and a time in
-the future counts as now. Old data from a sidecar that answers is `stale`, never `unreachable`:
-`unreachable` follows the time since the last successful poll. A body without `data`, or with an `observedAt` that is not an RFC 3339
-time, fails the poll. Backed by an integration; each
-instance is its own provider, registered under its `id`.
-
-The request goes through `http-json`'s hardening (above): the credential comes only from the
-`credentialEnv` variable and is sent as `auth` says, an authenticated request never follows a
-redirect off the configured origin, and a response over the size cap, nested past 64 levels or
-containing the credential is refused, with the same failure messages.
-
-| Key | Required | Notes |
-| --- | --- | --- |
-| `id` | yes | Lowercase letters, digits and `-`, at most 64 characters; the provider id. Taking the fixed provider id of another integration in the estate is `REMOTE_ID_RESERVED`. |
-| `title` | yes | Display title. |
-| `url` | yes | The sidecar's `http://` or `https://` base URL, with no query, fragment or `user:password@`; deck requests `/deck/v1/data` under it. One the runtime cannot parse is `REMOTE_URL_INVALID`. |
-| `credentialEnv`, `auth` | no | As for `http-json`. |
-| `pollIntervalMs`, `ttlMs`, `timeoutMs`, `maxBytes` | no | As for `http-json`. |
-| `deepLink` | no | A link to the sidecar's own UI. |
-
-```yaml
-integrations:
-  - id: ups
-    kind: remote
-    title: UPS
-    url: http://nut-ups:9000
-    credentialEnv: UPS_SIDECAR_TOKEN
-    auth: { scheme: bearer }
-```
+A sidecar speaking the [remote provider protocol](remote-provider-protocol.md): deck polls
+`<url>/deck/v1/data` for its data and asks `<url>/deck/v1/describe` for the widgets, links and
+nav entries it contributes, which render on the integration's own page. Backed by an
+integration; each instance is its own provider, registered under its `id`. The request
+hardening, credential handling and failure messages are `http-json`'s (above). The keys are in
+the [protocol reference](remote-provider-protocol.md#configure-it-in-deck).
 
 ## snapshot
 

@@ -270,6 +270,37 @@ describe("ui reloader", () => {
   });
 });
 
+describe("ui reloader: rebuild (a change outside config)", () => {
+  it("resolves again from the last good config, with a new ETag only when the manifest changed", () => {
+    const h = harness();
+    let extra = "";
+    h.build.mockImplementation((config) => ({ ...manifestOf(config), brand: { title: `Lab${extra}` } }));
+    const before = h.reloader.current();
+    h.reloader.rebuild();
+    expect(h.reloader.current()).toBe(before);
+    extra = " (described)";
+    h.reloader.rebuild();
+    expect(h.reloader.current().ui.brand.title).toBe("Lab (described)");
+    expect(h.reloader.current().etag).not.toBe(before.etag);
+    expect(h.build).toHaveBeenLastCalledWith(before.config);
+  });
+
+  it("keeps a finding a failed reload left, and a throwing build keeps the manifest served", () => {
+    const h = harness();
+    h.write({ exitClass: 2, config: null, findings: [], toolError: { code: "CONFIG_YAML_PARSE", message: "bad" } });
+    expect(h.reloader.reload()).toBe("invalid");
+    h.reloader.rebuild();
+    expect(h.codes()).toEqual(["UI_CONFIG_INVALID"]);
+    const served = h.reloader.current();
+    h.build.mockImplementation(() => {
+      throw new Error("boom");
+    });
+    h.reloader.rebuild();
+    expect(h.reloader.current()).toBe(served);
+    expect(h.logger.warn).toHaveBeenCalledWith(expect.objectContaining({ event: "ui.rebuild", result: "failed" }), expect.any(String));
+  });
+});
+
 describe("served through the app", () => {
   it("reads the live snapshot per request: /api/ui with an ETag and 304, /api/config and the swap", async () => {
     vi.useRealTimers();

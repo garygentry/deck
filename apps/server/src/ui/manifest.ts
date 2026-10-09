@@ -4,6 +4,7 @@ import type { ModuleHost } from "../modules/host.js";
 import type { ProviderReader } from "../server/app.js";
 import { KERNEL_FEATURES } from "./kernel-features.js";
 import { configPagesOf, deriveProjections } from "./config-pages.js";
+import type { RuntimePages } from "./runtime-pages.js";
 import { estateNameOf, resolveUiManifest, uiConfigOf, uiOverridesOf, type UiModuleInput } from "./resolve.js";
 
 export interface UiManifestDeps {
@@ -14,12 +15,14 @@ export interface UiManifestDeps {
   modules?: Pick<ModuleHost, "plan" | "manifests" | "builtinIds">;
   /** Kernel capabilities by name. */
   capabilities: Readonly<Record<string, boolean>>;
+  /** The pages modules contribute at runtime now (`collectRuntimePages`). */
+  runtimePages?: () => RuntimePages;
 }
 
 /**
  * The UI manifest for a booted kernel: every planned module (with its manifest when it was
  * usable), the kernel-wired features, the registered providers, the config's overrides and its
- * pages. It also sets the providers' projections to the selects of its config pages' widgets.
+ * pages, and the pages modules contribute at runtime. It also sets the providers' projections to the selects of its config pages' widgets.
  */
 export function buildUiManifest(deps: UiManifestDeps): UiManifest {
   const modules: UiModuleInput[] = (deps.modules?.plan ?? []).map((entry) => {
@@ -35,6 +38,7 @@ export function buildUiManifest(deps: UiManifestDeps): UiManifest {
     };
   });
   const estateName = estateNameOf(deps.config);
+  const runtime = deps.runtimePages?.() ?? { pages: [], nav: [], findings: [] };
   const ui = resolveUiManifest({
     modules,
     kernelFeatures: KERNEL_FEATURES,
@@ -43,9 +47,11 @@ export function buildUiManifest(deps: UiManifestDeps): UiManifest {
     overrides: uiOverridesOf(deps.config),
     ...(estateName === undefined ? {} : { estateName }),
     ui: uiConfigOf(deps.config),
-    configPages: configPagesOf(deps.config),
+    configPages: [...configPagesOf(deps.config), ...runtime.pages],
+    runtimeNav: runtime.nav,
     moduleSections: moduleSectionsOf(deps.config),
   });
+  ui.findings.push(...runtime.findings);
   // The manifest's config pages decide what each envelope projects: a rebuilt manifest
   // (a reloaded ui config) replaces the selects with its own.
   deps.providers.setProjections(deriveProjections(ui));

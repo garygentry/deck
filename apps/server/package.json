@@ -28,11 +28,13 @@
     "@deck/schema": "workspace:*",
     "hono": "^4.6.0",
     "iso8601-duration": "^2",
+    "markdown-it": "^14.3.2",
     "picomatch": "^4.0.2",
-    "yaml": "^2.9.0",
-    "pino": "^9.0.0"
+    "pino": "^9.0.0",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "^22",
     "@types/picomatch": "^3.0.1",
     "json-schema-to-typescript": "^16.0.0",

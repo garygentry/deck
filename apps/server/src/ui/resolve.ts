@@ -49,6 +49,7 @@ import {
   type ConfigPage,
 } from "./config-pages.js";
 import { DEFAULT_BRAND_TITLE, DEFAULT_UI, type UiDefaults, type UiNavGroupConfig, type UiNavItemConfig } from "./defaults.js";
+import type { RuntimeNavEntry } from "./runtime-pages.js";
 import type { KernelFeature } from "./kernel-features.js";
 import { isRecord, RESERVED_MODULE_IDS } from "./validate.js";
 
@@ -90,8 +91,17 @@ export interface ResolveUiInput {
   estateName?: string;
   /** The ui config the shell starts from; the built-in default when absent. */
   ui?: UiDefaults;
-  /** Config-defined pages (`ui.pages`), listed as pages of module `ui` with their layout. */
+  /**
+   * Config-defined pages (`ui.pages`), listed as pages of module `ui` with their layout, then
+   * the pages modules contribute at runtime (each under its module), which the ui config's keep
+   * a contested id or path from.
+   */
   configPages?: readonly ConfigPage[];
+  /**
+   * Nav entries modules contribute at runtime, claimed after every page's entry; one with an
+   * `ownerPage` is listed only while that page is routed.
+   */
+  runtimeNav?: readonly RuntimeNavEntry[];
   /** The config's module sections (`modules`), which widget option references name entries of. */
   moduleSections?: Readonly<Record<string, unknown>>;
 }
@@ -107,8 +117,8 @@ interface Unit {
 
 type Owned<T> = T & { module: string };
 type Override = Exclude<UiOverride, boolean>;
-/** A nav entry as declared: a module's, or the ui config's (which may be a separator). */
-type NavEntryDecl = NavDecl & { separator?: true };
+/** A nav entry as declared: a module's, or the ui config's (which may be a separator), or a runtime one with its owning page. */
+type NavEntryDecl = NavDecl & { separator?: true; ownerPage?: string };
 
 /**
  * Resolve the UI manifest: module contributions with config overrides applied. Pure and
@@ -243,26 +253,33 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
       findings.push({ code: "UI_INVALID_PAGE", severity: "warning", message: `${problem}; it is not routed`, id: ids.page });
       continue;
     }
-    if (!claim(ids.page, UI_CONFIG_MODULE)) continue;
+    const module = page.module ?? UI_CONFIG_MODULE;
+    if (!claim(ids.page, module)) continue;
     configPageById.set(ids.page, page);
     pageDecls.push({
       id: ids.page,
-      module: UI_CONFIG_MODULE,
+      module,
       path: page.path,
       title: page.title,
       ...(page.icon === undefined ? {} : { icon: page.icon }),
       component: CONFIG_PAGE_COMPONENT,
     });
-    if (page.nav !== undefined && claim(ids.nav, UI_CONFIG_MODULE)) {
+    if (page.nav !== undefined && claim(ids.nav, module)) {
       navDecls.push({
         id: ids.nav,
-        module: UI_CONFIG_MODULE,
+        module,
         page: ids.page,
         group: page.nav.group,
         ...(page.nav.label === undefined ? {} : { label: page.nav.label }),
         ...(page.nav.order === undefined ? {} : { order: page.nav.order }),
       });
     }
+  }
+
+  for (const entry of input.runtimeNav ?? []) {
+    knownIds.add(entry.id);
+    declaredNav.add(entry.id);
+    if (claim(entry.id, entry.module)) navDecls.push({ ...entry });
   }
 
   // Widget types: the first by precedence keeps a type two modules declare.
@@ -398,7 +415,7 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
       continue;
     }
     pathOwner.set(decl.path, decl.id);
-    const configPage = decl.module === UI_CONFIG_MODULE ? configPageById.get(decl.id) : undefined;
+    const configPage = configPageById.get(decl.id);
     const enabled = (id: ExtensionId): boolean => isEnabled(overrides.get(id), true);
     pages.push({
       id: decl.id,
@@ -466,6 +483,8 @@ export function resolveUiManifest(input: ResolveUiInput): UiManifest {
   for (const decl of navDecls) {
     const override = overrides.get(decl.id);
     if (!isEnabled(override, true)) continue;
+    // A runtime entry beside a page that is not routed (switched off, or its path taken) goes with it.
+    if (decl.ownerPage !== undefined && !routedPages.has(decl.ownerPage)) continue;
     if (decl.page !== undefined && !routedPages.has(decl.page)) {
       if (!declaredPages.has(decl.page)) {
         findings.push({ code: "UI_UNKNOWN_EXTENSION", severity: "warning", message: `nav entry "${decl.id}" targets undeclared page "${decl.page}"`, id: decl.id });

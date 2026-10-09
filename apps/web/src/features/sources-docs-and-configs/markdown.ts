@@ -12,6 +12,7 @@
  * `rel="noopener noreferrer"`.
  */
 
+import { isExternalHref, isSafeHref } from "@deck/module-sdk";
 import DOMPurify, { type Config as DOMPurifyConfig } from "dompurify";
 import MarkdownIt from "markdown-it";
 import taskLists from "markdown-it-task-lists";
@@ -148,8 +149,108 @@ export function renderMarkdown(
 ): string {
   const rendered = md.render(markdown, { ...context });
   const html = options.headingOffset === undefined ? rendered : demoteHeadings(rendered, options.headingOffset);
-  // The sanitiser runs last: nothing parses, changes or re-serialises its output.
-  return DOMPurify.sanitize(html, SANITIZE_CONFIG) as string;
+  // The sanitiser runs last: nothing parses, changes or re-serialises its output. The link
+  // policy runs inside it, on the very nodes it returns, for this call only (it is synchronous).
+  if (options.externalLinksOnly !== true) return DOMPurify.sanitize(html, SANITIZE_CONFIG) as string;
+  // The policy checks the DOM the sanitiser built, but the page parses the string it returns.
+  // So the output is checked again as the page will parse it: if a parser difference left a
+  // link or URL behind, it is sanitised again, and if that does not settle it, only its text
+  // is kept (fail closed).
+  let safe = sanitizeExternalLinksOnly(html);
+  for (let pass = 0; pass < 2 && breaksExternalLinksOnly(safe); pass += 1) safe = sanitizeExternalLinksOnly(safe);
+  return breaksExternalLinksOnly(safe) ? (DOMPurify.sanitize(safe, { ALLOWED_TAGS: [], KEEP_CONTENT: true }) as string) : safe;
+}
+
+function sanitizeExternalLinksOnly(html: string): string {
+  DOMPurify.addHook("afterSanitizeAttributes", externalLinksOnly);
+  try {
+    return DOMPurify.sanitize(html, EXTERNAL_LINKS_ONLY_CONFIG) as string;
+  } finally {
+    DOMPurify.removeHook("afterSanitizeAttributes", externalLinksOnly);
+  }
+}
+
+/**
+ * Whether sanitised HTML, parsed as the page parses it (into an element, as `innerHTML` does),
+ * holds anything the external-only policy removes: a forbidden element, an inline style, a
+ * `url()`, or a link or resource attribute that is not an absolute http(s) URL.
+ */
+function breaksExternalLinksOnly(html: string): boolean {
+  // A div's innerHTML, as the page sets it, in a document with no browsing context: it runs no
+  // script and loads nothing.
+  const host = document.implementation.createHTMLDocument("").createElement("div");
+  host.innerHTML = html;
+  for (const element of host.querySelectorAll("*")) {
+    if (EXTERNAL_ONLY_FORBIDDEN_TAGS.has(element.nodeName.toLowerCase())) return true;
+    for (const { name, value } of element.attributes) {
+      if (name === "style" || name === "srcset" || name === "ping" || /url\s*\(/i.test(value)) return true;
+      if ((name === "href" || name === "xlink:href" || (RESOURCE_ATTRIBUTES as readonly string[]).includes(name)) && !isExternalOnly(value)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The sanitiser config under the external-only policy: also no inline `style` (CSS `url()`
+ * fetches), and none of the SVG elements that set a link or fetch by reference rather than
+ * through an attribute the policy checks (animations that rewrite `href`, `use`, `feImage`).
+ */
+const EXTERNAL_ONLY_FORBIDDEN_TAGS: ReadonlySet<string> = new Set([
+  ...(SANITIZE_CONFIG.FORBID_TAGS ?? []),
+  "animate",
+  "animatemotion",
+  "animatetransform",
+  "set",
+  "use",
+  "feimage",
+]);
+
+const EXTERNAL_LINKS_ONLY_CONFIG: DOMPurifyConfig = {
+  ...SANITIZE_CONFIG,
+  FORBID_TAGS: [...EXTERNAL_ONLY_FORBIDDEN_TAGS],
+  FORBID_ATTR: [...(SANITIZE_CONFIG.FORBID_ATTR ?? []), "style"],
+};
+
+/** Attributes that fetch or submit: under the external-only policy each keeps only an absolute http(s) URL. */
+const RESOURCE_ATTRIBUTES = ["src", "action", "formaction", "poster", "background", "cite", "longdesc", "data"] as const;
+
+/** Whether a URL may stay under the external-only policy: an absolute http(s) URL `isSafeHref` accepts. */
+function isExternalOnly(url: string | null): url is string {
+  return url !== null && isExternalHref(url) && isSafeHref(url);
+}
+
+/**
+ * The external-only link policy, on one sanitised node of any kind (an `a`, an image map's
+ * `area`, an SVG link, an image or a button): every attribute that navigates, submits or fetches
+ * keeps only an absolute http(s) URL `isSafeHref` accepts, and `srcset` and `ping` go. A link
+ * (`a`, `area`) that keeps its href opens as an external link (new tab, safe `rel`, and for an
+ * `a` its marker and a "(opens in new tab)" note); one that loses it reads as plain text. So no
+ * markdown from outside deck (a path, a fragment, a protocol-relative `//host`, another scheme)
+ * can point into deck.
+ */
+function externalLinksOnly(node: Element): void {
+  const name = node.nodeName.toLowerCase();
+  const isLink = name === "a" || name === "area";
+  const href = node.getAttribute("href") ?? node.getAttribute("xlink:href");
+  for (const attribute of ["href", "xlink:href", "target", "rel", "srcset", "ping", "download"]) node.removeAttribute(attribute);
+  for (const attribute of RESOURCE_ATTRIBUTES) {
+    if (node.hasAttribute(attribute) && !isExternalOnly(node.getAttribute(attribute))) node.removeAttribute(attribute);
+  }
+  // Any other attribute that names a resource by CSS reference (`fill="url(…)"`, `filter`, `mask`) goes too.
+  for (const { name: attribute, value } of [...node.attributes]) if (/url\s*\(/i.test(value)) node.removeAttribute(attribute);
+  if (!isExternalOnly(href)) return;
+  node.setAttribute("href", href);
+  if (!isLink) return;
+  node.setAttribute("target", "_blank");
+  node.setAttribute("rel", "noopener noreferrer");
+  if (name !== "a") return;
+  const marker = node.ownerDocument.createElement("span");
+  marker.setAttribute("aria-hidden", "true");
+  marker.textContent = " ↗";
+  const note = node.ownerDocument.createElement("span");
+  note.setAttribute("class", "sr-only");
+  note.textContent = " (opens in new tab)";
+  node.append(marker, note);
 }
 
 /** How a caller embeds the rendered document. */
@@ -159,6 +260,12 @@ export interface MarkdownRenderOptions {
    * widget's markdown sits under its card's `h3`. The docs view leaves headings as written.
    */
   headingOffset?: number;
+  /**
+   * Keep only absolute http(s) links, each opened as an external link, and make every other
+   * link plain text: for markdown from outside deck (a widget a sidecar contributes), whose
+   * links, raw HTML or source data must not point into deck.
+   */
+  externalLinksOnly?: boolean;
 }
 
 /**

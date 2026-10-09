@@ -25,7 +25,8 @@ import {
 } from "../providers/registry.js";
 import { BUILTIN_MODULES } from "../modules/builtin.js";
 import { buildUiManifest } from "../ui/manifest.js";
-import { createUiReloader, type UiReloader } from "../ui/live.js";
+import { createUiReloader, etagOf, type LiveUi, type UiReloader } from "../ui/live.js";
+import { collectRuntimePages, runtimePageSources } from "../ui/runtime-pages.js";
 import { createModuleHost, startModules, type ModuleHost } from "../modules/host.js";
 import { checkPins, loadRuntimeModules, MODULES_ENABLED_ENV, NO_RUNTIME_MODULES, type RuntimeModules } from "../modules/runtime.js";
 import { parseBool } from "../config/env.js";
@@ -224,7 +225,11 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
 
   // The UI manifest: modules and providers are fixed from here on, and so is the config but
   // for `ui`, which a hot reload may swap (with the manifest resolved from it).
-  const buildUi = (config: typeof result.config) => buildUiManifest({ config, providers, modules, capabilities: {} });
+  // Pages built-in modules contribute at runtime: a change to them rebuilds the manifest from
+  // the config in force.
+  const pageSources = runtimePageSources(modules);
+  const buildUi = (config: typeof result.config) =>
+    buildUiManifest({ config, providers, modules, capabilities: {}, runtimePages: () => collectRuntimePages(pageSources) });
   let ui: UiManifest;
   try {
     ui = buildUi(result.config);
@@ -245,10 +250,27 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
     });
   }
 
+  // Without hot reload the manifest is fixed but for the pages modules contribute at runtime.
+  let fixedUi: LiveUi = { config: result.config, ui, etag: etagOf(ui) };
+  const rebuildUi = () => {
+    if (reloader !== undefined) {
+      reloader.rebuild();
+      return;
+    }
+    try {
+      const next = buildUi(result.config);
+      fixedUi = { config: result.config, ui: next, etag: etagOf(next) };
+    } catch {
+      logger.warn({ event: "ui.rebuild", result: "failed" }, "UI manifest rebuild failed; keeping the one served");
+    }
+  };
+  // Kept so stop() can end them: a runtime change after shutdown begins never rebuilds.
+  const unsubscribePages = pageSources.map(({ source }) => source.subscribe(rebuildUi));
+
   // Mounting re-checks module routes against the live kernel table (a backstop).
   let app: ReturnType<typeof createApp>;
   try {
-    app = createApp({ ...kernelDeps, modules, ui, ...(reloader === undefined ? {} : { live: reloader.current }) });
+    app = createApp({ ...kernelDeps, modules, ui, live: reloader === undefined ? () => fixedUi : reloader.current });
   } catch (cause) {
     process.stderr.write(`${(cause as Error).message}\n`);
     process.exit(2);
@@ -291,6 +313,7 @@ export async function boot(options: BootOptions = {}): Promise<BootHandle> {
     async stop() {
       stopping = true;
       reloader?.stop();
+      for (const unsubscribe of unsubscribePages) unsubscribe();
       const drained = Promise.resolve(server.stop());
       if (!(await settlesWithin(modules.stop(), stopTimings.modulesMs))) {
         logger.warn({ event: "server.stop-stage-timeout", stage: "modules", boundMs: stopTimings.modulesMs } satisfies ServerStopStageTimeoutEvent, "modules still stopping; continuing");

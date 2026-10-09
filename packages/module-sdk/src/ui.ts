@@ -197,6 +197,12 @@ export interface UiWidgetInstance {
    */
   projection?: string;
   options: JsonObject;
+  /**
+   * `external` on a widget a module contributes at runtime (a sidecar's): every link it renders
+   * from markdown (its content, raw HTML in it, or text from its source) keeps only an absolute
+   * http(s) href, shown as an external link; any other becomes plain text. Absent otherwise.
+   */
+  linkPolicy?: "external";
   /** Columns spanned, at most the section's. */
   span: 1 | 2 | 3 | 4;
   rows: number;
@@ -279,7 +285,15 @@ export type UiFindingCode =
   | "UI_WIDGET_OPTION_UNKNOWN"
   /** A bindable, status-capable provider kind declares no `status`, so its bindings give cards none. */
   | "UI_STATUS_UNDECLARED"
-  | "UI_OVERRIDE_POSITIONAL";
+  | "UI_OVERRIDE_POSITIONAL"
+  /** A remote integration's latest describe was refused; its last good one (if any) still renders. */
+  | "REMOTE_DESCRIBE_INVALID"
+  /** A remote integration's sidecar could not be asked to describe itself; its last good describe (if any) still renders. */
+  | "REMOTE_DESCRIBE_UNREACHABLE"
+  /** A sidecar's describe names another id than its integration's, which deck uses. */
+  | "REMOTE_DESCRIBE_ID_MISMATCH"
+  /** A sidecar's describe lists nav entries, but its page has no sidebar entry to group them with. */
+  | "REMOTE_NAV_UNPLACED";
 
 export interface UiFinding {
   code: UiFindingCode;

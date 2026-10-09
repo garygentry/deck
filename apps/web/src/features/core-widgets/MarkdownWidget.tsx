@@ -14,6 +14,8 @@ export default function MarkdownWidget({ value, options, widget }: WidgetProps<{
   const markdown = options.content ?? value;
   if (typeof markdown !== "string") return <UnexpectedValue type={widget.type} expected="markdown text (options.content, or text from its source)" value={value} />;
   // Headings move below the card's h3 inside the pipeline, before its sanitiser runs.
-  return <Prose sanitizedHtml={renderMarkdown(markdown, undefined, { headingOffset: 3 })} />;
+  // A widget a sidecar contributes keeps only external links (its content, raw HTML or data).
+  const externalLinksOnly = widget.linkPolicy === "external";
+  return <Prose sanitizedHtml={renderMarkdown(markdown, undefined, { headingOffset: 3, externalLinksOnly })} />;
 }
 

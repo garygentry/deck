@@ -1,4 +1,5 @@
 import {
+  CONFIG_PAGE_COMPONENT,
   entitySectionProblem,
   extensionIdProblem,
   EXTENSION_KINDS as KINDS,
@@ -50,7 +51,8 @@ export interface UiContributionOptions {
  * - ids are well formed and name the module itself;
  * - an extension's kind is one a slot can accept, and its id does not use a page or nav prefix;
  * - a slot id is namespaced to its module (`<module>/…`); `app/…` and `entity:…` are the kernel's;
- * - a page path is not under `/api` or on a root path the kernel or a built-in module serves;
+ * - a page path is not under `/api` or on a root path the kernel or a built-in module serves,
+ *   and its component is not the kernel's `ConfigPage`;
  * - a nav `href` is an `http(s):` URL or an absolute path, and its `group` a nav group id;
  * - an entity section's config has a `title` and, optionally, a `section` name to share (lowercase, no `.`);
  * - a widget type is `<module>/<name>` in its own module, listed once, with an options schema
@@ -105,6 +107,8 @@ function pageProblem(
     pagePathProblem(page.path, label, reservedRootPaths) ??
     (nonEmpty(page.title) ? null : `${label} needs a title`) ??
     (nonEmpty(page.component) ? null : `${label} needs a component`) ??
+    // The shell routes every ConfigPage page by its layout: only the kernel's pages are one.
+    (page.component === CONFIG_PAGE_COMPONENT ? `${label} component "${CONFIG_PAGE_COMPONENT}" is the kernel's` : null) ??
     optionalString(page.icon, `${label} icon`) ??
     (page.layout === undefined ? null : layoutProblem(moduleId, page.layout, label, contributes))
   );

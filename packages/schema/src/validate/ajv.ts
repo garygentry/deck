@@ -82,3 +82,30 @@ export function widgetOptionsProblem(schema: unknown, options: unknown): string 
   const [first] = accepts.errors ?? [];
   return `its type refuses the options ${JSON.stringify(options)}${first === undefined ? "" : ` (${first.instancePath || "/"} ${first.message ?? "is invalid"})`}`;
 }
+
+/** Where a value fails a schema, and how; never the value itself. */
+export interface SchemaProblem {
+  /** JSON pointer into the value (`/` for the value itself). */
+  path: string;
+  /** Ajv's message: the rule broken, which names schema values, never the data. */
+  message: string;
+}
+
+/**
+ * A widget type's options check, compiled once: the first problem with some options, or null.
+ * Unlike {@link widgetOptionsProblem} it never repeats the options, so its result may describe
+ * data from outside deck. A schema that does not compile refuses every value.
+ */
+export function compileWidgetOptions(schema: unknown): (options: unknown) => SchemaProblem | null {
+  let accepts: ValidateFunction;
+  try {
+    accepts = createAjv().compile(schema as object);
+  } catch {
+    return () => ({ path: "/", message: "its options schema does not compile" });
+  }
+  return (options) => {
+    if (accepts(options)) return null;
+    const [first] = accepts.errors ?? [];
+    return { path: first?.instancePath || "/", message: first?.message ?? "is invalid" };
+  };
+}

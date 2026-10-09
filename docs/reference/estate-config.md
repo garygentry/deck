@@ -381,18 +381,20 @@ it is sent, how redirects and failures are handled, and an example.
 
 #### remote integrations
 
-An integration of kind `remote` is a sidecar deck polls at `<url>/deck/v1/data` (see the
-[provider kinds reference](provider-kinds.md#remote)). It has no `baseUrl`, `card`, `method`,
-`headers` or `body`, and no additional properties.
+An integration of kind `remote` is a sidecar speaking the
+[remote provider protocol](remote-provider-protocol.md). It has no `baseUrl`, `card`,
+`method`, `headers` or `body`, and no additional properties.
 
 | Key | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | string | yes | Lowercase letters, digits and `-`, at most 64 characters; also the provider id. Not the fixed provider id of another integration in the estate. |
+| `id` | string | yes | Lowercase letters, digits and `-`, at most 64 characters; also the provider id and the page's name (`page:remote/<id>`). Not the fixed provider id of another integration in the estate. |
 | `kind` | `remote` | yes | |
-| `title` | string | yes | Human-readable integration title. |
+| `title` | string | yes | Human-readable integration title; the page title. |
 | `url` | string | yes | The sidecar's `http://` or `https://` base URL, at most 2048 characters, with no query, fragment or `user:password@`. |
 | `credentialEnv`, `auth` | | no | As for `http-json`. |
 | `pollIntervalMs`, `ttlMs`, `timeoutMs`, `maxBytes` | integer | no | As for `http-json`. |
+| `describeIntervalMs` | integer | no | 10000–86400000; default 300000. |
+| `page` | object | no | `{ path?, icon?, nav? }`: the page's path (default `/remote/<id>`), icon and sidebar entry (`{ group, label?, order? }`). |
 | `deepLink` | string | no | Link to the sidecar's own UI. |
 
 Beyond the schema, `deck validate` reports `REMOTE_URL_INVALID` (a URL the runtime parser

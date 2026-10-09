@@ -33,6 +33,13 @@ export const RESERVED_MODULE_IDS: readonly string[] = ["core", "ui"];
  */
 export const UI_CONFIG_MODULE = "ui";
 
+/**
+ * The page component of a page whose body is its manifest `layout` of widget sections: a `ui.pages`
+ * page, or a page a module contributes at runtime. The kernel's own: a module manifest's page may
+ * not name it, so the shell can route by it alone.
+ */
+export const CONFIG_PAGE_COMPONENT = "ConfigPage";
+
 /** A `ui.nav.items` entry's id: always in the reserved `ui` namespace, `nav:ui/<name>`. */
 export const UI_CONFIG_NAV_ID_PATTERN = /^nav:ui\/[a-z0-9][a-z0-9.-]*$/;
 

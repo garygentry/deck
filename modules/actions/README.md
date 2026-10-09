@@ -19,5 +19,7 @@ the web share is `@deck/contract/actions`. There is no build or test script here
 compiles and is tested inside its host app. React, react-dom and vitest are peer dependencies
 (with dev dependencies for the tests): the app and its modules share one instance of each. Tests
 that drive the module through the kernel (the module host, the app, the config pipeline,
-shutdown, registration) stay in `apps/server/test` and `apps/web/test`, as do the tests that
-read the module's source files or import it by string path.
+shutdown, registration, the page) stay in `apps/server/test` and `apps/web/test`. So do four
+unit tests that could not move as pure renames: `actions-audit`, `-runners` and `-spawn` read
+the module's sources by URL, and `actions-ndjson`'s module loading had to change. The fake
+runner spawner the server tests share is `test/server/util/fake-spawner.ts`.

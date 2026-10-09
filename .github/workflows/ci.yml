@@ -50,14 +50,16 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck all workspaces
         run: pnpm -r typecheck
-      - name: Unit tests (schema + module-sdk + contract + drift + server + web)
+      - name: Unit tests (schema + module-sdk + sdk + contract + drift + server + web + module template)
         run: |
           pnpm --filter @deck/schema test
           pnpm --filter @deck/module-sdk test
+          pnpm --filter @deck/sdk test
           pnpm --filter @deck/contract test
           pnpm --filter @deck/drift test
           pnpm --filter @deck/server test
           pnpm --filter @deck/web test:unit
+          pnpm --filter deck-module-hello test
 
   web-e2e:
     # Playwright e2e, sharded across runners. The suite is workers:1 /

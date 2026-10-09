@@ -28,6 +28,9 @@ which lists planned maintenance windows. It adds:
 - a route, `GET /api/m/maintenance/windows`;
 - a config section, `modules.maintenance`, with a schema and a config rule.
 
+To write a module of your own, copy the template, as described in
+[Start from the template](#start-from-the-template).
+
 ## Lay out the modules directory
 
 `DECK_MODULES_DIR` holds one subdirectory per module. Each subdirectory is named by the module's
@@ -96,7 +99,8 @@ import map, so a module renders with deck's React and reads deck's data:
 so on): build from the patterns, which carry deck's look and accessibility. For a module's own
 layout, `web.css` is linked before `web.js` runs. Use deck's theme tokens for colours
 (`var(--muted-foreground)`, for instance), so the module follows the operator's theme preset
-and light or dark mode.
+and light or dark mode. A module built from the template writes its styles with deck's Tailwind
+preset instead; see [Style with deck's tokens](#style-with-decks-tokens).
 
 A module can contribute its own icons as SVG markup in `contributes.icons`, named
 `<id>/<name>`; its pages, nav entries, components and `ui.brand.icon` then use that name
@@ -146,6 +150,123 @@ deck cannot use shows a tile and a page that say so, and the browser console say
   declares other pages, nav entries, slots, extensions or widget types than the server's; it
   lacks a component the server's declarations name; or deck refused what it declares. Reload
   the page to try again.
+
+## Start from the template
+
+[`examples/modules/hello`](../../examples/modules/hello) is the module to copy when you write
+your own. It is written in TypeScript and React and built with Vite, and it has every part a
+module can have: a page with a nav entry and an icon of its own, a header pill, a provider, a
+route, health and a config section. Its build writes a module directory that deck loads as it
+is.
+
+```text
+hello/
+  deck-module.json     # the manifest
+  package.json         # build, lint, typecheck and test scripts
+  vite.config.ts       # the build: the web half, then the server half
+  src/
+    server.ts          # the server half
+    greeting.ts        # types both halves share
+    web/
+      index.tsx        # the web half: defineWebModule(manifest, { components })
+      HelloPage.tsx
+      HelloPill.tsx
+      web.css          # the module's own styles
+  test/
+    template.test.ts   # checks the build and the lint
+```
+
+The template builds inside a deck checkout: it is a package of deck's workspace, which provides
+`@deck/sdk` (the web half's types, Tailwind preset and `deck-module lint`) and
+`@deck/module-sdk` (the server half's types).
+
+1. Copy `examples/modules/hello` to `examples/modules/<id>`, and set `name` in its
+   `package.json`.
+2. Rename the module from `hello` to your id: the `id` in `deck-module.json`, the module part of
+   every contribution id (`page:<id>/main`) and icon name (`<id>/wave`), the provider id, the
+   CSS prefix in `web.css` and the classes that use it, and `OUT_DIR` in `vite.config.ts`.
+3. Run `pnpm install` at the repository root to link the new package.
+4. Run `pnpm --filter <name> build`. It writes `dist/<id>/`: `deck-module.json`, `server.mjs`,
+   `web.js` and `web.css`.
+5. Run `pnpm --filter <name> lint`, `typecheck` and `test`.
+6. Copy `dist/<id>` into `DECK_MODULES_DIR` (see
+   [Switch runtime modules on](#switch-runtime-modules-on)), or point `DECK_MODULES_DIR` at
+   `dist`, and restart deck.
+
+### What the build does
+
+`pnpm build` runs Vite twice into `dist/<id>/`:
+
+- **`vite build`** builds the web half, `src/web/index.tsx`, as one ES module, `web.js`, with
+  the stylesheet it imports as `web.css`, and copies `deck-module.json` beside them.
+  `react`, `react-dom`, `react/jsx-runtime` and `@deck/sdk` are fixed externals: deck's
+  import map provides exactly these, so the build leaves those imports as they are. Never
+  bundle them, and don't change the list: a second copy of React breaks every hook. Everything
+  else the web half imports is bundled into `web.js`.
+- **`vite build --mode server`** bundles the server half, `src/server.ts`, and every
+  dependency it has into `server.mjs`. It imports only types from `@deck/module-sdk`, so it
+  imports nothing from deck at runtime.
+
+Both halves import `deck-module.json`, and the build inlines it. TypeScript widens a JSON
+import's strings, so the template casts it (`as WebModuleManifest`, `as ModuleManifest`);
+deck checks at load that each half's manifest is the `deck-module.json` it read.
+
+### Types
+
+In the workspace, `@deck/sdk` resolves to the types of what deck's page serves under that
+name. They are generated from deck's own SDK, so `tsc` and your editor check every pattern's
+props, the tones and the icon names. The server half takes `ServerModule`, the `ctx` it is
+given (`ServerModuleContext`) and the rest from `@deck/module-sdk`, with `import type`.
+
+### Style with deck's tokens
+
+Build from `@deck/sdk`'s patterns first: they need no styles of your own. For the layout they
+don't cover, `web.css` imports deck's Tailwind preset, with a prefix of the module's own:
+
+```css
+@import "@deck/sdk/tailwind" prefix(hello);
+@source "../";
+```
+
+Every class then carries the prefix: `hello:flex hello:gap-6 hello:bg-muted hello:rounded-md`.
+
+- **Utilities only.** deck's page already has Tailwind's Preflight and base styles.
+- **deck's tokens only.** Colours (`hello:bg-card`, `hello:text-status-warn-fg`), the corner
+  radius scale and the fonts are deck's own. They follow the operator's theme preset and light
+  or dark mode, and `hello:dark:` follows deck's dark mode. Tailwind's palette
+  (`bg-red-500`) and its off-scale radii don't exist. Spacing, type sizes and breakpoints are
+  Tailwind's defaults, as in deck.
+- **The prefix is required.** A module's stylesheet loads after deck's, into the same cascade
+  layer. An unprefixed `p-4` in it would override deck's own `md:p-6` on deck's elements.
+
+### Check it with `deck-module lint`
+
+`deck-module lint [dir]` holds a module to the same UI rules deck's own web app is tested
+against. It checks the module's web sources: everything under `src/`, or under the module
+directory for a module with no build step, except the server entry, tests and config files. It
+also checks the built `web.js`:
+
+| Rule | What it refuses |
+| --- | --- |
+| `colour-literal` | A hex, `rgb()` or `oklch()` colour, in scripts or CSS. Use tokens. |
+| `radius-scale` | `rounded`, `rounded-2xl`…`4xl` or `rounded-[4px]`, prefixed or not. Use `rounded-xs`…`xl`, `rounded-full` or `rounded-none`. |
+| `inline-style` | `style={…}`, except in a file allowlisted for dynamic geometry. |
+| `data-icon` | A `data-icon` attribute. Use `<Icon name>`. |
+| `legacy-token` | deck's removed `--inventory-*`, `--freshness-*` and `--l-*` tokens. |
+| `module-import` | A React entry point other than `react`, `react-dom` and `react/jsx-runtime` (it would bundle a second React); a deck package other than `@deck/sdk`, or `@deck/module-sdk` other than `import type`; `radix-ui`, `@radix-ui/*` or `lucide-react` (use the patterns and `<Icon>`); an `import()` of a computed name. |
+| `module-css-import` | `tailwindcss` itself, or `@deck/sdk/tailwind` without a prefix. |
+| `built-web-import` | A built `web.js` (`dist/<id>/web.js`, or a `web.js` beside the manifest) that imports anything but the four import-mapped specifiers and its own `./deck-module.json`. Nothing else resolves in the browser. |
+
+It prints each offence as `file:line rule: message` and exits 1 when there is one, 0 when there
+is none, and 2 when the directory has no `deck-module.json`. To let a file set an inline style
+(a width computed from a value, say), allowlist it in the module's `package.json`:
+
+```json
+"deckModule": { "lint": { "styleAllowlist": { "src/web/Gauge.tsx": "fill width from the value" } } }
+```
+
+The lint checks what can be read off the source. It does not replace looking at the page in
+light and dark mode, at phone width, and with a keyboard.
 
 ## Switch runtime modules on
 

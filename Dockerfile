@@ -19,6 +19,8 @@ COPY packages/schema/package.json packages/schema/package.json
 COPY packages/module-sdk/package.json packages/module-sdk/package.json
 COPY packages/contract/package.json packages/contract/package.json
 COPY packages/drift/package.json packages/drift/package.json
+COPY packages/sdk/package.json packages/sdk/package.json
+COPY examples/modules/hello/package.json examples/modules/hello/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY apps/server/package.json apps/server/package.json
 RUN pnpm install --frozen-lockfile

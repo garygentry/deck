@@ -295,19 +295,23 @@ done
 stop_server
 
 # ---------------------------------------------------------------------------
-# 7. A runtime module under Bun: the example in examples/modules, imported from
-#    DECK_MODULES_DIR, adds its page and pill to /api/ui and serves its
-#    provider and its web half (/modules/<id>/web.js; anything else there is a
-#    404). With DECK_MODULES_ENABLED unset, the same module is listed off and
-#    its web half 404s.
+# 7. A runtime module under Bun: the maintenance example, copied into a
+#    DECK_MODULES_DIR of its own and imported from there, adds its page and
+#    pill to /api/ui and serves its provider and its web half
+#    (/modules/<id>/web.js; anything else there is a 404). With
+#    DECK_MODULES_ENABLED unset, the same module is listed off and its web half
+#    404s.
 # ---------------------------------------------------------------------------
+RT_MODULES_DIR="${TMP_ROOT}/runtime-modules"
+mkdir -p "${RT_MODULES_DIR}"
+cp -R "${REPO_ROOT}/examples/modules/maintenance" "${RT_MODULES_DIR}/maintenance"
 RT_CONFIG_DIR="${TMP_ROOT}/runtime-config"
 mkdir -p "${RT_CONFIG_DIR}"
 printf 'schemaVersion: 2\nestate:\n  name: smoke\n' >"${RT_CONFIG_DIR}/00-base.yaml"
 printf 'schemaVersion: 2\nmodules:\n  maintenance:\n    windows:\n      - name: smoke\n        start: 2999-01-01T00:00:00Z\n        durationMinutes: 5\n' \
   >"${RT_CONFIG_DIR}/10-overlay.yaml"
 
-DECK_MODULES_DIR="${REPO_ROOT}/examples/modules" DECK_MODULES_ENABLED=true \
+DECK_MODULES_DIR="${RT_MODULES_DIR}" DECK_MODULES_ENABLED=true \
 DECK_CONFIG_DIR="${RT_CONFIG_DIR}" DECK_PORT="${PORTAL_PORT}" bun "${BOOT}" &
 SRV=$!
 wait_ready "http://127.0.0.1:${PORTAL_PORT}/api/ui" \
@@ -340,7 +344,7 @@ for RT_PATH in /modules/maintenance/server.mjs /modules/maintenance/missing.js /
 done
 stop_server
 
-DECK_MODULES_DIR="${REPO_ROOT}/examples/modules" \
+DECK_MODULES_DIR="${RT_MODULES_DIR}" \
 DECK_CONFIG_DIR="${RT_CONFIG_DIR}" DECK_PORT="${PORTAL_PORT}" bun "${BOOT}" &
 SRV=$!
 wait_ready "http://127.0.0.1:${PORTAL_PORT}/api/ui" \

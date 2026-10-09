@@ -4,7 +4,7 @@
  * runtime-modules-boot.test.ts).
  */
 
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,6 +34,16 @@ function tempDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
+}
+
+/**
+ * A fresh modules root holding a copy of the maintenance example only (examples/modules also
+ * holds the module template's sources, which load only once built).
+ */
+function exampleRoot(): string {
+  const root = tempDir("deck-rt-mods-");
+  cpSync(join(EXAMPLES, "maintenance"), join(root, "maintenance"), { recursive: true });
+  return root;
 }
 
 const manifestOf = (id: string, extra: Record<string, unknown> = {}) => ({ id, version: "1.0.0", deckApi: "^0.1", ...extra });
@@ -82,7 +92,7 @@ describe("loadRuntimeModules", () => {
   });
 
   it("imports the example module's server entry and keeps its config rules", async () => {
-    const result = await loadRuntimeModules({ env: env(EXAMPLES), configDir: configWith({ modules: { maintenance: { windows: [] } } }) });
+    const result = await loadRuntimeModules({ env: env(exampleRoot()), configDir: configWith({ modules: { maintenance: { windows: [] } } }) });
     expect(result.loaded).toEqual(["maintenance"]);
     expect(result.loadProblems.size).toBe(0);
     expect(result.codeless.size).toBe(0);
@@ -249,7 +259,7 @@ describe("loadRuntimeModules", () => {
   });
 
   it("reads the manifests only for deck validate and render", () => {
-    const result = readRuntimeManifests({ env: env(EXAMPLES), configDir: configWith({ modules: { maintenance: { windows: [] } } }) });
+    const result = readRuntimeManifests({ env: env(exampleRoot()), configDir: configWith({ modules: { maintenance: { windows: [] } } }) });
     expect(ids(result)).toEqual(["maintenance"]);
     expect([...result.codeless]).toEqual(["maintenance"]);
     expect(result.loaded).toEqual([]);

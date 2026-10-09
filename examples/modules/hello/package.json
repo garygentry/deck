@@ -1,0 +1,24 @@
+{
+  "name": "deck-module-hello",
+  "version": "0.1.0",
+  "private": true,
+  "description": "deck's runtime module template: a page, a nav entry, a header pill, an icon, a provider, a route and a config section.",
+  "type": "module",
+  "scripts": {
+    "build": "vite build && vite build --mode server",
+    "lint": "deck-module lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@deck/module-sdk": "workspace:*",
+    "@deck/sdk": "workspace:*",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^22",
+    "@types/react": "^19.3.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.4.0",
+    "vite": "^6.4.0",
+    "vitest": "^4.1.0"
+  }
+}

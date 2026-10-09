@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,16 +9,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type BunParitySummary, verdict } from "../../../scripts/bun-parity-check.js";
 import BunParityReporter, { summarize } from "../../../scripts/bun-parity-reporter.js";
 
-const CHECK = fileURLToPath(new URL("../../../scripts/bun-parity-check.ts", import.meta.url));
+const CHECK = fileURLToPath(new URL("../../../scripts/bun-parity-check-cli.ts", import.meta.url));
 
-/** A fake vitest TestModule whose tests ended in the given states. */
-const moduleWith = (...states: string[]) => ({
+/** A fake vitest TestModule in `moduleState` whose tests ended in the given states. */
+const fileIn = (moduleState: string, ...states: string[]) => ({
+  state: () => moduleState,
   children: { allTests: () => states.map((state) => ({ result: () => ({ state }) })) },
 });
+/** A finished test file whose tests ended in the given states. */
+const moduleWith = (...states: string[]) => fileIn(states.includes("failed") ? "failed" : "passed", ...states);
 
 const PASSING: BunParitySummary = {
   bun: "1.4.2",
   scheduled: 2,
+  listed: 2,
   files: 2,
   tests: 3,
   executed: 3,
@@ -39,12 +43,14 @@ afterEach(() => {
 });
 
 describe("bun-parity reporter", () => {
-  it("counts only executed tests: skipped and pending ones were collected but did not run", () => {
-    const modules = [moduleWith("passed", "skipped"), moduleWith(), moduleWith("failed", "pending", "passed")];
+  it("counts only executed tests and only completed files", () => {
+    const modules = [moduleWith("passed", "skipped"), fileIn("pending", "pending"), moduleWith("failed", "passed")];
     expect(summarize("1.4.2", 3, modules, 0, "failed")).toEqual({
       bun: "1.4.2",
       scheduled: 3,
-      files: 3,
+      listed: 3,
+      // The middle file is still "pending" (it has a pending test), so it did not complete.
+      files: 2,
       tests: 5,
       executed: 3,
       reason: "failed",
@@ -74,10 +80,34 @@ describe("bun-parity reporter", () => {
     reporter.onTestRunEnd([moduleWith("passed", "passed")], [], "passed");
     expect(JSON.parse(readFileSync(out, "utf8"))).toMatchObject({
       scheduled: 2,
+      listed: 1,
       files: 1,
       tests: 2,
       executed: 2,
       reason: "passed",
+    });
+  });
+
+  it.each([
+    ["queued", fileIn("queued", "pending")],
+    ["pending, a test still running", fileIn("pending", "passed", "pending")],
+    ["passed, a test still pending", fileIn("passed", "passed", "pending")],
+  ])("a listed file that is %s is not completed: the check fails the run", (_label, unfinished) => {
+    const out = join(scratchDir(), "summary.json");
+    vi.stubEnv("DECK_BUN_PARITY_SUMMARY", out);
+    const reporter = new BunParityReporter();
+    reporter.onTestRunStart([{ moduleId: "/a.test.ts" }, { moduleId: "/b.test.ts" }]);
+    reporter.onTestRunEnd([moduleWith("passed"), unfinished], [], "passed");
+    expect(JSON.parse(readFileSync(out, "utf8"))).toMatchObject({ scheduled: 2, listed: 2, files: 1 });
+    const run = spawnSync(process.execPath, [CHECK, out], { encoding: "utf8" });
+    expect(run.status, run.stderr).toBe(1);
+    expect(run.stderr).toContain("1 of 2 scheduled test files completed (2 listed at the end of the run)");
+  });
+
+  it("a file skipped by design counts as completed", () => {
+    expect(summarize("1.4.2", 2, [moduleWith("passed"), fileIn("skipped", "skipped", "skipped")], 0, "passed")).toMatchObject({
+      files: 2,
+      executed: 1,
     });
   });
 });
@@ -88,9 +118,11 @@ describe("bun-parity check", () => {
     ["a failed run", { reason: "failed" }, /ended "failed"/],
     ["an interrupted run", { reason: "interrupted" }, /ended "interrupted"/],
     ["unhandled errors", { unhandledErrors: 2 }, /2 unhandled error/],
-    ["dropped test files", { scheduled: 5, files: 3 }, /2 of 5 scheduled test files did not run/],
+    ["unfinished test files", { scheduled: 5, listed: 5, files: 3 }, /3 of 5 scheduled test files completed \(5 listed/],
+    ["more completed files than scheduled", { scheduled: 1, files: 2 }, /2 of 1 scheduled test files completed/],
+    ["no scheduled files (onTestRunStart never ran)", { scheduled: 0, listed: 2, files: 2 }, /scheduled no test files/],
     ["only skipped tests", { tests: 4, executed: 0 }, /no test executed \(4 collected\)/],
-    ["no tests at all", { scheduled: 0, files: 0, tests: 0, executed: 0 }, /no test executed/],
+    ["no tests at all", { tests: 0, executed: 0 }, /no test executed/],
   ])("rejects %s", (_label, change, problem) => {
     expect(verdict({ ...PASSING, ...change })).toEqual([expect.stringMatching(problem)]);
   });
@@ -101,10 +133,10 @@ describe("bun-parity check", () => {
 
   // The wrapper's decision after vitest exits 0 is this script's exit code, so drive it as the
   // wrapper does: one process per summary, on whichever runtime runs this suite.
-  const runCheck = (summary: BunParitySummary | undefined) => {
+  const runCheck = (summary: BunParitySummary | undefined, script = CHECK) => {
     const file = join(scratchDir(), "summary.json");
     if (summary !== undefined) writeFileSync(file, JSON.stringify(summary));
-    return spawnSync(process.execPath, [CHECK, file], { encoding: "utf8" });
+    return spawnSync(process.execPath, [script, file], { encoding: "utf8" });
   };
 
   it.each<[string, BunParitySummary | undefined]>([
@@ -112,12 +144,23 @@ describe("bun-parity check", () => {
     ["a failed run", { ...PASSING, reason: "failed" }],
     ["an interrupted run", { ...PASSING, reason: "interrupted" }],
     ["unhandled errors", { ...PASSING, unhandledErrors: 1 }],
-    ["dropped test files", { ...PASSING, scheduled: 3 }],
+    ["unfinished test files", { ...PASSING, scheduled: 3, listed: 3 }],
+    ["no scheduled files", { ...PASSING, scheduled: 0 }],
     ["no executed tests", { ...PASSING, executed: 0 }],
   ])("as a script, exits 1 for %s", (_label, summary) => {
     const run = runCheck(summary);
     expect(run.status, run.stderr).toBe(1);
     expect(run.stderr).toMatch(/bun-parity: /);
+  });
+
+  it("as a script reached through a symlink, still judges the run", () => {
+    // A "was I run directly?" guard compares paths and would skip the check here (exit 0).
+    const link = join(scratchDir(), "check-link.ts");
+    symlinkSync(CHECK, link);
+    const failed = runCheck({ ...PASSING, reason: "failed" }, link);
+    expect(failed.status, failed.stderr).toBe(1);
+    expect(failed.stderr).toContain('ended "failed"');
+    expect(runCheck(PASSING, link).status).toBe(0);
   });
 
   it("as a script, exits 0 for a complete, passing run", () => {

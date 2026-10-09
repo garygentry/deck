@@ -21,7 +21,21 @@ interface TestCaseLike {
 
 /** The part of vitest's `TestModule` the summary reads. */
 interface TestModuleLike {
+  state(): string;
   children: { allTests(): Iterable<TestCaseLike> };
+}
+
+const TERMINAL = new Set(["passed", "failed", "skipped"]);
+
+/**
+ * Whether a test file finished: its state is terminal (not "queued" or "pending") and no test in
+ * it is still "pending". `skip`, `todo` and tests left out by `only` end as "skipped", so a file
+ * skipped by design still counts as complete.
+ */
+function completed(module: TestModuleLike): boolean {
+  if (!TERMINAL.has(module.state())) return false;
+  for (const test of module.children.allTests()) if (test.result().state === "pending") return false;
+  return true;
 }
 
 /** The part of vitest's `TestSpecification` the summary reads. */
@@ -45,7 +59,8 @@ export function summarize(
       if (state === "passed" || state === "failed") executed += 1;
     }
   }
-  return { bun, scheduled, files: testModules.length, tests, executed, reason, unhandledErrors };
+  const files = testModules.filter(completed).length;
+  return { bun, scheduled, listed: testModules.length, files, tests, executed, reason, unhandledErrors };
 }
 
 export default class BunParityReporter {

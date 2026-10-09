@@ -42,7 +42,9 @@ can't escalate:
   configured origin. A response that contains the credential, nests deeper than 64 levels or
   exceeds the size cap (1 MiB by default) is refused, not published, and poll errors name the
   failure class only, never the credential, body or runtime error text. The URL is reached from the deck server, so whoever edits the estate
-  config chooses what deck fetches on its network.
+  config chooses what deck fetches on its network. A `remote` integration's requests to its sidecar go through the same
+  request path with the same guarantees: the credential from `credentialEnv` only, no redirect off
+  the configured origin when authenticated, and the same size, depth and timeout bounds.
 - **Source paths are confined.** Every file a source exposes is resolved through a single
   choke point that rejects `..`, absolute paths, NUL bytes, and symlink escapes, and proves the
   resolved (symlink-collapsed) path lives inside the source root.

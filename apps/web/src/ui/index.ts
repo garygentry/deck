@@ -196,6 +196,12 @@ export {
 } from "./hooks/use-facet-filters";
 export { SearchInput, type SearchInputProps } from "./patterns/search-input";
 export { FacetFilter, type FacetFilterProps, type FacetOption } from "./patterns/facet-filter";
+export {
+  CommandPalette,
+  type CommandPaletteGroup,
+  type CommandPaletteItem,
+  type CommandPaletteProps,
+} from "./patterns/command-palette";
 export { ActiveFilters, type ActiveFiltersProps } from "./patterns/active-filters";
 export { ResultCount, type ResultCountProps } from "./patterns/result-count";
 export { FilterBar, type FilterBarProps } from "./patterns/filter-bar";

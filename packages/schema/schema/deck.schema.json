@@ -29,7 +29,39 @@
           "propertyNames": { "minLength": 1 },
           "additionalProperties": { "$ref": "#/$defs/UiOverride" }
         },
-        "pages": { "type": "array", "items": { "$ref": "#/$defs/UiPage" }, "description": "Config-defined pages (dashboards): sections of widgets, each page routed as page:ui/<id>." }
+        "pages": { "type": "array", "items": { "$ref": "#/$defs/UiPage" }, "description": "Config-defined pages (dashboards): sections of widgets, each page routed as page:ui/<id>." },
+        "statusMaps": {
+          "type": "object", "description": "Named maps from a widget's values to status tones, which widget options reference by name (statusMap).",
+          "propertyNames": { "pattern": "^[a-z0-9][a-z0-9-]*$", "maxLength": 64 },
+          "additionalProperties": { "$ref": "#/$defs/UiStatusMap" }
+        }
+      }
+    },
+    "UiTone": {
+      "title": "UiTone", "type": "string", "enum": ["ok", "warn", "danger", "info", "pending", "neutral"],
+      "description": "A status tone: the shell picks its colours and icon; config never carries a colour."
+    },
+    "UiStatusMap": {
+      "title": "UiStatusMap", "type": "object", "additionalProperties": false, "minProperties": 1,
+      "description": "A value's tone: its entry in values when it has one, else the first rule it satisfies, else none (neutral).",
+      "properties": {
+        "values": {
+          "type": "object", "description": "Exact values (text, numbers and booleans compared as text, such as running or 404) and their tones.",
+          "propertyNames": { "maxLength": 200 },
+          "additionalProperties": { "$ref": "#/$defs/UiTone" }
+        },
+        "rules": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "$ref": "#/$defs/UiStatusRule" }, "description": "Rules tried in order; the first whose every condition holds gives the tone. A rule with no condition matches any value." }
+      }
+    },
+    "UiStatusRule": {
+      "title": "UiStatusRule", "type": "object", "additionalProperties": false, "required": ["tone"],
+      "properties": {
+        "lt": { "type": "number", "description": "The value is a number, or text that is one, below this." },
+        "lte": { "type": "number", "description": "The value is a number, or text that is one, at most this." },
+        "gt": { "type": "number", "description": "The value is a number, or text that is one, above this." },
+        "gte": { "type": "number", "description": "The value is a number, or text that is one, at least this." },
+        "eq": { "anyOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }], "description": "The value equals this (a number also matches its text, such as \"42\")." },
+        "tone": { "$ref": "#/$defs/UiTone", "description": "The tone a value matching the rule takes." }
       }
     },
     "UiBrand": {

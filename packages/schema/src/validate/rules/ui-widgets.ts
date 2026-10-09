@@ -12,6 +12,9 @@ import type { DeckConfigDocument } from "../../types.js";
  * - a widget id used twice on one page (ID_DUPLICATE), over every widget's resolved id: its
  *   `id`, else its positional `s<N>w<M>` (which the schema keeps an explicit id from taking).
  *   It names the widget's extension id, `widget:ui/<page>.<id>`.
+ * - a `statusMap` a core widget's options name (at any depth: a table column's, a stat-grid
+ *   item's) that `ui.statusMaps` does not declare (UI_STATUS_MAP_UNKNOWN, a warning); the widget
+ *   shows those values without a tone.
  * A widget's options are checked by the composed schema, against its type's options schema.
  */
 export function uiWidgets(
@@ -20,6 +23,7 @@ export function uiWidgets(
   strict: boolean,
 ): Finding[] {
   const findings: Finding[] = [];
+  const statusMaps = doc.ui?.statusMaps ?? {};
   for (const [pageIndex, page] of (doc.ui?.pages ?? []).entries()) {
     const ids = new Set<string>();
     for (const [sectionIndex, section] of (page.sections ?? []).entries()) {
@@ -50,6 +54,16 @@ export function uiWidgets(
             findings.push(strict ? disabled : { ...disabled, severity: "info" });
           }
         }
+        if (widget.type.startsWith("core/") && widget.options !== undefined) {
+          for (const { pointer, name } of statusMapRefs(widget.options, `${path}/options`)) {
+            if (Object.hasOwn(statusMaps, name)) continue;
+            findings.push(finding(
+              "UI_STATUS_MAP_UNKNOWN",
+              pointer,
+              `status map '${name}' is not declared in ui.statusMaps; the widget shows these values without a tone`,
+            ));
+          }
+        }
         const problem = widget.select === undefined ? null : composed.selectProblem?.(widget.select) ?? null;
         if (problem !== null) {
           findings.push(finding("UI_WIDGET_SELECT_INVALID", `${path}/select`, `select is not a JMESPath expression: ${problem}`));
@@ -58,4 +72,14 @@ export function uiWidgets(
     }
   }
   return findings;
+}
+
+/** Every `statusMap` name in a core widget's options, with its JSON pointer. */
+function statusMapRefs(value: unknown, pointer: string): Array<{ pointer: string; name: string }> {
+  if (Array.isArray(value)) return value.flatMap((item, index) => statusMapRefs(item, `${pointer}/${index}`));
+  if (value === null || typeof value !== "object") return [];
+  return Object.entries(value).flatMap(([key, item]) => {
+    const at = `${pointer}/${key.replace(/~/g, "~0").replace(/\//g, "~1")}`;
+    return key === "statusMap" && typeof item === "string" ? [{ pointer: at, name: item }] : statusMapRefs(item, at);
+  });
 }

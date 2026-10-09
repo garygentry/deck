@@ -22,6 +22,7 @@ export const FINDING_CATALOG = {
   PROVIDER_KIND_UNKNOWN: { severity: "warning", summary: "A provider kind is not in the known-kinds registry.", fix: "Use a known provider kind or register the additional kind for validation." },
   UI_WIDGET_TYPE_UNKNOWN: { severity: "warning", summary: "A widget names a type no module provides, so it renders as unavailable.", fix: "Use a widget type a module provides, or install the module that provides it." },
   UI_WIDGET_TYPE_DISABLED: { severity: "warning", summary: "A widget's type is provided only by a module that is not running, so it renders as unavailable.", fix: "Enable or fix the module that provides the widget type, or remove the widget." },
+  UI_STATUS_MAP_UNKNOWN: { severity: "warning", summary: "A widget names a status map ui.statusMaps does not declare, so its values show without a tone.", fix: "Declare the status map under ui.statusMaps, or correct the name." },
   UI_WIDGET_SELECT_INVALID: { severity: "error", summary: "A widget's select is not a JMESPath expression.", fix: "Correct the expression at the reported path; see jmespath.org for the syntax." },
   SECRET_VALUE_SUSPECTED: { severity: "info", summary: "A value at a credential-related path resembles secret material.", fix: "Replace the value with a valid secret reference and keep secret material outside the document." },
   SNAPSHOT_HOST_DUPLICATE: { severity: "error", summary: "A snapshot contains the same observed host more than once.", fix: "Keep one observation for each host in the snapshot." },

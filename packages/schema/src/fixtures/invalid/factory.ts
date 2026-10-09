@@ -53,6 +53,7 @@ export function fixtureFor(expect: FindingCode): InvalidFixture {
       contributions: [{ id: "fixture-feed", disabled: "not enabled: switched off", widgetTypes: [{ type: "fixture-feed/gauge" }] }],
       document: config(dashboard({ type: "fixture-feed/gauge" })),
     };
+    case "UI_STATUS_MAP_UNKNOWN": return { ...common, layer: "merged", document: config(dashboard({ type: "core/stat", source: "feed", options: { statusMap: "ups-load" } })) };
     // Checked only when composition is given the select check (the server's is).
     case "UI_WIDGET_SELECT_INVALID": return {
       ...common,

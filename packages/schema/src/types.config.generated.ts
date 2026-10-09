@@ -99,6 +99,14 @@ export type JsonValue = (string | number | boolean | null | JsonValue[] | {
 [k: string]: JsonValue | undefined
 })
 export type UiWidget = UiWidget1
+/**
+ * A status tone: the shell picks its colours and icon; config never carries a colour.
+ */
+export type UiTone = ("ok" | "warn" | "danger" | "info" | "pending" | "neutral")
+/**
+ * A status tone: the shell picks its colours and icon; config never carries a colour.
+ */
+export type UiTone1 = ("ok" | "warn" | "danger" | "info" | "pending" | "neutral")
 
 /**
  * A merged deck config document containing projected estate inventory and presentation data.
@@ -479,6 +487,12 @@ extensions?: {
  * Config-defined pages (dashboards): sections of widgets, each page routed as page:ui/<id>.
  */
 pages?: UiPage[]
+/**
+ * Named maps from a widget's values to status tones, which widget options reference by name (statusMap).
+ */
+statusMaps?: {
+[k: string]: UiStatusMap | undefined
+}
 }
 /**
  * The product name and mark the shell shows.
@@ -643,4 +657,45 @@ span?: number
  * Rows the widget spans; default 1.
  */
 rows?: number
+}
+/**
+ * A value's tone: its entry in values when it has one, else the first rule it satisfies, else none (neutral).
+ */
+export interface UiStatusMap {
+/**
+ * Exact values (text, numbers and booleans compared as text, such as running or 404) and their tones.
+ */
+values?: {
+[k: string]: UiTone | undefined
+}
+/**
+ * Rules tried in order; the first whose every condition holds gives the tone. A rule with no condition matches any value.
+ * 
+ * @minItems 1
+ * @maxItems 32
+ */
+rules?: [UiStatusRule, ...(UiStatusRule)[]]
+}
+export interface UiStatusRule {
+/**
+ * The value is a number, or text that is one, below this.
+ */
+lt?: number
+/**
+ * The value is a number, or text that is one, at most this.
+ */
+lte?: number
+/**
+ * The value is a number, or text that is one, above this.
+ */
+gt?: number
+/**
+ * The value is a number, or text that is one, at least this.
+ */
+gte?: number
+/**
+ * The value equals this (a number also matches its text, such as "42").
+ */
+eq?: (string | number | boolean)
+tone: UiTone1
 }

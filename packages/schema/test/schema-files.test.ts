@@ -45,6 +45,9 @@ const openObjects = new Set([
   "deck:#/$defs/Integration/properties/card",
   "deck:#/$defs/JsonValue/anyOf/5",
   "deck:#/$defs/Ui/properties/extensions",
+  // Maps by name: status maps, and a map's values (each checked to be a tone).
+  "deck:#/$defs/Ui/properties/statusMaps",
+  "deck:#/$defs/UiStatusMap/properties/values",
   "deck:#/$defs/UiOverride/anyOf/1/properties/config",
   // Checked against the widget type's own options schema once composed.
   "deck:#/$defs/UiWidget/properties/options",

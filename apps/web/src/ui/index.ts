@@ -139,10 +139,14 @@ export { HealthPill, type HealthPillProps } from "./patterns/health-pill";
 
 // §E Collections
 export {
+  DATA_TABLE_VIRTUALIZE_DEFAULTS,
   DataTable,
   ROW_LINK_ATTRIBUTE,
   ROW_LINK_SELECTOR,
+  type DataTableHandle,
   type DataTableProps,
+  type DataTableScrollAlign,
+  type DataTableVirtualizeOptions,
 } from "./patterns/data-table";
 export type { ColumnDef } from "@tanstack/react-table";
 export {

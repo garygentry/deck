@@ -32,7 +32,7 @@ import {
   serviceDecl,
 } from "./inventory-harness.js";
 import type { InventoryGeneration } from "../src/features/hosts-and-services/inventory-store.js";
-import type { DriftGenerationState } from "../src/features/drift-and-coverage/store.js";
+import type { DriftGenerationState } from "../../../modules/drift/web/store.js";
 import { buildAboveScaleFixture, DRIFT_FIXTURE_NOW } from "./drift-fixtures.js";
 
 // ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ import { buildAboveScaleFixture, DRIFT_FIXTURE_NOW } from "./drift-fixtures.js";
 // ---------------------------------------------------------------------------
 
 let driftState: DriftGenerationState;
-vi.mock("../src/features/drift-and-coverage/use-drift-generation.js", () => ({
+vi.mock("../../../modules/drift/web/use-drift-generation.js", () => ({
   useDriftGeneration: () => driftState,
 }));
 
@@ -70,16 +70,16 @@ vi.mock("@/shell/router", async (importOriginal) => {
 import {
   DriftPage,
   DriftPageBoundary,
-} from "../src/features/drift-and-coverage/DriftPage.js";
+} from "../../../modules/drift/web/DriftPage.js";
 import {
   __resetDriftRenderDedupForTest,
   setDriftDiagnosticSink,
-} from "../src/features/drift-and-coverage/diagnostics.js";
-import type { DriftDiagnosticEvent } from "../src/features/drift-and-coverage/diagnostics.js";
-import { FindingGroups } from "../src/features/drift-and-coverage/components/FindingGroups.js";
-import { FindingRow } from "../src/features/drift-and-coverage/components/FindingRow.js";
-import { EvidenceValue } from "../src/features/drift-and-coverage/components/EvidenceValue.js";
-import { CoverageTable } from "../src/features/drift-and-coverage/components/CoverageTable.js";
+} from "../../../modules/drift/web/diagnostics.js";
+import type { DriftDiagnosticEvent } from "../../../modules/drift/web/diagnostics.js";
+import { FindingGroups } from "../../../modules/drift/web/components/FindingGroups.js";
+import { FindingRow } from "../../../modules/drift/web/components/FindingRow.js";
+import { EvidenceValue } from "../../../modules/drift/web/components/EvidenceValue.js";
+import { CoverageTable } from "../../../modules/drift/web/components/CoverageTable.js";
 import {
   buildInventoryModel,
   type InventoryModel,

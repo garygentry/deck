@@ -2,7 +2,7 @@ import type { DriftSummary } from "@deck/drift";
 import type { ReactNode, JSX } from "react";
 import { FragmentBoundary, HealthPill, type IconName, type Tone } from "@/ui";
 import { useEffect } from "react";
-import type { HealthSummary } from "../../shell/health-header/health-summary.js";
+import type { HealthSummary } from "@/shell/health-header/health-summary.js";
 import {
   getDriftGeneration,
   type AcceptedDriftGeneration,

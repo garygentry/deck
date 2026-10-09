@@ -2,7 +2,7 @@ import type { ServerModule } from "@deck/module-sdk";
 
 import { actionsModule } from "../../../../modules/actions/server/module.js";
 import type { DeckConfig } from "../contract/index.js";
-import { driftModule } from "../drift/module.js";
+import { driftModule } from "../../../../modules/drift/server/module.js";
 import { inventoryModule } from "../inventory/module.js";
 import { llmUsageModule } from "../../../../modules/llm-usage/server/module.js";
 import { metricsModule } from "../metrics/module.js";

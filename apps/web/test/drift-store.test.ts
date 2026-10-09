@@ -4,8 +4,8 @@ import { URL, fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installEnv, resetInventoryTestEnv, type Env } from "./inventory-harness.js";
 import type { InventoryGeneration } from "../src/features/hosts-and-services/inventory-store.js";
-import type { DriftDiagnosticEvent } from "../src/features/drift-and-coverage/diagnostics.js";
-import type { DriftGenerationState } from "../src/features/drift-and-coverage/store.js";
+import type { DriftDiagnosticEvent } from "../../../modules/drift/web/diagnostics.js";
+import type { DriftGenerationState } from "../../../modules/drift/web/store.js";
 
 // ---------------------------------------------------------------------------
 // The drift store and diagnostics are module singletons. Each case loads a fresh
@@ -16,9 +16,6 @@ import type { DriftGenerationState } from "../src/features/drift-and-coverage/st
 
 const INVENTORY_STORE_PATH =
   "../src/features/hosts-and-services/inventory-store.js";
-const STORE_PATH = "../src/features/drift-and-coverage/store.js";
-const DIAGNOSTICS_PATH = "../src/features/drift-and-coverage/diagnostics.js";
-const HOOK_PATH = "../src/features/drift-and-coverage/use-drift-generation.js";
 
 const FIXED = "2030-05-31T23:00:00.000Z";
 const DERIVATION_FAILED = "Drift data could not be prepared.";
@@ -60,11 +57,11 @@ function createMockInventory(initial: InventoryGeneration): MockInventory {
   };
 }
 
-type StoreModule = typeof import("../src/features/drift-and-coverage/store.js");
+type StoreModule = typeof import("../../../modules/drift/web/store.js");
 type DiagnosticsModule =
-  typeof import("../src/features/drift-and-coverage/diagnostics.js");
+  typeof import("../../../modules/drift/web/diagnostics.js");
 type HookModule =
-  typeof import("../src/features/drift-and-coverage/use-drift-generation.js");
+  typeof import("../../../modules/drift/web/use-drift-generation.js");
 
 interface Loaded {
   mock: MockInventory;
@@ -85,9 +82,9 @@ async function load(initial: InventoryGeneration = pendingGen(0)): Promise<Loade
     getInventoryGeneration: mock.getInventoryGeneration,
     subscribeInventoryGeneration: mock.subscribeInventoryGeneration,
   }));
-  const store = (await import(STORE_PATH)) as StoreModule;
-  const diagnostics = (await import(DIAGNOSTICS_PATH)) as DiagnosticsModule;
-  const hook = (await import(HOOK_PATH)) as HookModule;
+  const store = (await import("../../../modules/drift/web/store.js")) as StoreModule;
+  const diagnostics = (await import("../../../modules/drift/web/diagnostics.js")) as DiagnosticsModule;
+  const hook = (await import("../../../modules/drift/web/use-drift-generation.js")) as HookModule;
   const react = await import("react");
   const render = await import("./support/render.js");
   return {
@@ -787,9 +784,9 @@ describe("useDriftGeneration hook", () => {
 describe("memory-only scope guards", () => {
   it("adds no poller, persistence, analytics, endpoint, or direct derivation call", () => {
     for (const relative of [
-      "../src/features/drift-and-coverage/store.ts",
-      "../src/features/drift-and-coverage/diagnostics.ts",
-      "../src/features/drift-and-coverage/use-drift-generation.ts",
+      "../../../modules/drift/web/store.ts",
+      "../../../modules/drift/web/diagnostics.ts",
+      "../../../modules/drift/web/use-drift-generation.ts",
     ]) {
       const source = readFileSync(
         fileURLToPath(new URL(relative, import.meta.url)),

@@ -9,7 +9,7 @@ import {
   NotSupplied,
   StatusBadge,
 } from "@/ui";
-import type { InventoryModel } from "../../hosts-and-services/model.js";
+import type { InventoryModel } from "@/features/hosts-and-services/model.js";
 import {
   DRIFT_SEVERITY,
   DRIFT_UNRESOLVED_LOCATION,

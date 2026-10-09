@@ -2,9 +2,9 @@ import { DRIFT_UI } from "@deck/contract/modules/drift";
 import { defineWebModule } from "@deck/module-sdk";
 import type { ComponentType } from "react";
 
-import type { EntityFragmentRegistration } from "../../registry/registry.js";
-import { registerWebModule } from "../../registry/web-module.js";
-import type { HealthSummary } from "../../shell/health-header/health-summary.js";
+import type { EntityFragmentRegistration } from "@/registry/registry.js";
+import { registerWebModule } from "@/registry/web-module.js";
+import type { HealthSummary } from "@/shell/health-header/health-summary.js";
 import { DriftHealthSummary } from "./DriftHealthSummary.js";
 import { DriftPage, FindingsFragment } from "./pages.js";
 

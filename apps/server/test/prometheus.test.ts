@@ -157,11 +157,38 @@ describe("PrometheusProvider", () => {
     await expect(unreachable.health()).resolves.toEqual({ ok: false, detail: "Prometheus endpoint unreachable" });
   });
 
-  it.each([400, 422, 401, 404])("shows a query Prometheus refuses with HTTP %i as an errored summary, not an outage", async (status) => {
-    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ status: "error", errorType: "bad_data", error: "parse error" }, { status })));
+  it.each([
+    { status: 400, body: { status: "error", errorType: "bad_data", error: "parse error" } },
+    { status: 422, body: { status: "error", errorType: "execution", error: "many-to-many matching" } },
+    { status: 400, body: "not json" },
+    { status: 409, body: { status: "error", errorType: "bad_data", error: "conflict" } },
+  ])("shows a query error (HTTP $status) as an errored summary on a healthy provider", async ({ status, body }) => {
+    vi.stubGlobal("fetch", vi.fn(async () => typeof body === "string" ? new Response(body, { status }) : Response.json(body, { status })));
     const refused = provider(query("metric", "rate(up[5m]"));
     await expect(refused.fetch()).resolves.toEqual({ summaries: [{ id: "metric", label: "Metric", value: null, status: "error" }] });
     await expect(refused.health()).resolves.toEqual({ ok: true, detail: "1 summaries, 1 errored" });
+  });
+
+  it.each([
+    { status: 401, detail: "Prometheus authentication refused (401)" },
+    { status: 403, detail: "Prometheus authentication refused (403)" },
+    { status: 404, detail: "Prometheus not a Prometheus endpoint (404)" },
+    { status: 407, detail: "Prometheus proxy authentication refused (407)" },
+    { status: 429, detail: "Prometheus rate limited (429)" },
+    { status: 418, detail: "Prometheus answered HTTP 418" },
+  ])("reports an HTTP $status refusal of every query as an unhealthy endpoint", async ({ status, detail }) => {
+    // Even with Prometheus's error envelope: an auth, path or rate-limit refusal is the endpoint's.
+    const envelope = status === 418 ? { status: "nope" } : { status: "error", errorType: "unauthorized" };
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(envelope, { status })));
+    const refused = provider(query("metric", "up"));
+    await expect(refused.fetch()).rejects.toThrowError(detail);
+    await expect(refused.health()).resolves.toEqual({ ok: false, detail });
+  });
+
+  it("does not read an oversized 4xx body as a query error", async () => {
+    const big = JSON.stringify({ status: "error", errorType: "bad_data", pad: "x".repeat(70 * 1024) });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(big, { status: 409 })));
+    await expect(provider(query("metric", "up")).fetch()).rejects.toThrowError("Prometheus answered HTTP 409");
   });
 
   it("keeps a good query beside a refused one healthy", async () => {
@@ -175,7 +202,7 @@ describe("PrometheusProvider", () => {
   it.each([
     ["a refused connection", () => Promise.reject(new TypeError("fetch failed"))],
     ["a 502 from a proxy", async () => new Response(null, { status: 502 })],
-  ])("still reports %s as unreachable", async (_name, answer) => {
+  ])("reports %s as unreachable", async (_name, answer) => {
     vi.stubGlobal("fetch", vi.fn(answer));
     const down = provider(query("metric", "up"));
     await expect(down.fetch()).rejects.toThrowError("Prometheus endpoint unreachable");

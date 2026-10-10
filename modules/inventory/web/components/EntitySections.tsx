@@ -1,9 +1,9 @@
 import { Suspense, type JSX } from "react";
 import { Callout, ErrorState, FragmentBoundary, LoadingState, Section } from "@/ui";
-import { useUiManifest } from "../../../data/index.js";
-import { entitySectionsSlot, getAllExtensions, groupEntitySections, type EntityRef, type EntitySection } from "../../../registry/registry.js";
-import { useRegistryVersion } from "../../../registry/use-registry.js";
-import { placeExtensions } from "../../../shell/manifest-slot.js";
+import { useUiManifest } from "@/data/index.js";
+import { entitySectionsSlot, getAllExtensions, groupEntitySections, type EntityRef, type EntitySection } from "@/registry/registry.js";
+import { useRegistryVersion } from "@/registry/use-registry.js";
+import { placeExtensions } from "@/shell/manifest-slot.js";
 
 /** Props owned and exported by `components/EntitySections.tsx`. */
 export interface EntitySectionsProps {

@@ -18,12 +18,12 @@ import {
   InventoryDataProvider,
   useInventoryData,
   useInventoryDataContext,
-} from "../src/features/hosts-and-services/use-inventory-data.js";
+} from "../../../modules/inventory/web/use-inventory-data.js";
 import type {
   InventoryData,
   InventoryGeneration,
   SnapshotClientState,
-} from "../src/features/hosts-and-services/use-inventory-data.js";
+} from "../../../modules/inventory/web/use-inventory-data.js";
 import {
   buildInventoryModel,
   compareOrdinal,
@@ -31,22 +31,22 @@ import {
   findService,
   hostHref,
   serviceHref,
-} from "../src/features/hosts-and-services/model.js";
+} from "../../../modules/inventory/web/model.js";
 import type {
   HostRow,
   InventoryModel,
   ServiceRow,
-} from "../src/features/hosts-and-services/model.js";
+} from "../../../modules/inventory/web/model.js";
 import {
   NO_HOST_FILTERS,
   NO_SERVICE_FILTERS,
   filterHosts,
   filterServices,
-} from "../src/features/hosts-and-services/search-filter.js";
+} from "../../../modules/inventory/web/search-filter.js";
 import type {
   HostFilterCriteria,
   ServiceFilterCriteria,
-} from "../src/features/hosts-and-services/search-filter.js";
+} from "../../../modules/inventory/web/search-filter.js";
 import type {
   Host,
   ObservedHost,
@@ -222,7 +222,7 @@ async function mountProbe(intervalMs?: number): Promise<MountedProbe> {
   const {
     InventoryDataProvider: FreshProvider,
     useInventoryDataContext: useFreshContext,
-  } = await import("../src/features/hosts-and-services/use-inventory-data.js");
+  } = await import("../../../modules/inventory/web/use-inventory-data.js");
   const values: InventoryData[] = [];
   let force: (() => void) | undefined;
 
@@ -545,7 +545,7 @@ describe("immutability and completeness", () => {
     const source = readFileSync(
       fileURLToPath(
         new URL(
-          "../src/features/hosts-and-services/use-inventory-data.tsx",
+          "../../../modules/inventory/web/use-inventory-data.tsx",
           TEST_FILE_URL,
         ),
       ),

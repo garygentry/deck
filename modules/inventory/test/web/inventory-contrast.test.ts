@@ -6,8 +6,8 @@ import {
   INVENTORY_MARKER_UI,
   SERVICE_STATE_UI,
   SERVICE_STATUS_UI,
-} from "../src/features/hosts-and-services/components/HostStateChip.js";
-import { AA_TEXT_TOKENS } from "./support/tokens.js";
+} from "../../web/components/HostStateChip.js";
+import { AA_TEXT_TOKENS } from "@web-test/support/tokens.js";
 
 // ---------------------------------------------------------------------------
 // Inventory presentation wiring. Every state names a status tone, whose

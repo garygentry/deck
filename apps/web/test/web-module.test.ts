@@ -270,10 +270,10 @@ describe("the llm-usage web half", () => {
 describe("the inventory web half", () => {
   it("registers exactly its module's contributions, with no placement of its own", async () => {
     vi.resetModules();
-    await import("../src/features/hosts-and-services/index.js");
+    await import("../../../modules/inventory/web/index.js");
     const registry = await import("../src/registry/registry.js");
     const { INVENTORY_UI } = await import("@deck/contract/modules/inventory");
-    const pages = await import("../src/features/hosts-and-services/pages.js");
+    const pages = await import("../../../modules/inventory/web/pages.js");
 
     const ours = registry.getAllExtensions().filter(({ module }) => module === "inventory");
     const declared = INVENTORY_UI.contributes!;

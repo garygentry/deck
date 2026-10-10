@@ -29,7 +29,7 @@ import {
   resetInventoryTestEnv,
   serviceDecl,
 } from "./inventory-harness.js";
-import type { InventoryGeneration } from "../src/features/hosts-and-services/inventory-store.js";
+import type { InventoryGeneration } from "../../../modules/inventory/web/inventory-store.js";
 import { MONITORING_IMPLEMENTATION_IMPORT } from "./support/monitoring-imports.js";
 import type { DriftGenerationState } from "../../../modules/drift/web/store.js";
 import type { EntityRef } from "../src/registry/registry.js";

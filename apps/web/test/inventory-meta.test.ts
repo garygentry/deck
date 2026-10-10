@@ -5,17 +5,17 @@ import { describe, expect, it } from "vitest";
 
 import type { SnapshotProviderResult } from "@deck/contract";
 
-import { hostHref, serviceHref } from "../src/features/hosts-and-services/model.js";
-import { INVENTORY_ENDPOINTS } from "../src/features/hosts-and-services/use-inventory-data.js";
+import { hostHref, serviceHref } from "../../../modules/inventory/web/model.js";
+import { INVENTORY_ENDPOINTS } from "../../../modules/inventory/web/use-inventory-data.js";
 import { getPages } from "../src/registry/registry.js";
 
 // Importing the feature entrypoint performs its four side-effecting page
 // registrations into this file's isolated registry singleton.
-import "../src/features/hosts-and-services/index.js";
+import "../../../modules/inventory/web/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "../../..");
-const featureDir = join(here, "../src/features/hosts-and-services");
+const featureDir = join(here, "../../../modules/inventory/web");
 
 // ---------------------------------------------------------------------------
 // Meta-guard scope (spec 08 §7.3).

@@ -31,7 +31,7 @@ import {
   resetInventoryTestEnv,
   serviceDecl,
 } from "./inventory-harness.js";
-import type { InventoryGeneration } from "../src/features/hosts-and-services/inventory-store.js";
+import type { InventoryGeneration } from "../../../modules/inventory/web/inventory-store.js";
 import type { DriftGenerationState } from "../../../modules/drift/web/store.js";
 import { buildAboveScaleFixture, DRIFT_FIXTURE_NOW } from "./drift-fixtures.js";
 
@@ -83,7 +83,7 @@ import { CoverageTable } from "../../../modules/drift/web/components/CoverageTab
 import {
   buildInventoryModel,
   type InventoryModel,
-} from "../src/features/hosts-and-services/model.js";
+} from "../../../modules/inventory/web/model.js";
 import type { CoverageRow, DriftFindingProjection, FindingHostGroup } from "@deck/drift";
 
 // ---------------------------------------------------------------------------

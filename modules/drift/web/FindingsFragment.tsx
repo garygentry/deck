@@ -14,7 +14,7 @@ import {
   StatusBadge,
   VisuallyHidden,
 } from "@/ui";
-import type { InventoryModel } from "@/features/hosts-and-services/model.js";
+import type { InventoryModel } from "../../inventory/web/model.js";
 import type { EntityRef } from "@/registry/registry.js";
 import {
   DRIFT_SEVERITY,

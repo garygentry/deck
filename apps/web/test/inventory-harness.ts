@@ -10,8 +10,8 @@ import type { DeckConfig } from "@deck/server";
 import type {
   InventoryData,
   SnapshotClientState,
-} from "../src/features/hosts-and-services/use-inventory-data.js";
-import { buildInventoryModel } from "../src/features/hosts-and-services/model.js";
+} from "../../../modules/inventory/web/use-inventory-data.js";
+import { buildInventoryModel } from "../../../modules/inventory/web/model.js";
 import { resetQueryClient } from "../src/data/query-client.js";
 import { mount } from "./support/render.js";
 

@@ -1,6 +1,6 @@
 /**
- * Syntax-highlighting wrapper over `highlight.js`, shared by two surfaces: the markdown
- * fenced-code hook (`markdown.ts`) and the sources module's config file viewer. One
+ * Syntax-highlighting wrapper over `highlight.js`, shared by the markdown fenced-code hook
+ * (`markdown.ts`) and any code viewer (`highlightCode`, `highlightFile`). One
  * highlight.js instance, one language-selection table, one plaintext fallback that **never
  * throws** on an unknown or unregistered language.
  *
@@ -76,8 +76,7 @@ const LANGUAGE_BY_NAME: Readonly<Record<string, string>> = Object.freeze({
   ".dockerignore": "plaintext",
 });
 
-/** highlight.js language tokens chosen by (lowercased) extension. The sources module's server
- *  hint table (`languageForPath`) mirrors it, so a file's hint and its highlighting agree. */
+/** highlight.js language tokens chosen by (lowercased) extension. */
 const LANGUAGE_BY_EXT: Readonly<Record<string, string>> = Object.freeze({
   ts: "typescript",
   tsx: "typescript",

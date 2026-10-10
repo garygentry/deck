@@ -34,7 +34,7 @@ export class MarkdownTreeProvider implements Provider<SourceManifest> {
 
   /**
    * Refresh the source and produce its manifest. Delegates to
-   * store.buildManifest, which acquires (git/local + atomic swap, 02) then walks the
+   * store.buildManifest, which acquires (git/local + atomic swap) then walks the
    * freshly-published confined root. Honors ctx.signal (the registry's per-poll
    * timeout AbortSignal). Sets latestHealth as a side effect. On failure it THROWS — the
    * registry then retains the last-good envelope and flips freshness;

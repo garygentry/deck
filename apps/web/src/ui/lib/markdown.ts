@@ -8,9 +8,8 @@
  * in the hub. A caller injects only this return value (through `Prose`); there is no
  * un-sanitized render path.
  *
- * Given a document context, relative links and images are rewritten through it (the docs view
- * keeps links inside itself and loads images from its confined raw route); external links stay
- * external with `rel="noopener noreferrer"`.
+ * Given a document context, relative links and images are rewritten through it (the caller
+ * decides where they point); external links stay external with `rel="noopener noreferrer"`.
  */
 
 import { isExternalHref, isSafeHref } from "@deck/module-sdk";
@@ -52,17 +51,17 @@ function splitHash(target: string): { readonly path: string; readonly hash: stri
 }
 
 /**
- * Resolve a link/image target relative to a document into a POSIX path relative to the source
- * root. Collapses `./` and `../`, strips a leading `/` (root-relative within the source), and
- * never returns a path that escapes the root's own prefix (a `../` past the root normalizes
- * away — the server then confines whatever remains). Pure; exported for standalone tests.
+ * Resolve a link/image target relative to a document into a POSIX path relative to the root of
+ * the document's tree. Collapses `./` and `../`, strips a leading `/` (root-relative within the
+ * tree), and never returns a path that escapes the root's own prefix (a `../` past the root
+ * normalizes away; whatever serves the path still confines it). Pure; exported for tests.
  *
  * @example resolveRelative("guides/setup.md", "../intro.md") === "intro.md"
  * @example resolveRelative("guides/setup.md", "./img/x.png") === "guides/img/x.png"
  */
 export function resolveRelative(docPath: string, target: string): string {
   const segments = target.startsWith("/")
-    ? [] // root-relative within the source root
+    ? [] // root-relative within the tree
     : dirnamePosix(docPath).split("/").filter(Boolean);
   for (const segment of target.split("/")) {
     if (segment === "" || segment === ".") continue;
@@ -262,7 +261,7 @@ function externalLinksOnly(node: Element): void {
 export interface MarkdownRenderOptions {
   /**
    * Levels to move every heading down (at most `h6`), raw HTML headings included: a dashboard
-   * widget's markdown sits under its card's `h3`. The docs view leaves headings as written.
+   * widget's markdown sits under its card's `h3`. Without it, headings stay as written.
    */
   headingOffset?: number;
   /**

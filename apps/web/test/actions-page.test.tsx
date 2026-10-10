@@ -191,10 +191,10 @@ describe("ActionsPage — a malformed section while the module is off", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Selection, param form, and arm-reset on selection change (V-020).
+// Selection, param form, and arm-reset on selection change.
 // ---------------------------------------------------------------------------
 
-describe("ActionsPage — selection and arming (V-020)", () => {
+describe("ActionsPage — selection and arming", () => {
   it("selecting a row marks it current and shows its confirm step; Cancel deselects", () => {
     configState = readyConfig([ACTION_CONFIRM, ACTION_NONE]);
     mountPage();

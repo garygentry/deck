@@ -349,7 +349,7 @@ describe("module config: review round 2", () => {
   });
 });
 
-describe("module config: C2.7 review round 1", () => {
+describe("module config: strict validation across overlays", () => {
   it("strict validation catches a duplicate a later overlay's merge would hide, whether the module is on or off (C1)", () => {
     const nodes = defineServerModule(
       {

@@ -691,7 +691,7 @@ describe("review round 2 regressions", () => {
   });
 });
 
-describe("shared UI rules (C3.1b review C2)", () => {
+describe("shared UI rules", () => {
   it.each(["probe/", "probe/bad name", "probe//cards", "probe/Cards"])("rejects slot id %s, as the web registry does", (id) => {
     expect(uiContributionProblem(manifest("probe", { slots: [{ id, accepts: "widget" }] }))).toMatch(/must be namespaced to its module \("probe\/<name>"\)/);
   });

@@ -24,8 +24,8 @@ import { setFile, setManifest, setSearch } from "./sources-store.js";
 
 /**
  * One declared source (`DeckConfig.sources[]`). `Source` is not re-exported by the `@deck/server`
- * contract barrel; per 06 (Warnings) it is derived from `DeckConfig` here rather than imported
- * from `@deck/schema` (which this feature must never do).
+ * contract barrel, so it is derived from `DeckConfig` here rather than imported from
+ * `@deck/schema` (which the web half never imports).
  */
 export type Source = NonNullable<DeckConfig["sources"]>[number];
 
@@ -42,8 +42,8 @@ export const SOURCE_ENDPOINTS = Object.freeze({
   /** GET one confined file (1 MiB cap → truncated; binary → flagged). */
   file: (id: string, path: string): string =>
     `/api/sources/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`,
-  /** Raw-bytes URL for a confined asset — used as an `<img src>` by the markdown pipeline
-   *. Returned as a string, not fetched by JS (the browser fetches the img). */
+  /** Raw-bytes URL for a confined asset — used as an `<img src>` in a rendered document.
+   *  Returned as a string, not fetched by JS (the browser fetches the img). */
   raw: (id: string, path: string): string =>
     `/api/sources/${encodeURIComponent(id)}/raw?path=${encodeURIComponent(path)}`,
   /** GET server-side name+content search (capped at 200 matches). */
@@ -184,8 +184,8 @@ export async function fetchTree(
 
 /**
  * Read one confined file/document (`GET /api/sources/:id/file?path=`). `truncated` / `binary`
- * are NOT errors — they arrive as a successful {@link FileReadResult} with `content` omitted
- *. Never throws.
+ * are NOT errors — they arrive as a successful {@link FileReadResult} with `content` omitted.
+ * Never throws.
  *
  * @param id    the source id.
  * @param path  POSIX path relative to the source root (from the selected tree node).
@@ -226,7 +226,8 @@ export async function fetchConfig(
 
 /**
  * Build the raw-asset URL for a confined path. Pure string builder — no fetch;
- * the browser fetches it as an `<img>` src. Re-used by `markdown.ts`'s image rewrite.
+ * the browser fetches it as an `<img>` src. The Docs view's image rewrite
+ * (`markdown-context.ts`) builds its URLs with it.
  */
 export function rawAssetUrl(id: string, path: string): string {
   return SOURCE_ENDPOINTS.raw(id, path);

@@ -721,7 +721,7 @@ test.describe("drift presentation (published generation)", () => {
 });
 
 // ===========================================================================
-// Item 016 — failure retention and atomic recovery.
+// Failure retention and atomic recovery.
 //
 // These blocks are independent of the stable-presentation coverage above. They
 // prove the no-usable-generation classification states (no-config, pending,
@@ -1229,7 +1229,7 @@ test.describe("drift diagnostics allowlist (live interception + clock)", () => {
 });
 
 // ===========================================================================
-// Item 019 — Chromium performance gates and above-scale reachability.
+// Chromium performance gates and above-scale reachability.
 //
 // Chromium is authoritative for the complete-page render/update (< 1,000 ms) and
 // composed filter/search (< 100 ms) budgets. The fixed E2E

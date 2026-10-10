@@ -8,6 +8,7 @@ import { load } from "../src/config/load.js";
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { kindRuntimes, planModules } from "../src/modules/host.js";
 import { HttpJsonError, HttpJsonProvider, nestsDeeperThan, type HttpJsonConfig } from "../../../modules/http-json/server/index.js";
+import { isLocalHost } from "../../../modules/http-json/server/fetch.js";
 import { credentialBodyKeys, isCredentialName } from "../../../modules/http-json/server/literal.js";
 import { httpJsonModule } from "../../../modules/http-json/server/module.js";
 import { registerAllProviders } from "../src/providers/index.js";
@@ -78,6 +79,23 @@ const redirect = (location: string, status = 302): Route => (_req, res) => {
 };
 
 const env = (values: Record<string, string>) => ({ get: (name: string) => values[name] });
+
+/**
+ * Stub fetch for an API on a non-local host that redirects to a CDN on another: the fixture
+ * servers listen on loopback, which an opted-in cross-origin redirect still refuses. Returns
+ * the URLs requested. The suite's `afterEach` undoes it.
+ */
+function stubRemoteHop(): string[] {
+  const seen: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+    const url = String(input);
+    seen.push(url);
+    return url === "http://api.example.test/status"
+      ? new Response(null, { status: 302, headers: { location: "https://cdn.example.test/status.json" } })
+      : Response.json({ cdn: true });
+  }));
+  return seen;
+}
 
 async function failure(provider: HttpJsonProvider): Promise<HttpJsonError> {
   const error = await provider.fetch().then(
@@ -151,6 +169,7 @@ afterEach(() => {
   fixture.seen.length = 0;
   other.seen.length = 0;
   stopScheduler();
+  vi.unstubAllGlobals();
 });
 
 describe("http-json provider: a 2xx JSON response", () => {
@@ -491,10 +510,47 @@ describe("http-json provider: redirects", () => {
   });
 
   it("follows a cross-origin redirect of an unauthenticated request that opts in", async () => {
-    fixture.routes.set("/away-open", redirect(other.url("/ok")));
-    const opted = new HttpJsonProvider("o", { url: fixture.url("/away-open"), followCrossOriginRedirects: true });
-    await expect(opted.fetch()).resolves.toEqual({ other: true });
-    expect(other.seen.map((seen) => seen.url)).toEqual(["/ok"]);
+    // The target must not be a loopback address, which the opt-in still refuses: a stubbed fetch
+    // stands in for an API on another host.
+    const seen = stubRemoteHop();
+    const opted = new HttpJsonProvider("o", { url: "http://api.example.test/status", followCrossOriginRedirects: true });
+    await expect(opted.fetch()).resolves.toEqual({ cdn: true });
+    expect(seen).toEqual(["http://api.example.test/status", "https://cdn.example.test/status.json"]);
+  });
+
+  it.each([
+    "http://localhost:9/ok",
+    "http://LOCALHOST./ok",
+    "http://deck.localhost/ok",
+    "http://127.0.0.1:8095/api/config",
+    "http://127.1/ok",
+    "http://2130706433/ok",
+    "http://0.0.0.0/ok",
+    "http://169.254.169.254/latest/meta-data",
+    "http://[::1]/ok",
+    "http://[::]/ok",
+    "http://[fe80::1]/ok",
+    "http://[::ffff:127.0.0.1]/ok",
+  ])("refuses an opted-in redirect to the local address %s", async (location) => {
+    fixture.routes.set("/to-local", redirect(location));
+    const opted = new HttpJsonProvider("o", { url: fixture.url("/to-local"), followCrossOriginRedirects: true });
+    await expect(opted.fetch()).rejects.toMatchObject({
+      code: "redirect",
+      message: "redirect to a loopback, link-local or unspecified address refused",
+    });
+    expect(fixture.seen).toHaveLength(1);
+  });
+
+  it("classifies hostnames as local only for localhost and literal loopback, link-local or unspecified addresses", () => {
+    const host = (url: string) => new URL(url).hostname;
+    for (const url of ["http://localhost/", "http://a.localhost/", "http://127.255.0.1/", "http://0x7f.1/", "http://0.1.2.3/", "http://169.254.0.1/",
+      "http://[::1]/", "http://[0:0:0:0:0:0:0:1]/", "http://[::]/", "http://[febf::1]/", "http://[::ffff:169.254.1.1]/"]) {
+      expect(isLocalHost(host(url)), url).toBe(true);
+    }
+    for (const url of ["http://example.com/", "http://localhost.example.com/", "http://10.0.0.1/", "http://192.168.1.1/", "http://128.0.0.1/",
+      "http://169.255.0.1/", "http://[::2]/", "http://[fec0::1]/", "http://[2001:db8::1]/", "http://[::ffff:10.0.0.1]/"]) {
+      expect(isLocalHost(host(url)), url).toBe(false);
+    }
   });
 
   it("refuses a cross-origin redirect of an authenticated request even when it opts in", async () => {
@@ -630,17 +686,21 @@ describe("the http-json kind in an estate", () => {
   });
 
   it.each([
-    ["without the opt-in", {}, "refused"],
-    ["with the opt-in", { followCrossOriginRedirects: true }, "followed"],
-  ])("builds a provider whose cross-origin redirect is %s %s", async (_name, extra, outcome) => {
-    fixture.routes.set("/away-open", redirect(other.url("/ok")));
+    { setting: "without", extra: {}, outcome: "refused" },
+    { setting: "with", extra: { followCrossOriginRedirects: true }, outcome: "followed" },
+  ])("the kind handler builds a provider that $outcome a cross-origin redirect $setting the opt-in", async ({ extra, outcome }) => {
+    const seen = stubRemoteHop();
     const handler = httpJsonModule.kinds!["http-json"]!;
     const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const context = { env: env({}), logger, envFor: () => env({}), services: { provide: vi.fn() }, estate: {} };
-    const [offer] = handler.instances!([instance({ url: fixture.url("/away-open"), ...extra })], context);
+    const [offer] = handler.instances!([instance({ url: "http://api.example.test/status", ...extra })], context);
     const fetched = offer!.provider.fetch();
-    if (outcome === "followed") await expect(fetched).resolves.toEqual({ other: true });
-    else await expect(fetched).rejects.toMatchObject({ message: "cross-origin redirect refused" });
+    if (outcome === "followed") {
+      await expect(fetched).resolves.toEqual({ cdn: true });
+    } else {
+      await expect(fetched).rejects.toMatchObject({ message: "cross-origin redirect refused" });
+      expect(seen).toEqual(["http://api.example.test/status"]);
+    }
   });
 
   it("accepts auth scheme query, whose value comes from credentialEnv", () => {

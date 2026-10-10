@@ -6,7 +6,7 @@
 import { INVENTORY_UI } from "@deck/contract/modules/inventory";
 import { describe, expect, it } from "vitest";
 
-import { INVENTORY_MANIFEST } from "../src/inventory/module.js";
+import { INVENTORY_MANIFEST } from "../../../modules/inventory/server/module.js";
 import { serverOnlyFields } from "./util/shared-ui.js";
 
 describe("inventory module", () => {

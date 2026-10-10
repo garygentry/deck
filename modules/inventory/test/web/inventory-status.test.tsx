@@ -14,12 +14,12 @@ import {
   NotDeclaredMarker,
   SERVICE_STATE_UI,
   SERVICE_STATUS_UI,
-} from "../src/features/hosts-and-services/components/HostStateChip.js";
+} from "../../web/components/HostStateChip.js";
 import {
   SnapshotStatus,
   visibleSnapshotFindings,
-} from "../src/features/hosts-and-services/components/SnapshotStatus.js";
-import type { SnapshotClientState } from "../src/features/hosts-and-services/use-inventory-data.js";
+} from "../../web/components/SnapshotStatus.js";
+import type { SnapshotClientState } from "../../web/use-inventory-data.js";
 
 afterEach(cleanup);
 

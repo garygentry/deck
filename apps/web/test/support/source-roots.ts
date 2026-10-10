@@ -16,15 +16,25 @@ export function walkFiles(dir: string): string[] {
   });
 }
 
-/** Each built-in module's web half: `modules/<id>/web`, for every module directory that has one. */
-export function moduleWebDirs(repo: string = REPO_ROOT): string[] {
+/** `modules/<id>/<sub>` for every built-in module directory that has one. */
+function moduleSubdirs(repo: string, sub: string): string[] {
   const modules = join(repo, "modules");
   if (!isDir(modules)) return [];
   return readdirSync(modules, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .map((entry) => join(modules, entry.name, "web"))
+    .map((entry) => join(modules, entry.name, sub))
     .filter(isDir)
     .sort();
+}
+
+/** Each built-in module's web half: `modules/<id>/web`, for every module directory that has one. */
+export function moduleWebDirs(repo: string = REPO_ROOT): string[] {
+  return moduleSubdirs(repo, "web");
+}
+
+/** Each built-in module's web tests: `modules/<id>/test/web`, for every module that has them. */
+export function moduleWebTestDirs(repo: string = REPO_ROOT): string[] {
+  return moduleSubdirs(repo, "test/web");
 }
 
 /**
@@ -33,6 +43,14 @@ export function moduleWebDirs(repo: string = REPO_ROOT): string[] {
  */
 export function webSourceRoots(repo: string = REPO_ROOT): string[] {
   return [join(repo, "apps/web/src"), ...moduleWebDirs(repo)];
+}
+
+/**
+ * The web app's own tests and every built-in module's web tests: the directories the web test
+ * suite collects from, which the web's test guards hold to the same rules.
+ */
+export function webTestRoots(repo: string = REPO_ROOT): string[] {
+  return [join(repo, "apps/web/test"), ...moduleWebTestDirs(repo)];
 }
 
 /** Every file under the web source roots. */

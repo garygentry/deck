@@ -49,7 +49,7 @@ import {
   useInventoryDataContext,
   type SnapshotClientState,
 } from "../use-inventory-data.js";
-import type { EntityRef } from "../../../registry/registry.js";
+import type { EntityRef } from "@/registry/registry.js";
 
 /** Registered `/hosts/:name` page with one aggregate inventory poll. */
 export function HostDetailPage(): JSX.Element {

@@ -10,8 +10,8 @@ import type { DeckConfig } from "@deck/server";
 import type {
   InventoryData,
   SnapshotClientState,
-} from "../src/features/hosts-and-services/use-inventory-data.js";
-import { buildInventoryModel } from "../src/features/hosts-and-services/model.js";
+} from "../../../modules/inventory/web/use-inventory-data.js";
+import { buildInventoryModel } from "../../../modules/inventory/web/model.js";
 import { resetQueryClient } from "../src/data/query-client.js";
 import { mount } from "./support/render.js";
 
@@ -361,7 +361,7 @@ export function makeData(over: DataOptions = {}): InventoryData {
 // ---------------------------------------------------------------------------
 // Singleton inventory-store harness helpers.
 //
-// These deterministic seams prepare the shipped hosts-and-services test surface
+// These deterministic seams prepare the shipped inventory test surface (modules/inventory/web)
 // for the singleton inventory-store extraction. They are intentionally
 // decoupled from any not-yet-implemented store module: no production symbol is
 // imported here, so the helpers typecheck and run against the current tree while

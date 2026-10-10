@@ -32,18 +32,18 @@ import {
   type FetchStub,
   type InventoryEndpoint,
 } from "./inventory-harness.js";
-import type { SnapshotClientState } from "../src/features/hosts-and-services/inventory-store.js";
+import type { SnapshotClientState } from "../../../modules/inventory/web/inventory-store.js";
 
 // ---------------------------------------------------------------------------
 // The store is a module singleton; a fresh module per test isolates its retained
 // generation, timer, controller, and interval owner. All fixtures are invented.
 // ---------------------------------------------------------------------------
 
-type Store = typeof import("../src/features/hosts-and-services/inventory-store.js");
+type Store = typeof import("../../../modules/inventory/web/inventory-store.js");
 
 async function freshStore(): Promise<Store> {
   vi.resetModules();
-  return import("../src/features/hosts-and-services/inventory-store.js");
+  return import("../../../modules/inventory/web/inventory-store.js");
 }
 
 /** Flush all pending fetch/decode microtasks and 0-delay work under real timers. */
@@ -720,7 +720,7 @@ describe("compatibility and scope", () => {
   it("re-exports the compatibility surface from the legacy module path", async () => {
     vi.resetModules();
     const legacy = await import(
-      "../src/features/hosts-and-services/use-inventory-data.js"
+      "../../../modules/inventory/web/use-inventory-data.js"
     );
     expect(typeof legacy.useInventoryData).toBe("function");
     expect(typeof legacy.InventoryDataProvider).toBe("function");
@@ -735,7 +735,7 @@ describe("compatibility and scope", () => {
   it("throws InventoryContextError with its fixed code", async () => {
     vi.resetModules();
     const legacy = await import(
-      "../src/features/hosts-and-services/use-inventory-data.js"
+      "../../../modules/inventory/web/use-inventory-data.js"
     );
     const error = new legacy.InventoryContextError();
     expect(error.name).toBe("InventoryContextError");
@@ -746,7 +746,7 @@ describe("compatibility and scope", () => {
     const stub = availableAggregate();
     vi.resetModules();
     const legacy = await import(
-      "../src/features/hosts-and-services/use-inventory-data.js"
+      "../../../modules/inventory/web/use-inventory-data.js"
     );
     const env: Env = installEnv();
     const tree = h(legacy.InventoryDataProvider, {
@@ -770,7 +770,7 @@ describe("compatibility and scope", () => {
     availableAggregate();
     vi.resetModules();
     const legacy = await import(
-      "../src/features/hosts-and-services/use-inventory-data.js"
+      "../../../modules/inventory/web/use-inventory-data.js"
     );
     const env: Env = installEnv();
     const Probe = () => {
@@ -787,7 +787,7 @@ describe("compatibility and scope", () => {
   it("throws InventoryContextError when reading context outside a provider", async () => {
     vi.resetModules();
     const legacy = await import(
-      "../src/features/hosts-and-services/use-inventory-data.js"
+      "../../../modules/inventory/web/use-inventory-data.js"
     );
     const env: Env = installEnv();
     const Probe = () => {
@@ -804,7 +804,7 @@ describe("compatibility and scope", () => {
   it("uses only the two fixed GET endpoints and no browser persistence API", () => {
     const storePath = fileURLToPath(
       new URL(
-        "../src/features/hosts-and-services/inventory-store.ts",
+        "../../../modules/inventory/web/inventory-store.ts",
         TEST_FILE_URL,
       ),
     );

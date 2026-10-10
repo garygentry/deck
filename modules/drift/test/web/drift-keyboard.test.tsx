@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { InventoryModel } from "@/features/hosts-and-services/model.js";
+import type { InventoryModel } from "../../../inventory/web/model.js";
 import { isIconName, type StatusPresentation } from "@/ui/index.js";
 import {
   DRIFT_COVERAGE,

@@ -25,7 +25,7 @@ import {
   useInventoryDataContext,
   type SnapshotClientState,
 } from "../use-inventory-data.js";
-import type { EntityRef } from "../../../registry/registry.js";
+import type { EntityRef } from "@/registry/registry.js";
 
 /** Registered `/services/:host/:name` page with one aggregate inventory poll. */
 export function ServiceDetailPage(): JSX.Element {

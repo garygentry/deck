@@ -1,5 +1,5 @@
-import type { InventoryModel } from "@/features/hosts-and-services/model.js";
-import { findHost, findService } from "@/features/hosts-and-services/model.js";
+import type { InventoryModel } from "../../inventory/web/model.js";
+import { findHost, findService } from "../../inventory/web/model.js";
 
 /** Exact entity identity carried by a `/drift` URL scope. */
 export interface DriftEntityScope {

@@ -14,7 +14,7 @@ import { manifestPlacing } from "./support/manifest.js";
 async function freshHost() {
   vi.resetModules();
   const registry = await import("../src/registry/registry.js");
-  const { EntitySections } = await import("../src/features/hosts-and-services/components/EntitySections.js");
+  const { EntitySections } = await import("../../../modules/inventory/web/components/EntitySections.js");
   const { getQueryClient } = await import("../src/data/query-client.js");
   const { queryKeys } = await import("../src/data/queries.js");
   /** Serve a UI manifest: by default one placing every registered extension (every module on). */

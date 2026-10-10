@@ -10,7 +10,7 @@ import {
   formatAge,
   type ColumnDef,
 } from "@/ui";
-import type { InventoryModel } from "@/features/hosts-and-services/model.js";
+import type { InventoryModel } from "../../../inventory/web/model.js";
 import { DRIFT_COVERAGE } from "../constants.js";
 import { resolveHostHref } from "../shared.js";
 import { EntityLink } from "./FindingRow.js";

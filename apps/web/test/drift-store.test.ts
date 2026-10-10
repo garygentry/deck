@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { URL, fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installEnv, resetInventoryTestEnv, type Env } from "./inventory-harness.js";
-import type { InventoryGeneration } from "../src/features/hosts-and-services/inventory-store.js";
+import type { InventoryGeneration } from "../../../modules/inventory/web/inventory-store.js";
 import type { DriftDiagnosticEvent } from "../../../modules/drift/web/diagnostics.js";
 import type { DriftGenerationState } from "../../../modules/drift/web/store.js";
 
@@ -15,7 +15,7 @@ import type { DriftGenerationState } from "../../../modules/drift/web/store.js";
 // ---------------------------------------------------------------------------
 
 const INVENTORY_STORE_PATH =
-  "../src/features/hosts-and-services/inventory-store.js";
+  "../../../modules/inventory/web/inventory-store.js";
 
 const FIXED = "2030-05-31T23:00:00.000Z";
 const DERIVATION_FAILED = "Drift data could not be prepared.";

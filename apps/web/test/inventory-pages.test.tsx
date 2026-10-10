@@ -7,7 +7,7 @@ const TEST_FILE_URL = import.meta.url;
 import { cleanup, render, screen, within } from "@testing-library/react";
 import type { JSX } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { InventoryData } from "../src/features/hosts-and-services/use-inventory-data.js";
+import type { InventoryData } from "../../../modules/inventory/web/use-inventory-data.js";
 import {
   availableState,
   config,
@@ -29,9 +29,9 @@ import {
 // overrides only the provider/context seam: `InventoryDataProvider` is a
 // passthrough and the context read is stubbed, so the real store never runs.
 let inventoryData: InventoryData;
-vi.mock("../src/features/hosts-and-services/use-inventory-data.js", async (importOriginal) => {
+vi.mock("../../../modules/inventory/web/use-inventory-data.js", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("../src/features/hosts-and-services/use-inventory-data.js")>();
+    await importOriginal<typeof import("../../../modules/inventory/web/use-inventory-data.js")>();
   return {
     ...actual,
     InventoryDataProvider: ({ children }: { children: unknown }) => children,
@@ -50,14 +50,14 @@ vi.mock("@/shell/router", async (importOriginal) => {
 });
 
 // Importing the feature entrypoint is the discovery action under test.
-import "../src/features/hosts-and-services/index.js";
-import { EntitySections } from "../src/features/hosts-and-services/components/EntitySections.js";
+import "../../../modules/inventory/web/index.js";
+import { EntitySections } from "../../../modules/inventory/web/components/EntitySections.js";
 import {
   formatFactValue,
   IntentReality,
-} from "../src/features/hosts-and-services/components/detail-shared.js";
-import { HostDetailPage } from "../src/features/hosts-and-services/hosts/detail.js";
-import { ServiceDetailPage } from "../src/features/hosts-and-services/services/detail.js";
+} from "../../../modules/inventory/web/components/detail-shared.js";
+import { HostDetailPage } from "../../../modules/inventory/web/hosts/detail.js";
+import { ServiceDetailPage } from "../../../modules/inventory/web/services/detail.js";
 import * as registry from "../src/registry/registry.js";
 import { getPages, registerEntityFragment } from "../src/registry/registry.js";
 import type { EntityRef } from "../src/registry/registry.js";
@@ -371,7 +371,7 @@ describe("EntitySections fragment failure isolation", () => {
 // ---------------------------------------------------------------------------
 
 describe("feature fragment-slot boundaries", () => {
-  const featureDir = fileURLToPath(new URL("../src/features/hosts-and-services", TEST_FILE_URL));
+  const featureDir = fileURLToPath(new URL("../../../modules/inventory/web", TEST_FILE_URL));
 
   function featureSources(dir: string): string[] {
     const files: string[] = [];
@@ -794,7 +794,7 @@ describe("host detail security and observed facts", () => {
 
   it("makes no secret resolver, provider, or request call in the detail source", () => {
     const source = readFileSync(
-      fileURLToPath(new URL("../src/features/hosts-and-services/hosts/detail.tsx", TEST_FILE_URL)),
+      fileURLToPath(new URL("../../../modules/inventory/web/hosts/detail.tsx", TEST_FILE_URL)),
       "utf8",
     );
     expect(source).not.toContain("fetch(");
@@ -1222,7 +1222,7 @@ describe("service detail security, encoding, and slots", () => {
 
   it("makes no secret resolver, fetch, or unsafe HTML call in the detail source", () => {
     const source = readFileSync(
-      fileURLToPath(new URL("../src/features/hosts-and-services/services/detail.tsx", TEST_FILE_URL)),
+      fileURLToPath(new URL("../../../modules/inventory/web/services/detail.tsx", TEST_FILE_URL)),
       "utf8",
     );
     expect(source).not.toContain("fetch(");

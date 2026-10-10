@@ -1,7 +1,7 @@
 import { INVENTORY_UI } from "@deck/contract/modules/inventory";
 import { defineWebModule } from "@deck/module-sdk";
 
-import { registerWebModule } from "../../registry/web-module.js";
+import { registerWebModule } from "@/registry/web-module.js";
 import { HostDetailPage, HostsPage, ServiceDetailPage, ServicesPage } from "./pages.js";
 
 // The Hosts and Services lists and their two detail routes (routed, not in the nav). Their

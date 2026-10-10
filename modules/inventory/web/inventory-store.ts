@@ -8,7 +8,7 @@ import {
   HttpStatusError,
   isDeckConfigShape,
   isProviderPollable,
-} from "../../data/index.js";
+} from "@/data/index.js";
 import type { InventoryModel } from "./model.js";
 import { buildInventoryModel } from "./model.js";
 

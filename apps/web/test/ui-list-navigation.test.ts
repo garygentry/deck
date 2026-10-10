@@ -306,7 +306,7 @@ describe("ported: drift keys (vim, search, Escape)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// hosts-and-services (inventory-keyboard.test.tsx, pure sections)
+// inventory (modules/inventory/web; inventory-keyboard.test.tsx, pure sections)
 // ---------------------------------------------------------------------------
 
 describe("ported: inventory table keys (vim, search, Enter-from-search)", () => {

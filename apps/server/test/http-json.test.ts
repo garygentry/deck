@@ -359,10 +359,11 @@ describe("http-json provider: nesting depth", () => {
   });
 
   it("through the registry: a deep payload is a classified failure, the last good data is kept, and the process carries on", async () => {
-    register(new HttpJsonProvider("flip", { url: fixture.url("/flip") }), { pollIntervalMs: 50, ttlMs: 60_000 });
+    // The shortest poll interval deck allows (1000 ms), so the second poll comes within the wait.
+    register(new HttpJsonProvider("flip", { url: fixture.url("/flip") }), { pollIntervalMs: 1_000, ttlMs: 60_000 });
     startScheduler();
     await vi.waitFor(() => expect(read("flip")?.data).toEqual({ good: true }));
-    await vi.waitFor(() => expect(read("flip")?.error).toEqual({ message: "upstream response nests deeper than 64 levels" }));
+    await vi.waitFor(() => expect(read("flip")?.error).toEqual({ message: "upstream response nests deeper than 64 levels" }), { timeout: 5_000 });
     expect(read("flip")?.data).toEqual({ good: true });
   });
 

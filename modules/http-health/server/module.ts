@@ -1,5 +1,13 @@
 import { HTTP_HEALTH_STATUS } from "@deck/contract/modules/data-sources";
-import { defineServerModule, type ConfigRuleFinding, type JsonObject, type ModuleManifest, type ProviderTiming } from "@deck/module-sdk";
+import {
+  defineServerModule,
+  TIMING_FIELDS,
+  timingProblem,
+  type ConfigRuleFinding,
+  type JsonObject,
+  type ModuleManifest,
+  type ProviderTiming,
+} from "@deck/module-sdk";
 
 import { HttpHealthProvider, type HttpHealthConfig } from "./index.js";
 
@@ -21,43 +29,46 @@ export const HTTP_HEALTH_MANIFEST: ModuleManifest = {
         {
           code: "HTTP_HEALTH_TIMING_INVALID",
           severity: "error",
-          summary: "An http-health binding's timing field is not a positive, finite number of milliseconds.",
-          fix: "Give the timing field a number of milliseconds above 0, or remove it to use the default.",
+          summary: "An http-health binding's timing is not an object of deck's timing fields, each a whole number of milliseconds in its range.",
+          fix: "Give timing only pollIntervalMs (1000 or more), ttlMs, unreachableAfterMs and timeoutMs (1 or more), each at most 2147483647; or remove it to use the defaults.",
         },
       ],
     },
   ],
 };
 
-const TIMING_FIELDS = ["pollIntervalMs", "ttlMs", "unreachableAfterMs", "timeoutMs"] as const;
-
-/** A timing value deck can schedule with: a positive, finite number of milliseconds. */
-function isDuration(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
- * The timing fields of a binding's `timing` object that are positive, finite numbers; anything
- * else is dropped (config validation reports it), so a poll interval of 0 never reaches the
- * scheduler.
+ * The timing fields of a binding's `timing` object that deck's shared timing rule accepts
+ * (`timingProblem`); anything else is dropped. Config validation refuses such a binding, so this
+ * only guards a config that skipped it: a poll interval of 0 never reaches the scheduler.
  */
 function timing(value: unknown): ProviderTiming | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-  const raw = value as Record<string, unknown>;
+  if (!isRecord(value)) return undefined;
   const resolved: ProviderTiming = {};
-  for (const field of TIMING_FIELDS) if (isDuration(raw[field])) resolved[field] = raw[field];
+  for (const field of TIMING_FIELDS) if (timingProblem(field, value[field]) === null) resolved[field] = value[field] as number;
   return resolved;
 }
 
 /** What config validation reports for one http-health binding. Pure. */
 function validateBinding(binding: JsonObject): ConfigRuleFinding[] {
   const raw = binding.timing;
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return [];
-  return TIMING_FIELDS.filter((field) => raw[field] !== undefined && !isDuration(raw[field])).map((field) => ({
-    code: "HTTP_HEALTH_TIMING_INVALID",
-    path: `/timing/${field}`,
-    message: `timing.${field} must be a positive, finite number of milliseconds; the default is used instead.`,
-  }));
+  if (raw === undefined) return [];
+  const invalid = (path: string, message: string): ConfigRuleFinding => ({ code: "HTTP_HEALTH_TIMING_INVALID", path, message });
+  if (!isRecord(raw)) return [invalid("/timing", "timing must be an object of timing fields.")];
+  const findings: ConfigRuleFinding[] = [];
+  for (const [key, value] of Object.entries(raw)) {
+    if (!(TIMING_FIELDS as readonly string[]).includes(key)) {
+      findings.push(invalid(`/timing/${key.replaceAll("~", "~0").replaceAll("/", "~1")}`, `timing.${key} is not a timing field; use ${TIMING_FIELDS.join(", ")}.`));
+      continue;
+    }
+    const problem = timingProblem(key as (typeof TIMING_FIELDS)[number], value);
+    if (problem !== null) findings.push(invalid(`/timing/${key}`, `timing.${problem}.`));
+  }
+  return findings;
 }
 
 export const httpHealthModule = defineServerModule(HTTP_HEALTH_MANIFEST, () => {}, {

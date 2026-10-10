@@ -431,10 +431,10 @@ describe("ctx.providers.register", () => {
   it("takes staticness from the flag, not the kind name", async () => {
     vi.useFakeTimers();
     const fetch = vi.fn(async () => "ok");
-    register({ id: "named-link", kind: "link", health: async () => ({ ok: true }), fetch }, { pollIntervalMs: 500 });
+    register({ id: "named-link", kind: "link", health: async () => ({ ok: true }), fetch }, { pollIntervalMs: 1_000 });
     register({ id: "pinned", kind: "pin", health: async () => ({ ok: true }), fetch: async () => "fixed" }, undefined, undefined, { static: true });
     startScheduler();
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(2_000);
     expect(fetch).toHaveBeenCalledTimes(3);
     expect(read("named-link")?.freshness.state).toBe("fresh");
     expect(read("pinned")).toMatchObject({ freshness: { state: "static", observedAt: null }, data: "fixed" });
@@ -443,10 +443,10 @@ describe("ctx.providers.register", () => {
   it("keeps fixed-interval polling for providers registered without a cadence", async () => {
     vi.useFakeTimers();
     const fetch = vi.fn(async () => "ok");
-    register({ id: "fixed", kind: "test", health: async () => ({ ok: true }), fetch }, { pollIntervalMs: 500 });
+    register({ id: "fixed", kind: "test", health: async () => ({ ok: true }), fetch }, { pollIntervalMs: 1_000 });
     startScheduler();
     await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(2_000);
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 });

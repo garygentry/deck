@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
+import { createServer, type Server, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AlertmanagerProvider } from "../../../modules/alertmanager/server/index.js";
 import { providerCount, read, stopScheduler } from "../src/providers/registry.js";
 import { processEnv, registerAlertmanager } from "./util/register-kinds.js";
@@ -45,19 +47,54 @@ describe("AlertmanagerProvider", () => {
     delete process.env.DECK_AM_TOKEN;
   });
 
-  it("issues exactly two GETs to the alerts and silences endpoints with a shared signal", async () => {
+  it("issues exactly two GETs to the alerts and silences endpoints with one signal the poll's aborts", async () => {
     const fetchStub = stubFixture("empty");
     const controller = new AbortController();
     await provider().fetch({ signal: controller.signal });
 
     expect(fetchStub).toHaveBeenCalledTimes(2);
-    expect(fetchStub.mock.calls.map(([url, init]) => [url, init?.method, init?.signal])).toEqual([
-      ["http://am/api/v2/alerts?active=true&silenced=true", "GET", controller.signal],
-      ["http://am/api/v2/silences", "GET", controller.signal],
+    expect(fetchStub.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
+      ["http://am/api/v2/alerts?active=true&silenced=true", "GET"],
+      ["http://am/api/v2/silences", "GET"],
     ]);
-    for (const [, init] of fetchStub.mock.calls) {
-      expect(init?.method).toBe("GET");
-    }
+    const [alertsSignal, silencesSignal] = fetchStub.mock.calls.map(([, init]) => init?.signal);
+    expect(alertsSignal).toBeInstanceOf(AbortSignal);
+    expect(silencesSignal).toBe(alertsSignal);
+  });
+
+  it("aborts both requests when the poll's signal aborts", async () => {
+    const signals: AbortSignal[] = [];
+    vi.stubGlobal("fetch", vi.fn((_url: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      signals.push(init!.signal!);
+      init!.signal!.addEventListener("abort", () => reject(init!.signal!.reason));
+    })));
+    const controller = new AbortController();
+    const polled = provider().fetch({ signal: controller.signal });
+    controller.abort(new Error("poll timed out"));
+    await expect(polled).rejects.toThrowError("poll timed out");
+    expect(signals.map((signal) => signal.aborted)).toEqual([true, true]);
+  });
+
+  it.each(["alerts", "silences"])("aborts the other request when the %s request fails", async (failing) => {
+    const signals = new Map<string, AbortSignal>();
+    vi.stubGlobal("fetch", vi.fn((url: string | URL | Request, init?: RequestInit) => {
+      const endpoint = String(url).includes("silences") ? "silences" : "alerts";
+      signals.set(endpoint, init!.signal!);
+      if (endpoint === failing) return Promise.resolve(new Response(null, { status: 503 }));
+      // The sibling hangs until it is aborted.
+      return new Promise<Response>((_resolve, reject) => init!.signal!.addEventListener("abort", () => reject(init!.signal!.reason)));
+    }));
+    await expect(provider().fetch()).rejects.toThrowError(`Alertmanager /api/v2/${failing} responded 503`);
+    expect(signals.get(failing === "alerts" ? "silences" : "alerts")?.aborted).toBe(true);
+  });
+
+  it("drains the body of a non-2xx answer", async () => {
+    const cancel = vi.fn();
+    vi.stubGlobal("fetch", vi.fn((url: string | URL | Request) => Promise.resolve(String(url).includes("silences")
+      ? Response.json([])
+      : new Response(new ReadableStream({ pull: () => {}, cancel }), { status: 500 }))));
+    await expect(provider().fetch()).rejects.toThrowError("Alertmanager /api/v2/alerts responded 500");
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 
   it("maps a firing fixture: name fallbacks, severity, sourceUrl, skips missing fingerprint", async () => {
@@ -201,5 +238,54 @@ describe("AlertmanagerProvider", () => {
     registerAlertmanager("alertmanager", { baseUrl: "http://am" });
     expect(providerCount()).toBe(1);
     expect(read("alertmanager")).toMatchObject({ id: "alertmanager", kind: "alertmanager" });
+  });
+});
+
+/**
+ * Against a real HTTP server: when one endpoint fails, the other request is torn down whether
+ * it is still waiting for headers or part-way through its body.
+ */
+describe("AlertmanagerProvider against a live endpoint", () => {
+  let server: Server;
+  let baseUrl: string;
+  /** Per test: where the alerts response stops, and what the server saw of it. */
+  let hold: "headers" | "body";
+  let alertsHeld: { promise: Promise<void>; resolve: () => void };
+  let alertsClosed: Promise<ServerResponse>;
+  let onAlertsClosed: (res: ServerResponse) => void;
+
+  beforeAll(async () => {
+    server = createServer((req, res) => {
+      if (req.url?.startsWith("/api/v2/silences")) {
+        // Fail only once the alerts request is being held, so its teardown is what is tested.
+        void alertsHeld.promise.then(() => res.writeHead(503).end());
+        return;
+      }
+      res.on("close", () => onAlertsClosed(res));
+      if (hold === "body") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.write("[");
+      }
+      alertsHeld.resolve();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+
+  afterAll(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it.each(["headers", "body"] as const)("closes the alerts request held before its %s when silences fails", async (point) => {
+    hold = point;
+    let resolve!: () => void;
+    alertsHeld = { promise: new Promise<void>((done) => { resolve = done; }), resolve };
+    alertsClosed = new Promise<ServerResponse>((done) => { onAlertsClosed = done; });
+    const am = new AlertmanagerProvider("alertmanager", { baseUrl });
+    await expect(am.fetch()).rejects.toThrowError("Alertmanager /api/v2/silences responded 503");
+    // The server sees the held alerts response closed by the client, never finished.
+    const res = await alertsClosed;
+    expect(res.writableFinished).toBe(false);
   });
 });

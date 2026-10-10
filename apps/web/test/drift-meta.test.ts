@@ -291,7 +291,7 @@ describe("5. server drift source imports no server-only runtime", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 6. No drift/secret/auth endpoint, schema-deep import, or alerts-and-health dep.
+// 6. No drift/secret/auth endpoint, schema-deep import, or monitoring-module dep.
 // ---------------------------------------------------------------------------
 
 describe("6. no forbidden endpoint, schema-deep import, or sibling dependency", () => {

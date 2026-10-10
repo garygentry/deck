@@ -277,7 +277,10 @@ describe("AlertmanagerProvider against a live endpoint", () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  it.each(["headers", "body"] as const)("closes the alerts request held before its %s when silences fails", async (point) => {
+  it.each([
+    { point: "headers" as const, stage: "while it waits for headers" },
+    { point: "body" as const, stage: "part-way through its body" },
+  ])("closes the alerts request $stage when silences fails", async ({ point }) => {
     hold = point;
     let resolve!: () => void;
     alertsHeld = { promise: new Promise<void>((done) => { resolve = done; }), resolve };

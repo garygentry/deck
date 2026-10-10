@@ -4,7 +4,7 @@ import type { ComposedConfig } from "./compose/compose.js";
 import { LATER_WINS, REPLACED, resolveOwner, type IdentitySpec, type Owner } from "./ownership.js";
 
 /**
- * Thrown by `merge` on a precondition failure (REQ-LAYER-07), before any output is
+ * Thrown by `merge` on a precondition failure, before any output is
  * constructed — so no partial document is ever produced. Consumers catch it and map
  * to exit 2. `merge` never returns findings.
  */

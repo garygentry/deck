@@ -21,7 +21,7 @@ expectTypeOf<ServerGatusEndpoint>().toMatchTypeOf<GatusEndpoint>();
 expectTypeOf<GatusResult>().toMatchTypeOf<ServerGatusResult>();
 expectTypeOf<ServerGatusResult>().toMatchTypeOf<GatusResult>();
 
-// EndpointStatusSummary is now a self-sufficient, propless fragment (05 §8.2): it
+// EndpointStatusSummary is now a self-sufficient, propless fragment: it
 // sources its own data and emits HealthSummary rather than receiving it. A propless
 // component still satisfies the ComponentType<HealthSummary> slot signature (the
 // shell renders it with no props), so this assertion is now vacuously true.

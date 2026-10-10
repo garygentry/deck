@@ -124,10 +124,10 @@ describe("ActionsPage — useConfig branching", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Capability-disabled read-only posture (REQ-GATE-01, SC-08).
+// Capability-disabled read-only posture.
 // ---------------------------------------------------------------------------
 
-describe("ActionsPage — capability-disabled posture (SC-08)", () => {
+describe("ActionsPage — capability-disabled posture", () => {
   it("shows a read-only banner and mounts no run affordance after an ACTIONS_DISABLED refusal", () => {
     configState = readyConfig([ACTION_NONE]);
     mountPage();

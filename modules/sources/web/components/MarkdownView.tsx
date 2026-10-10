@@ -1,5 +1,5 @@
 /**
- * Docs document view (REQ-DOCS-02/03, REQ-RO-01/SC-10).
+ * Docs document view.
  *
  * Renders the selected markdown document read-only via the {@link renderMarkdown} pipeline. This
  * is the ONLY place the Docs view's sanitized HTML reaches the DOM:

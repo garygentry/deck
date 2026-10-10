@@ -1,5 +1,5 @@
 /**
- * Integration tests for the four read-only source routes (05-http-routes.md), driven through
+ * Integration tests for the four read-only source routes, driven through
  * `app.request()` on an app running the source modules (markdown-tree, file-tree, sources) as
  * boot runs them. Covers the read routes at the legacy `/api/sources` alias and the module
  * prefix, HTTP confinement rejections (400/404 with no leaked path), the unknown-id 404s, an
@@ -276,7 +276,7 @@ describe("source routes — acquired-but-empty tree", () => {
   });
 });
 
-describe("source routes — read-only meta-guard (REQ-RO-01, SC-10)", () => {
+describe("source routes — read-only meta-guard", () => {
   it("registerSourceRoutes adds exactly four routes, all GET, no mutating verb", async () => {
     const calls: Array<{ method: string; path: string }> = [];
     // A recorder that captures any HTTP verb registerSourceRoutes might call. If the module

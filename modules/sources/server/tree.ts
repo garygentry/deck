@@ -24,7 +24,7 @@ import { SourceFailure, normalizeSourceFailure } from "./errors.js";
 /**
  * One node in a source's file tree. A `dir` node carries `children`; a `file` node
  * carries `size` and `binary`. The root node has `path === ""` and `type === "dir"`.
- * Rendered read-only by the web tree view (REQ-DOCS-02, REQ-CFG-02).
+ * Rendered read-only by the web tree view.
  */
 export interface SourceTreeNode {
   /** POSIX path relative to the source root ("" for the root node). Never absolute. */
@@ -35,7 +35,7 @@ export interface SourceTreeNode {
   type: "dir" | "file";
   /** Files only: byte size on disk. Undefined for directories. */
   size?: number;
-  /** Files only: true when a NUL byte was found in the leading 8 KiB (REQ-CFG-04). */
+  /** Files only: true when a NUL byte was found in the leading 8 KiB. */
   binary?: boolean;
   /** Directories only: child nodes, sorted dirs-first then by name. Undefined for files. */
   children?: SourceTreeNode[];
@@ -45,7 +45,7 @@ export interface SourceTreeNode {
  * The lightweight manifest a source publishes on each successful acquisition: the tree
  * plus enough metadata for the web to render, switch, and stamp freshness. Content,
  * images, and search hit separate on-demand routes. `data` of the envelope is this
- * manifest, or `null` before the first successful acquisition (REQ-FRESH-03).
+ * manifest, or `null` before the first successful acquisition.
  */
 export interface SourceManifest {
   /** The declaring `Source.id`. Also the provider id and the route path segment. */
@@ -56,7 +56,7 @@ export interface SourceManifest {
   title: string;
   /** Resolved git ref/commit for repo sources; undefined for local-path sources. */
   ref?: string;
-  /** Count of renderable files after include/exclude. 0 ⇒ acquired-but-empty (REQ-SRC-06). */
+  /** Count of renderable files after include/exclude. 0 ⇒ acquired-but-empty. */
   fileCount: number;
   /** Root tree node; its `children` describe the whole confined tree. */
   tree: SourceTreeNode;
@@ -111,28 +111,28 @@ export interface SourceSearchResult {
   truncated?: boolean;
 }
 
-/** Max renderable file size (REQ-CFG-03, resolves OQ-03): 1 MiB. Over ⇒ FileReadResult.truncated. */
+/** Max renderable file size: 1 MiB. Over ⇒ FileReadResult.truncated. */
 export const MAX_FILE_BYTES = 1024 * 1024;
-/** Binary-sniff window (REQ-CFG-04, resolves OQ-03): a NUL in the leading 8 KiB ⇒ binary. */
+/** Binary-sniff window: a NUL in the leading 8 KiB ⇒ binary. */
 export const BINARY_SNIFF_BYTES = 8 * 1024;
 /** Bounded read chunk size for streamed file/raw reads (mirrors snapshot CHUNK_BYTES). */
 export const READ_CHUNK_BYTES = 64 * 1024;
-/** Max search matches returned per query (REQ-SEARCH-01, REQ-PERF-02): 200. Over ⇒ truncated. */
+/** Max search matches returned per query: 200. Over ⇒ truncated. */
 export const MAX_SEARCH_MATCHES = 200;
 /** Max content-match snippet length in characters (bounds the search payload). */
 export const MAX_SNIPPET_CHARS = 200;
 
 // ---------------------------------------------------------------------------
-// Confined tree walk, bounded reads, and language hint (item 003).
+// Confined tree walk, bounded reads, and language hint.
 //
 // Every filesystem access below routes through `confinePath` (the choke point in
 // `confine.ts`) or descends into a directory a parent already proved in-root, and each
 // read is bounded — never the whole tree's content, never more than `MAX_FILE_BYTES` of a
-// single file (REQ-SEC-02, REQ-PERF-02). Read-only: only realpath/stat/opendir/
-// createReadStream syscalls appear here (REQ-RO-01).
+// single file. Read-only: only realpath/stat/opendir/
+// createReadStream syscalls appear here.
 // ---------------------------------------------------------------------------
 
-/** Inputs for one manifest build; supplied by the `SourceStore` (04) that owns the root. */
+/** Inputs for one manifest build; supplied by the `SourceStore` that owns the root. */
 export interface BuildManifestOptions {
   /** The declaring `Source.id`; echoed into the manifest and used in log/error details. */
   readonly sourceId: string;
@@ -142,13 +142,13 @@ export interface BuildManifestOptions {
   readonly title: string;
   /** Resolved git ref/commit for repo sources; omitted for local-path sources. */
   readonly ref?: string;
-  /** `Source.include` globs; empty/absent ⇒ include-all (REQ-SRC-04). */
+  /** `Source.include` globs; empty/absent ⇒ include-all. */
   readonly include?: readonly string[];
-  /** `Source.exclude` globs; empty/absent ⇒ exclude-none (REQ-SRC-04). */
+  /** `Source.exclude` globs; empty/absent ⇒ exclude-none. */
   readonly exclude?: readonly string[];
 }
 
-// --- Glob matchers (REQ-SRC-04) -------------------------------------------------------
+// --- Glob matchers -------------------------------------------------------
 
 interface Matchers {
   /** True ⇒ the POSIX rel path passes the include set (always true when no includes). */
@@ -161,8 +161,8 @@ interface Matchers {
  * Compile include/exclude into matchers. Patterns are matched against the POSIX path
  * RELATIVE to the source root (e.g. `docs/setup.md`), matching operator intuition and the
  * paths stored on every `SourceTreeNode`. `dot: true` so patterns can address dotfiles —
- * deck matches verbatim and does not hide dotfiles by default (REQ-SEC-04 curation is the
- * operator's job).
+ * deck matches verbatim and does not hide dotfiles by default (curation is the operator's
+ * job).
  */
 function compileMatchers(include?: readonly string[], exclude?: readonly string[]): Matchers {
   const inc = include && include.length > 0 ? picomatch([...include], { dot: true }) : null;
@@ -173,7 +173,7 @@ function compileMatchers(include?: readonly string[], exclude?: readonly string[
   };
 }
 
-/** A file is renderable iff it passes include AND is not excluded (REQ-SRC-04). */
+/** A file is renderable iff it passes include AND is not excluded. */
 function isRenderable(m: Matchers, posixRel: string): boolean {
   return m.included(posixRel) && !m.excluded(posixRel);
 }
@@ -202,7 +202,7 @@ export function compileReadMatchers(include?: readonly string[], exclude?: reado
   };
 }
 
-// --- The confined walk (REQ-SEC-02, REQ-PERF-02) --------------------------------------
+// --- The confined walk --------------------------------------
 
 /**
  * Secondary depth backstop for the tree walk. The visited-realpath set (threaded through
@@ -230,7 +230,7 @@ interface EntryClass {
 /**
  * Classify one directory entry as `"file"`, `"dir"`, or `"skip"`. Non-symlink entries are
  * classified from the dirent directly. A symlink is re-confined through `confinePath`; on
- * `PATH_NOT_CONFINED` (or a dangling link) it is `"skip"` (excluded — REQ-SEC-02),
+ * `PATH_NOT_CONFINED` (or a dangling link) it is `"skip"` (excluded),
  * otherwise its realpath target is `stat`-ed to decide file vs dir. A symlinked directory
  * additionally carries its resolved realpath (`realDir`) so the walk can guard cycles.
  * Special files (socket/fifo/device) are `"skip"`.
@@ -297,7 +297,7 @@ async function walkDir(
       // The child directory's realpath: a symlinked dir carries its resolved target; a real
       // subdirectory's realpath derives from its parent's (dirReal is always canonical).
       const childReal = entry.realDir ?? path.join(dirReal, name);
-      // Cycle guard (REQ-SEC-02): never descend into a directory realpath already on/along the
+      // Cycle guard: never descend into a directory realpath already on/along the
       // walk. An in-root symlink cycle (self→., latest→., sub/back→..) resolves to an
       // ancestor/already-visited realpath and is skipped rather than re-descended (no phantoms).
       if (visited.has(childReal)) continue;
@@ -312,14 +312,14 @@ async function walkDir(
         depth + 1,
         signal,
       );
-      // Prune: a directory survives only if it holds ≥1 renderable descendant (REQ-SRC-06).
+      // Prune: a directory survives only if it holds ≥1 renderable descendant.
       if (children.length > 0) {
         nodes.push({ path: childPosix, name, type: "dir", children });
       }
     } else {
-      // kind === "file": include only when renderable after include/exclude (REQ-SRC-04).
+      // kind === "file": include only when renderable after include/exclude.
       if (!isRenderable(m, childPosix)) continue;
-      const meta = await fileMeta(childAbs); // bounded: stat + ≤8 KiB sniff (§3.4)
+      const meta = await fileMeta(childAbs); // bounded: stat + ≤8 KiB sniff
       nodes.push({ path: childPosix, name, type: "file", size: meta.size, binary: meta.binary });
     }
   }
@@ -335,14 +335,14 @@ function sortNodes(nodes: SourceTreeNode[]): void {
   });
 }
 
-// --- Per-file metadata: size + bounded binary sniff (REQ-CFG-04, REQ-PERF-02) ---------
+// --- Per-file metadata: size + bounded binary sniff ---------
 
 interface FileMeta {
   size: number;
   binary: boolean;
 }
 
-/** Stat for size, then sniff ≤ BINARY_SNIFF_BYTES for a NUL byte (bounded — REQ-PERF-02). */
+/** Stat for size, then sniff ≤ BINARY_SNIFF_BYTES for a NUL byte (bounded). */
 async function fileMeta(absPath: string): Promise<FileMeta> {
   const st = await stat(absPath);
   const binary = await sniffBinary(absPath);
@@ -372,19 +372,19 @@ export async function sniffBinary(absPath: string): Promise<boolean> {
   });
 }
 
-// --- buildManifest (REQ-SRC-04/06, REQ-PERF-02) ---------------------------------------
+// --- buildManifest ---------------------------------------
 
 /**
  * Walk the confined source `root`, apply `include`/`exclude`, and build a `SourceManifest`
  * (paths + per-file `size`/`binary` metadata — NEVER file content, so a manifest is bounded
- * regardless of tree size, REQ-PERF-02). Directories that contain no renderable file after
- * filtering are pruned, so an empty result surfaces as `fileCount: 0` (REQ-SRC-06), never a
+ * regardless of tree size). Directories that contain no renderable file after
+ * filtering are pruned, so an empty result surfaces as `fileCount: 0`, never a
  * throw. Symlinked entries that escape the root are excluded during the walk.
  *
  * @param root Absolute path to the confined on-disk tree root (from acquisition, 02).
  * @param opts Source identity + include/exclude.
  * @param signal Optional abort signal, honored between directory reads.
- * @returns The manifest; `fileCount === 0` for an acquired-but-empty tree (REQ-SRC-06).
+ * @returns The manifest; `fileCount === 0` for an acquired-but-empty tree.
  * @throws {SourceFailure} `SOURCE_UNAVAILABLE`/`INTERNAL` if the root itself is unreadable.
  */
 export async function buildManifest(
@@ -405,7 +405,7 @@ export async function buildManifest(
     throw normalizeSourceFailure(cause, { sourceId: opts.sourceId, failureKind: "walk" });
   }
   const tree: SourceTreeNode = { path: "", name: "", type: "dir", children };
-  const fileCount = countFiles(tree); // 0 ⇒ acquired-but-empty (REQ-SRC-06)
+  const fileCount = countFiles(tree); // 0 ⇒ acquired-but-empty
   return {
     sourceId: opts.sourceId,
     kind: opts.kind,
@@ -416,21 +416,21 @@ export async function buildManifest(
   };
 }
 
-/** Count `file` nodes across the tree. `0` is the acquired-but-empty signal (REQ-SRC-06). */
+/** Count `file` nodes across the tree. `0` is the acquired-but-empty signal. */
 function countFiles(node: SourceTreeNode): number {
   if (node.type === "file") return 1;
   return (node.children ?? []).reduce((sum, c) => sum + countFiles(c), 0);
 }
 
-// --- Confined bounded file read (REQ-CFG-03/04, REQ-PERF-02) --------------------------
+// --- Confined bounded file read --------------------------
 
 /**
  * Read one confined file as the read-only `FileReadResult`. Enforces, server-side:
  *   - confinement (via `confinePath`) — throws PATH_NOT_CONFINED / PATH_NOT_FOUND;
  *   - the 1 MiB cap — a file over `MAX_FILE_BYTES` returns `{ truncated: true }` with NO
- *     content read (bounded — REQ-CFG-03/REQ-PERF-02);
+ *     content read (bounded);
  *   - the binary flag — a NUL in the leading `BINARY_SNIFF_BYTES` returns `{ binary: true }`
- *     with NO content (REQ-CFG-04);
+ *     with NO content;
  *   - otherwise `content` is the UTF-8 body and `language` is the highlight.js hint.
  * `truncated` and `binary` are independent; either one omits `content`.
  */
@@ -452,7 +452,7 @@ export async function readFile(
   const language = languageForPath(relPath);
   const size = st.size;
 
-  // Cap FIRST — never read the body of an oversize file (REQ-CFG-03, REQ-PERF-02).
+  // Cap FIRST — never read the body of an oversize file.
   if (size > MAX_FILE_BYTES) {
     return { path: relPath, language, size, truncated: true, binary: false };
   }
@@ -473,7 +473,7 @@ interface BoundedRead {
  * Stream `absPath` in READ_CHUNK_BYTES chunks up to MAX_FILE_BYTES, honoring `signal`.
  * On the first chunk, scan the leading BINARY_SNIFF_BYTES for a NUL — if present, stop and
  * return `{ binary: true }` without accumulating the body. Otherwise accumulate and return
- * the UTF-8 text. Never holds more than MAX_FILE_BYTES of buffers (REQ-PERF-02); a file that
+ * the UTF-8 text. Never holds more than MAX_FILE_BYTES of buffers; a file that
  * grew past the cap since `stat` is surfaced as READ_TOO_LARGE rather than over-buffered.
  */
 function readBoundedText(absPath: string, signal?: AbortSignal): Promise<BoundedRead> {
@@ -518,12 +518,12 @@ function readBoundedText(absPath: string, signal?: AbortSignal): Promise<Bounded
   });
 }
 
-// --- Server-side confined search (REQ-SEARCH-01, REQ-PERF-02) -------------------------
+// --- Server-side confined search -------------------------
 //
-// Search runs server-side over the confined tree (resolves OQ-02): it reuses the confined
+// Search runs server-side over the confined tree: it reuses the confined
 // walk (name/path matching + include/exclude) and the same bounded reader as `readFile`
 // (content matching, text files under the cap only). Binary and over-`MAX_FILE_BYTES` files
-// are name-matched ONLY — their content is never scanned (bounded — REQ-PERF-02). The whole
+// are name-matched ONLY — their content is never scanned (bounded). The whole
 // result is capped at `MAX_SEARCH_MATCHES` so a broad query can never return an unbounded
 // response (the search-path analogue of the file size cap).
 // ---------------------------------------------------------------------------
@@ -541,10 +541,10 @@ const MAX_MATCHES_PER_FILE = 5;
  * manifest is never returned) and the bounded reader (content matching over text files under
  * the cap only — binary and over-cap files are name-matched only, their content never
  * scanned). Case-insensitive substring match (V1). A single unreadable file is swallowed —
- * one bad file never fails the whole search (REQ-OBS-02).
+ * one bad file never fails the whole search.
  *
  * @param root   Confined on-disk source root.
- * @param opts   Same include/exclude + identity used by `buildManifest` (§3.1).
+ * @param opts   Same include/exclude + identity used by `buildManifest`.
  * @param query  Raw query string (already URL-decoded by the route). Empty ⇒ no matches.
  * @param signal Optional abort signal, honored between files.
  * @returns `{ sourceId, matches, truncated }` — `truncated: true` iff the cap was hit.
@@ -572,13 +572,13 @@ export async function searchTree(
 
   for (const file of files) {
     throwIfAborted(signal);
-    // Name/path match (also covers binary + over-cap files — REQ-SEARCH-01).
+    // Name/path match (also covers binary + over-cap files).
     if (file.path.toLowerCase().includes(needle)) {
       if (!pushCapped({ path: file.path, kind: "name" })) {
         return { sourceId: opts.sourceId, matches, truncated: true };
       }
     }
-    // Content match only for text files under the cap (never scan binary/over-cap — §3.4/§4).
+    // Content match only for text files under the cap (never scan binary/over-cap).
     if (file.binary || (file.size ?? 0) > MAX_FILE_BYTES) continue;
     const capReached = await scanContent(root, file.path, needle, pushCapped, signal);
     if (capReached) return { sourceId: opts.sourceId, matches, truncated: true };
@@ -596,7 +596,7 @@ function collectFiles(node: SourceTreeNode): SourceTreeNode[] {
  * Scan one text file's content for `needle`, pushing content matches through `pushCapped`.
  * Records at most `MAX_MATCHES_PER_FILE` content hits for this file. Returns true iff the
  * GLOBAL cap was reached (caller stops entirely). A per-file read fault is swallowed — one
- * bad file never fails the whole search (REQ-OBS-02); a file that sniffs binary on this pass
+ * bad file never fails the whole search; a file that sniffs binary on this pass
  * is skipped (its content is never scanned).
  */
 async function scanContent(
@@ -637,11 +637,11 @@ function makeSnippet(line: string): string {
   return `${trimmed.slice(0, MAX_SNIPPET_CHARS - 1)}…`;
 }
 
-// --- Language hint by extension (REQ-CFG-02) ------------------------------------------
+// --- Language hint by extension ------------------------------------------
 
 /**
  * Map a file path to a highlight.js language token by extension/basename, or `undefined`
- * for an unknown type (⇒ plaintext, REQ-CFG-02). Lowercased; matches common config/doc
+ * for an unknown type (⇒ plaintext). Lowercased; matches common config/doc
  * types. This is a hint only — the web may fall back to plaintext if the language is not
  * registered in its highlight.js bundle.
  */

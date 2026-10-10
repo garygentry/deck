@@ -212,7 +212,7 @@ async function mockConfigIntegrations(page: Page, integrations: JsonObject[]): P
 }
 
 // ===========================================================================
-// 1. Persistent shell header on every route (SC-03).
+// 1. Persistent shell header on every route.
 // ===========================================================================
 
 test.describe("persistent health-header", () => {
@@ -235,7 +235,7 @@ test.describe("persistent health-header", () => {
 });
 
 // ===========================================================================
-// 2. Header nav affordances (SC-11) and the monitoring page in primary nav (SC-12).
+// 2. Header nav affordances and the monitoring page in primary nav.
 // ===========================================================================
 
 test.describe("header navigation and primary nav", () => {
@@ -296,7 +296,7 @@ test.describe("header navigation and primary nav", () => {
 
 // ===========================================================================
 // 3. States via route mocks + clock: re-poll, freshness flip, last-known-good
-//    on unreachable (never a fabricated 0), and silenced/suppressed (SC-06/SC-07).
+//    on unreachable (never a fabricated 0), and silenced/suppressed.
 // ===========================================================================
 
 test.describe("provider states and deterministic re-poll", () => {
@@ -390,7 +390,7 @@ test.describe("provider states and deterministic re-poll", () => {
 });
 
 // ===========================================================================
-// 4. Per-segment degradation (SC-04).
+// 4. Per-segment degradation.
 // ===========================================================================
 
 test.describe("per-segment header degradation", () => {

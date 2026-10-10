@@ -4,16 +4,15 @@
  * Mirrors `SnapshotReadFailure` (`modules/snapshot/server/errors.ts`) and `ActionRunFailure`
  * (`modules/actions/server/errors.ts`): a closed-union `code`, a safe canonical message table, non-public
  * `details`, and a `.toPublic()` that strips internals before the wire/log. **No credential
- * value or attempted absolute path is ever carried publicly** (REQ-SEC-03, REQ-OBS-02,
- * REQ-SEC-02).
+ * value or attempted absolute path is ever carried publicly**.
  */
 
 /** Closed set of source failure codes, spanning acquisition, confinement, and read. */
 export const SOURCE_ERROR_CODES = [
   "SOURCE_NOT_FOUND", // unknown / typed-off source id — route → 404
-  "PATH_NOT_CONFINED", // traversal/absolute/symlink-escape — route → 400 (REQ-SEC-02)
+  "PATH_NOT_CONFINED", // traversal/absolute/symlink-escape — route → 400
   "PATH_NOT_FOUND", // confined but no such file — route → 404
-  "SOURCE_UNAVAILABLE", // git missing / clone|fetch failed / local root unreadable (REQ-FRESH-02/03)
+  "SOURCE_UNAVAILABLE", // git missing / clone|fetch failed / local root unreadable
   "ACQUIRE_TIMEOUT", // acquisition exceeded the provider timeout
   "READ_TOO_LARGE", // internal guard when a raw read would exceed the byte cap
   "INTERNAL", // unexpected; sanitized
@@ -50,7 +49,7 @@ export interface SourceFailureDetails {
   readonly attemptedPath?: string;
   /** The source id in play (safe to log; carries no secret). */
   readonly sourceId?: string;
-  /** Acquisition failure kind for logs (e.g. "clone", "fetch", "walk") — REQ-OBS-02. */
+  /** Acquisition failure kind for logs (e.g. "clone", "fetch", "walk"). */
   readonly failureKind?: string;
 }
 
@@ -73,7 +72,7 @@ export class SourceFailure extends Error {
     super(message, options);
   }
 
-  /** HTTP status this failure maps to (§ table above). */
+  /** HTTP status this failure maps to (`SOURCE_HTTP_STATUS`). */
   get httpStatus(): number {
     return SOURCE_HTTP_STATUS[this.code];
   }
@@ -107,7 +106,7 @@ function isFileNotFound(error: unknown): boolean {
 
 /**
  * True for a git operation that ran but exited non-zero (clone/fetch failure). The
- * acquisition layer (item 005) marks such an error with `code === "GIT_NONZERO_EXIT"`
+ * acquisition layer marks such an error with `code === "GIT_NONZERO_EXIT"`
  * or a non-zero numeric `exitCode`/`status`.
  */
 function isGitNonZeroExit(error: unknown): boolean {
@@ -128,7 +127,7 @@ function isGitNonZeroExit(error: unknown): boolean {
  * - Filesystem ENOENT (a confined but missing file) → `PATH_NOT_FOUND`.
  * - Everything else → a sanitized `INTERNAL`.
  *
- * The confinement choke point (03) throws `PATH_NOT_CONFINED` directly, not via this
+ * The confinement choke point throws `PATH_NOT_CONFINED` directly, not via this
  * normalizer. Provided `details` are threaded onto the produced failure for server logs.
  */
 export function normalizeSourceFailure(

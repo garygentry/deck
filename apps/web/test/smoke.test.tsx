@@ -9,7 +9,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** Stub GET /api/config so the shell's useConfig/usePortalData never hit the network (07 §2). */
+/** Stub GET /api/config so the shell's useConfig/usePortalData never hit the network. */
 function stubConfigFetch(): void {
   vi.stubGlobal("fetch", vi.fn(async () => Response.json(primary.merged)));
 }
@@ -37,7 +37,7 @@ it("mounts the persistent HealthHeader region inside the shell <header> on a non
   let html = "";
   expect(() => {
     // Drive a non-home route via the App url prop to prove the region is global,
-    // rendered by the shell on every route — not by per-page opt-in (05 §8).
+    // rendered by the shell on every route — not by per-page opt-in.
     html = render(<App url="/drift" />);
   }).not.toThrow();
 
@@ -46,7 +46,7 @@ it("mounts the persistent HealthHeader region inside the shell <header> on a non
 
 it("renders an empty HealthHeader region without throwing when no fragment is registered", async () => {
   // A fresh module graph with the slot declared but no feature discovered, so the
-  // slot has zero registered fragments. The container must still render (05 §8.1).
+  // slot has zero registered fragments. The container must still render.
   vi.resetModules();
   const { HealthHeaderRegion } = await import(
     "../src/shell/health-header/HealthHeaderRegion.js"

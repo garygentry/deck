@@ -1,8 +1,7 @@
 /**
  * The source browser: one page component behind both `/docs` (markdown-tree sources, rendered as
  * sanitized prose) and `/configs` (file-tree sources, rendered as highlighted code), parameterized
- * by {@link SourceBrowserKind} (REQ-DOCS-01/02/06, REQ-CFG-01/02/05, REQ-SEC-04, REQ-FRESH-*,
- * REQ-SRC-06, REQ-SEARCH-01/02).
+ * by {@link SourceBrowserKind}.
  *
  * Layout: a `PageHeader` (freshness in the meta slot, the source switcher as the action when more
  * than one source of the kind is declared), then two panes — a sidebar with the file-tree filter,
@@ -11,7 +10,7 @@
  *
  * The active source and document follow the URL query (`?source=<id>&path=<rel>`); the browse
  * state itself lives in the singleton `sources-store`, driven by the `use-source` load hooks. A
- * binary Configs selection never loads its content as text (REQ-CFG-04): `fileLoadPath` yields
+ * binary Configs selection never loads its content as text: `fileLoadPath` yields
  * null for it, so `useFileLoad` is a no-op and the viewer renders the placeholder from the
  * manifest flag.
  */
@@ -62,7 +61,7 @@ interface SourceBrowserSpec {
   /** The render-failure fallback (PageErrorBoundary). */
   readonly failureTitle: string;
   readonly failureRetry: string;
-  /** Show the verbatim / no-redaction notice (REQ-SEC-04). */
+  /** Show the verbatim / no-redaction notice. */
   readonly verbatimNotice: boolean;
 }
 
@@ -216,7 +215,7 @@ export function SourceBrowserView({ kind, state, onRetry }: SourceBrowserViewPro
       : null;
   const selectedNode =
     tree !== null && browse.selectedPath !== null ? findNode(tree, browse.selectedPath) : null;
-  // Configs skips the content load for binary nodes (REQ-CFG-04); Docs loads the selected path.
+  // Configs skips the content load for binary nodes; Docs loads the selected path.
   const loadPath =
     spec.sourceKind === "file-tree"
       ? fileLoadPath(selectedNode, browse.selectedPath)
@@ -321,7 +320,7 @@ function SourceBrowserBody({
   }
   const { envelope } = manifest;
   if (envelope.data === null) {
-    // First-ever acquisition failure: an explicit error, never the empty state (SC-06 vs SC-15).
+    // First-ever acquisition failure: an explicit error, never the empty state.
     return (
       <ErrorState
         title="This source could not be loaded"
@@ -383,8 +382,8 @@ const nodeChildren = (node: SourceTreeNode): readonly SourceTreeNode[] | undefin
 const nodeIsLeaf = (node: SourceTreeNode): boolean => node.type === "file";
 
 /**
- * The navigation pane: the instant client-side path filter (REQ-SEARCH-02), the file tree and the
- * server-side content search (REQ-SEARCH-01). Tree keys are the TreeView's own; this pane adds
+ * The navigation pane: the instant client-side path filter, the file tree and the
+ * server-side content search. Tree keys are the TreeView's own; this pane adds
  * `/` and Ctrl/Cmd-K (focus the filter) and Escape (clear it).
  */
 function SourceSidebar({

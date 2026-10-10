@@ -18,7 +18,7 @@ export interface FakeGitScript {
   stderr?: string[];
   /** When set, spawn() throws (simulates `git` absent / ENOENT). */
   throwOnSpawn?: unknown;
-  /** Gate `exited` until released — drives the atomic-swap interleave test (§3.2). */
+  /** Gate `exited` until released — drives the atomic-swap interleave test. */
   hang?: boolean;
 }
 

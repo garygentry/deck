@@ -246,7 +246,7 @@ function quietConsoleError(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Scope selection (07 §3.2).
+// Scope selection.
 // ---------------------------------------------------------------------------
 
 describe("entity scope selection", () => {
@@ -293,7 +293,7 @@ describe("entity scope selection", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Malformed service scope (07 §3.3).
+// Malformed service scope.
 // ---------------------------------------------------------------------------
 
 describe("malformed service entity", () => {
@@ -319,7 +319,7 @@ describe("malformed service entity", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Compact counts and inert rows (07 §3.2).
+// Compact counts and inert rows.
 // ---------------------------------------------------------------------------
 
 describe("compact counts and rows", () => {
@@ -392,7 +392,7 @@ describe("compact counts and rows", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Links and scoped href (07 §§3.3, 4).
+// Links and scoped href.
 // ---------------------------------------------------------------------------
 
 describe("entity links and scoped href", () => {
@@ -478,7 +478,7 @@ describe("entity links and scoped href", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Qualified empty states (07 §3.4).
+// Qualified empty states.
 // ---------------------------------------------------------------------------
 
 describe("qualified empty states", () => {
@@ -553,7 +553,7 @@ describe("qualified empty states", () => {
 });
 
 // ---------------------------------------------------------------------------
-// No-accepted-generation states (07 §3.4 first rows).
+// No-accepted-generation states.
 // ---------------------------------------------------------------------------
 
 describe("no accepted generation", () => {
@@ -603,7 +603,7 @@ describe("no accepted generation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Retained failure (07 §3.4 last row).
+// Retained failure.
 // ---------------------------------------------------------------------------
 
 describe("retained-failure warnings", () => {
@@ -640,7 +640,7 @@ describe("retained-failure warnings", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Large-result containment (07 §3.5).
+// Large-result containment.
 // ---------------------------------------------------------------------------
 
 describe("progressive disclosure", () => {
@@ -697,7 +697,7 @@ describe("progressive disclosure", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Focus reconciliation (07 §3.5).
+// Focus reconciliation.
 // ---------------------------------------------------------------------------
 
 describe("focus reconciliation on generation change", () => {
@@ -739,7 +739,7 @@ describe("focus reconciliation on generation change", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Failure isolation (07 §3.5, §7).
+// Failure isolation.
 // ---------------------------------------------------------------------------
 
 function Boom(): JSX.Element {
@@ -813,7 +813,7 @@ describe("fragment failure isolation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Render diagnostics (07 §7).
+// Render diagnostics.
 // ---------------------------------------------------------------------------
 
 describe("render diagnostics", () => {
@@ -844,12 +844,12 @@ describe("render diagnostics", () => {
 });
 
 // ===========================================================================
-// DriftHealthSummary adapter (07 §5). The health-header slot passes placeholder
+// DriftHealthSummary adapter. The health-header slot passes placeholder
 // `HealthSummary` props that the adapter ignores; it reads the same drift store
 // and adapts the accepted `DriftSummary` into one `/drift` link.
 // ===========================================================================
 
-/** Placeholder host props the adapter must ignore (07 §5.1). */
+/** Placeholder host props the adapter must ignore. */
 const SUMMARY_PROPS: HealthSummary = {
   label: "placeholder-label",
   status: "warning",

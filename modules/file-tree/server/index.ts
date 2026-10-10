@@ -9,10 +9,10 @@ import type { SourceManifest } from "../../sources/server/tree.js";
 export const FILE_TREE_KIND = "file-tree";
 
 /**
- * The `file-tree` provider (REQ-SRC-02). Byte-for-byte identical to `MarkdownTreeProvider`
+ * The `file-tree` provider. Byte-for-byte identical to `MarkdownTreeProvider`
  * except the class name, and the `kind` literal — the shared core (the
  * store) does all the work; the kinds differ only in which web surface consumes
- * `SourceManifest.kind` (Docs vs Configs, tech-spec §3.1). See `MarkdownTreeProvider` for
+ * `SourceManifest.kind` (Docs vs Configs). See `MarkdownTreeProvider` for
  * method-level docs.
  */
 export class FileTreeProvider implements Provider<SourceManifest> {

@@ -10,7 +10,7 @@ export const MAX_SNAPSHOT_BYTES = 50 * 1024 * 1024;
 /** Bounded streaming chunk size; one chunk bounds any oversize over-read. */
 const CHUNK_BYTES = 64 * 1024;
 
-/** Exact torn-write refusal message required by REQ-CONC-02. */
+/** The exact message a read refuses a file with when it changed mid-read (a torn write). */
 const TORN_FILE_MESSAGE = "Snapshot file changed while being read.";
 
 /** Opaque candidate identity accepted only after parse and validation succeed. */

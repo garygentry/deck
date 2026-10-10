@@ -242,7 +242,7 @@ export function buildInventoryScenario(nowMs: number): {
  * declared ∪ observed union the UI renders — is exactly 150 hosts and 300
  * services. Observing the declared identities keeps the union equal to the
  * observed cardinality, so the generated snapshot itself contains exactly 150
- * hosts and 300 services (REQ-PERF-01). Names stay under the `fixture-`
+ * hosts and 300 services. Names stay under the `fixture-`
  * namespace and carry no estate facts.
  *
  * @param nowMs - Wall-clock epoch used for the fresh collection timestamps.

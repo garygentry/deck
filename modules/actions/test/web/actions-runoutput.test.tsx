@@ -151,7 +151,7 @@ describe("RunOutput non-terminal states", () => {
 
 // ---------------------------------------------------------------------------
 // Incrementality: multiple stdout renders before the terminal state, driven by
-// a chunked reader/store sequence (REQ-STREAM-01/02, REQ-PERF-01).
+// a chunked reader/store sequence.
 // ---------------------------------------------------------------------------
 
 describe("RunOutput incrementality", () => {

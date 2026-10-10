@@ -48,7 +48,7 @@ export * from "./primitives/toggle-group";
 export * from "./primitives/toggle";
 export * from "./primitives/tooltip";
 
-// §C Page scaffolding & feedback
+// Page scaffolding & feedback
 export { slugify, pageHeadingId } from "./lib/dom-id";
 export { usePageHeadingId } from "./hooks/use-page-heading-id";
 export { PageHeader, type PageHeaderProps, type BreadcrumbEntry } from "./patterns/page-header";
@@ -68,7 +68,7 @@ export {
   type ConfigGateViewProps,
 } from "./patterns/config-gate";
 
-// §G Interaction hooks
+// Interaction hooks
 export {
   isHandledIntent,
   nearestSurvivor,
@@ -88,7 +88,7 @@ export { useListNavigation, type UseListNavigationOptions } from "./hooks/use-li
 export { hashTargetId, useScrollToHash, type UseScrollToHashOptions } from "./hooks/use-scroll-to-hash";
 export { useDocumentTitle } from "./hooks/use-document-title";
 
-// §D Content & data display
+// Content & data display
 export {
   EmptyValue,
   KeyValue,
@@ -118,7 +118,7 @@ export {
 } from "./patterns/show-more";
 export { useShowMore, type ShowMoreState, type UseShowMoreOptions } from "./hooks/use-show-more";
 
-// §A Foundations (remainder) + §B Status
+// Foundations (remainder) + Status
 export { useNow } from "./hooks/use-now";
 export { VisuallyHidden, type VisuallyHiddenProps } from "./patterns/visually-hidden";
 export { SafeRouteLink, type SafeRouteLinkProps } from "./patterns/safe-route-link";
@@ -139,7 +139,7 @@ export {
 } from "./patterns/freshness-badge";
 export { HealthPill, type HealthPillProps } from "./patterns/health-pill";
 
-// §E Collections
+// Collections
 export {
   DataTable,
   ROW_LINK_ATTRIBUTE,
@@ -172,7 +172,7 @@ export {
   type VisibleTreeRow,
 } from "./lib/tree";
 
-// §F Filtering & search
+// Filtering & search
 export {
   applyFilters,
   countActiveCriteria,

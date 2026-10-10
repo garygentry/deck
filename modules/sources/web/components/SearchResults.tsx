@@ -1,5 +1,5 @@
 /**
- * Server-side content+name search results (REQ-SEARCH-01/SC-03).
+ * Server-side content+name search results.
  *
  * Presentational over the {@link SearchState} the page drives via a debounced `runSearch`. Each
  * result is a whole-row button that opens its file in the same page (`onOpen` → `selectPath`);

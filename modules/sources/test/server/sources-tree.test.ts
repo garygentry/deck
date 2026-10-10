@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 // `node:fs`.createReadStream is used by the bounded reader and the binary sniff. Replace the
 // module with a call-through vi.fn (mirrors sources-confine.test.ts's realpath mock) so the
 // size-cap test can assert an oversize file never opens a body read stream — the memory
-// bound (REQ-PERF-02): a 5 MiB file must never be buffered.
+// bound: a 5 MiB file must never be buffered.
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return { ...actual, createReadStream: vi.fn(actual.createReadStream) };
@@ -42,7 +42,7 @@ function findNode(node: SourceTreeNode, path: string): SourceTreeNode | undefine
   return undefined;
 }
 
-describe("tree — confined walk, include/exclude, size cap, binary sniff (SC-02)", () => {
+describe("tree — confined walk, include/exclude, size cap, binary sniff", () => {
   let base: string;
   let treeRoot: string; // ordering / include-exclude / symlink-escape
   let readRoot: string; // size cap / binary sniff / language hint
@@ -65,7 +65,7 @@ describe("tree — confined walk, include/exclude, size cap, binary sniff (SC-02
     writeFileSync(join(treeRoot, "docs", "intro.md"), "# intro\n");
     writeFileSync(join(treeRoot, "docs", "secret", "hidden.md"), "# hidden\n");
 
-    // A symlink escaping the root must be excluded from the walk (REQ-SEC-02).
+    // A symlink escaping the root must be excluded from the walk.
     const outsideSecret = join(base, "outside-secret.txt");
     writeFileSync(outsideSecret, "TOP SECRET\n");
     symlinkSync(outsideSecret, join(treeRoot, "escape.md"));
@@ -130,7 +130,7 @@ describe("tree — confined walk, include/exclude, size cap, binary sniff (SC-02
     });
   });
 
-  describe("include / exclude (REQ-SRC-04)", () => {
+  describe("include / exclude", () => {
     it("include only-md renders solely markdown files", async () => {
       const manifest = await buildManifest(treeRoot, { ...OPTS, include: ["**/*.md"] });
       expect(findNode(manifest.tree, "data.json")).toBeUndefined();
@@ -170,7 +170,7 @@ describe("tree — confined walk, include/exclude, size cap, binary sniff (SC-02
     });
   });
 
-  describe("size cap → truncated (REQ-CFG-03, REQ-PERF-02)", () => {
+  describe("size cap → truncated", () => {
     it("a file of MAX_FILE_BYTES + 1 returns truncated with no content, size still reported", async () => {
       const res = await readFile(readRoot, "over.txt");
       expect(res.truncated).toBe(true);
@@ -199,7 +199,7 @@ describe("tree — confined walk, include/exclude, size cap, binary sniff (SC-02
     });
   });
 
-  describe("binary sniff → binary flag (REQ-CFG-04)", () => {
+  describe("binary sniff → binary flag", () => {
     it("a NUL within the first 8 KiB marks the node and read binary, with no content", async () => {
       const manifest = await buildManifest(readRoot, OPTS);
       expect(findNode(manifest.tree, "early-nul.bin")!.binary).toBe(true);
@@ -227,7 +227,7 @@ describe("tree — confined walk, include/exclude, size cap, binary sniff (SC-02
     });
   });
 
-  describe("language hint (REQ-CFG-02)", () => {
+  describe("language hint", () => {
     it("maps by extension / basename, undefined for unknown", async () => {
       expect((await readFile(readRoot, "config.yaml")).language).toBe("yaml");
       expect((await readFile(readRoot, "settings.json")).language).toBe("json");
@@ -257,13 +257,13 @@ describe("tree — confined walk, include/exclude, size cap, binary sniff (SC-02
   });
 });
 
-// --- In-root symlink cycle guard (item 018) ------------------------------------------
+// --- In-root symlink cycle guard ------------------------------------------
 //
 // An in-root symlink whose realpath stays contained (self→., latest→., sub/back→..) is
 // classified 'dir' and would, without a visited-realpath guard, be re-descended until the OS
 // ELOOP limit (~40) — inflating fileCount and duplicating ~40 phantom nodes on every poll and
 // search. The walk must terminate at the real file count with no phantom duplication.
-describe("tree — in-root symlink cycle guard (item 018)", () => {
+describe("tree — in-root symlink cycle guard", () => {
   let base: string;
   let cycleRoot: string;
 

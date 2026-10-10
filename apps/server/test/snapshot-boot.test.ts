@@ -85,7 +85,7 @@ describe("snapshot boot registration", () => {
     stopScheduler();
 
     // The same multi-entity config plus one runtime source registers exactly one
-    // extra slot; the source is never discovered per host/service (REQ-SNAPSHOT-09).
+    // extra slot; the source is never discovered per host/service.
     registerAllProviders(config, { snapshotSource: snapshotPath(true) });
     expect(providerCount()).toBe(base + 1);
     expect(listEnvelopes().filter((envelope) => envelope.id === "snapshot")).toHaveLength(1);

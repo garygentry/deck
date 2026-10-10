@@ -410,7 +410,7 @@ describe("exact pairing and single derivation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// State transition table (§4.3).
+// State transition table.
 // ---------------------------------------------------------------------------
 
 describe("availability and failure transition table", () => {

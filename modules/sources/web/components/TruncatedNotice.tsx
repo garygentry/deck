@@ -1,8 +1,8 @@
 /**
- * "Too large — not shown" notice for an oversized config file (REQ-CFG-03, SC-02).
+ * "Too large — not shown" notice for an oversized config file.
  *
  * Shown when the server returns `truncated: true` (file over MAX_FILE_BYTES, 1 MiB): the body is
- * NOT shipped, so the whole file never reaches the client (REQ-PERF-02). `role="status"`: an
+ * NOT shipped, so the whole file never reaches the client. `role="status"`: an
  * expected condition, not an error.
  */
 

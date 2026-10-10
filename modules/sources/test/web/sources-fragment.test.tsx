@@ -111,7 +111,7 @@ afterEach(() => {
 
 // --- pure helpers ---------------------------------------------------------
 
-describe("ownedFileTreeSources (REQ-FRAG-02)", () => {
+describe("ownedFileTreeSources", () => {
   const cfg = config([
     source("cfg-a", "file-tree", { host: "web01" }),
     source("cfg-b", "file-tree", { host: "db01" }),
@@ -181,7 +181,7 @@ describe("OwnedConfigsFragment (rendered)", () => {
       configsHref("cfg-a", "app.yaml"),
       configsHref("cfg-a", "etc/site.conf"),
     ]);
-    // The href is the /configs deep link for the owned source + relative path (REQ-FRAG-03).
+    // The href is the /configs deep link for the owned source + relative path.
     expect(hrefs[0]).toBe("/configs?source=cfg-a&path=app.yaml");
     expect(within(list).getByRole("link", { name: "etc/site.conf" })).toBeTruthy();
     // The source is named, with its freshness (icon + text).
@@ -224,7 +224,7 @@ describe("OwnedConfigsFragment (rendered)", () => {
     expect(screen.queryAllByRole("link")).toHaveLength(0);
   });
 
-  it("renders a role=status empty state when the entity owns no config files (REQ-FRAG-04)", async () => {
+  it("renders a role=status empty state when the entity owns no config files", async () => {
     const cfg = config([
       source("cfg-b", "file-tree", { host: "db01" }),
       source("docs-a", "markdown-tree", { host: "web01" }),

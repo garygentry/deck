@@ -21,9 +21,7 @@ import { confine } from "../../server/confine.js";
 
 /**
  * Every vector resolves outside the source root and MUST be rejected as PATH_NOT_CONFINED.
- * This table is the executable form of the identical table in
- * `03-path-confinement-and-tree.md` §2.5 (SC-07 / SC-17; REQ-SEC-02) — the two must stay in
- * sync.
+ * Each row is one escape a request or a repository can attempt.
  */
 const REJECTED_VECTORS: ReadonlyArray<{ name: string; rel: string }> = [
   { name: "parent traversal", rel: "../secret.txt" },
@@ -53,7 +51,7 @@ const SYNTACTIC_REJECTS: ReadonlyArray<{ name: string; rel: string }> = [
   { name: "NUL byte injection", rel: "docs/readme.md\u0000.png" },
 ];
 
-describe("confine — the path-confinement choke point (SC-07/SC-17; REQ-SEC-02)", () => {
+describe("confine — the path-confinement choke point", () => {
   let base: string; // tmp base holding both root/ and the out-of-root sentinel
   let root: string; // the confined source root
   let realRoot: string; // realpath(root) — symlinks collapsed

@@ -89,7 +89,7 @@ describe("append — single-syscall atomic index write", () => {
   });
 
   it("does not use fs.appendFile (single O_APPEND write invariant)", () => {
-    // REQ-CONC-01: the implementation must use openSync+writeSync+closeSync, never
+    // the implementation must use openSync+writeSync+closeSync, never
     // fs.appendFile (which may split a buffer into multiple interleaving writes).
     const src = readFileSync(new URL("../../../modules/actions/server/audit.ts", import.meta.url), "utf8");
     expect(src).not.toMatch(/appendFile/);
@@ -97,7 +97,7 @@ describe("append — single-syscall atomic index write", () => {
     expect(src).toMatch(/writeSync/);
   });
 
-  it("concurrent appends never interleave or corrupt (REQ-CONC-01)", async () => {
+  it("concurrent appends never interleave or corrupt", async () => {
     const { dir, store } = freshStore();
     const count = 200;
     const entries = Array.from({ length: count }, (_, i) =>
@@ -253,7 +253,7 @@ describe("pre-run rejection round-trip + list/read", () => {
   });
 });
 
-describe("robust parsing of truncated / corrupt lines (REQ-OBS-01)", () => {
+describe("robust parsing of truncated / corrupt lines", () => {
   it("drops a truncated final line without error and lists the rest", async () => {
     const { dir, store } = freshStore();
     await store.append(makeEntry({ runId: "ok-1" }));

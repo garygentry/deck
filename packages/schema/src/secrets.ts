@@ -1,19 +1,19 @@
 /**
- * The secret-reference pattern (REQ-SCHEMA-05): a short opaque id — lowercase
+ * The secret-reference pattern: a short opaque id — lowercase
  * alphanumeric with dash/dot separators, no whitespace, no "://". This exact string
  * is ALSO the literal `pattern` on `SecretRef` in both schema files; schema-files.test.ts
- * asserts equality so the two cannot drift (07-testing-strategy.md).
+ * asserts equality so the two cannot drift.
  */
 export const SECRET_REF_PATTERN = "^[a-z0-9]+(?:[.-][a-z0-9]+)*$";
 /** Bound on a secret reference's length; the schema's SecretRef sets maxLength to this. */
 export const SECRET_REF_MAX_LENGTH = 64;
 
 /**
- * Credential key names for the secret-value heuristic (REQ-VAL-10). A string value
+ * Credential key names for the secret-value heuristic. A string value
  * under a key whose NORMALISED name (lowercased, "-" and "_" stripped) is in this
  * list, and which does NOT match SECRET_REF_PATTERN, yields a SECRET_VALUE_SUSPECTED
  * info finding. Info, not warning, so a false positive stays visible without failing
- * the exit-code contract (REQ-VAL-03).
+ * the exit-code contract.
  */
 export const CREDENTIAL_KEY_NAMES = [
   "password", "passwd", "pass", "passphrase", "token", "secret", "apikey",

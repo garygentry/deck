@@ -64,7 +64,7 @@ async function readNamesSafe(root: string): Promise<string | null> {
   }
 }
 
-// --- Local-path acquisition (REQ-ACQ-01, REQ-ACQ-04) ----------------------------------
+// --- Local-path acquisition ----------------------------------
 
 describe("acquireSource — local path", () => {
   it("acquires in place with zero GitSpawner calls; root is the realpath of path", async () => {
@@ -106,7 +106,7 @@ describe("acquireSource — local path", () => {
   });
 });
 
-// --- Git shallow-clone happy path (REQ-ACQ-01/02) -------------------------------------
+// --- Git shallow-clone happy path -------------------------------------
 
 describe("acquireSource — git clone argv", () => {
   it("spawns ['git','clone','--depth','1',…] with --branch present iff ref is set", async () => {
@@ -150,7 +150,7 @@ describe("acquireSource — git clone argv", () => {
   });
 });
 
-// --- Private-repo credential — no on-disk / arg-list token leak (REQ-ACQ-03, REQ-SEC-03) --
+// --- Private-repo credential — no on-disk / arg-list token leak --
 
 const SENTINEL = "ghp_SENTINELtoken00000000000000000000000";
 
@@ -172,7 +172,7 @@ function privateGitSource(id: string, repo: string, credentialEnv: string): Sour
   return { id, kind: "markdown-tree", title: id, location: { repo }, credentialEnv };
 }
 
-describe("acquireSource — private-repo credential (REQ-ACQ-03, REQ-SEC-03)", () => {
+describe("acquireSource — private-repo credential", () => {
   it("carries the token as an ephemeral http.extraheader env — never in the URL, argv, or on disk", async () => {
     const root = cache();
     process.env.DECK_TEST_PAT = SENTINEL;
@@ -233,7 +233,7 @@ describe("acquireSource — private-repo credential (REQ-ACQ-03, REQ-SEC-03)", (
   });
 });
 
-// --- Atomic swap — no half-updated tree (REQ-FRESH-04, SC-06) -------------------------
+// --- Atomic swap — no half-updated tree -------------------------
 
 describe("acquireSource — atomic swap interleave", () => {
   it("every read across the swap observes a whole tree (A or B), never a mix", async () => {
@@ -278,7 +278,7 @@ describe("acquireSource — atomic swap interleave", () => {
   });
 });
 
-// --- Bounded cache & prune (REQ-FRESH-05) ---------------------------------------------
+// --- Bounded cache & prune ---------------------------------------------
 
 describe("acquireSource — bounded cache", () => {
   it("at rest the source dir holds only current + one generation (old gen pruned)", async () => {
@@ -313,7 +313,7 @@ describe("acquireSource — bounded cache", () => {
   });
 });
 
-// --- Failure classification (REQ-FRESH-02/03) -----------------------------------------
+// --- Failure classification -----------------------------------------
 
 describe("acquireSource — failure classification", () => {
   it("a non-zero clone exit → SOURCE_UNAVAILABLE", async () => {

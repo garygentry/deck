@@ -31,7 +31,7 @@ function Wide({ children }: { children: ReactNode }) {
   return <div className="w-full min-w-0">{children}</div>;
 }
 
-// A stand-in sync marker (icon + text). Real screens pass the §B status badge.
+// A stand-in sync marker (icon + text). Real screens pass a status badge.
 function SyncMarker({ drifted }: { drifted: boolean }) {
   return drifted ? (
     <span className="inline-flex items-center gap-1 rounded-md border border-status-warn-border bg-status-warn-bg px-1.5 text-xs text-status-warn-fg">

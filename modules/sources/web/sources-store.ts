@@ -5,9 +5,9 @@
  * module-scoped `Object.freeze`d state value replaced atomically, a `Set` of listener records,
  * an isolating `notify()` that iterates a **copy** and swallows a throwing listener, a
  * `getSourceBrowse()` snapshot reader, and a `subscribeSourceBrowse(listener) => () => void`
- * returning an idempotent unsubscribe (06 §6.0).
+ * returning an idempotent unsubscribe.
  *
- * It holds **no HTTP logic** — that lives in `client.ts` (06 §3). The UI-selection mutators
+ * It holds **no HTTP logic** — that lives in `client.ts`. The UI-selection mutators
  * (`selectSource`/`selectPath`/`setFilter`/`resetBrowse`) are written by the page; the
  * network-derived mutators (`setManifest`/`setFile`/`setSearch`) are written **only** by the
  * client's `load*` wrappers (a later item), which is why each carries a stale-response guard.
@@ -27,15 +27,15 @@ import type { FileState, ManifestState, SearchState } from "./client.js";
 export interface SourceBrowseState {
   /** The source currently in view (from the switcher / URL query), or null before selection. */
   readonly activeSourceId: string | null;
-  /** Manifest+freshness of the active source (§3.2). "loading" before the first load. */
+  /** Manifest+freshness of the active source. "loading" before the first load. */
   readonly manifest: ManifestState;
   /** The selected file/document path (POSIX, relative to root), or null when none is open. */
   readonly selectedPath: string | null;
-  /** Read state of the selected path (§3.2). */
+  /** Read state of the selected path. */
   readonly file: FileState;
-  /** Live client-side tree filter text (REQ-SEARCH-02); "" ⇒ no filter. */
+  /** Live client-side tree filter text; "" ⇒ no filter. */
   readonly filter: string;
-  /** Server content-search state (§3.2). */
+  /** Server content-search state. */
   readonly search: SearchState;
 }
 
@@ -156,7 +156,7 @@ export function selectPath(path: string): void {
   notify();
 }
 
-/** Update the live tree-filter text (REQ-SEARCH-02). Pure UI selection; triggers no fetch. */
+/** Update the live tree-filter text. Pure UI selection; triggers no fetch. */
 export function setFilter(text: string): void {
   if (state.filter === text) return;
   state = Object.freeze({ ...state, filter: text });
@@ -171,7 +171,7 @@ export function resetBrowse(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Network-derived mutators (called ONLY by client.ts, §3).
+// Network-derived mutators (called ONLY by client.ts).
 // Each carries a stale-response guard so a slow earlier response can never overwrite a newer
 // selection — this closes the render/effect/async race.
 // ---------------------------------------------------------------------------

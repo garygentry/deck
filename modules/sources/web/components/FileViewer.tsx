@@ -1,16 +1,16 @@
 /**
- * Read-only config file view (REQ-CFG-02/03/04, REQ-RO-01, SC-02).
+ * Read-only config file view.
  *
  * Presentational: it receives the selected `SourceTreeNode` (from the manifest) and the store's
  * `FileState` slice (driven by `useFileLoad`), and performs NO fetch of its own. A binary node
  * renders the placeholder directly from the manifest flag — the page gates the content load off
- * for binary nodes, so a binary file's content is never fetched as text (REQ-CFG-04). An
- * oversized file renders the truncation notice, never a body (REQ-CFG-03).
+ * for binary nodes, so a binary file's content is never fetched as text. An
+ * oversized file renders the truncation notice, never a body.
  *
  * The body is a `CodeBlock` fed with `highlightCode` output: highlight.js token markup around
  * ESCAPED source text, or fully escaped plaintext. The config surface never renders authored
  * HTML, so no DOMPurify pass is needed (contrast the markdown surface). There is no editing
- * affordance anywhere (REQ-RO-01).
+ * affordance anywhere.
  */
 
 import type { JSX } from "react";
@@ -38,7 +38,7 @@ export function FileViewer({ node, file }: FileViewerProps): JSX.Element {
       <EmptyState icon="folder-open" title="This is a folder. Select a file to view its contents." />
     );
   }
-  // Binary — listed in the tree but never rendered as text and never fetched (REQ-CFG-04, SC-02).
+  // Binary — listed in the tree but never rendered as text and never fetched.
   if (node.binary === true) return <BinaryPlaceholder path={node.path} />;
 
   // Text file — reflect the store's FileState (driven by useFileLoad).
@@ -50,9 +50,9 @@ export function FileViewer({ node, file }: FileViewerProps): JSX.Element {
   }
 
   const { result } = file;
-  // Over the 1 MiB cap — a notice, not the file body (REQ-CFG-03, SC-02).
+  // Over the 1 MiB cap — a notice, not the file body.
   if (result.truncated) return <TruncatedNotice path={result.path} size={result.size} />;
-  // The server also flags binary defensively even if the manifest lagged (REQ-CFG-04).
+  // The server also flags binary defensively even if the manifest lagged.
   if (result.binary) return <BinaryPlaceholder path={result.path} />;
 
   // Highlight by the server hint when present, else resolve by extension. The plaintext fallback

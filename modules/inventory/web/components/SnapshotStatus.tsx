@@ -89,7 +89,7 @@ interface AvailableStatusProps {
 /** Provider badge, last-read time, retained-failure alert, and filtered findings. */
 function AvailableStatus({ snapshot }: AvailableStatusProps): JSX.Element {
   const result = snapshot.envelope.data;
-  // `available` is only classified with non-null data (04-inventory-client §4);
+  // `available` is only classified with non-null data;
   // this guard keeps the component total against the wire `T | null` typing.
   if (result === null) {
     return (

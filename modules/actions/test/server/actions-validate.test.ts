@@ -301,7 +301,7 @@ describe("ordering, undeclared keys, and multi-failure collection", () => {
   });
 });
 
-describe("spec example usage (§2.11)", () => {
+describe("spec example usage", () => {
   const action: Action = {
     id: "restart-svc",
     title: "Restart service",

@@ -1,5 +1,5 @@
 /**
- * "Binary — not shown" notice for a binary config file (REQ-CFG-04, SC-02).
+ * "Binary — not shown" notice for a binary config file.
  *
  * A binary file (NUL-sniffed in the leading 8 KiB) is LISTED in the tree but never rendered as
  * text and — because the page gates the content load off for binary nodes — its content is never

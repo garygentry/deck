@@ -13,7 +13,7 @@ import type { SourceBrowseState } from "./sources-store.js";
 import { loadFile, loadManifest, runSearch } from "./client.js";
 import type { FileState, ManifestState, SearchState } from "./client.js";
 
-/** Debounce for the content-search input so a keystroke burst issues one request (06 §6.1). */
+/** Debounce for the content-search input so a keystroke burst issues one request. */
 const SEARCH_DEBOUNCE_MS = 200;
 
 /**
@@ -62,7 +62,7 @@ export function useSourceSearch(): SearchState {
 }
 
 // ---------------------------------------------------------------------------
-// Load-driving effects (06 §6.1). The only places `client.load*` is called from a source
+// Load-driving effects. The only places `client.load*` is called from a source
 // surface. Each cancels the prior in-flight load via an `AbortController` when its key changes, so
 // a stale response can never clobber a newer selection (belt-and-braces with the store guards).
 // ---------------------------------------------------------------------------

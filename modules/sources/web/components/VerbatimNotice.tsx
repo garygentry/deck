@@ -1,12 +1,12 @@
 /**
- * Verbatim / no-redaction operator notice (REQ-SEC-04).
+ * Verbatim / no-redaction operator notice.
  *
  * A short, dismissible notice stating deck's security posture in-product: deck renders configured
  * files verbatim and does not scan or redact. Dismissal is remembered for the browser session via
  * `sessionStorage` (per-surface key) so it does not nag on every navigation, but a new session
  * shows it again. The persistence lives here, in the feature: `Callout` only renders the dismiss
  * button. `role="note"` (informational, not an alert); it offers no control that changes
- * behaviour (REQ-RO-01).
+ * behaviour.
  */
 
 import { useState } from "react";
@@ -21,7 +21,7 @@ export interface VerbatimNoticeProps {
 /** sessionStorage key prefix for the per-surface dismissal flag. */
 const DISMISS_KEY_PREFIX = "deck.sources.verbatimNotice.dismissed.";
 
-/** The single canonical posture message (REQ-SEC-04). */
+/** The single canonical posture message. */
 export const VERBATIM_NOTICE_TEXT =
   "deck renders configured files verbatim and does not scan or redact. " +
   "Curate what is exposed via each source's include/exclude.";

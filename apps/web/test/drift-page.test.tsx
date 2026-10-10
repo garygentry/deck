@@ -372,7 +372,7 @@ function silenceErrors(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Unavailable states (06 §5.1).
+// Unavailable states.
 // ---------------------------------------------------------------------------
 
 describe("unavailable generation states", () => {
@@ -427,7 +427,7 @@ describe("unavailable generation states", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Overview and available state (06 §3).
+// Overview and available state.
 // ---------------------------------------------------------------------------
 
 describe("available overview and totals", () => {
@@ -495,7 +495,7 @@ describe("available overview and totals", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Qualified no-drift and no-match (06 §3.3).
+// Qualified no-drift and no-match.
 // ---------------------------------------------------------------------------
 
 describe("qualified empty states", () => {
@@ -522,7 +522,7 @@ describe("qualified empty states", () => {
 });
 
 // ---------------------------------------------------------------------------
-// URL scope (06 §4).
+// URL scope.
 // ---------------------------------------------------------------------------
 
 describe("URL entity scope", () => {
@@ -586,7 +586,7 @@ describe("URL entity scope", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Local filters, composition, chips, and clears (06 §4.3).
+// Local filters, composition, chips, and clears.
 // ---------------------------------------------------------------------------
 
 describe("local filters and chips", () => {
@@ -678,7 +678,7 @@ describe("local filters and chips", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Retained warnings and recovery (06 §5.2).
+// Retained warnings and recovery.
 // ---------------------------------------------------------------------------
 
 describe("retained warnings and recovery", () => {
@@ -732,7 +732,7 @@ describe("retained warnings and recovery", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Page boundary and read-only behavior (06 §10.1, §4.4).
+// Page boundary and read-only behavior.
 // ---------------------------------------------------------------------------
 
 describe("page boundary and read-only behavior", () => {
@@ -776,7 +776,7 @@ describe("page boundary and read-only behavior", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Grouped findings, inert evidence, and progressive disclosure (06 §§6, 03 §§5–7).
+// Grouped findings, inert evidence, and progressive disclosure.
 // ---------------------------------------------------------------------------
 
 /** The default accepted-generation inventory model (compute-a/b/c, api, web). */
@@ -1131,7 +1131,7 @@ describe("FindingGroups controlled disclosure", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Semantic coverage rendering and progressive disclosure (06 §7).
+// Semantic coverage rendering and progressive disclosure.
 // ---------------------------------------------------------------------------
 
 /** One projected coverage row with inert defaults and targeted overrides. */
@@ -1457,7 +1457,7 @@ describe("coverage progressive disclosure", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Mounted keyboard grammar and focus (06 §8).
+// Mounted keyboard grammar and focus.
 // One window keydown listener drives the visible finding-then-coverage results.
 // ---------------------------------------------------------------------------
 
@@ -1675,7 +1675,7 @@ describe("mounted keyboard grammar", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Focus reconciliation across refreshes and progressive reveal (06 §§6.4, 8.2).
+// Focus reconciliation across refreshes and progressive reveal.
 // ---------------------------------------------------------------------------
 
 describe("keyboard focus reconciliation", () => {
@@ -1750,7 +1750,7 @@ describe("keyboard focus reconciliation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Bounded live regions (06 §9.1).
+// Bounded live regions.
 // ---------------------------------------------------------------------------
 
 describe("live region announcements", () => {
@@ -1770,7 +1770,7 @@ describe("live region announcements", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Render diagnostics: one transition per surface/generation/outcome (06 §10.3).
+// Render diagnostics: one transition per surface/generation/outcome.
 // ---------------------------------------------------------------------------
 
 describe("render diagnostics", () => {
@@ -1827,7 +1827,7 @@ describe("render diagnostics", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Above-scale mounted reachability and isolation (spec 08 §5.5).
+// Above-scale mounted reachability and isolation.
 //
 // The strictly-above-scale invented fixture passes its matching config and
 // available envelope through the real `buildInventoryModel`, and its projection is

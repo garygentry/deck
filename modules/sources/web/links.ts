@@ -30,7 +30,7 @@ export function findNode(root: SourceTreeNode, path: string): SourceTreeNode | n
 
 /**
  * The path whose content should be loaded for the current selection, or null. A binary file (or a
- * dir, or an absent node) yields null so the page never fetches its content as text (REQ-CFG-04).
+ * dir, or an absent node) yields null so the page never fetches its content as text.
  */
 export function fileLoadPath(node: SourceTreeNode | null, path: string | null): string | null {
   if (node === null || path === null) return null;

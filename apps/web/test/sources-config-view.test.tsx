@@ -101,7 +101,7 @@ describe("FileViewer highlighting", () => {
     expect(code.textContent).toBe("plain <b>text</b> & more");
   });
 
-  it("offers no editing affordance — only Copy (REQ-RO-01)", () => {
+  it("offers no editing affordance — only Copy", () => {
     render(<FileViewer node={fileNode("a.yaml")} file={readyFile({ path: "a.yaml", content: "a: 1" })} />);
     const names = screen.getAllByRole("button").map((b) => b.textContent ?? "");
     expect(names).toEqual([expect.stringMatching(/^Copy/)]);
@@ -131,7 +131,7 @@ describe("FileViewer selection states", () => {
   });
 });
 
-describe("FileViewer truncation (REQ-CFG-03)", () => {
+describe("FileViewer truncation", () => {
   it("renders the truncation notice and no file body", () => {
     render(
       <FileViewer
@@ -145,7 +145,7 @@ describe("FileViewer truncation (REQ-CFG-03)", () => {
   });
 });
 
-describe("FileViewer binary handling (REQ-CFG-04)", () => {
+describe("FileViewer binary handling", () => {
   it("renders the binary placeholder from the manifest flag without a loaded body", () => {
     render(<FileViewer node={fileNode("logo.png", true)} file={{ status: "idle" }} />);
     expect(screen.getByRole("status").textContent).toContain("logo.png is a binary file — not shown.");

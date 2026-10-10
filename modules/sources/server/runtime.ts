@@ -1,7 +1,7 @@
 /**
  * The sources capability's one deployment setting, the on-disk cache root for acquired git
  * trees (`DECK_SOURCES_CACHE_DIR`). It is deck-deployment configuration, not estate config:
- * the `Source` contract carries no cache or timing knobs (CON-03). The `markdown-tree` and
+ * the `Source` contract carries no cache or timing knobs. The `markdown-tree` and
  * `file-tree` modules read it to build their stores; the `sources` module creates it and
  * releases the caches of removed sources at init.
  */
@@ -12,12 +12,12 @@ import { join } from "node:path";
 
 /** Environment variable names for the sources capability (deck-deployment settings). */
 export const SOURCES_ENV = {
-  /** On-disk cache root for acquired git trees (REQ-FRESH-05). */
+  /** On-disk cache root for acquired git trees. */
   CACHE_DIR: "DECK_SOURCES_CACHE_DIR",
 } as const;
 
 /**
- * The on-disk cache root for acquired git trees (REQ-FRESH-05): `DECK_SOURCES_CACHE_DIR`, or
+ * The on-disk cache root for acquired git trees: `DECK_SOURCES_CACHE_DIR`, or
  * when blank or unset a stable OS-temp subdirectory, so a local-path-only deployment needs no
  * configuration. Reads only; {@link ensureCacheDir} creates it.
  */
@@ -42,7 +42,7 @@ export function ensureCacheDir(dir: string): void {
 
 /**
  * Remove every `<cacheDir>/<id>` subdirectory whose `<id>` is not in `keep` — the boot-time
- * reconciliation that releases a removed source's cache (REQ-FRESH-05). Only ever removes
+ * reconciliation that releases a removed source's cache. Only ever removes
  * direct children of `cacheDir`; kept sources' caches are preserved. Best-effort: a missing
  * cache dir or an unremovable leftover is not fatal to boot.
  */

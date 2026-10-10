@@ -10,9 +10,9 @@ import type { Source } from "@deck/schema";
 
 import { registerAllProviders } from "../src/providers/index.js";
 import { stopScheduler } from "../src/providers/registry.js";
-import { resolveCacheDir } from "../src/sources/runtime.js";
-import { SOURCE_READER, type SourceStore } from "../src/sources/store.js";
-import { makeCacheDir } from "./util/make-cache-dir.js";
+import { resolveCacheDir } from "../../../modules/sources/server/runtime.js";
+import { SOURCE_READER, type SourceStore } from "../../../modules/sources/server/store.js";
+import { makeCacheDir } from "../../../modules/sources/test/server/util/make-cache-dir.js";
 import { testHost, testModule } from "./util/modules.js";
 import { sourceModules } from "./util/sources-module.js";
 

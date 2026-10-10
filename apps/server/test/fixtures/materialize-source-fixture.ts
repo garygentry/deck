@@ -30,7 +30,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { MAX_FILE_BYTES } from "../../src/sources/tree.js";
+import { MAX_FILE_BYTES } from "../../../../modules/sources/server/tree.js";
 
 const FIXTURES_DIR = dirname(fileURLToPath(import.meta.url));
 

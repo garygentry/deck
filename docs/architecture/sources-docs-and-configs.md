@@ -9,7 +9,7 @@ Two source kinds are supported:
 
 ## Runtime flow
 
-The capability is three built-in modules: the `markdown-tree` and `file-tree` data sources (`apps/server/src/providers/<kind>/module.ts`) and the `sources` feature (`apps/server/src/sources/module.ts`).
+The capability is three built-in modules: the `markdown-tree` and `file-tree` data sources (`modules/<kind>/server/module.ts`) and the `sources` feature (`modules/sources/server/module.ts`).
 
 1. While providers are registered at startup, each data-source module's kind handler builds one `SourceStore` (reading `DECK_SOURCES_CACHE_DIR`) and one provider per `sources[]` entry of its kind, and offers a reader over its stores as the `sources/reader` module service. Each provider acquires its source and publishes a bounded tree **manifest** (the directory structure and per-file metadata — never file bodies). A source id is an estate id: one equal to any other provider's id fails boot (`PROVIDER_DUPLICATE_ID`).
 2. The `sources` module's init creates the cache root, prunes the caches of sources no longer declared in `sources[]`, and registers the four read routes (`registerSourceRoutes`) on its module routes. The routes read the stores through the `sources/reader` service of every running data source, so another module can serve a source through the same routes by offering that service. A declared source is answered only by the reader of the module that owns its kind; any other reader claiming it is ignored and logged (`sources.reader-claim`). An undeclared id is answered by a built-in reader first, then by the one non-built-in reader serving it; when several non-built-ins serve it, none answers (404) and the conflict is logged.
@@ -46,7 +46,7 @@ The sources module's manifest declares the UI as data, in `@deck/contract/module
 - `/configs` (nav label "Configs") — the `file-tree` browser: verbatim file viewing with a notice that content is shown exactly as stored, no redaction.
 - An **owned-configs** section ("Configs", in the shared `configs` section at order 20): `section:sources/host-configs` on `entity:host/sections` and `section:sources/service-configs` on `entity:service/sections`, after drift's findings (order 10). It surfaces the config files a given host or service owns (via each source's optional `owner`).
 
-The web half (`features/sources-docs-and-configs/index.ts`) supplies only the components the manifest names (`DocsPage`, `ConfigsPage`, `OwnedConfigsFragment`) and registers them with `registerWebModule`; where each one renders comes from the manifest, and the UI manifest (`GET /api/ui`) decides at runtime.
+The web half (`modules/sources/web/index.ts`) supplies only the components the manifest names (`DocsPage`, `ConfigsPage`, `OwnedConfigsFragment`) and registers them with `registerWebModule`; where each one renders comes from the manifest, and the UI manifest (`GET /api/ui`) decides at runtime.
 
 Markdown is rendered with `markdown-it`, sanitized with DOMPurify, and highlighted with highlight.js — all in the browser. Oversized files show a "too large" notice (reporting the size in MiB); binary files show a placeholder instead of bytes.
 

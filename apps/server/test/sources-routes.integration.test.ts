@@ -12,8 +12,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Hono } from "hono";
 
 import { stopScheduler } from "../src/providers/registry.js";
-import { sourcesModule } from "../src/sources/module.js";
-import { registerSourceRoutes, type SourceRoutesDeps } from "../src/sources/route.js";
+import { sourcesModule } from "../../../modules/sources/server/module.js";
+import { registerSourceRoutes, type SourceRoutesDeps } from "../../../modules/sources/server/route.js";
 import { materializeFixture } from "./fixtures/sources-estate/materialize.js";
 import { sourcesApp } from "./util/sources-module.js";
 

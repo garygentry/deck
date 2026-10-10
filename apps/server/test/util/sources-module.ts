@@ -6,11 +6,11 @@ import type { DeckConfig } from "../../src/contract/index.js";
 import { registerAllProviders } from "../../src/providers/index.js";
 import { listHealth, listProviders, providerCount, read, setProjections } from "../../src/providers/registry.js";
 import { createApp, planningRouteTable, RESERVED_ROOT_PATHS } from "../../src/server/app.js";
-import type { GitSpawner } from "../../src/sources/acquire.js";
-import { createFileTreeModule } from "../../src/providers/file-tree/module.js";
-import { createMarkdownTreeModule } from "../../src/providers/markdown-tree/module.js";
-import { sourcesModule } from "../../src/sources/module.js";
-import { createFakeGitSpawner } from "./fake-git-spawner.js";
+import type { GitSpawner } from "../../../../modules/sources/server/acquire.js";
+import { createFileTreeModule } from "../../../../modules/file-tree/server/module.js";
+import { createMarkdownTreeModule } from "../../../../modules/markdown-tree/server/module.js";
+import { sourcesModule } from "../../../../modules/sources/server/module.js";
+import { createFakeGitSpawner } from "../../../../modules/sources/test/server/util/fake-git-spawner.js";
 import { testHost } from "./modules.js";
 
 /** The markdown-tree, file-tree and sources modules, the data sources with `createGit`. */

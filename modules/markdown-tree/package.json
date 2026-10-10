@@ -1,0 +1,11 @@
+{
+  "name": "@deck/module-markdown-tree",
+  "version": "0.3.2",
+  "private": true,
+  "description": "deck's built-in markdown-tree module: the `markdown-tree` data source that serves a declared documentation source's tree manifest for the Docs page.",
+  "type": "module",
+  "dependencies": {
+    "@deck/module-sdk": "workspace:*",
+    "@deck/schema": "workspace:*"
+  }
+}

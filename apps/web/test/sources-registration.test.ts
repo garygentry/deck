@@ -6,7 +6,7 @@ import { resolveComponent } from "./support/lazy.js";
 // registry accessors. Each test loads its own copy, so each passes alone.
 async function loadFreshFeature() {
   vi.resetModules();
-  const feature = await import("../src/features/sources-docs-and-configs/index.js");
+  const feature = await import("../../../modules/sources/web/index.js");
   const registry = await import("../src/registry/registry.js");
   const { SOURCES_UI } = await import("@deck/contract/modules/sources");
   return { feature, registry, SOURCES_UI };
@@ -15,16 +15,16 @@ async function loadFreshFeature() {
 // The components behind the lazy registrations, loaded only by the tests that resolve them. The
 // pages pull in markdown-it, DOMPurify and highlight.js, so only the page test loads them.
 async function loadFragment() {
-  const { OwnedConfigsFragment } = await import("../src/features/sources-docs-and-configs/OwnedConfigsFragment.js");
+  const { OwnedConfigsFragment } = await import("../../../modules/sources/web/OwnedConfigsFragment.js");
   return OwnedConfigsFragment;
 }
 
 async function loadPages() {
-  const { DocsPage, ConfigsPage } = await import("../src/features/sources-docs-and-configs/SourceBrowserPage.js");
+  const { DocsPage, ConfigsPage } = await import("../../../modules/sources/web/SourceBrowserPage.js");
   return { DocsPage, ConfigsPage };
 }
 
-describe("the sources-docs-and-configs web half", () => {
+describe("the sources web half", () => {
   beforeEach(() => {
     vi.resetModules();
   });

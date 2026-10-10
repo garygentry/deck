@@ -1,4 +1,4 @@
-import type { ProviderHealth, ProviderSpec, ProviderTiming } from "@deck/module-sdk";
+import type { ProviderFetchContext, ProviderHealth, ProviderSpec, ProviderTiming } from "@deck/module-sdk";
 
 export interface HttpHealthConfig {
   url: string;
@@ -28,21 +28,34 @@ export class HttpHealthProvider implements ProviderSpec<HttpHealthResult> {
     return { ...this.latestHealth };
   }
 
-  async fetch(): Promise<HttpHealthResult> {
+  /**
+   * Probe the URL once. Redirects are not followed, so a 3xx answer is the service's own and
+   * counts as up, like a 2xx. The poll's signal aborts a probe that outlives its timeout, and
+   * the body is never read: it is cancelled so the connection is released.
+   */
+  async fetch(context?: ProviderFetchContext): Promise<HttpHealthResult> {
+    const signal = context?.signal;
     const startedAt = performance.now();
     try {
       const response = await globalThis.fetch(this.config.url, {
         method: this.config.method ?? "GET",
+        redirect: "manual",
+        ...(signal ? { signal } : {}),
       });
+      const latencyMs = Math.round(performance.now() - startedAt);
+      await response.body?.cancel().catch(() => {});
+      // An aborted poll has already been recorded as failed; its late answer changes nothing.
+      signal?.throwIfAborted();
       const result: HttpHealthResult = {
         up: response.status >= 200 && response.status < 400,
         status: response.status,
-        latencyMs: Math.round(performance.now() - startedAt),
+        latencyMs,
       };
       this.latestHealth = { ok: result.up, detail: `status ${result.status}` };
       return result;
     } catch (error) {
-      this.latestHealth = { ok: false, detail: error instanceof Error ? error.message : String(error) };
+      const detail = signal?.aborted ? "probe aborted" : error instanceof Error ? error.message : String(error);
+      this.latestHealth = { ok: false, detail };
       throw error;
     }
   }

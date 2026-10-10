@@ -216,7 +216,7 @@ describe("stage-one providers", () => {
     const provider = new HttpHealthProvider("probe", { url: "https://example.invalid/probe", method: "HEAD" });
 
     expect(await provider.fetch()).toEqual({ up: false, status: 503, latencyMs: expect.any(Number) });
-    expect(fetchStub).toHaveBeenCalledWith("https://example.invalid/probe", { method: "HEAD" });
+    expect(fetchStub).toHaveBeenCalledWith("https://example.invalid/probe", { method: "HEAD", redirect: "manual" });
     expect(await provider.health()).toEqual({ ok: false, detail: "status 503" });
 
     registerHttpHealth("registered-probe", {

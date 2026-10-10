@@ -123,9 +123,12 @@ Backed by a `http-health` binding on a host or service.
 | `method` | no | `GET` (default) or `HEAD`. |
 | `id` | no | Provider id; defaults to a value derived from the owning host/service. |
 | `order` | no | Sort order among providers. |
-| `timing` | no | Per-provider poll overrides (`pollIntervalMs`, `ttlMs`, `unreachableAfterMs`, `timeoutMs`). |
+| `timing` | no | Per-provider poll overrides (`pollIntervalMs`, `ttlMs`, `unreachableAfterMs`, `timeoutMs`), each a positive, finite number of milliseconds. Any other value (0, a negative number, `.nan`, `.inf`, text) is `HTTP_HEALTH_TIMING_INVALID`, and deck uses the default for it. |
 
-A response status in the 200–399 range counts as up.
+A response status in the 200–399 range counts as up. Redirects are not followed, so a 3xx is the
+probed service's own answer (a login redirect, say) and counts as up, whatever its target would
+answer. The probe never reads the response body; it cancels it. A probe still running at the
+poll's `timeoutMs` is aborted, and its late answer is discarded.
 This kind sends no authorization header and has no `credentialEnv` support.
 
 ## http-json
@@ -227,7 +230,7 @@ Backed by a `link` binding on a host or service.
 
 | Key | Required | Notes |
 | --- | --- | --- |
-| `href` | yes | Link target URL. |
+| `href` | yes | Link target: an `http://` or `https://` URL, or an absolute path in deck (`/inventory`). Anything else (`javascript:`, `data:`, `mailto:`, a relative path, `//host`) is `LINK_HREF_UNSAFE`, and such a binding registers no provider, so the href is never served. |
 | `label` | no | Display label; defaults to the owning entity id. |
 | `icon` | no | Icon name. |
 | `id` | no | Provider id; defaults to a value derived from the owning host/service. |

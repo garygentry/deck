@@ -1,5 +1,5 @@
 import { PORTAL_UI } from "@deck/contract/modules/portal";
-import { defineServerModule, type JsonSchema, type ModuleManifest } from "@deck/module-sdk";
+import { defineServerModule, isSafeHref, type ConfigLayer, type ConfigRuleFinding, type JsonSchema, type ModuleManifest } from "@deck/module-sdk";
 
 import type { PortalModuleConfig } from "./config.generated.js";
 import schema from "../schema.json" with { type: "json" };
@@ -36,7 +36,42 @@ export const PORTAL_MANIFEST: ModuleManifest = {
       { path: "groups[].items[]", service: "name", at: "element" },
       { path: "groups[].items[].items[]", service: "name", at: "element" },
     ],
+    findings: [
+      {
+        code: "PORTAL_LINK_HREF_UNSAFE",
+        severity: "error",
+        summary: "A portal link item's href is not an http(s) URL or an absolute path in deck.",
+        fix: "Use a full http:// or https:// URL, or a path in deck that starts with a single /.",
+      },
+    ],
   },
 };
 
-export const portalModule = defineServerModule<PortalModuleConfig>(PORTAL_MANIFEST, () => {});
+/**
+ * Every link item (top level or in a subgroup) whose href `isSafeHref` refuses: the card would
+ * otherwise carry a `javascript:`, `data:` or `//host` target. Checked on the merged document
+ * only, so a link is reported once whichever layer holds it. Pure.
+ */
+export function portalLinkHrefs(section: PortalModuleConfig, { layer }: { layer: ConfigLayer }): ConfigRuleFinding[] {
+  if (layer !== "merged") return [];
+  const findings: ConfigRuleFinding[] = [];
+  const inspect = (items: readonly unknown[] | undefined, path: string): void => {
+    for (const [index, item] of (items ?? []).entries()) {
+      if (typeof item !== "object" || item === null) continue;
+      const { type, href, items: children } = item as { type?: unknown; href?: unknown; items?: unknown };
+      if (type === "link" && typeof href === "string" && !isSafeHref(href)) {
+        findings.push({
+          code: "PORTAL_LINK_HREF_UNSAFE",
+          path: `${path}/${index}/href`,
+          message: "link href is not an http(s) URL or an absolute path in deck, so the card is not a link.",
+          hint: "Use https://… or /path; javascript:, data:, //host and relative links are refused.",
+        });
+      }
+      if (type === "group" && Array.isArray(children)) inspect(children, `${path}/${index}/items`);
+    }
+  };
+  for (const [index, group] of (section.groups ?? []).entries()) inspect(group.items, `/groups/${index}/items`);
+  return findings;
+}
+
+export const portalModule = defineServerModule<PortalModuleConfig>(PORTAL_MANIFEST, () => {}, { configRules: [portalLinkHrefs] });

@@ -202,7 +202,7 @@ An Access object has no additional properties; every field is optional.
 | Key | Type | Required | Description |
 | --- | --- | --- | --- |
 | `title` | string | yes | Human-readable link label. |
-| `href` | string | yes | Link target URL. |
+| `href` | string | yes | Link target: an `http(s)://` URL or an absolute path in deck (`/inventory`). Anything else (`javascript:`, `data:`, `//host`, a relative path) is `ENTITY_LINK_HREF_UNSAFE`, an error, and is never shown as a link. |
 | `icon` | string | no | Optional icon token. |
 
 ### Bindings and SecretRef
@@ -220,9 +220,10 @@ either: a source names its host or service in its own `owner`.
 
 A kind's module may check its bindings beyond their shape. `deck validate` reports a `link`
 binding whose `href` is not an `http(s)://` URL or an absolute path in deck (`javascript:`,
-`data:`, a relative path) as `LINK_HREF_UNSAFE`, and an `http-health` binding `timing` field that
-is not a positive, finite number of milliseconds as `HTTP_HEALTH_TIMING_INVALID`, both errors. See
-the [provider kinds reference](provider-kinds.md).
+`data:`, a relative path) as `LINK_HREF_UNSAFE` (a missing one as `LINK_HREF_MISSING`), and an
+`http-health` binding whose `timing` is not an object of timing fields, each a whole number of
+milliseconds in range, as `HTTP_HEALTH_TIMING_INVALID`. All are errors that fail `deck validate`
+and boot. See the [provider kinds reference](provider-kinds.md).
 
 `SecretRef` is a string holding an opaque secret reference id, never a secret value.
 It matches `^[a-z0-9]+(?:[.-][a-z0-9]+)*$` and is at most 64 characters.
@@ -273,7 +274,7 @@ Subgroup.
 | --- | --- | --- | --- |
 | `type` | const `link` | yes | Discriminator for a plain external link. |
 | `title` | string | yes | Link label. |
-| `href` | string | yes | Link target URL. |
+| `href` | string | yes | Link target: an `http(s)://` URL or an absolute path in deck. Anything else (`javascript:`, `data:`, `//host`, a relative path) is `PORTAL_LINK_HREF_UNSAFE`, an error, and the card is never a link to it. |
 | `icon` | string | no | Icon token. |
 | `description` | string | no | One-line description. |
 

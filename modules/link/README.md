@@ -3,7 +3,8 @@
 deck's built-in `link` module: a host or service binding `{ href, label?, icon? }` becomes a
 static `link` provider that serves that descriptor. It is never polled, and it has no status.
 `href` must be an http(s) URL or an absolute path in deck: config validation reports any other
-as `LINK_HREF_UNSAFE`, and such a binding registers no provider.
+as `LINK_HREF_UNSAFE` and a missing one as `LINK_HREF_MISSING` (errors), and such a binding
+registers no provider.
 
 | Path | Holds |
 |---|---|

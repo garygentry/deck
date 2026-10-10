@@ -6,8 +6,8 @@ import { LinkProvider, type LinkDescriptor } from "./index.js";
  * The `link` data source: a host or service binding `{ href, label?, icon? }` becomes a
  * static provider serving that descriptor. It is never polled. An `href` must be an http(s)
  * URL or an absolute path in deck (`isSafeHref`): config validation reports any other
- * (`javascript:`, `data:`, a relative path) as LINK_HREF_UNSAFE, and such a binding registers
- * no provider, so its href is never served.
+ * (`javascript:`, `data:`, a relative path) as LINK_HREF_UNSAFE, and a missing one as
+ * LINK_HREF_MISSING. Such a binding registers no provider, so its href is never served.
  */
 export const LINK_MANIFEST: ModuleManifest = {
   id: "link",
@@ -26,6 +26,12 @@ export const LINK_MANIFEST: ModuleManifest = {
           summary: "A link binding's href is neither an http(s) URL nor an absolute path in deck.",
           fix: "Give a full http:// or https:// URL, or a path in deck that starts with a single /.",
         },
+        {
+          code: "LINK_HREF_MISSING",
+          severity: "error",
+          summary: "A link binding has no href, or its href is not text.",
+          fix: "Give the binding an href: an http(s) URL or a path in deck.",
+        },
       ],
     },
   ],
@@ -34,7 +40,10 @@ export const LINK_MANIFEST: ModuleManifest = {
 /** What config validation reports for one link binding. Pure. */
 function validateBinding(binding: JsonObject): ConfigRuleFinding[] {
   const { href } = binding;
-  if (typeof href !== "string" || isSafeHref(href)) return [];
+  if (typeof href !== "string") {
+    return [{ code: "LINK_HREF_MISSING", path: href === undefined ? "" : "/href", message: "href is missing or not text, so the link is not served." }];
+  }
+  if (isSafeHref(href)) return [];
   return [{
     code: "LINK_HREF_UNSAFE",
     path: "/href",

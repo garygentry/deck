@@ -1,3 +1,4 @@
+import { isSafeHref } from "@deck/module-sdk";
 import type { Backup } from "@deck/schema";
 import type { HostState } from "@deck/contract";
 import type { JSX, ReactNode } from "react";
@@ -277,7 +278,11 @@ export interface DeclaredLink {
   href: string;
 }
 
-/** Declared presentation links: plain anchors (same tab, as declared). */
+/**
+ * Declared presentation links: plain anchors (same tab, as declared). A link whose href
+ * `isSafeHref` refuses (config validation reports it) shows its title as text, never as a
+ * `javascript:`, `data:` or `//host` anchor.
+ */
 export function LinksSection({ links, reality }: { links: readonly DeclaredLink[] | undefined; reality: Reality }): JSX.Element | null {
   if (links === undefined || links.length === 0) return null;
   return (
@@ -287,12 +292,16 @@ export function LinksSection({ links, reality }: { links: readonly DeclaredLink[
         <ul className="flex flex-col gap-1 text-sm">
           {links.map((link, index) => (
             <li key={`${link.href}:${index}`}>
-              <a
-                href={link.href}
-                className="rounded-sm font-medium break-all text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              >
-                {link.title}
-              </a>
+              {isSafeHref(link.href) ? (
+                <a
+                  href={link.href}
+                  className="rounded-sm font-medium break-all text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                >
+                  {link.title}
+                </a>
+              ) : (
+                <span className="font-medium break-all">{link.title}</span>
+              )}
             </li>
           ))}
         </ul>

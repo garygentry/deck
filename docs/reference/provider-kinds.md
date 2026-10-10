@@ -50,6 +50,15 @@ Only the `http-health` binding (`timing`) and the `http-json` integration (`poll
 `ttlMs`, `timeoutMs`) accept per-provider timing; the `snapshot` provider uses its own fixed
 schedule (see below), and the other kinds use the defaults.
 
+Every timing value is a whole number of milliseconds, at most 2147483647 (about 24.8 days): a
+JavaScript timer cannot wait longer, and treats a larger delay as 1 ms, so a poll interval of 3e9
+would poll continuously. A poll interval is at least 1000 ms: polling faster than once a second
+spends deck's shared poll loop, and the upstream, on data nobody reads that fast. A timeout, a
+freshness TTL and an unreachable threshold need only be at least 1 ms. A kind's config checks
+report a value out of range (`http-health`: `HTTP_HEALTH_TIMING_INVALID`; `http-json`, whose
+ranges are narrower: a schema error). Whatever a kind passes on, deck's scheduler rounds and clamps
+it into range and logs a `provider.timing-adjusted` warning.
+
 Polling never blocks a request: `GET /api/health` and `GET /api/providers/:id`
 return the cached envelope and health without upstream I/O.
 
@@ -123,7 +132,7 @@ Backed by a `http-health` binding on a host or service.
 | `method` | no | `GET` (default) or `HEAD`. |
 | `id` | no | Provider id; defaults to a value derived from the owning host/service. |
 | `order` | no | Sort order among providers. |
-| `timing` | no | Per-provider poll overrides (`pollIntervalMs`, `ttlMs`, `unreachableAfterMs`, `timeoutMs`), each a positive, finite number of milliseconds. Any other value (0, a negative number, `.nan`, `.inf`, text) is `HTTP_HEALTH_TIMING_INVALID`, and deck uses the default for it. |
+| `timing` | no | Per-provider poll overrides: an object of `pollIntervalMs` (1000–2147483647), `ttlMs`, `unreachableAfterMs` and `timeoutMs` (each 1–2147483647), all whole milliseconds. A `timing` that is not an object, an unknown key, or a value out of range (0, a negative number, a fraction, `.nan`, `.inf`, 3e9, text) is `HTTP_HEALTH_TIMING_INVALID`, an error that fails `deck validate` and boot. |
 
 A response status in the 200–399 range counts as up. Redirects are not followed, so a 3xx is the
 probed service's own answer (a login redirect, say) and counts as up, whatever its target would
@@ -230,7 +239,7 @@ Backed by a `link` binding on a host or service.
 
 | Key | Required | Notes |
 | --- | --- | --- |
-| `href` | yes | Link target: an `http://` or `https://` URL, or an absolute path in deck (`/inventory`). Anything else (`javascript:`, `data:`, `mailto:`, a relative path, `//host`) is `LINK_HREF_UNSAFE`, and such a binding registers no provider, so the href is never served. |
+| `href` | yes | Link target: an `http://` or `https://` URL, or an absolute path in deck (`/inventory`). Anything else (`javascript:`, `data:`, `mailto:`, a relative path, `//host`) is `LINK_HREF_UNSAFE`, and a missing or non-text `href` is `LINK_HREF_MISSING`; both are errors that fail `deck validate` and boot, and such a binding registers no provider, so the href is never served. |
 | `label` | no | Display label; defaults to the owning entity id. |
 | `icon` | no | Icon name. |
 | `id` | no | Provider id; defaults to a value derived from the owning host/service. |

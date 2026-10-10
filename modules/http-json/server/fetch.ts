@@ -1,8 +1,10 @@
 /**
  * One hardened JSON request, shared by every kind that polls an HTTP JSON endpoint (`http-json`,
  * `remote`). The only credential is the one `credentialEnv` names, read at request time.
- * Redirects are followed by hand: an authenticated request follows only same-origin ones, so
- * the credential never leaves the configured origin. A body over `maxBytes`, nested past
+ * Redirects are followed by hand, within the configured origin only: an upstream could otherwise
+ * point deck's request at any URL on deck's network, its own loopback API included, and have
+ * the answer published. An unauthenticated request may opt in to cross-origin redirects; an
+ * authenticated one never follows them, so the credential never leaves the origin. A body over `maxBytes`, nested past
  * {@link HTTP_JSON_MAX_DEPTH}, or echoing the credential is refused, never returned.
  */
 import type { EnvReader, ProviderFetchContext } from "@deck/module-sdk";
@@ -33,11 +35,10 @@ export interface HttpJsonConfig {
   /** The largest response body accepted, in bytes. */
   maxBytes?: number;
   /**
-   * Follow redirects within the configured origin only, credential or not: for an upstream
-   * deck does not trust (a sidecar), which could otherwise point deck's request at any URL on
-   * deck's network, its own loopback API included, and have the answer published.
+   * Follow a redirect to another origin. Off by default; ignored when a credential is sent,
+   * which never leaves the configured origin.
    */
-  sameOriginRedirects?: boolean;
+  followCrossOriginRedirects?: boolean;
 }
 
 /** Why a poll failed. Every message names the failure, never a credential, URL or body. */
@@ -159,7 +160,7 @@ async function requestJson(cfg: HttpJsonConfig, signal: AbortSignal): Promise<{ 
     if (credential !== null && next.origin !== origin) {
       throw new HttpJsonError("redirect", "cross-origin redirect refused for an authenticated request");
     }
-    if (cfg.sameOriginRedirects === true && next.origin !== origin) {
+    if (cfg.followCrossOriginRedirects !== true && next.origin !== origin) {
       throw new HttpJsonError("redirect", "cross-origin redirect refused");
     }
     if (response.status === 303 || ((response.status === 301 || response.status === 302) && method === "POST")) {

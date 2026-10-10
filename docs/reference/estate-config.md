@@ -377,12 +377,14 @@ additional properties.
 | `ttlMs` | integer | no | 1000–86400000; default the poll interval. |
 | `timeoutMs` | integer | no | 100–60000; default 5000. |
 | `maxBytes` | integer | no | 1–16777216; default 1048576. |
+| `followCrossOriginRedirects` | boolean | no | Follow a redirect to another origin; default `false` (same-origin redirects only). Ignored with `credentialEnv`. |
 | `deepLink` | string | no | Link to the API's own UI. |
 
 The credential only ever comes from the variable `credentialEnv` names, under the rule above;
 config holds no secret. Beyond the schema, `deck validate` reports `HTTP_JSON_URL_INVALID` (a URL
 the runtime parser rejects), and `HTTP_JSON_LITERAL_CREDENTIAL` (a credential-like query parameter
-or body key), both errors; like every integration, its id may not be a fixed provider id that
+or body key), both errors, and `HTTP_JSON_REDIRECT_OPT_IN_IGNORED` (`followCrossOriginRedirects`
+beside a `credentialEnv`, which never follows one), a warning; like every integration, its id may not be a fixed provider id that
 registers (`PROVIDER_ID_RESERVED`, see [Sources, integrations, actions](#sources-integrations-actions)). The credential variable must hold at least 8 characters, with no surrounding whitespace. See the [provider kinds reference](provider-kinds.md#http-json) for how
 it is sent, how redirects and failures are handled, and an example.
 

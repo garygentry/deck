@@ -168,6 +168,10 @@
       "minimum": 1,
       "maximum": 16777216,
       "description": "The largest response body accepted, in bytes; default 1048576 (1 MiB)."
+    },
+    "followCrossOriginRedirects": {
+      "type": "boolean",
+      "description": "Follow a redirect to another origin (scheme, host or port); default false, so only redirects within the url's origin are followed. Ignored with credentialEnv: an authenticated poll never leaves the url's origin."
     }
   }
 }

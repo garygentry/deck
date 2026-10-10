@@ -40,6 +40,12 @@ export const HTTP_JSON_MANIFEST: ModuleManifest = {
           summary: "An http-json integration's header, url query or body names what looks like a credential, which config may not hold.",
           fix: "Put the credential in an environment variable, name it in credentialEnv, and send it with auth (scheme query for a query parameter).",
         },
+        {
+          code: "HTTP_JSON_REDIRECT_OPT_IN_IGNORED",
+          severity: "warning",
+          summary: "An http-json integration sets followCrossOriginRedirects with a credentialEnv; an authenticated poll never follows a cross-origin redirect, so the setting has no effect.",
+          fix: "Remove followCrossOriginRedirects, or point url at the origin the API redirects to.",
+        },
       ],
     },
   ],
@@ -61,6 +67,9 @@ function validateInstance(instance: JsonObject): ConfigRuleFinding[] {
   }
   for (const key of credentialBodyKeys(body)) {
     findings.push({ code: "HTTP_JSON_LITERAL_CREDENTIAL", path: "/body", message: `body key "${key}" looks like a credential; config may not hold one.` });
+  }
+  if (instance.followCrossOriginRedirects === true && instance.credentialEnv !== undefined) {
+    findings.push({ code: "HTTP_JSON_REDIRECT_OPT_IN_IGNORED", path: "/followCrossOriginRedirects", message: "followCrossOriginRedirects has no effect with credentialEnv: an authenticated poll never leaves the url's origin." });
   }
   return findings;
 }
@@ -92,6 +101,7 @@ export const httpJsonModule = defineServerModule(HTTP_JSON_MANIFEST, () => {}, {
             ...(instance.method === "POST" ? { method: "POST" as const } : {}),
             ...(literalHeaders === undefined ? {} : { headers: literalHeaders }),
             ...(instance.body === undefined ? {} : { body: instance.body }),
+            ...(instance.followCrossOriginRedirects === true ? { followCrossOriginRedirects: true } : {}),
             // Only this instance's credential: another instance's is never readable here.
             ...request,
           };

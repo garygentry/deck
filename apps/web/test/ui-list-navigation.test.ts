@@ -124,7 +124,7 @@ describe("ported: sources tree/search keys (arrows preset)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// alerts-and-health (alerts-keyboard.test.ts)
+// monitoring (modules/monitoring/web)
 // ---------------------------------------------------------------------------
 
 describe("ported: monitoring keys (vim, no search)", () => {

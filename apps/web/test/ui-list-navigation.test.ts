@@ -81,7 +81,7 @@ function run(config: ListNavConfig, keys: readonly string[], count: number, colu
 }
 
 // ---------------------------------------------------------------------------
-// sources-docs-and-configs (sources-keyboard.test.ts)
+// sources (modules/sources/web/SourceBrowserPage.tsx; its keys are exercised by sources-states.test.tsx)
 // ---------------------------------------------------------------------------
 
 describe("ported: sources tree/search keys (arrows preset)", () => {
@@ -124,7 +124,7 @@ describe("ported: sources tree/search keys (arrows preset)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// alerts-and-health (alerts-keyboard.test.ts)
+// monitoring (modules/monitoring/web)
 // ---------------------------------------------------------------------------
 
 describe("ported: monitoring keys (vim, no search)", () => {
@@ -217,7 +217,7 @@ describe("ported: monitoring keys (vim, no search)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// drift-and-coverage (drift-keyboard.test.tsx, keyboard sections)
+// drift (modules/drift/test/web/drift-keyboard.test.tsx, keyboard sections)
 // ---------------------------------------------------------------------------
 
 describe("ported: drift keys (vim, search, Escape)", () => {
@@ -306,7 +306,7 @@ describe("ported: drift keys (vim, search, Escape)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// hosts-and-services (inventory-keyboard.test.tsx, pure sections)
+// inventory (modules/inventory/web; inventory-keyboard.test.tsx, pure sections)
 // ---------------------------------------------------------------------------
 
 describe("ported: inventory table keys (vim, search, Enter-from-search)", () => {

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ActionsModuleConfig",
+  "description": "Settings of the actions module, at modules.actions.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "actions": { "type": "array", "items": { "$ref": "#/$defs/Action" }, "description": "Governed actions; absent is equivalent to an empty array." }
+  },
+  "$defs": {
+    "Action": {
+      "title": "Action", "type": "object", "additionalProperties": false, "required": ["id", "title", "runner", "confirm"],
+      "properties": {
+        "id": { "type": "string", "description": "Action id, unique across actions." },
+        "title": { "type": "string", "description": "Human-readable action label." },
+        "runner": { "type": "string", "description": "Estate-side runner or playbook name, never a command." },
+        "confirm": { "type": "string", "enum": ["none", "confirm", "typed-confirm"], "description": "Confirmation policy before running." },
+        "params": { "type": "array", "items": { "$ref": "#/$defs/ActionParam" }, "description": "Typed parameters accepted by the runner." },
+        "target": { "type": "object", "additionalProperties": false, "description": "Optional host or service target.", "required": ["host"], "properties": {
+          "host": { "type": "string", "description": "Target host name." },
+          "service": { "type": "string", "description": "Optional target service name on that host." }
+        } },
+        "description": { "type": "string", "description": "Optional longer action description." }
+      }
+    },
+    "ActionParam": {
+      "title": "ActionParam", "type": "object", "additionalProperties": false, "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string", "description": "Parameter name, unique within the action." },
+        "type": { "type": "string", "enum": ["string", "number", "boolean", "enum"], "description": "Parameter value type." },
+        "required": { "type": "boolean", "description": "Whether the parameter must be supplied." },
+        "default": { "$ref": "#/$defs/JsonValue", "description": "Optional default value matching the declared type." },
+        "values": { "type": "array", "items": { "type": "string" }, "description": "Allowed values when the type is enum." },
+        "description": { "type": "string", "description": "Optional parameter description." }
+      }
+    },
+    "JsonValue": {
+      "title": "JsonValue",
+      "description": "Any value representable in JSON.",
+      "anyOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        { "type": "null" },
+        { "type": "array", "items": { "$ref": "#/$defs/JsonValue" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/JsonValue" } }
+      ]
+    }
+  }
+}

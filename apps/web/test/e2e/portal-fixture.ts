@@ -1,4 +1,5 @@
 import type { Page, Route } from "@playwright/test";
+import { mockUiManifest } from "./ui-manifest.js";
 
 /**
  * Fixed portal data for the portal E2E and visual specs. The shared E2E API
@@ -21,7 +22,7 @@ const service = (name: string, purpose: string, bindings?: Record<string, unknow
 });
 
 export const PORTAL_CONFIG = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   estate: { name: "Portal fixture estate" },
   hosts: [{ name: "atlas", kind: "bare-metal", purpose: "Primary host" }],
   services: [
@@ -31,7 +32,7 @@ export const PORTAL_CONFIG = {
     service("uptime", "External uptime probe", { gatus: { endpoint: "uptime" } }, "https://status.example.test"),
     service("backup", "Nightly backup target"),
   ],
-  groups: [
+  modules: { portal: { groups: [
     {
       id: "observability",
       title: "Observability",
@@ -71,7 +72,7 @@ export const PORTAL_CONFIG = {
         },
       ],
     },
-  ],
+  ] } },
 };
 
 const PROVIDERS = { providers: [{ id: "docker", kind: "docker" }, { id: "gatus", kind: "gatus" }] };
@@ -99,13 +100,14 @@ const GATUS = {
 
 const BODIES: Record<string, unknown> = {
   "/api/config": PORTAL_CONFIG,
-  "/api/providers": PROVIDERS,
   "/api/providers/docker": DOCKER,
   "/api/providers/gatus": GATUS,
 };
 
 /** Serve the fixed portal estate for `/api/config` and the portal's providers. */
 export async function routePortalFixture(page: Page): Promise<void> {
+  // The web polls only the providers the UI manifest lists: exactly these two.
+  await mockUiManifest(page, () => PROVIDERS.providers);
   await page.route(
     (url) => url.pathname in BODIES,
     (route: Route) => route.fulfill({ json: BODIES[new URL(route.request().url()).pathname] }),

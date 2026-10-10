@@ -10,12 +10,12 @@
  *
  * The committed small files (GFM/link/image/XSS docs, highlightable configs, the binary + image
  * assets) are copied verbatim. Local-path sources acquire in place, so a store/provider built over
- * `root` reads these files on disk with no git and no network — the property the e2e (§6) and the
- * extended smoke path (§7) rely on.
+ * `root` reads these files on disk with no git and no network — the property the e2e and the
+ * extended smoke path rely on.
  *
  * This is the `apps/server/test` sibling of `sources-estate/materialize.ts`: that helper builds a
  * whole DeckConfig estate in memory; this one lifts one on-disk fixture tree into a mutable copy
- * plus the setup-only oversized/symlink artifacts (08 §8.1/§8.3).
+ * plus the setup-only oversized/symlink artifacts.
  */
 
 import {
@@ -30,7 +30,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { MAX_FILE_BYTES } from "../../src/sources/tree.js";
+import { MAX_FILE_BYTES } from "../../../../modules/sources/server/tree.js";
 
 const FIXTURES_DIR = dirname(fileURLToPath(import.meta.url));
 

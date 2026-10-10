@@ -1,24 +1,212 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:deck:schema:config:1",
+  "$id": "urn:deck:schema:config:2",
   "title": "DeckConfigDocument",
   "description": "A merged deck config document containing projected estate inventory and presentation data.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "estate"],
   "properties": {
-    "schemaVersion": { "type": "integer", "const": 1, "description": "The shared schema contract version." },
+    "schemaVersion": { "type": "integer", "const": 2, "description": "The config schema version." },
     "estate": { "$ref": "#/$defs/Estate", "description": "Estate-wide identity and conventions." },
     "hosts": { "type": "array", "items": { "$ref": "#/$defs/Host" }, "description": "Declared hosts; absent is equivalent to an empty array." },
     "services": { "type": "array", "items": { "$ref": "#/$defs/Service" }, "description": "Declared services; absent is equivalent to an empty array." },
-    "groups": { "type": "array", "items": { "$ref": "#/$defs/Group" }, "description": "Portal layout groups; absent is equivalent to an empty array." },
     "sources": { "type": "array", "items": { "$ref": "#/$defs/Source" }, "description": "Document and configuration source declarations; absent is equivalent to an empty array." },
     "integrations": { "type": "array", "items": { "$ref": "#/$defs/Integration" }, "description": "External tool integrations; absent is equivalent to an empty array." },
-    "llmUsage": { "$ref": "#/$defs/LlmUsage", "description": "Optional subscription plan-usage limits; absent disables the feature." },
-    "actions": { "type": "array", "items": { "$ref": "#/$defs/Action" }, "description": "Governed actions; absent is equivalent to an empty array." },
-    "agents": { "type": "array", "items": { "$ref": "#/$defs/Agent" }, "description": "Reserved agent slots; absent is equivalent to an empty array." }
+    "ui": { "$ref": "#/$defs/Ui", "description": "Presentation settings: brand, theme, home page, navigation and extension overrides." },
+    "modules": { "type": "object", "additionalProperties": false, "properties": {}, "description": "Module settings keyed by module id; each module contributes its own section schema." },
+    "moduleIntegrity": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$": { "type": "string", "pattern": "^sha256-[A-Za-z0-9+/]{43}=$", "description": "sha256-<base64> digest of the module directory, as `deck module digest <dir>` prints it." }
+      },
+      "additionalProperties": false,
+      "description": "Integrity pins for runtime modules in DECK_MODULES_DIR, keyed by module id: a pinned module's code loads only when its directory matches the digest."
+    }
   },
   "$defs": {
+    "Ui": {
+      "title": "Ui", "type": "object", "additionalProperties": false,
+      "properties": {
+        "brand": { "$ref": "#/$defs/UiBrand", "description": "The product name and mark the shell shows." },
+        "theme": { "$ref": "#/$defs/UiTheme", "description": "The operator's theme defaults; a viewer's own choice of mode still wins." },
+        "home": { "type": "string", "pattern": "^page:[a-z][a-z0-9-]*/[a-z0-9][a-z0-9.-]*$", "description": "The id of the page rendered at /, such as page:inventory/hosts; default the built-in home page." },
+        "nav": { "$ref": "#/$defs/UiNav", "description": "Sidebar group order, labels and icons, and extra nav entries." },
+        "extensions": {
+          "type": "object", "description": "Overrides by extension, page or nav entry id. They replace, never merge: false disables, an object replaces attachTo and/or config, and a later layer's attachTo or config replaces an earlier layer's whole.",
+          "propertyNames": { "minLength": 1 },
+          "additionalProperties": { "$ref": "#/$defs/UiOverride" }
+        },
+        "pages": { "type": "array", "items": { "$ref": "#/$defs/UiPage" }, "description": "Config-defined pages (dashboards): sections of widgets, each page routed as page:ui/<id>." },
+        "allowUnsafeEmbeds": { "type": "boolean", "description": "Let core/embed widgets show other sites' pages in sandboxed frames; default false, when each shows that embeds are off." },
+        "frameAncestors": {
+          "type": "array", "maxItems": 32, "uniqueItems": true,
+          "items": { "type": "string", "maxLength": 255, "pattern": "^https?://(\\*\\.)?[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*(:[1-9][0-9]{0,4})?$" },
+          "description": "Origins besides deck's own that may show deck in a frame (Content-Security-Policy frame-ancestors), such as https://ha.example.net or https://*.example.net; no path. Default none: only deck's own origin may frame it."
+        },
+        "frameSources": {
+          "type": "array", "maxItems": 32, "uniqueItems": true,
+          "items": { "type": "string", "maxLength": 255, "pattern": "^https?://(\\*\\.)?[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*(:[1-9][0-9]{0,4})?$" },
+          "description": "While ui.allowUnsafeEmbeds is true, origins besides the core/embed URLs' own that framed pages may load or redirect to (Content-Security-Policy frame-src), such as a sign-in page: https://auth.example.net; no path. Deck's own origin is never allowed."
+        },
+        "statusMaps": {
+          "type": "object", "description": "Named maps from a widget's values to status tones, which widget options reference by name (statusMap).",
+          "propertyNames": { "pattern": "^[a-z0-9][a-z0-9-]*$", "maxLength": 64 },
+          "additionalProperties": { "$ref": "#/$defs/UiStatusMap" }
+        }
+      }
+    },
+    "UiTone": {
+      "title": "UiTone", "type": "string", "enum": ["ok", "warn", "danger", "info", "pending", "neutral"],
+      "description": "A status tone: the shell picks its colours and icon; config never carries a colour."
+    },
+    "UiStatusMap": {
+      "title": "UiStatusMap", "type": "object", "additionalProperties": false, "minProperties": 1,
+      "description": "A value's tone: its entry in values when it has one, else the first rule it satisfies, else none (neutral).",
+      "properties": {
+        "values": {
+          "type": "object", "description": "Exact values (text, numbers and booleans compared as text, such as running or 404) and their tones.",
+          "propertyNames": { "maxLength": 200 },
+          "additionalProperties": { "$ref": "#/$defs/UiTone" }
+        },
+        "rules": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "$ref": "#/$defs/UiStatusRule" }, "description": "Rules tried in order; the first whose every condition holds gives the tone. A rule with no condition matches any value." }
+      }
+    },
+    "UiStatusRule": {
+      "title": "UiStatusRule", "type": "object", "additionalProperties": false, "required": ["tone"],
+      "properties": {
+        "lt": { "type": "number", "description": "The value is a number, or text that is one, below this." },
+        "lte": { "type": "number", "description": "The value is a number, or text that is one, at most this." },
+        "gt": { "type": "number", "description": "The value is a number, or text that is one, above this." },
+        "gte": { "type": "number", "description": "The value is a number, or text that is one, at least this." },
+        "eq": { "anyOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }], "description": "The value equals this, either way round: as numbers when either is a number and both read as one (0 matches \"0.0\", \"404\" matches 404), else as text (true matches \"true\")." },
+        "tone": { "$ref": "#/$defs/UiTone", "description": "The tone a value matching the rule takes." }
+      }
+    },
+    "UiBrand": {
+      "title": "UiBrand", "type": "object", "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "\\S", "description": "The product name in the sidebar and the document title; default estate.name, then Deck." },
+        "icon": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)?$", "description": "An icon name from the shell's icon set, or one a module contributes (<module>/<name>), shown in place of the title's initial." },
+        "logoUrl": { "type": "string", "maxLength": 2048, "pattern": "^(?:https?://|/(?!/))[^\\s\"'<>]*$", "description": "An http(s) URL or a root-relative path to a logo image, shown in place of the icon." }
+      }
+    },
+    "UiTheme": {
+      "title": "UiTheme", "type": "object", "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["light", "dark", "system"], "description": "The colour mode a viewer who has not chosen one sees; default system." },
+        "preset": { "enum": ["teal", "slate", "copper", "rose", "high-contrast"], "description": "The named colour preset, a contrast-tested token set; default teal." },
+        "density": { "enum": ["compact", "comfortable"], "description": "Spacing of tables, lists and sections; default comfortable." },
+        "radius": { "enum": ["none", "sm", "md", "lg"], "description": "Corner radius scale; default md." }
+      }
+    },
+    "UiNav": {
+      "title": "UiNav", "type": "object", "additionalProperties": false,
+      "properties": {
+        "groups": { "type": "array", "items": { "$ref": "#/$defs/UiNavGroup" }, "description": "Groups in sidebar order; the built-in groups not listed follow in their default order, then any other group by id. Across layers groups merge by id: a group keeps its first layer's position and a new id is appended." },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/UiNavItem" }, "description": "Extra nav entries: external links and separators." }
+      }
+    },
+    "UiNavGroup": {
+      "title": "UiNavGroup", "type": "object", "additionalProperties": false, "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The group id, a built-in group or a new one." },
+        "label": { "type": "string", "minLength": 1, "description": "The group heading; default the built-in heading, else the id." },
+        "icon": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "description": "An icon name from the shell's icon set." }
+      }
+    },
+    "UiNavItem": {
+      "title": "UiNavItem",
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["id", "group", "label", "href"],
+          "properties": {
+            "id": { "type": "string", "pattern": "^nav:ui/[a-z0-9][a-z0-9.-]*$", "description": "The entry id, in the reserved ui namespace: nav:ui/<name>, such as nav:ui/grafana." },
+            "group": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The group the entry belongs to." },
+            "label": { "type": "string", "minLength": 1, "description": "The entry's label." },
+            "href": { "type": "string", "pattern": "^https?://[^/\\s]\\S*$", "description": "An external http(s) URL." },
+            "icon": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "description": "An icon name from the shell's icon set." },
+            "order": { "type": "number", "description": "Order within the group; default 100." }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["id", "group", "separator"],
+          "properties": {
+            "id": { "type": "string", "pattern": "^nav:ui/[a-z0-9][a-z0-9.-]*$", "description": "The separator's id, nav:ui/<name>." },
+            "group": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The group the separator belongs to." },
+            "separator": { "const": true, "description": "Marks the entry as a separator." },
+            "order": { "type": "number", "description": "Order within the group; default 100." }
+          }
+        }
+      ]
+    },
+    "UiOverride": {
+      "title": "UiOverride",
+      "anyOf": [
+        { "type": "boolean" },
+        {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "description": "Whether it renders." },
+            "attachTo": {
+              "type": "object", "additionalProperties": false, "description": "Where it attaches, replacing its default (and an earlier layer's attachTo) whole; an omitted slot keeps the slot, an omitted order is 100, and group (nav entries only) when omitted keeps the entry's own.",
+              "properties": {
+                "slot": { "type": "string", "minLength": 1, "description": "The slot id." },
+                "order": { "type": "number", "description": "Order within the slot." },
+                "group": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "For a nav entry, the group it moves to." }
+              }
+            },
+            "config": { "type": "object", "additionalProperties": { "$ref": "#/$defs/JsonValue" }, "description": "Replaces the extension's config (and an earlier layer's) wholesale." }
+          }
+        }
+      ]
+    },
+    "UiPage": {
+      "title": "UiPage", "type": "object", "additionalProperties": false, "required": ["id", "path", "title", "sections"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The page's name; its id is page:ui/<id>." },
+        "path": { "type": "string", "maxLength": 512, "pattern": "^(?:/[A-Za-z0-9_~-][A-Za-z0-9._~-]*)+$", "description": "The page's path, such as /lab: literal segments only." },
+        "title": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "\\S", "description": "The page heading, nav label and document title." },
+        "icon": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "description": "An icon name from the shell's icon set." },
+        "nav": { "$ref": "#/$defs/UiPageNav", "description": "The page's sidebar entry (nav:ui/<id>); without it the page has none." },
+        "sections": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/UiSection" }, "description": "The page's sections, in reading order." }
+      }
+    },
+    "UiPageNav": {
+      "title": "UiPageNav", "type": "object", "additionalProperties": false, "required": ["group"],
+      "properties": {
+        "group": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The nav group the entry belongs to." },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80, "description": "The entry's label; default the page title." },
+        "order": { "type": "number", "description": "Order within the group; default 100." }
+      }
+    },
+    "UiSection": {
+      "title": "UiSection", "type": "object", "additionalProperties": false, "required": ["title", "widgets"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "\\S", "description": "The section heading." },
+        "columns": { "type": "integer", "minimum": 1, "maximum": 4, "description": "Grid columns from the md breakpoint up (one column below it); default 1." },
+        "widgets": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/UiWidget" }, "description": "The section's widgets, in reading order." }
+      }
+    },
+    "UiWidget": {
+      "title": "UiWidget", "type": "object", "additionalProperties": false, "required": ["type"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^(?!s[0-9]+w[0-9]+$)[a-z0-9][a-z0-9-]*$", "description": "A stable name, unique on the page; its id is widget:ui/<page>.<id>. Without one, the id is positional (s<N>w<M>, a form an id may not take) and changes when widgets move." },
+        "type": { "type": "string", "pattern": "^[a-z][a-z0-9-]*/[a-z0-9][a-z0-9-]*$", "description": "The widget type, <module>/<name>, such as core/json." },
+        "title": { "type": "string", "minLength": 1, "maxLength": 80, "description": "The widget's heading." },
+        "source": {
+          "description": "The provider the widget reads: a provider id, or the first provider of a kind.",
+          "anyOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "type": "string", "minLength": 1, "description": "A provider kind." } } }
+          ]
+        },
+        "select": { "type": "string", "minLength": 1, "maxLength": 1024, "description": "A JMESPath expression over the provider's data, evaluated on the server when the data changes, within fixed size and work limits." },
+        "options": { "type": "object", "additionalProperties": { "$ref": "#/$defs/JsonValue" }, "description": "Options of the widget type, checked against its schema." },
+        "span": { "type": "integer", "minimum": 1, "maximum": 4, "description": "Columns the widget spans; default 1, at most the section's columns." },
+        "rows": { "type": "integer", "minimum": 1, "maximum": 6, "description": "Rows the widget spans; default 1." }
+      }
+    },
     "Estate": {
       "title": "Estate", "type": "object", "additionalProperties": false, "required": ["name"],
       "properties": {
@@ -108,49 +296,6 @@
     "ServiceKind": { "title": "ServiceKind", "type": "string", "description": "Kind of service.", "enum": ["docker-compose", "systemd", "appliance", "container", "external"] },
     "ServiceStatus": { "title": "ServiceStatus", "type": "string", "description": "Declared lifecycle status.", "enum": ["active", "planned", "retired"] },
     "Bindings": { "title": "Bindings", "type": "object", "description": "Provider-defined live bindings keyed by provider kind.", "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" }, "additionalProperties": true },
-    "Group": {
-      "title": "Group", "type": "object", "additionalProperties": false, "required": ["id", "title", "items"],
-      "properties": {
-        "id": { "type": "string", "description": "Group id, unique across the groups tree." },
-        "title": { "type": "string", "description": "Group heading shown in the portal." },
-        "order": { "type": "integer", "description": "Optional sort key among sibling groups." },
-        "icon": { "type": "string", "description": "Optional icon token for the group heading." },
-        "items": { "type": "array", "items": { "$ref": "#/$defs/GroupItem" }, "description": "Ordered service, link, or subgroup items." }
-      }
-    },
-    "ServiceItem": {
-      "title": "ServiceItem", "type": "object", "additionalProperties": false, "required": ["type", "host", "name"],
-      "properties": {
-        "type": { "const": "service", "description": "Discriminator for a declared service reference." },
-        "host": { "type": "string", "description": "Host name of the referenced service." },
-        "name": { "type": "string", "description": "Service name on the referenced host." },
-        "title": { "type": "string", "description": "Optional label override." },
-        "icon": { "type": "string", "description": "Optional icon token." },
-        "description": { "type": "string", "description": "Optional one-line description." }
-      }
-    },
-    "LinkItem": {
-      "title": "LinkItem", "type": "object", "additionalProperties": false, "required": ["type", "title", "href"],
-      "properties": {
-        "type": { "const": "link", "description": "Discriminator for a plain external link." },
-        "title": { "type": "string", "description": "Link label." },
-        "href": { "type": "string", "description": "Link target URL." },
-        "icon": { "type": "string", "description": "Optional icon token." },
-        "description": { "type": "string", "description": "Optional one-line description." }
-      }
-    },
-    "Subgroup": {
-      "title": "Subgroup", "type": "object", "additionalProperties": false, "required": ["type", "id", "title", "items"],
-      "properties": {
-        "type": { "const": "group", "description": "Discriminator for a one-level subgroup." },
-        "id": { "type": "string", "description": "Subgroup id, unique across the groups tree." },
-        "title": { "type": "string", "description": "Subgroup heading." },
-        "order": { "type": "integer", "description": "Optional sort key among sibling items." },
-        "icon": { "type": "string", "description": "Optional icon token." },
-        "items": { "type": "array", "description": "Service or link items only; nested subgroups are forbidden.", "items": { "oneOf": [{ "$ref": "#/$defs/ServiceItem" }, { "$ref": "#/$defs/LinkItem" }] } }
-      }
-    },
-    "GroupItem": { "title": "GroupItem", "description": "A service reference, plain link, or one-level subgroup.", "oneOf": [{ "$ref": "#/$defs/ServiceItem" }, { "$ref": "#/$defs/LinkItem" }, { "$ref": "#/$defs/Subgroup" }] },
     "Source": {
       "title": "Source", "type": "object", "additionalProperties": false, "required": ["id", "kind", "title", "location"],
       "properties": {
@@ -181,64 +326,6 @@
         "deepLink": { "type": "string", "description": "Optional deep-link template into the tool." },
         "card": { "type": "object", "description": "Opaque provider-defined card specification.", "additionalProperties": true },
         "credentialEnv": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "description": "Environment variable name holding a credential, never its value." }
-      }
-    },
-    "LlmUsage": {
-      "title": "LlmUsage", "type": "object", "additionalProperties": false, "description": "Subscription plan-usage limits for Claude Code and Codex accounts.",
-      "properties": {
-        "claude": { "type": "object", "additionalProperties": false, "description": "Claude Code (Claude.ai Pro/Max) usage; presence enables the Claude panel.", "properties": {
-          "credentialsFile": { "type": "string", "description": "Read-only path to a Claude Code .credentials.json; enables the OAuth usage backfill. Never written or refreshed by deck." },
-          "transcriptsDir": { "type": "string", "description": "Optional read-only path to a Claude Code projects directory for the token-count transcript scan." },
-          "statusLine": { "type": "object", "additionalProperties": false, "description": "statusLine hook ingest; the route exists only when the credential is set.", "required": ["credentialEnv"], "properties": {
-            "credentialEnv": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "description": "Environment variable name holding the ingest bearer token, never its value." }
-          } },
-          "activeInterval": { "type": "string", "pattern": "^P(?!$)(\\d+(?:[.,]\\d+)?Y)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?W)?(\\d+(?:[.,]\\d+)?D)?(T(?=\\d)(\\d+(?:[.,]\\d+)?H)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?S)?)?$", "description": "ISO-8601 OAuth poll interval while a session is active; clamped to at least PT2M." },
-          "idleInterval": { "type": "string", "pattern": "^P(?!$)(\\d+(?:[.,]\\d+)?Y)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?W)?(\\d+(?:[.,]\\d+)?D)?(T(?=\\d)(\\d+(?:[.,]\\d+)?H)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?S)?)?$", "description": "ISO-8601 OAuth poll interval while idle; clamped to at least PT2M." }
-        } },
-        "codex": { "type": "object", "additionalProperties": false, "description": "Codex (ChatGPT subscription) usage; presence enables the Codex panel.", "required": ["codexHome"], "properties": {
-          "codexHome": { "type": "string", "description": "Read-write CODEX_HOME holding auth.json (the app-server refreshes it); mount the host's ~/.codex at the same path so its absolute symlinks resolve." },
-          "command": { "type": "string", "description": "Codex executable path as deck sees it; defaults to codex on PATH. The deck image ships no codex: mount the host's Linux binary and point this at it." },
-          "rolloutDir": { "type": "string", "description": "Optional rollout sessions directory; defaults to <codexHome>/sessions." }
-        } },
-        "thresholds": { "type": "object", "additionalProperties": false, "description": "Percent-used bands for warn and danger tones.", "properties": {
-          "warn": { "type": "number", "minimum": 0, "maximum": 100, "description": "Percent used at which a bar turns warn; default 75." },
-          "danger": { "type": "number", "minimum": 0, "maximum": 100, "description": "Percent used at which a bar turns danger; default 90." }
-        } },
-        "idlePause": { "type": "string", "pattern": "^P(?!$)(\\d+(?:[.,]\\d+)?Y)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?W)?(\\d+(?:[.,]\\d+)?D)?(T(?=\\d)(\\d+(?:[.,]\\d+)?H)?(\\d+(?:[.,]\\d+)?M)?(\\d+(?:[.,]\\d+)?S)?)?$", "description": "ISO-8601 duration without a viewer after which upstream polling pauses; default PT5M." }
-      }
-    },
-    "Action": {
-      "title": "Action", "type": "object", "additionalProperties": false, "required": ["id", "title", "runner", "confirm"],
-      "properties": {
-        "id": { "type": "string", "description": "Action id, unique across actions." },
-        "title": { "type": "string", "description": "Human-readable action label." },
-        "runner": { "type": "string", "description": "Estate-side runner or playbook name, never a command." },
-        "confirm": { "type": "string", "enum": ["none", "confirm", "typed-confirm"], "description": "Confirmation policy before running." },
-        "params": { "type": "array", "items": { "$ref": "#/$defs/ActionParam" }, "description": "Typed parameters accepted by the runner." },
-        "target": { "type": "object", "additionalProperties": false, "description": "Optional host or service target.", "required": ["host"], "properties": {
-          "host": { "type": "string", "description": "Target host name." },
-          "service": { "type": "string", "description": "Optional target service name on that host." }
-        } },
-        "description": { "type": "string", "description": "Optional longer action description." }
-      }
-    },
-    "ActionParam": {
-      "title": "ActionParam", "type": "object", "additionalProperties": false, "required": ["name", "type"],
-      "properties": {
-        "name": { "type": "string", "description": "Parameter name, unique within the action." },
-        "type": { "type": "string", "enum": ["string", "number", "boolean", "enum"], "description": "Parameter value type." },
-        "required": { "type": "boolean", "description": "Whether the parameter must be supplied." },
-        "default": { "$ref": "#/$defs/JsonValue", "description": "Optional default value matching the declared type." },
-        "values": { "type": "array", "items": { "type": "string" }, "description": "Allowed values when the type is enum." },
-        "description": { "type": "string", "description": "Optional parameter description." }
-      }
-    },
-    "Agent": {
-      "title": "Agent", "type": "object", "additionalProperties": false, "required": ["id", "kind"],
-      "properties": {
-        "id": { "type": "string", "description": "Reserved agent id, unique across agents." },
-        "kind": { "type": "string", "description": "Reserved and unstable agent kind." },
-        "config": { "type": "object", "description": "Opaque reserved agent configuration.", "additionalProperties": true }
       }
     },
     "Link": {

@@ -4,8 +4,8 @@ import { URL } from "node:url";
 // Vite rewrites the literal `new URL("…", import.meta.url)` form into a served-asset
 // URL under the jsdom (web) transform; resolving against a plain const avoids that.
 const TEST_FILE_URL = import.meta.url;
-import { deriveDriftProjection } from "@deck/server";
-import type { SnapshotProviderResult } from "@deck/server";
+import { deriveDriftProjection } from "@deck/drift";
+import type { SnapshotProviderResult } from "@deck/contract";
 import type { JSX } from "react";
 import {
   act,
@@ -29,8 +29,9 @@ import {
   resetInventoryTestEnv,
   serviceDecl,
 } from "./inventory-harness.js";
-import type { InventoryGeneration } from "../src/features/hosts-and-services/inventory-store.js";
-import type { DriftGenerationState } from "../src/features/drift-and-coverage/store.js";
+import type { InventoryGeneration } from "../../../modules/inventory/web/inventory-store.js";
+import { MONITORING_IMPLEMENTATION_IMPORT } from "./support/monitoring-imports.js";
+import type { DriftGenerationState } from "../../../modules/drift/web/store.js";
 import type { EntityRef } from "../src/registry/registry.js";
 import type { HealthSummary } from "../src/shell/health-header/health-summary.js";
 
@@ -42,23 +43,23 @@ import type { HealthSummary } from "../src/shell/health-header/health-summary.js
 // ---------------------------------------------------------------------------
 
 let driftState: DriftGenerationState;
-vi.mock("../src/features/drift-and-coverage/use-drift-generation.js", () => ({
+vi.mock("../../../modules/drift/web/use-drift-generation.js", () => ({
   useDriftGeneration: () => driftState,
 }));
 
 import {
   FindingsFragment,
   FragmentPresentationBoundary,
-} from "../src/features/drift-and-coverage/FindingsFragment.js";
+} from "../../../modules/drift/web/FindingsFragment.js";
 import {
   DriftHealthSummary,
   SummaryPresentationBoundary,
-} from "../src/features/drift-and-coverage/DriftHealthSummary.js";
+} from "../../../modules/drift/web/DriftHealthSummary.js";
 import {
   __resetDriftRenderDedupForTest,
   setDriftDiagnosticSink,
-} from "../src/features/drift-and-coverage/diagnostics.js";
-import type { DriftDiagnosticEvent } from "../src/features/drift-and-coverage/diagnostics.js";
+} from "../../../modules/drift/web/diagnostics.js";
+import type { DriftDiagnosticEvent } from "../../../modules/drift/web/diagnostics.js";
 
 // ---------------------------------------------------------------------------
 // Deterministic fixtures.
@@ -245,7 +246,7 @@ function quietConsoleError(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Scope selection (07 §3.2).
+// Scope selection.
 // ---------------------------------------------------------------------------
 
 describe("entity scope selection", () => {
@@ -292,7 +293,7 @@ describe("entity scope selection", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Malformed service scope (07 §3.3).
+// Malformed service scope.
 // ---------------------------------------------------------------------------
 
 describe("malformed service entity", () => {
@@ -318,7 +319,7 @@ describe("malformed service entity", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Compact counts and inert rows (07 §3.2).
+// Compact counts and inert rows.
 // ---------------------------------------------------------------------------
 
 describe("compact counts and rows", () => {
@@ -391,7 +392,7 @@ describe("compact counts and rows", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Links and scoped href (07 §§3.3, 4).
+// Links and scoped href.
 // ---------------------------------------------------------------------------
 
 describe("entity links and scoped href", () => {
@@ -477,7 +478,7 @@ describe("entity links and scoped href", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Qualified empty states (07 §3.4).
+// Qualified empty states.
 // ---------------------------------------------------------------------------
 
 describe("qualified empty states", () => {
@@ -552,7 +553,7 @@ describe("qualified empty states", () => {
 });
 
 // ---------------------------------------------------------------------------
-// No-accepted-generation states (07 §3.4 first rows).
+// No-accepted-generation states.
 // ---------------------------------------------------------------------------
 
 describe("no accepted generation", () => {
@@ -602,7 +603,7 @@ describe("no accepted generation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Retained failure (07 §3.4 last row).
+// Retained failure.
 // ---------------------------------------------------------------------------
 
 describe("retained-failure warnings", () => {
@@ -639,7 +640,7 @@ describe("retained-failure warnings", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Large-result containment (07 §3.5).
+// Large-result containment.
 // ---------------------------------------------------------------------------
 
 describe("progressive disclosure", () => {
@@ -696,7 +697,7 @@ describe("progressive disclosure", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Focus reconciliation (07 §3.5).
+// Focus reconciliation.
 // ---------------------------------------------------------------------------
 
 describe("focus reconciliation on generation change", () => {
@@ -738,7 +739,7 @@ describe("focus reconciliation on generation change", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Failure isolation (07 §3.5, §7).
+// Failure isolation.
 // ---------------------------------------------------------------------------
 
 function Boom(): JSX.Element {
@@ -812,7 +813,7 @@ describe("fragment failure isolation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Render diagnostics (07 §7).
+// Render diagnostics.
 // ---------------------------------------------------------------------------
 
 describe("render diagnostics", () => {
@@ -843,12 +844,12 @@ describe("render diagnostics", () => {
 });
 
 // ===========================================================================
-// DriftHealthSummary adapter (07 §5). The health-header slot passes placeholder
+// DriftHealthSummary adapter. The health-header slot passes placeholder
 // `HealthSummary` props that the adapter ignores; it reads the same drift store
 // and adapts the accepted `DriftSummary` into one `/drift` link.
 // ===========================================================================
 
-/** Placeholder host props the adapter must ignore (07 §5.1). */
+/** Placeholder host props the adapter must ignore. */
 const SUMMARY_PROPS: HealthSummary = {
   label: "placeholder-label",
   status: "warning",
@@ -913,15 +914,15 @@ describe("DriftHealthSummary — placeholder props are ignored", () => {
     expectPill(link, "ok");
   });
 
-  it("imports nothing from alerts-and-health and stays meaningful alone", () => {
+  it("imports nothing from the monitoring module and stays meaningful alone", () => {
     const source = readFileSync(
       new URL(
-        "../src/features/drift-and-coverage/DriftHealthSummary.tsx",
+        "../../../modules/drift/web/DriftHealthSummary.tsx",
         TEST_FILE_URL,
       ),
       "utf8",
     );
-    expect(source).not.toMatch(/from\s+["'][^"']*alerts-and-health/);
+    expect(source).not.toMatch(MONITORING_IMPLEMENTATION_IMPORT);
     // Rendered as the only summary contribution, it still produces complete text.
     driftState = availableGenState({ ...coverageOnly("fresh") });
     expect(renderSummary().link).toHaveTextContent("hosts need coverage attention");

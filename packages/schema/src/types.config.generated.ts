@@ -1,4 +1,4 @@
-/* GENERATED from schema/deck.schema.json — do not edit; run pnpm types:build */
+/* GENERATED from schema/deck.schema.json composed with the built-in contributions — do not edit; run pnpm types:build */
 
 /**
  * What kind of host this is.
@@ -20,31 +20,102 @@ export type ServiceKind = ("docker-compose" | "systemd" | "appliance" | "contain
  * Declared lifecycle status rather than observed state.
  */
 export type ServiceStatus = ("active" | "planned" | "retired")
+export type UiNavItem = ({
 /**
- * A service reference, plain link, or one-level subgroup.
+ * The entry id, in the reserved ui namespace: nav:ui/<name>, such as nav:ui/grafana.
  */
-export type GroupItem = (ServiceItem | LinkItem | Subgroup)
+id: string
 /**
- * Optional default value matching the declared type.
+ * The group the entry belongs to.
  */
-export type JsonValue = (string | number | boolean | null | JsonValue1[] | {
-[k: string]: JsonValue1 | undefined
+group: string
+/**
+ * The entry's label.
+ */
+label: string
+/**
+ * An external http(s) URL.
+ */
+href: string
+/**
+ * An icon name from the shell's icon set.
+ */
+icon?: string
+/**
+ * Order within the group; default 100.
+ */
+order?: number
+} | {
+/**
+ * The separator's id, nav:ui/<name>.
+ */
+id: string
+/**
+ * The group the separator belongs to.
+ */
+group: string
+/**
+ * Marks the entry as a separator.
+ */
+separator: true
+/**
+ * Order within the group; default 100.
+ */
+order?: number
+})
+export type UiOverride = (boolean | {
+/**
+ * Whether it renders.
+ */
+enabled?: boolean
+/**
+ * Where it attaches, replacing its default (and an earlier layer's attachTo) whole; an omitted slot keeps the slot, an omitted order is 100, and group (nav entries only) when omitted keeps the entry's own.
+ */
+attachTo?: {
+/**
+ * The slot id.
+ */
+slot?: string
+/**
+ * Order within the slot.
+ */
+order?: number
+/**
+ * For a nav entry, the group it moves to.
+ */
+group?: string
+}
+/**
+ * Replaces the extension's config (and an earlier layer's) wholesale.
+ */
+config?: {
+[k: string]: JsonValue | undefined
+}
 })
 /**
  * Any value representable in JSON.
  */
-export type JsonValue1 = (string | number | boolean | null | JsonValue1[] | {
-[k: string]: JsonValue1 | undefined
+export type JsonValue = (string | number | boolean | null | JsonValue[] | {
+[k: string]: JsonValue | undefined
 })
+export type UiWidget = UiWidget1
+/**
+ * A status tone: the shell picks its colours and icon; config never carries a colour.
+ */
+export type UiTone = ("ok" | "warn" | "danger" | "info" | "pending" | "neutral")
+/**
+ * A status tone: the shell picks its colours and icon; config never carries a colour.
+ */
+export type UiTone1 = ("ok" | "warn" | "danger" | "info" | "pending" | "neutral")
 
 /**
  * A merged deck config document containing projected estate inventory and presentation data.
  */
 export interface DeckConfigDocument {
 /**
- * The shared schema contract version.
+ * The config schema version.
  */
-schemaVersion: 1
+schemaVersion: 2
 estate: Estate
 /**
  * Declared hosts; absent is equivalent to an empty array.
@@ -55,10 +126,6 @@ hosts?: Host[]
  */
 services?: Service[]
 /**
- * Portal layout groups; absent is equivalent to an empty array.
- */
-groups?: Group[]
-/**
  * Document and configuration source declarations; absent is equivalent to an empty array.
  */
 sources?: Source[]
@@ -66,15 +133,25 @@ sources?: Source[]
  * External tool integrations; absent is equivalent to an empty array.
  */
 integrations?: Integration[]
-llmUsage?: LlmUsage
+ui?: Ui
 /**
- * Governed actions; absent is equivalent to an empty array.
+ * Module settings keyed by module id; each module contributes its own section schema.
  */
-actions?: Action[]
+modules?: {
+[k: string]: unknown | undefined
+}
 /**
- * Reserved agent slots; absent is equivalent to an empty array.
+ * Integrity pins for runtime modules in DECK_MODULES_DIR, keyed by module id: a pinned module's code loads only when its directory matches the digest.
  */
-agents?: Agent[]
+moduleIntegrity?: {
+/**
+ * sha256-<base64> digest of the module directory, as `deck module digest <dir>` prints it.
+ * 
+ * This interface was referenced by `undefined`'s JSON-Schema definition
+ * via the `patternProperty` "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$".
+ */
+[k: string]: string | undefined
+}
 }
 /**
  * Estate-wide identity and conventions.
@@ -313,102 +390,6 @@ notes?: string
 export interface Bindings1 {
 [k: string]: unknown | undefined
 }
-export interface Group {
-/**
- * Group id, unique across the groups tree.
- */
-id: string
-/**
- * Group heading shown in the portal.
- */
-title: string
-/**
- * Optional sort key among sibling groups.
- */
-order?: number
-/**
- * Optional icon token for the group heading.
- */
-icon?: string
-/**
- * Ordered service, link, or subgroup items.
- */
-items: GroupItem[]
-}
-export interface ServiceItem {
-/**
- * Discriminator for a declared service reference.
- */
-type: "service"
-/**
- * Host name of the referenced service.
- */
-host: string
-/**
- * Service name on the referenced host.
- */
-name: string
-/**
- * Optional label override.
- */
-title?: string
-/**
- * Optional icon token.
- */
-icon?: string
-/**
- * Optional one-line description.
- */
-description?: string
-}
-export interface LinkItem {
-/**
- * Discriminator for a plain external link.
- */
-type: "link"
-/**
- * Link label.
- */
-title: string
-/**
- * Link target URL.
- */
-href: string
-/**
- * Optional icon token.
- */
-icon?: string
-/**
- * Optional one-line description.
- */
-description?: string
-}
-export interface Subgroup {
-/**
- * Discriminator for a one-level subgroup.
- */
-type: "group"
-/**
- * Subgroup id, unique across the groups tree.
- */
-id: string
-/**
- * Subgroup heading.
- */
-title: string
-/**
- * Optional sort key among sibling items.
- */
-order?: number
-/**
- * Optional icon token.
- */
-icon?: string
-/**
- * Service or link items only; nested subgroups are forbidden.
- */
-items: (ServiceItem | LinkItem)[]
-}
 export interface Source {
 /**
  * Source id, unique across sources.
@@ -498,149 +479,251 @@ card?: {
 credentialEnv?: string
 }
 /**
- * Optional subscription plan-usage limits; absent disables the feature.
+ * Presentation settings: brand, theme, home page, navigation and extension overrides.
  */
-export interface LlmUsage {
+export interface Ui {
+brand?: UiBrand
+theme?: UiTheme
 /**
- * Claude Code (Claude.ai Pro/Max) usage; presence enables the Claude panel.
+ * The id of the page rendered at /, such as page:inventory/hosts; default the built-in home page.
  */
-claude?: {
+home?: string
+nav?: UiNav
 /**
- * Read-only path to a Claude Code .credentials.json; enables the OAuth usage backfill. Never written or refreshed by deck.
+ * Overrides by extension, page or nav entry id. They replace, never merge: false disables, an object replaces attachTo and/or config, and a later layer's attachTo or config replaces an earlier layer's whole.
  */
-credentialsFile?: string
-/**
- * Optional read-only path to a Claude Code projects directory for the token-count transcript scan.
- */
-transcriptsDir?: string
-/**
- * statusLine hook ingest; the route exists only when the credential is set.
- */
-statusLine?: {
-/**
- * Environment variable name holding the ingest bearer token, never its value.
- */
-credentialEnv: string
+extensions?: {
+[k: string]: UiOverride | undefined
 }
 /**
- * ISO-8601 OAuth poll interval while a session is active; clamped to at least PT2M.
+ * Config-defined pages (dashboards): sections of widgets, each page routed as page:ui/<id>.
  */
-activeInterval?: string
+pages?: UiPage[]
 /**
- * ISO-8601 OAuth poll interval while idle; clamped to at least PT2M.
+ * Let core/embed widgets show other sites' pages in sandboxed frames; default false, when each shows that embeds are off.
  */
-idleInterval?: string
+allowUnsafeEmbeds?: boolean
+/**
+ * Origins besides deck's own that may show deck in a frame (Content-Security-Policy frame-ancestors), such as https://ha.example.net or https://*.example.net; no path. Default none: only deck's own origin may frame it.
+ * 
+ * @maxItems 32
+ */
+frameAncestors?: string[]
+/**
+ * While ui.allowUnsafeEmbeds is true, origins besides the core/embed URLs' own that framed pages may load or redirect to (Content-Security-Policy frame-src), such as a sign-in page: https://auth.example.net; no path. Deck's own origin is never allowed.
+ * 
+ * @maxItems 32
+ */
+frameSources?: string[]
+/**
+ * Named maps from a widget's values to status tones, which widget options reference by name (statusMap).
+ */
+statusMaps?: {
+[k: string]: UiStatusMap | undefined
+}
 }
 /**
- * Codex (ChatGPT subscription) usage; presence enables the Codex panel.
+ * The product name and mark the shell shows.
  */
-codex?: {
+export interface UiBrand {
 /**
- * Read-write CODEX_HOME holding auth.json (the app-server refreshes it); mount the host's ~/.codex at the same path so its absolute symlinks resolve.
+ * The product name in the sidebar and the document title; default estate.name, then Deck.
  */
-codexHome: string
+title?: string
 /**
- * Codex executable path as deck sees it; defaults to codex on PATH. The deck image ships no codex: mount the host's Linux binary and point this at it.
+ * An icon name from the shell's icon set, or one a module contributes (<module>/<name>), shown in place of the title's initial.
  */
-command?: string
+icon?: string
 /**
- * Optional rollout sessions directory; defaults to <codexHome>/sessions.
+ * An http(s) URL or a root-relative path to a logo image, shown in place of the icon.
  */
-rolloutDir?: string
+logoUrl?: string
 }
 /**
- * Percent-used bands for warn and danger tones.
+ * The operator's theme defaults; a viewer's own choice of mode still wins.
  */
-thresholds?: {
+export interface UiTheme {
 /**
- * Percent used at which a bar turns warn; default 75.
+ * The colour mode a viewer who has not chosen one sees; default system.
  */
-warn?: number
+mode?: ("light" | "dark" | "system")
 /**
- * Percent used at which a bar turns danger; default 90.
+ * The named colour preset, a contrast-tested token set; default teal.
  */
-danger?: number
+preset?: ("teal" | "slate" | "copper" | "rose" | "high-contrast")
+/**
+ * Spacing of tables, lists and sections; default comfortable.
+ */
+density?: ("compact" | "comfortable")
+/**
+ * Corner radius scale; default md.
+ */
+radius?: ("none" | "sm" | "md" | "lg")
 }
 /**
- * ISO-8601 duration without a viewer after which upstream polling pauses; default PT5M.
+ * Sidebar group order, labels and icons, and extra nav entries.
  */
-idlePause?: string
-}
-export interface Action {
+export interface UiNav {
 /**
- * Action id, unique across actions.
+ * Groups in sidebar order; the built-in groups not listed follow in their default order, then any other group by id. Across layers groups merge by id: a group keeps its first layer's position and a new id is appended.
+ */
+groups?: UiNavGroup[]
+/**
+ * Extra nav entries: external links and separators.
+ */
+items?: UiNavItem[]
+}
+export interface UiNavGroup {
+/**
+ * The group id, a built-in group or a new one.
  */
 id: string
 /**
- * Human-readable action label.
+ * The group heading; default the built-in heading, else the id.
+ */
+label?: string
+/**
+ * An icon name from the shell's icon set.
+ */
+icon?: string
+}
+export interface UiPage {
+/**
+ * The page's name; its id is page:ui/<id>.
+ */
+id: string
+/**
+ * The page's path, such as /lab: literal segments only.
+ */
+path: string
+/**
+ * The page heading, nav label and document title.
  */
 title: string
 /**
- * Estate-side runner or playbook name, never a command.
+ * An icon name from the shell's icon set.
  */
-runner: string
+icon?: string
+nav?: UiPageNav
 /**
- * Confirmation policy before running.
+ * The page's sections, in reading order.
+ * 
+ * @minItems 1
  */
-confirm: ("none" | "confirm" | "typed-confirm")
-/**
- * Typed parameters accepted by the runner.
- */
-params?: ActionParam[]
-/**
- * Optional host or service target.
- */
-target?: {
-/**
- * Target host name.
- */
-host: string
-/**
- * Optional target service name on that host.
- */
-service?: string
+sections: [UiSection, ...(UiSection)[]]
 }
 /**
- * Optional longer action description.
+ * The page's sidebar entry (nav:ui/<id>); without it the page has none.
  */
-description?: string
+export interface UiPageNav {
+/**
+ * The nav group the entry belongs to.
+ */
+group: string
+/**
+ * The entry's label; default the page title.
+ */
+label?: string
+/**
+ * Order within the group; default 100.
+ */
+order?: number
 }
-export interface ActionParam {
+export interface UiSection {
 /**
- * Parameter name, unique within the action.
+ * The section heading.
  */
-name: string
+title: string
 /**
- * Parameter value type.
+ * Grid columns from the md breakpoint up (one column below it); default 1.
  */
-type: ("string" | "number" | "boolean" | "enum")
+columns?: number
 /**
- * Whether the parameter must be supplied.
+ * The section's widgets, in reading order.
+ * 
+ * @minItems 1
  */
-required?: boolean
-default?: JsonValue
-/**
- * Allowed values when the type is enum.
- */
-values?: string[]
-/**
- * Optional parameter description.
- */
-description?: string
+widgets: [UiWidget, ...(UiWidget)[]]
 }
-export interface Agent {
+export interface UiWidget1 {
 /**
- * Reserved agent id, unique across agents.
+ * A stable name, unique on the page; its id is widget:ui/<page>.<id>. Without one, the id is positional (s<N>w<M>, a form an id may not take) and changes when widgets move.
  */
-id: string
+id?: string
 /**
- * Reserved and unstable agent kind.
+ * The widget type, <module>/<name>, such as core/json.
+ */
+type: string
+/**
+ * The widget's heading.
+ */
+title?: string
+/**
+ * The provider the widget reads: a provider id, or the first provider of a kind.
+ */
+source?: (string | {
+/**
+ * A provider kind.
  */
 kind: string
+})
 /**
- * Opaque reserved agent configuration.
+ * A JMESPath expression over the provider's data, evaluated on the server when the data changes, within fixed size and work limits.
  */
-config?: {
-[k: string]: unknown | undefined
+select?: string
+/**
+ * Options of the widget type, checked against its schema.
+ */
+options?: {
+[k: string]: JsonValue | undefined
 }
+/**
+ * Columns the widget spans; default 1, at most the section's columns.
+ */
+span?: number
+/**
+ * Rows the widget spans; default 1.
+ */
+rows?: number
+}
+/**
+ * A value's tone: its entry in values when it has one, else the first rule it satisfies, else none (neutral).
+ */
+export interface UiStatusMap {
+/**
+ * Exact values (text, numbers and booleans compared as text, such as running or 404) and their tones.
+ */
+values?: {
+[k: string]: UiTone | undefined
+}
+/**
+ * Rules tried in order; the first whose every condition holds gives the tone. A rule with no condition matches any value.
+ * 
+ * @minItems 1
+ * @maxItems 32
+ */
+rules?: [UiStatusRule, ...(UiStatusRule)[]]
+}
+export interface UiStatusRule {
+/**
+ * The value is a number, or text that is one, below this.
+ */
+lt?: number
+/**
+ * The value is a number, or text that is one, at most this.
+ */
+lte?: number
+/**
+ * The value is a number, or text that is one, above this.
+ */
+gt?: number
+/**
+ * The value is a number, or text that is one, at least this.
+ */
+gte?: number
+/**
+ * The value equals this, either way round: as numbers when either is a number and both read as one (0 matches "0.0", "404" matches 404), else as text (true matches "true").
+ */
+eq?: (string | number | boolean)
+tone: UiTone1
 }

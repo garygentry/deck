@@ -6,8 +6,8 @@ import { URL, fileURLToPath } from "node:url";
 const TEST_FILE_URL = import.meta.url;
 import { cleanup, render, screen, within } from "@testing-library/react";
 import type { JSX } from "react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { InventoryData } from "../src/features/hosts-and-services/use-inventory-data.js";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { InventoryData } from "../../../modules/inventory/web/use-inventory-data.js";
 import {
   availableState,
   config,
@@ -29,9 +29,9 @@ import {
 // overrides only the provider/context seam: `InventoryDataProvider` is a
 // passthrough and the context read is stubbed, so the real store never runs.
 let inventoryData: InventoryData;
-vi.mock("../src/features/hosts-and-services/use-inventory-data.js", async (importOriginal) => {
+vi.mock("../../../modules/inventory/web/use-inventory-data.js", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("../src/features/hosts-and-services/use-inventory-data.js")>();
+    await importOriginal<typeof import("../../../modules/inventory/web/use-inventory-data.js")>();
   return {
     ...actual,
     InventoryDataProvider: ({ children }: { children: unknown }) => children,
@@ -50,21 +50,21 @@ vi.mock("@/shell/router", async (importOriginal) => {
 });
 
 // Importing the feature entrypoint is the discovery action under test.
-import "../src/features/hosts-and-services/index.js";
-import {
-  EntitySlots,
-  INVENTORY_SLOTS,
-} from "../src/features/hosts-and-services/components/EntitySlots.js";
+import "../../../modules/inventory/web/index.js";
+import { EntitySections } from "../../../modules/inventory/web/components/EntitySections.js";
 import {
   formatFactValue,
   IntentReality,
-} from "../src/features/hosts-and-services/components/detail-shared.js";
-import { HostDetailPage } from "../src/features/hosts-and-services/hosts/detail.js";
-import { ServiceDetailPage } from "../src/features/hosts-and-services/services/detail.js";
+} from "../../../modules/inventory/web/components/detail-shared.js";
+import { HostDetailPage } from "../../../modules/inventory/web/hosts/detail.js";
+import { ServiceDetailPage } from "../../../modules/inventory/web/services/detail.js";
 import * as registry from "../src/registry/registry.js";
 import { getPages, registerEntityFragment } from "../src/registry/registry.js";
 import type { EntityRef } from "../src/registry/registry.js";
+import { getQueryClient } from "../src/data/query-client.js";
+import { queryKeys } from "../src/data/queries.js";
 import { resolveComponent } from "./support/lazy.js";
+import { manifestPlacing } from "./support/manifest.js";
 
 afterEach(() => {
   cleanup();
@@ -209,7 +209,7 @@ describe("formatFactValue", () => {
 });
 
 // ---------------------------------------------------------------------------
-// EntitySlots — ordered fragment hosts, placeholders, and isolation.
+// EntitySections — ordered section hosts, states, and isolation.
 // ---------------------------------------------------------------------------
 
 /** Record every entity reference a synthetic fragment receives. */
@@ -240,12 +240,17 @@ const SvcCond = ({ entity }: { entity: EntityRef }): JSX.Element => {
 };
 
 beforeAll(() => {
-  registerEntityFragment({ id: "host-find-b", entity: "host", slot: "findings", order: 20, component: HostFindB });
-  registerEntityFragment({ id: "host-find-a", entity: "host", slot: "findings", order: 10, component: HostFindA });
-  registerEntityFragment({ id: "host-conf", entity: "host", slot: "configs", order: 10, component: HostConf });
-  registerEntityFragment({ id: "svc-ok", entity: "service", slot: "findings", order: 10, component: SvcOk });
-  registerEntityFragment({ id: "svc-fail", entity: "service", slot: "findings", order: 20, component: SvcFail });
-  registerEntityFragment({ id: "svc-cond", entity: "service", slot: "configs", order: 10, component: SvcCond });
+  registerEntityFragment({ id: "section:test/host-find-b", entity: "host", section: "findings", title: "Findings", order: 20, component: HostFindB });
+  registerEntityFragment({ id: "section:test/host-find-a", entity: "host", section: "findings", title: "Findings", order: 10, component: HostFindA });
+  registerEntityFragment({ id: "section:test/host-conf", entity: "host", section: "configs", title: "Configs", order: 30, component: HostConf });
+  registerEntityFragment({ id: "section:test/svc-ok", entity: "service", section: "findings", title: "Findings", order: 10, component: SvcOk });
+  registerEntityFragment({ id: "section:test/svc-fail", entity: "service", section: "findings", title: "Findings", order: 20, component: SvcFail });
+  registerEntityFragment({ id: "section:test/svc-cond", entity: "service", section: "configs", title: "Configs", order: 30, component: SvcCond });
+});
+
+// The UI manifest places every registered section (every module is on).
+beforeEach(() => {
+  getQueryClient().setQueryData(queryKeys.uiManifest, manifestPlacing(registry.getAllExtensions()));
 });
 
 /** Fragment render failures are expected in these tests; keep React's report quiet. */
@@ -259,13 +264,9 @@ function slotRegions(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>("[data-entity-slot]")];
 }
 
-describe("EntitySlots ordering and placeholders", () => {
-  it("exposes the frozen findings-then-configs slot order", () => {
-    expect(INVENTORY_SLOTS).toEqual(["findings", "configs"]);
-  });
-
-  it("renders Findings then Configs as named sections with slot markers", () => {
-    render(<EntitySlots entity={Object.freeze({ entity: "host", host: "alpha" })} />);
+describe("EntitySections ordering and states", () => {
+  it("renders each attached section by its own title, with a section marker, in order", () => {
+    render(<EntitySections entity={Object.freeze({ entity: "host", host: "alpha" })} />);
     expect(slotRegions().map((slot) => slot.dataset.entitySlot)).toEqual(["findings", "configs"]);
     expect(sectionHeadings()).toEqual(["Findings", "Configs"]);
     expect(region("Findings")).toHaveAttribute("data-entity-slot", "findings");
@@ -273,8 +274,8 @@ describe("EntitySlots ordering and placeholders", () => {
     expect(within(region("Findings")).getByRole("heading")).toHaveAttribute("id", "entity-slot-findings");
   });
 
-  it("orders fragments within a slot through the existing (order,id) accessor", () => {
-    render(<EntitySlots entity={Object.freeze({ entity: "host", host: "alpha" })} />);
+  it("orders fragments within a section through the existing (order,id) accessor", () => {
+    render(<EntitySections entity={Object.freeze({ entity: "host", host: "alpha" })} />);
     const findings = region("Findings").textContent ?? "";
     // Registered b(20) before a(10), but the accessor sorts a before b.
     expect(findings.indexOf("HOST-FIND-A")).toBeLessThan(findings.indexOf("HOST-FIND-B"));
@@ -286,35 +287,33 @@ describe("EntitySlots ordering and placeholders", () => {
     fragmentRefs["host-find-b"] = [];
     fragmentRefs["host-conf"] = [];
     const entity: EntityRef = Object.freeze({ entity: "host", host: "alpha" });
-    render(<EntitySlots entity={entity} />);
+    render(<EntitySections entity={entity} />);
     expect(fragmentRefs["host-find-a"]![0]).toBe(entity);
     expect(fragmentRefs["host-find-b"]![0]).toBe(entity);
     expect(fragmentRefs["host-conf"]![0]).toBe(entity);
     expect(Object.isFrozen(fragmentRefs["host-conf"]![0])).toBe(true);
   });
 
-  it("renders accessible empty placeholders and no drift for empty slots", () => {
-    const spy = vi.spyOn(registry, "getEntityFragments").mockReturnValue([]);
+  it("renders no sections, and no drift, when nothing is attached", () => {
+    const spy = vi.spyOn(registry, "groupEntitySections").mockReturnValue([]);
     try {
-      render(<EntitySlots entity={Object.freeze({ entity: "host", host: "empty" })} />);
-      for (const name of ["Findings", "Configs"]) {
-        expect(within(region(name)).getByRole("status")).toHaveTextContent("Nothing is attached to this slot.");
-      }
+      const { container } = render(<EntitySections entity={Object.freeze({ entity: "host", host: "empty" })} />);
+      expect(container).toBeEmptyDOMElement();
       expect(document.body.textContent?.toLowerCase()).not.toContain("drift");
     } finally {
       spy.mockRestore();
     }
   });
 
-  it("isolates a registry-read failure per slot without exposing exception text", () => {
-    const spy = vi.spyOn(registry, "getEntityFragments").mockImplementation(() => {
+  it("shows one alert for a registry-read failure without exposing exception text", () => {
+    // The registry accessor itself throws, as a broken registry would.
+    const spy = vi.spyOn(registry, "getAllExtensions").mockImplementation(() => {
       throw new Error("registry read boom secret detail");
     });
     try {
-      render(<EntitySlots entity={Object.freeze({ entity: "host", host: "alpha" })} />);
-      for (const name of ["Findings", "Configs"]) {
-        expect(within(region(name)).getByRole("alert")).toHaveTextContent("Unable to load attached fragments.");
-      }
+      render(<EntitySections entity={Object.freeze({ entity: "host", host: "alpha" })} />);
+      expect(screen.getByRole("alert")).toHaveTextContent("Unable to load attached sections.");
+      expect(slotRegions()).toEqual([]);
       expect(document.body.textContent).not.toContain("boom secret detail");
     } finally {
       spy.mockRestore();
@@ -322,21 +321,21 @@ describe("EntitySlots ordering and placeholders", () => {
   });
 });
 
-describe("EntitySlots fragment failure isolation", () => {
-  it("keeps siblings, the later slot, and core content when one fragment throws", () => {
+describe("EntitySections fragment failure isolation", () => {
+  it("keeps siblings, the later section, and core content when one fragment throws", () => {
     const restore = quietErrors();
     try {
       render(
         <div>
           <div>CORE-CONTENT</div>
-          <EntitySlots entity={Object.freeze({ entity: "service", host: "safe", name: "api" })} />
+          <EntitySections entity={Object.freeze({ entity: "service", host: "safe", name: "api" })} />
         </div>,
       );
       // The failing fragment shows a generic boundary alert…
       expect(within(region("Findings")).getByRole("alert")).toHaveTextContent(
         "Attached content could not be displayed.",
       );
-      // …while its sibling, the later configs slot, and core content survive.
+      // …while its sibling, the later configs section, and core content survive.
       expect(within(region("Findings")).getByText("SVC-OK")).toBeInTheDocument();
       expect(within(region("Configs")).getByText("SVC-COND-OK")).toBeInTheDocument();
       expect(screen.getByText("CORE-CONTENT")).toBeInTheDocument();
@@ -350,7 +349,7 @@ describe("EntitySlots fragment failure isolation", () => {
     const restore = quietErrors();
     try {
       const { rerender } = render(
-        <EntitySlots entity={Object.freeze({ entity: "service", host: "boom", name: "api" })} />,
+        <EntitySections entity={Object.freeze({ entity: "service", host: "boom", name: "api" })} />,
       );
       expect(within(region("Configs")).getByRole("alert")).toHaveTextContent(
         "Attached content could not be displayed.",
@@ -359,7 +358,7 @@ describe("EntitySlots fragment failure isolation", () => {
 
       // A different entity changes the collision-safe boundary key, so the
       // boundary remounts and re-attempts the render successfully.
-      rerender(<EntitySlots entity={Object.freeze({ entity: "service", host: "safe", name: "api" })} />);
+      rerender(<EntitySections entity={Object.freeze({ entity: "service", host: "safe", name: "api" })} />);
       expect(within(region("Configs")).getByText("SVC-COND-OK")).toBeInTheDocument();
     } finally {
       restore();
@@ -372,7 +371,7 @@ describe("EntitySlots fragment failure isolation", () => {
 // ---------------------------------------------------------------------------
 
 describe("feature fragment-slot boundaries", () => {
-  const featureDir = fileURLToPath(new URL("../src/features/hosts-and-services", TEST_FILE_URL));
+  const featureDir = fileURLToPath(new URL("../../../modules/inventory/web", TEST_FILE_URL));
 
   function featureSources(dir: string): string[] {
     const files: string[] = [];
@@ -393,7 +392,7 @@ describe("feature fragment-slot boundaries", () => {
   });
 
   it("never uses dangerouslySetInnerHTML in the fragment-slot and detail primitives", () => {
-    for (const name of ["components/EntitySlots.tsx", "components/detail-shared.tsx"]) {
+    for (const name of ["components/EntitySections.tsx", "components/detail-shared.tsx"]) {
       const source = readFileSync(`${featureDir}/${name}`, "utf8");
       expect(source).not.toContain("dangerouslySetInnerHTML");
     }
@@ -516,7 +515,7 @@ function headerMarkers(): string[] {
 
 describe("host detail registration", () => {
   it("registers /hosts/:name once as a navigation-hidden page", async () => {
-    const detail = getPages().filter((page) => page.id === "host-detail");
+    const detail = getPages().filter((page) => page.id === "page:inventory/host-detail");
     expect(detail).toHaveLength(1);
     expect(detail[0]).toMatchObject({
       path: "/hosts/:name",
@@ -795,7 +794,7 @@ describe("host detail security and observed facts", () => {
 
   it("makes no secret resolver, provider, or request call in the detail source", () => {
     const source = readFileSync(
-      fileURLToPath(new URL("../src/features/hosts-and-services/hosts/detail.tsx", TEST_FILE_URL)),
+      fileURLToPath(new URL("../../../modules/inventory/web/hosts/detail.tsx", TEST_FILE_URL)),
       "utf8",
     );
     expect(source).not.toContain("fetch(");
@@ -883,7 +882,7 @@ const SVC_SECRET_BETA = "svc-secret-beta-id";
 const SVC_FORBIDDEN_VALUE = "svc-s3cr3t-value-must-never-render";
 
 /**
- * Render the service detail page. Found service pages render `EntitySlots`,
+ * Render the service detail page. Found service pages render `EntitySections`,
  * which includes the intentionally throwing `svc-fail` fragment, so React's
  * error report is silenced for the render.
  */
@@ -937,19 +936,19 @@ function fullServiceData(): InventoryData {
 
 describe("service detail registration", () => {
   it("registers exactly four inventory pages with two nav-hidden detail routes", () => {
-    const ids = new Set(["hosts", "services", "host-detail", "service-detail"]);
+    const ids = new Set(["page:inventory/hosts", "page:inventory/services", "page:inventory/host-detail", "page:inventory/service-detail"]);
     const inventory = getPages().filter((page) => ids.has(page.id));
     expect(inventory).toHaveLength(4);
 
     const nav = inventory.filter((page) => page.nav !== false).map((page) => page.id);
-    expect(nav.sort()).toEqual(["hosts", "services"]);
+    expect(nav.sort()).toEqual(["page:inventory/hosts", "page:inventory/services"]);
 
     const hidden = inventory.filter((page) => page.nav === false);
-    expect(hidden.map((page) => page.id).sort()).toEqual(["host-detail", "service-detail"]);
+    expect(hidden.map((page) => page.id).sort()).toEqual(["page:inventory/host-detail", "page:inventory/service-detail"]);
   });
 
   it("registers /services/:host/:name once as a navigation-hidden page", async () => {
-    const detail = getPages().filter((page) => page.id === "service-detail");
+    const detail = getPages().filter((page) => page.id === "page:inventory/service-detail");
     expect(detail).toHaveLength(1);
     expect(detail[0]).toMatchObject({
       path: "/services/:host/:name",
@@ -1223,7 +1222,7 @@ describe("service detail security, encoding, and slots", () => {
 
   it("makes no secret resolver, fetch, or unsafe HTML call in the detail source", () => {
     const source = readFileSync(
-      fileURLToPath(new URL("../src/features/hosts-and-services/services/detail.tsx", TEST_FILE_URL)),
+      fileURLToPath(new URL("../../../modules/inventory/web/services/detail.tsx", TEST_FILE_URL)),
       "utf8",
     );
     expect(source).not.toContain("fetch(");

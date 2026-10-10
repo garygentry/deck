@@ -6,8 +6,8 @@ const webDir = dirname(fileURLToPath(import.meta.url));
 const runtimeDir = resolve(webDir, ".tmp/inventory-e2e");
 
 // Assign the one absolute mutable-runtime root before Playwright forks workers,
-// then pass the same value to the Bun API web-server process. Item 021 creates
-// the helper that consumes it; this config only publishes the shared location.
+// then pass the same value to the Bun API web-server process. The mutable-runtime
+// helper (test/e2e/fixture-runtime.ts) consumes it; this config only publishes the shared location.
 process.env.DECK_INVENTORY_E2E_RUNTIME_DIR = runtimeDir;
 
 // The API port defaults to 8788; set DECK_E2E_API_PORT when another local
@@ -24,6 +24,10 @@ export default defineConfig({
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
+  // On CI, stop a shard after 10 failures. A mass failure (e.g. missing visual
+  // baselines) otherwise runs every test to its 95 s expect timeout plus a
+  // retry, which once held a shard for ~1.8 h of metered minutes.
+  maxFailures: process.env.CI ? 10 : 0,
   timeout: 120_000,
   expect: { timeout: 95_000 },
   reporter: process.env.CI ? "github" : "list",

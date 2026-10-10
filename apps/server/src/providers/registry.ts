@@ -7,8 +7,13 @@ import {
   type ProviderDescriptor,
   type ProviderEnvelope,
   type ProviderHealthEntry,
+  type ProviderProjection,
 } from "../contract/index.js";
-import { logger, type ProviderPollEvent } from "../log/logger.js";
+import { clampTiming, TIMING_FIELDS, type Cadence, type ProviderStats, type TaskHandle, type TimingField } from "@deck/module-sdk";
+import { evaluateSelect, type CompiledSelect } from "@deck/schema/select";
+
+import { logger, type ProviderPollEvent, type ProviderTimingAdjustedEvent } from "../log/logger.js";
+import { createAdaptiveTask, isWithinRun, withinRun, type AdaptiveTask } from "../modules/scheduler.js";
 
 export interface ResolvedTiming {
   pollIntervalMs: number;
@@ -24,6 +29,12 @@ export interface DeriveInput {
   errored: boolean;
   failureFreshness: FailureFreshness;
   ageMs: number | null;
+  /**
+   * Milliseconds since the latest successful poll, when the data's age (`ageMs`) is the
+   * provider's own observation time instead: `unreachable` follows the poll, so a source that
+   * answers but reports old data is at most `stale`. Absent means `ageMs`.
+   */
+  sinceSuccessMs?: number | null;
   ttlMs: number;
   unreachableAfterMs: number;
 }
@@ -35,19 +46,31 @@ interface Slot<T = unknown> {
   envelope: ProviderEnvelope<T>;
   /** RFC 3339 timestamp of the latest successful fetch only. */
   lastSuccessAt: string | null;
+  /** When the latest successful fetch's data was observed (the provider's report, else the fetch time). */
+  observedAt: string | null;
   /** Current publishable payload, including an optional failure projection. */
   retainedData: T | null;
   /** Cached non-I/O health published by the latest completed poll. */
   health: ProviderHealthEntry;
   timer?: ReturnType<typeof setInterval>;
-  inFlight: boolean;
+  /** Present when the provider polls on an adaptive cadence instead of a fixed interval. */
+  adaptive?: AdaptiveTask;
+  /** The poll in flight, shared by every caller until it settles. */
+  polling: Promise<boolean> | null;
+  /** Set by the handle's stop(): the provider never polls again. */
+  stopped: boolean;
   /** Wall-clock duration of the latest completed poll; null before the first poll. */
   lastLatencyMs: number | null;
   /** Completed polls that fetched successfully. */
   successCount: number;
   /** Completed polls that failed (threw, rejected, or timed out). */
   failureCount: number;
+  /** The projections last evaluated, and the data and projection set they were evaluated over. */
+  projected?: { data: unknown; selects: ProviderSelects | undefined; result: ProviderEnvelope["projections"] };
 }
+
+/** The selects over one provider: the projection's name (the widget id) → its compiled select. */
+export type ProviderSelects = ReadonlyMap<string, CompiledSelect>;
 
 /** Per-provider poll counters and last-poll latency, retained on the slot by tick(). */
 export interface ProviderPollMetrics {
@@ -60,6 +83,21 @@ export interface ProviderPollMetrics {
 }
 
 const slots = new Map<string, Slot<unknown>>();
+/** The selects to evaluate, by provider id; replaced whole by {@link setProjections}. */
+let selectsByProvider: ReadonlyMap<string, ProviderSelects> = new Map();
+
+/**
+ * Replace the selects every provider's envelope carries as `projections` (by provider id, then
+ * projection name → compiled select). Each is evaluated over the provider's data when that
+ * data changes and when the set changes, never per read, and never re-parsed; a provider
+ * registered later picks its selects up. A select that fails on the data, or exceeds its
+ * limits, yields `{ error }` in its projection; the other projections, the poll and the
+ * provider's health are unaffected.
+ */
+export function setProjections(selects: ReadonlyMap<string, ProviderSelects>): void {
+  selectsByProvider = selects;
+  for (const slot of slots.values()) publish(slot, slot.envelope.error);
+}
 
 /** Derive the public freshness state from cached success, age, and failure policy. */
 export function deriveState(input: DeriveInput): FreshnessState {
@@ -67,25 +105,60 @@ export function deriveState(input: DeriveInput): FreshnessState {
   if (!input.hasSuccess) return "pending";
   if (input.errored && input.failureFreshness === "immediate-unreachable") return "unreachable";
   const age = input.ageMs ?? Number.POSITIVE_INFINITY;
-  if (age > input.unreachableAfterMs) return "unreachable";
+  const sinceSuccess = input.sinceSuccessMs === undefined ? age : (input.sinceSuccessMs ?? Number.POSITIVE_INFINITY);
+  if (sinceSuccess > input.unreachableAfterMs) return "unreachable";
   if (age > input.ttlMs) return "stale";
   return "fresh";
 }
 
-/** Resolve provider timing defaults, including the TTL-derived unreachable threshold. */
-export function resolveTiming(opts?: ProviderConfig): ResolvedTiming {
-  const ttlMs = opts?.ttlMs ?? POLL_DEFAULTS.ttlMs;
+/**
+ * Resolve provider timing defaults, including the TTL-derived unreachable threshold. A field
+ * outside its range (`TIMING_LIMITS`: a timer cannot wait past 2^31-1 ms, and a poll interval is
+ * at least a second) is rounded and clamped into it, and one that is not a finite number takes
+ * its default, so no kind's timing can make the scheduler spin. Each change is passed to
+ * `onAdjust`.
+ */
+export function resolveTiming(
+  opts?: ProviderConfig,
+  onAdjust?: (field: TimingField, given: unknown, used: number) => void,
+): ResolvedTiming {
+  const given: Partial<Record<TimingField, number>> = {};
+  for (const field of TIMING_FIELDS) {
+    const value: unknown = opts?.[field];
+    if (value === undefined) continue;
+    const used = clampTiming(field, value);
+    if (used !== undefined) given[field] = used;
+    if (used !== value) onAdjust?.(field, value, used ?? (field === "unreachableAfterMs" ? 3 * (given.ttlMs ?? POLL_DEFAULTS.ttlMs) : POLL_DEFAULTS[field]));
+  }
+  const ttlMs = given.ttlMs ?? POLL_DEFAULTS.ttlMs;
   return {
-    pollIntervalMs: opts?.pollIntervalMs ?? POLL_DEFAULTS.pollIntervalMs,
+    pollIntervalMs: given.pollIntervalMs ?? POLL_DEFAULTS.pollIntervalMs,
     ttlMs,
-    unreachableAfterMs: opts?.unreachableAfterMs ?? 3 * ttlMs,
-    timeoutMs: opts?.timeoutMs ?? POLL_DEFAULTS.timeoutMs,
+    unreachableAfterMs: given.unreachableAfterMs ?? 3 * ttlMs,
+    timeoutMs: given.timeoutMs ?? POLL_DEFAULTS.timeoutMs,
     failureFreshness: opts?.failureFreshness ?? "immediate-unreachable",
   };
 }
 
-/** Register one provider and initialize its cached envelope; duplicate ids throw. */
-export function register<T>(provider: Provider<T>, opts?: ProviderConfig): void {
+/**
+ * Register one provider and initialize its cached envelope; duplicate ids throw.
+ * With a `cadence`, the scheduler polls it adaptively (the hook picks each next delay, or
+ * pauses until `wake()`) instead of every `pollIntervalMs`; either way the first poll runs as
+ * soon as the scheduler starts. A static provider (`flags.static`, from a kind its module
+ * declares static) is fetched once at registration, never polled, and cannot take a cadence.
+ * The returned handle lets the owner wake, force (joining a poll in flight) or permanently
+ * stop its polling.
+ */
+export function register<T>(
+  provider: Provider<T>,
+  opts?: ProviderConfig,
+  cadence?: Cadence,
+  flags?: { static?: boolean },
+): TaskHandle {
+  const isStatic = flags?.static === true;
+  if (cadence !== undefined && isStatic) {
+    throw new Error(`Provider ${provider.id} is static (kind "${provider.kind}") and cannot take a cadence`);
+  }
   if (slots.has(provider.id)) {
     const error = new Error(`Provider id already registered: ${provider.id}`) as Error & {
       code: string;
@@ -96,12 +169,17 @@ export function register<T>(provider: Provider<T>, opts?: ProviderConfig): void 
 
   const slot = {
     provider,
-    timing: resolveTiming(opts),
-    isStatic: provider.kind === "link",
+    timing: resolveTiming(opts, (field, given, used) => {
+      const event = { event: "provider.timing-adjusted", id: provider.id, kind: provider.kind, field, given: String(given), used } satisfies ProviderTimingAdjustedEvent;
+      logger.warn(event, "provider timing out of range; adjusted");
+    }),
+    isStatic,
     lastSuccessAt: null,
+    observedAt: null,
     retainedData: null,
     health: { kind: provider.kind, ok: false, detail: "Awaiting first poll" },
-    inFlight: false,
+    polling: null,
+    stopped: false,
     lastLatencyMs: null,
     successCount: 0,
     failureCount: 0,
@@ -109,7 +187,37 @@ export function register<T>(provider: Provider<T>, opts?: ProviderConfig): void 
   publish(slot, null);
   slots.set(provider.id, slot as Slot<unknown>);
 
-  if (slot.isStatic) void tick(slot);
+  if (slot.isStatic) tick(slot).catch(() => {});
+  if (cadence !== undefined) {
+    slot.adaptive = createAdaptiveTask({
+      cadence,
+      // A failed poll is already published by tick(); throwing only feeds the cadence state.
+      run: async () => {
+        if (!(await tick(slot))) throw new Error("provider poll failed");
+      },
+    });
+  }
+  return {
+    wake: () => slot.adaptive?.wake(),
+    runNow: async () => {
+      if (slot.adaptive !== undefined) await slot.adaptive.runNow();
+      else await tick(slot);
+    },
+    stop: async () => {
+      stopProvider(slot);
+      if (slot.timer !== undefined) clearInterval(slot.timer);
+      slot.timer = undefined;
+      await slot.adaptive?.stop();
+      // Stopped from inside its own poll (the provider stopping itself): never await itself.
+      if (isWithinRun(slot)) return;
+      await slot.polling;
+    },
+  };
+}
+
+/** Whether a provider with this id is registered. */
+export function hasProvider(id: string): boolean {
+  return slots.has(id);
 }
 
 /** Read one cached envelope without invoking provider, filesystem, or network I/O. */
@@ -123,9 +231,16 @@ export function read(id: string): ProviderEnvelope<unknown> | undefined {
 /** Start polling every registered dynamic provider and trigger its initial poll. */
 export function startScheduler(): void {
   for (const slot of slots.values()) {
+    if (slot.stopped) continue;
+    if (slot.adaptive !== undefined) {
+      // Like a fixed-interval provider, poll at once; the cadence takes over from there.
+      slot.adaptive.start();
+      slot.adaptive.runNow().catch(() => {});
+      continue;
+    }
     if (slot.isStatic || slot.timer !== undefined) continue;
-    slot.timer = setInterval(() => void tick(slot), slot.timing.pollIntervalMs);
-    void tick(slot);
+    slot.timer = setInterval(() => void tick(slot).catch(() => {}), slot.timing.pollIntervalMs);
+    tick(slot).catch(() => {});
   }
 }
 
@@ -133,8 +248,11 @@ export function startScheduler(): void {
 export function stopScheduler(): void {
   for (const slot of slots.values()) {
     if (slot.timer !== undefined) clearInterval(slot.timer);
+    stopProvider(slot);
+    slot.adaptive?.stop().catch(() => {});
   }
   slots.clear();
+  selectsByProvider = new Map();
 }
 
 /** Return the number of providers currently held by the process-local registry. */
@@ -185,9 +303,30 @@ export function listMetrics(): readonly ProviderPollMetrics[] {
   });
 }
 
-async function tick<T>(slot: Slot<T>): Promise<void> {
-  if (slot.inFlight) return;
-  slot.inFlight = true;
+/**
+ * Every provider's poll counters, last-poll latency and cached-data age, in id order, as
+ * modules read them through `ctx.providers.stats()`. Performs no provider I/O; the age is
+ * the one `read()` publishes.
+ */
+export function listStats(): readonly ProviderStats[] {
+  return listMetrics().map((poll) => Object.freeze({ ...poll, ageMs: read(poll.id)!.freshness.ageMs }));
+}
+
+/**
+ * Poll once, joining a poll already in flight; resolves true when the fetch succeeded.
+ * A stopped provider never polls (resolves false).
+ */
+function tick<T>(slot: Slot<T>): Promise<boolean> {
+  if (slot.polling !== null) return slot.polling;
+  if (slot.stopped) return Promise.resolve(false);
+  // Publish the shared poll before provider code runs, so a re-entrant call joins it.
+  slot.polling = Promise.resolve().then(() => withinRun(slot, () => poll(slot))).finally(() => {
+    slot.polling = null;
+  });
+  return slot.polling;
+}
+
+async function poll<T>(slot: Slot<T>): Promise<boolean> {
   const startedAt = Date.now();
   const from = slot.envelope.freshness.state;
   const controller = new AbortController();
@@ -200,7 +339,9 @@ async function tick<T>(slot: Slot<T>): Promise<void> {
       controller.signal,
       slot.timing.timeoutMs,
     );
-    slot.lastSuccessAt = new Date().toISOString();
+    const fetchedAt = Date.now();
+    slot.lastSuccessAt = new Date(fetchedAt).toISOString();
+    slot.observedAt = new Date(observedAtOf(slot.provider, fetchedAt)).toISOString();
     slot.retainedData = data;
     publish(slot, null);
     ok = true;
@@ -212,7 +353,6 @@ async function tick<T>(slot: Slot<T>): Promise<void> {
     slot.health = { kind: slot.provider.kind, ok: false, detail: message };
   } finally {
     clearTimeout(timeout);
-    slot.inFlight = false;
     const latencyMs = Date.now() - startedAt;
     slot.lastLatencyMs = latencyMs;
     if (ok) slot.successCount += 1;
@@ -238,6 +378,33 @@ async function tick<T>(slot: Slot<T>): Promise<void> {
       // Observability must never turn an isolated provider failure into a scheduler failure.
     }
   }
+  return ok;
+}
+
+/** Mark the slot stopped and tell its provider once (its `stop` hook), isolating a throwing hook. */
+function stopProvider<T>(slot: Slot<T>): void {
+  if (slot.stopped) return;
+  slot.stopped = true;
+  try {
+    slot.provider.stop?.();
+  } catch {
+    // A provider's own stop failing never stops the others.
+  }
+}
+
+/**
+ * When the data a successful fetch returned was observed: the provider's own report, never
+ * after `now` (a future time counts as now), else `now`. A throwing or invalid report is `now`.
+ */
+function observedAtOf<T>(provider: Provider<T>, now: number): number {
+  let reported: unknown;
+  try {
+    reported = provider.observedAt?.();
+  } catch {
+    return now;
+  }
+  if (typeof reported !== "number" || Number.isNaN(new Date(reported).getTime())) return now;
+  return Math.min(reported, now);
 }
 
 /** Read the now non-I/O provider health, isolating a rejecting or invalid snapshot. */
@@ -268,14 +435,17 @@ function projectFailure<T>(slot: Slot<T>, error: unknown): void {
 }
 
 function publish<T>(slot: Slot<T>, error: { message: string } | null): void {
-  const observedAt = slot.isStatic ? null : slot.lastSuccessAt;
-  const ageMs = observedAt === null ? null : Math.max(0, Date.now() - Date.parse(observedAt));
+  const now = Date.now();
+  const observedAt = slot.isStatic ? null : slot.observedAt;
+  const ageMs = observedAt === null ? null : Math.max(0, now - Date.parse(observedAt));
+  const sinceSuccessMs = slot.lastSuccessAt === null ? null : Math.max(0, now - Date.parse(slot.lastSuccessAt));
   const state = deriveState({
     isStatic: slot.isStatic,
     hasSuccess: slot.lastSuccessAt !== null,
     errored: error !== null,
     failureFreshness: slot.timing.failureFreshness,
     ageMs,
+    sinceSuccessMs,
     ttlMs: slot.timing.ttlMs,
     unreachableAfterMs: slot.timing.unreachableAfterMs,
   });
@@ -290,7 +460,27 @@ function publish<T>(slot: Slot<T>, error: { message: string } | null): void {
     },
     data: slot.retainedData,
     error,
+    ...projectionsOf(slot),
   });
+}
+
+/** The slot's projections, re-evaluated only when its data or the select set changed. */
+function projectionsOf<T>(slot: Slot<T>): Pick<ProviderEnvelope, "projections"> {
+  const selects = selectsByProvider.get(slot.provider.id);
+  if (slot.projected === undefined || slot.projected.data !== slot.retainedData || slot.projected.selects !== selects) {
+    let result: Record<string, ProviderProjection> | undefined;
+    if (selects !== undefined && selects.size > 0) {
+      result = {};
+      // No data yet (or none retained): nothing to project.
+      if (slot.retainedData !== null) {
+        for (const [name, select] of [...selects].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+          result[name] = evaluateSelect(select, slot.retainedData);
+        }
+      }
+    }
+    slot.projected = { data: slot.retainedData, selects, result };
+  }
+  return slot.projected.result === undefined ? {} : { projections: slot.projected.result };
 }
 
 function withTimeout<T>(promise: Promise<T>, signal: AbortSignal, timeoutMs: number): Promise<T> {
@@ -308,10 +498,17 @@ function timeoutError(timeoutMs: number): Error {
   return error;
 }
 
+/**
+ * Freeze `value` and everything reachable from it. Iterative, so provider data of any depth
+ * cannot overflow the stack on the publish path (an uncaught overflow there ends the process).
+ */
 function deepFreeze<T>(value: T): T {
-  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
-    for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child);
-    Object.freeze(value);
+  const pending: unknown[] = [value];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === null || typeof current !== "object" || Object.isFrozen(current)) continue;
+    Object.freeze(current);
+    for (const child of Object.values(current as Record<string, unknown>)) pending.push(child);
   }
   return value;
 }

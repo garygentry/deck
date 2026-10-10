@@ -1,16 +1,10 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import type { Logger } from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { load } from "../src/config/load.js";
 import { registerAllProviders } from "../src/providers/index.js";
-import { listHealth, listProviders, providerCount, read, stopScheduler } from "../src/providers/registry.js";
+import { listHealth, listProviders, providerCount, read, setProjections, stopScheduler } from "../src/providers/registry.js";
 import { createApp } from "../src/server/app.js";
-
-const providersDir = join(dirname(fileURLToPath(import.meta.url)), "../src/providers");
 
 function makeApp(fixture: string) {
   const result = load({ arg: `test/fixtures/${fixture}` });
@@ -25,7 +19,7 @@ function makeApp(fixture: string) {
   } as unknown as Logger;
   const app = createApp({
     config: result.config,
-    providers: { read, count: providerCount, listHealth, listProviders },
+    providers: { read, count: providerCount, listHealth, listProviders, setProjections },
     logger,
   });
   return { app, config: result.config };
@@ -98,83 +92,5 @@ describe("alerts-and-health provider routes", () => {
       const response = await app.request("/api/providers/prometheus", { method });
       expect(response.status).toBe(404);
     }
-  });
-});
-
-/**
- * Provider-barrel drift guard: regenerate the barrel into a buffer using the same rules as
- * src/scripts/gen-providers.ts and assert byte-equality with the checked-in generated.ts.
- * Fails if a folder was added/removed without running `pnpm gen:providers`, or on a hand-edit.
- */
-describe("provider-barrel drift guard", () => {
-  function helperName(folder: string): string {
-    return `register${folder
-      .split("-")
-      .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-      .join("")}`;
-  }
-
-  function compareText(a: string, b: string): number {
-    return a < b ? -1 : a > b ? 1 : 0;
-  }
-
-  function providerFolders(): string[] {
-    return readdirSync(providersDir)
-      .filter((name) => statSync(join(providersDir, name)).isDirectory())
-      .filter((name) => {
-        try {
-          return statSync(join(providersDir, name, "index.ts")).isFile();
-        } catch {
-          return false;
-        }
-      })
-      .sort(compareText);
-  }
-
-  function regenerate(): string {
-    const HEADER =
-      "/* GENERATED from provider index.ts files by src/scripts/gen-providers.ts — do not edit; run `pnpm gen:providers`. */";
-    const folders = providerFolders();
-    const providers = folders
-      .map((kind) => ({ kind, order: 0 }))
-      .sort((a, b) => a.order - b.order || compareText(a.kind, b.kind));
-    const imports = folders.map(
-      (folder) => `import { ${helperName(folder)} } from "./${folder}/index.js";`,
-    );
-    const helpers = folders.map(helperName);
-    return [
-      HEADER,
-      ...imports,
-      "",
-      "/** One discovered provider folder's registration surface. */",
-      "export interface GeneratedProviderEntry {",
-      "  kind: string;",
-      "  order: number;",
-      "}",
-      "",
-      "/** Provider kinds discovered at codegen time, sorted by (order, kind). */",
-      "export const GENERATED_PROVIDERS: readonly GeneratedProviderEntry[] = [",
-      ...providers.map(({ kind, order }) => `  { kind: "${kind}", order: ${order} },`),
-      "];",
-      "",
-      "/** Typed registration helpers exposed by the discovered provider folders. */",
-      `export { ${helpers.join(", ")} };`,
-      "",
-    ].join("\n");
-  }
-
-  it("checked-in generated.ts is byte-equal to a fresh regeneration", () => {
-    const checkedIn = readFileSync(join(providersDir, "generated.ts"), "utf8");
-    expect(checkedIn).toBe(regenerate());
-  });
-
-  it("barrel re-exports registerPrometheus/registerAlertmanager and lists both kinds", () => {
-    const generated = readFileSync(join(providersDir, "generated.ts"), "utf8");
-    const exported = /export \{([^}]*)\};/.exec(generated)?.[1] ?? "";
-    const names = exported.split(",").map((name) => name.trim());
-    expect(names).toContain("registerPrometheus");
-    expect(names).toContain("registerAlertmanager");
-    expect(generated).toMatch(/\{ kind: "prometheus", order: 0 \}/);
-    expect(generated).toMatch(/\{ kind: "alertmanager", order: 0 \}/);
   });
 });

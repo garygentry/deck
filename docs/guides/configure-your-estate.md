@@ -22,7 +22,7 @@ mkdir -p my-estate
 
 ```yaml
 # my-estate/00-base.yaml
-schemaVersion: 1
+schemaVersion: 2
 estate:
   name: my-estate
 ```
@@ -33,8 +33,13 @@ Put stable identity and topology in the base layer, and put presentation and cro
 data in overlays.
 The base layer owns what exists — estate identity, hosts, and services — and an overlay
 cannot override those facts.
-Overlays own the portal `groups`, per-host and per-service `links`, and the `sources`,
-`integrations`, and `actions` sections.
+Overlays own per-host and per-service `links`, the `sources` and `integrations` sections,
+and the module settings under `modules` (the portal's `groups`, governed `actions`, and
+`llm-usage`).
+
+A config written for schemaVersion 1 (with top-level `groups`, `actions` or `llmUsage`) is
+refused at boot. Rewrite it with `deck config migrate <dir>`; see
+[Migrating from schemaVersion 1](../reference/estate-config.md#migrating-from-schemaversion-1).
 
 deck finds the config directory in this order: the `--config` flag, then the
 `DECK_CONFIG_DIR` environment variable, then `./config`.
@@ -86,20 +91,22 @@ For the full set of host and service fields and their allowed values, see the
 
 ## Lay out the portal
 
-Arrange the launch portal with `groups`, in an overlay layer so you can iterate on layout
+Arrange the launch portal with `modules.portal.groups`, in an overlay layer so you can iterate on layout
 without touching inventory:
 
 ```yaml
 # my-estate/10-overlay.yaml
-schemaVersion: 1
-groups:
-  - id: overview
-    title: Overview
-    order: 1
-    items:
-      - { type: service, host: apps, name: portal, title: Portal }
-      - { type: service, host: nas, name: files, title: Files }
-      - { type: link, title: Gateway, href: "https://gateway.home.example/" }
+schemaVersion: 2
+modules:
+  portal:
+    groups:
+      - id: overview
+        title: Overview
+        order: 1
+        items:
+          - { type: service, host: apps, name: portal, title: Portal }
+          - { type: service, host: nas, name: files, title: Files }
+          - { type: link, title: Gateway, href: "https://gateway.home.example/" }
 ```
 
 Each item is a service tile (`type: service`, referencing a declared service by `host` and
@@ -136,3 +143,7 @@ For the full command, flags, and exit classes, see the [CLI reference](../refere
   [Connect monitoring and alerts](connect-monitoring.md).
 - Turn on governed actions:
   [Enable and define governed actions](governed-actions.md).
+- Rename, re-theme and rearrange deck's UI:
+  [Customise the UI](customise-the-ui.md).
+- Add pages of your own, from any JSON API:
+  [Build a dashboard without code](build-a-dashboard.md).

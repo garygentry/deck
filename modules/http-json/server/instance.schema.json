@@ -1,0 +1,177 @@
+{
+  "title": "HTTP JSON integration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "title",
+    "url"
+  ],
+  "dependentRequired": {
+    "auth": [
+      "credentialEnv"
+    ]
+  },
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Integration id, unique across integrations; also the provider id."
+    },
+    "kind": {
+      "const": "http-json",
+      "description": "Provider kind."
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable integration title."
+    },
+    "deepLink": {
+      "type": "string",
+      "description": "Optional link to the API's own UI, shown on the integration's tile."
+    },
+    "url": {
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https?://[^/?#@\\s]+(?:[/?#]\\S*)?$",
+      "description": "The http(s) URL polled; it may not carry user:password@, and a query parameter whose name suggests a credential is refused (use auth.scheme query)."
+    },
+    "method": {
+      "enum": [
+        "GET",
+        "POST"
+      ],
+      "description": "The request method; default GET."
+    },
+    "headers": {
+      "type": "object",
+      "description": "Literal, non-secret request headers. A name that names a credential (Authorization, Cookie, X-Api-Key, X-Auth-Token, \u2026) is refused by validation: credentials come from credentialEnv.",
+      "propertyNames": {
+        "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$",
+        "maxLength": 128
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 1024,
+        "pattern": "^[\\t\\x20-\\x7E]*$"
+      }
+    },
+    "body": {
+      "description": "A JSON request body, sent with POST only. A key whose name suggests a credential is refused."
+    },
+    "credentialEnv": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "description": "Environment variable name holding a credential, never its value."
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scheme"
+      ],
+      "description": "How the credentialEnv value is sent; without it the value is the raw Authorization header.",
+      "properties": {
+        "scheme": {
+          "enum": [
+            "bearer",
+            "basic",
+            "header",
+            "query"
+          ],
+          "description": "bearer: Authorization: Bearer <value>; basic: the value is user:password, sent base64-encoded; header: the value in the named header; query: the value in the named URL query parameter."
+        },
+        "header": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$",
+          "description": "The header carrying the credential, for scheme header."
+        },
+        "param": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._~-]+$",
+          "description": "The query parameter carrying the credential, for scheme query."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "scheme": {
+                "const": "header"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "header": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "header"
+            ]
+          },
+          "else": {
+            "properties": {
+              "header": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "scheme": {
+                "const": "query"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "param": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "param"
+            ]
+          },
+          "else": {
+            "properties": {
+              "param": false
+            }
+          }
+        }
+      ]
+    },
+    "pollIntervalMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 86400000,
+      "description": "Milliseconds between polls; default 30000."
+    },
+    "timeoutMs": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 60000,
+      "description": "Milliseconds a poll may take, redirects and body included; default 5000."
+    },
+    "ttlMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 86400000,
+      "description": "Milliseconds the data stays fresh; default the poll interval."
+    },
+    "maxBytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16777216,
+      "description": "The largest response body accepted, in bytes; default 1048576 (1 MiB)."
+    },
+    "followCrossOriginRedirects": {
+      "type": "boolean",
+      "description": "Follow a redirect to another origin (scheme, host or port); default false, so only redirects within the url's origin are followed. Ignored with credentialEnv: an authenticated poll never leaves the url's origin."
+    }
+  }
+}

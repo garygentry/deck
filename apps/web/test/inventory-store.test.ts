@@ -17,6 +17,7 @@ import {
   hostDecl,
   httpStatusResponse,
   invalidJsonResponse,
+  jsonResponse,
   notConfiguredResponse,
   pendingState,
   serviceDecl,
@@ -31,18 +32,18 @@ import {
   type FetchStub,
   type InventoryEndpoint,
 } from "./inventory-harness.js";
-import type { SnapshotClientState } from "../src/features/hosts-and-services/inventory-store.js";
+import type { SnapshotClientState } from "../../../modules/inventory/web/inventory-store.js";
 
 // ---------------------------------------------------------------------------
 // The store is a module singleton; a fresh module per test isolates its retained
 // generation, timer, controller, and interval owner. All fixtures are invented.
 // ---------------------------------------------------------------------------
 
-type Store = typeof import("../src/features/hosts-and-services/inventory-store.js");
+type Store = typeof import("../../../modules/inventory/web/inventory-store.js");
 
 async function freshStore(): Promise<Store> {
   vi.resetModules();
-  return import("../src/features/hosts-and-services/inventory-store.js");
+  return import("../../../modules/inventory/web/inventory-store.js");
 }
 
 /** Flush all pending fetch/decode microtasks and 0-delay work under real timers. */
@@ -146,7 +147,82 @@ describe("store lifecycle and concurrency", () => {
     c();
   });
 
-  it("shares one timer so an interval tick issues a single pair", async () => {
+  it("C1: a malformed config document is not cached; the next poll asks again and recovers", async () => {
+    vi.useFakeTimers();
+    const store = await freshStore();
+    const stub = stubAggregate(
+      // The reviewer's probe: a 200 whose body is not a config document, then a valid one.
+      (callIndex) => (callIndex === 0 ? jsonResponse({}) : configResponse(config([hostDecl("alpha")]))),
+      () => snapshotResponse(availableState(snapshotResult({ hosts: [observedHost("alpha")] }))),
+    );
+
+    const unsubscribe = store.subscribeInventoryGeneration(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getInventoryGeneration().transientError).toBe("Config response is invalid; check the deck server.");
+    expect(store.getInventoryGeneration().refreshGeneration).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(stub.configCalls).toBe(2);
+    expect(store.getInventoryGeneration().refreshGeneration).toBe(1);
+    expect(store.getInventoryGeneration().transientError).toBeNull();
+    unsubscribe();
+  });
+
+  it("L3: while other readers hold a failing config, polls report it without re-asking", async () => {
+    vi.useFakeTimers();
+    const store = await freshStore();
+    const { getQueryClient, configQuery } = await import("../src/data/index.js");
+    const { QueryObserver } = await import("@tanstack/react-query");
+    const stub = stubAggregate(
+      () => httpStatusResponse(503),
+      () => snapshotResponse(availableState(snapshotResult({ hosts: [observedHost("alpha")] }))),
+    );
+    // Another reader (useConfig in the shell) holds the shared config query.
+    const observer = new QueryObserver(getQueryClient(), configQuery);
+    const states: string[] = [];
+    const stopObserving = observer.subscribe((result) => states.push(result.status));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stub.configCalls).toBe(1);
+
+    const unsubscribe = store.subscribeInventoryGeneration(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(30_000 * 3);
+    // Four inventory polls, no config refetch from the store: the reader never flickers.
+    expect(stub.snapshotCalls).toBe(4);
+    expect(stub.configCalls).toBe(1);
+    expect(states.slice(states.indexOf("error"))).not.toContain("pending");
+    expect(store.getInventoryGeneration().transientError).toBe("Config request returned HTTP 503; check the deck server.");
+    unsubscribe();
+    stopObserving();
+  });
+
+  it("reads the config once per page load, asking again only after a failed read", async () => {
+    vi.useFakeTimers();
+    const store = await freshStore();
+    const stub = stubAggregate(
+      (callIndex) => (callIndex === 0 ? httpStatusResponse(500) : configResponse(config([hostDecl("alpha")]))),
+      () => snapshotResponse(availableState(snapshotResult({ hosts: [observedHost("alpha")] }))),
+    );
+
+    const unsubscribe = store.subscribeInventoryGeneration(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getInventoryGeneration().transientError).toBe(
+      "Config request returned HTTP 500; check the deck server.",
+    );
+
+    // A failed read is not cached: the next poll asks again, and is accepted.
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(stub.configCalls).toBe(2);
+    expect(store.getInventoryGeneration().refreshGeneration).toBe(1);
+
+    // A successful read is: later polls refresh only the snapshot.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(stub.configCalls).toBe(2);
+    expect(stub.snapshotCalls).toBe(4);
+    unsubscribe();
+  });
+
+  it("shares one timer so an interval tick issues a single poll", async () => {
     vi.useFakeTimers();
     const stub = availableAggregate();
     const store = await freshStore();
@@ -155,11 +231,12 @@ describe("store lifecycle and concurrency", () => {
     const b = store.subscribeInventoryGeneration(() => {});
     await vi.advanceTimersByTimeAsync(0);
     expect(stub.configCalls).toBe(1);
+    expect(stub.snapshotCalls).toBe(1);
 
     await vi.advanceTimersByTimeAsync(30_000);
-    // One shared timer produced exactly one additional aggregate pair.
-    expect(stub.configCalls).toBe(2);
+    // One shared timer produced exactly one additional poll; the config is read once.
     expect(stub.snapshotCalls).toBe(2);
+    expect(stub.configCalls).toBe(1);
     a();
     b();
   });
@@ -240,20 +317,17 @@ describe("store lifecycle and concurrency", () => {
     const refreshed = store.getInventoryGeneration();
     expect(refreshed.refreshGeneration).toBe(2);
     expect(refreshed.snapshot.status).toBe("available");
-    expect(stub.configCalls).toBe(2);
+    expect(stub.snapshotCalls).toBe(2);
+    expect(stub.configCalls).toBe(1);
     second();
   });
 
   it("suppresses an abort-ignoring completion from a superseded poll", async () => {
     vi.useFakeTimers();
     const store = await freshStore();
-    const firstConfig = deferred<Response>();
     const firstSnapshot = deferred<Response>();
     const stub = stubAggregate(
-      (callIndex) =>
-        callIndex === 0
-          ? firstConfig.promise
-          : configResponse(config([hostDecl("beta")])),
+      () => configResponse(config([hostDecl("beta")])),
       (callIndex) =>
         callIndex === 0
           ? firstSnapshot.promise
@@ -268,11 +342,10 @@ describe("store lifecycle and concurrency", () => {
 
     // The interval fires a second poll that aborts and supersedes the first.
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(stub.configCalls).toBe(2);
+    expect(stub.snapshotCalls).toBe(2);
     expect(store.getInventoryGeneration().refreshGeneration).toBe(1);
 
     // The first poll now resolves despite the abort; it must publish nothing.
-    firstConfig.resolve(configResponse(config([hostDecl("stale")])));
     firstSnapshot.resolve(snapshotResponse(pendingState()));
     await vi.advanceTimersByTimeAsync(0);
     const current = store.getInventoryGeneration();
@@ -284,13 +357,9 @@ describe("store lifecycle and concurrency", () => {
   it("accepts only the current request token for out-of-order completions", async () => {
     vi.useFakeTimers();
     const store = await freshStore();
-    const firstConfig = deferred<Response>();
     const firstSnapshot = deferred<Response>();
     const stub = stubAggregate(
-      (callIndex) =>
-        callIndex === 0
-          ? firstConfig.promise
-          : configResponse(config([hostDecl("current")])),
+      () => configResponse(config([hostDecl("current")])),
       (callIndex) =>
         callIndex === 0
           ? firstSnapshot.promise
@@ -307,13 +376,12 @@ describe("store lifecycle and concurrency", () => {
     expect(store.getInventoryGeneration().snapshot.status).toBe("pending");
 
     // The older, out-of-order completion cannot replace or clear it.
-    firstConfig.resolve(httpStatusResponse(500));
     firstSnapshot.resolve(httpStatusResponse(500));
     await vi.advanceTimersByTimeAsync(0);
     const current = store.getInventoryGeneration();
     expect(current.refreshGeneration).toBe(1);
     expect(current.transientError).toBeNull();
-    expect(stub.configCalls).toBe(2);
+    expect(stub.snapshotCalls).toBe(2);
     unsubscribe();
   });
 
@@ -351,13 +419,13 @@ describe("store lifecycle and concurrency", () => {
     // Removing one of the two records keeps polling active.
     first();
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(stub.configCalls).toBe(2);
+    expect(stub.snapshotCalls).toBe(2);
     expect(listener).toHaveBeenCalled();
 
     // Removing the second record stops polling.
     second();
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(stub.configCalls).toBe(2);
+    expect(stub.snapshotCalls).toBe(2);
   });
 
   it("continues notifying after one listener throws and never rolls back", async () => {
@@ -520,16 +588,13 @@ describe("classification and retention", () => {
     const store = await freshStore();
     let mode: "ok" | "fail" = "ok";
     stubAggregate(
-      () =>
-        mode === "ok"
-          ? configResponse(config([hostDecl("alpha")]))
-          : httpStatusResponse(500),
+      () => configResponse(config([hostDecl("alpha")])),
       () =>
         mode === "ok"
           ? snapshotResponse(
               availableState(snapshotResult({ hosts: [observedHost("alpha")] })),
             )
-          : snapshotResponse(pendingState()),
+          : httpStatusResponse(500),
     );
     vi.useFakeTimers();
 
@@ -547,7 +612,7 @@ describe("classification and retention", () => {
     expect(failed.snapshot).toBe(accepted.snapshot);
     expect(failed.model).toBe(accepted.model);
     expect(failed.transientError).toBe(
-      "Config request returned HTTP 500; check the deck server.",
+      "Snapshot request returned HTTP 500; check the deck server.",
     );
 
     // A repeated identical failure is a reference-preserving no-op.
@@ -655,7 +720,7 @@ describe("compatibility and scope", () => {
   it("re-exports the compatibility surface from the legacy module path", async () => {
     vi.resetModules();
     const legacy = await import(
-      "../src/features/hosts-and-services/use-inventory-data.js"
+      "../../../modules/inventory/web/use-inventory-data.js"
     );
     expect(typeof legacy.useInventoryData).toBe("function");
     expect(typeof legacy.InventoryDataProvider).toBe("function");
@@ -670,7 +735,7 @@ describe("compatibility and scope", () => {
   it("throws InventoryContextError with its fixed code", async () => {
     vi.resetModules();
     const legacy = await import(
-      "../src/features/hosts-and-services/use-inventory-data.js"
+      "../../../modules/inventory/web/use-inventory-data.js"
     );
     const error = new legacy.InventoryContextError();
     expect(error.name).toBe("InventoryContextError");
@@ -681,7 +746,7 @@ describe("compatibility and scope", () => {
     const stub = availableAggregate();
     vi.resetModules();
     const legacy = await import(
-      "../src/features/hosts-and-services/use-inventory-data.js"
+      "../../../modules/inventory/web/use-inventory-data.js"
     );
     const env: Env = installEnv();
     const tree = h(legacy.InventoryDataProvider, {
@@ -705,7 +770,7 @@ describe("compatibility and scope", () => {
     availableAggregate();
     vi.resetModules();
     const legacy = await import(
-      "../src/features/hosts-and-services/use-inventory-data.js"
+      "../../../modules/inventory/web/use-inventory-data.js"
     );
     const env: Env = installEnv();
     const Probe = () => {
@@ -722,7 +787,7 @@ describe("compatibility and scope", () => {
   it("throws InventoryContextError when reading context outside a provider", async () => {
     vi.resetModules();
     const legacy = await import(
-      "../src/features/hosts-and-services/use-inventory-data.js"
+      "../../../modules/inventory/web/use-inventory-data.js"
     );
     const env: Env = installEnv();
     const Probe = () => {
@@ -739,7 +804,7 @@ describe("compatibility and scope", () => {
   it("uses only the two fixed GET endpoints and no browser persistence API", () => {
     const storePath = fileURLToPath(
       new URL(
-        "../src/features/hosts-and-services/inventory-store.ts",
+        "../../../modules/inventory/web/inventory-store.ts",
         TEST_FILE_URL,
       ),
     );

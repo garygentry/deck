@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { LEGACY_THEME_KEY, THEME_CHOICE_KEY } from "../../src/shell/theme-chain.js";
 
 /**
  * Theme switching: the `.dark` class on <html> selects the dark tokens in
@@ -7,12 +8,14 @@ import { expect, test, type Page } from "@playwright/test";
  * flashes the wrong theme while the app bundle loads.
  */
 
-const STORAGE_KEY = "deck-theme";
+/** Where the theme menu stores the viewer's choice; `deck-theme` is an older shell's key. */
+const STORAGE_KEY = THEME_CHOICE_KEY;
+const LEGACY_KEY = LEGACY_THEME_KEY;
 
-async function storePreference(page: Page, mode: string): Promise<void> {
+async function storePreference(page: Page, mode: string, key = STORAGE_KEY): Promise<void> {
   await page.addInitScript(
-    ([key, value]) => localStorage.setItem(key!, value!),
-    [STORAGE_KEY, mode],
+    ([storageKey, value]) => localStorage.setItem(storageKey!, value!),
+    [key, mode],
   );
 }
 
@@ -32,14 +35,18 @@ test.describe("pre-paint theme", () => {
     { stored: "system", system: "dark", dark: true },
     { stored: "dark", system: "light", dark: true },
     { stored: "light", system: "dark", dark: false },
+    // An older shell's key: its light/dark were choices; its system was only the default.
+    { stored: "light", system: "dark", dark: false, key: LEGACY_KEY },
+    { stored: "system", system: "dark", dark: true, key: LEGACY_KEY },
   ] as const;
 
-  for (const { stored, system, dark } of cases) {
-    test(`stored=${stored ?? "none"}, OS=${system} → ${dark ? "dark" : "light"}`, async ({
+  for (const { stored, system, dark, ...rest } of cases) {
+    const key = "key" in rest ? rest.key : STORAGE_KEY;
+    test(`stored ${key}=${stored ?? "none"}, OS=${system} → ${dark ? "dark" : "light"}`, async ({
       page,
     }) => {
       await page.emulateMedia({ colorScheme: system });
-      if (stored) await storePreference(page, stored);
+      if (stored) await storePreference(page, stored, key);
       await loadWithoutApp(page);
       expect(await isDark(page)).toBe(dark);
     });

@@ -6,13 +6,15 @@ import { Hono } from "hono";
 import type { Logger } from "pino";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import { createActionExecutor, type ActionExecutor } from "../src/actions/executor.js";
-import { createAuditStore, type AuditStore } from "../src/actions/audit.js";
-import { registerActionRoutes } from "../src/actions/route.js";
-import type { ActionsDeps, ActionsRuntime } from "../src/actions/runtime.js";
+import { createActionExecutor, type ActionExecutor } from "../../../modules/actions/server/executor.js";
+import { createAuditStore, type AuditStore } from "../../../modules/actions/server/audit.js";
+import { registerActionRoutes } from "../../../modules/actions/server/route.js";
+import type { Action } from "../../../modules/actions/server/config.generated.js";
+import type { ActionsDeps, ActionsRuntime } from "../../../modules/actions/server/runtime.js";
 import { createApp, type AppDeps, type ProviderReader } from "../src/server/app.js";
 import type { DeckConfig } from "../src/contract/index.js";
-import { createFakeSpawner, type FakeSpawner, type FakeSpawnerScript } from "./util/fake-spawner.js";
+import { actionsApp } from "./util/actions-module.js";
+import { createFakeSpawner, type FakeSpawner, type FakeSpawnerScript } from "../../../modules/actions/test/server/util/fake-spawner.js";
 import { makeDataDir } from "./util/tmp-data.js";
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures/actions-estate");
@@ -40,21 +42,18 @@ const noProviders: ProviderReader = {
   count: () => 0,
   listHealth: () => ({}),
   listProviders: () => [],
+  setProjections: () => {},
 };
 
 interface Harness {
   app: ReturnType<typeof createApp>;
   audit: AuditStore;
   spawner: FakeSpawner;
-  cancelSpy: Mock<[runId: string], boolean>;
+  cancelSpy: Mock<(runId: string) => boolean>;
   cleanups: (() => void)[];
 }
 
 interface HarnessOptions {
-  /** runtime.enabled (default true). */
-  enabled?: boolean;
-  /** Omit deps.actions entirely (capability fully absent, no store). */
-  noActions?: boolean;
   timeoutMs?: number;
   scripts?: FakeSpawnerScript | FakeSpawnerScript[];
 }
@@ -77,24 +76,28 @@ function makeHarness(options: HarnessOptions = {}): Harness {
   const spiedExecutor: ActionExecutor = {
     start: (invocation) => executor.start(invocation),
     cancel: cancelSpy,
+    cancelAll: () => executor.cancelAll(),
   };
 
   const runtime: ActionsRuntime = {
-    enabled: options.enabled ?? true,
     timeoutMs: options.timeoutMs ?? 600_000,
-    dataDir: dir,
     runners: loadRunnersMap(),
   };
   const actions: ActionsDeps = { runtime, executor: spiedExecutor, audit };
 
-  const deps: AppDeps = {
-    config: loadConfig(),
-    providers: noProviders,
+  const config = loadConfig();
+  const deps: AppDeps = { config, providers: noProviders, logger: fakeLogger() };
+  // The routes as the module host mounts them: the module's sub-app at the legacy prefix.
+  const routes = new Hono();
+  registerActionRoutes(routes, {
+    declared: () => (config.modules as { actions?: { actions?: Action[] } }).actions?.actions ?? [],
     logger: fakeLogger(),
-    ...(options.noActions ? {} : { actions }),
-  };
+    actions,
+  });
+  const app = createApp(deps);
+  app.route("/api/actions", routes);
 
-  return { app: createApp(deps), audit, spawner, cancelSpy, cleanups };
+  return { app, audit, spawner, cancelSpy, cleanups };
 }
 
 async function readLines(response: Response): Promise<Record<string, unknown>[]> {
@@ -134,26 +137,19 @@ describe("registerActionRoutes — route surface", () => {
   it("registers exactly the five routes: two POST (run + cancel), three GET (capability + audit)", () => {
     const app = new Hono();
     const before = app.routes.length;
-    registerActionRoutes(app, {
-      config: { schemaVersion: 1, estate: { name: "x" } } as DeckConfig,
-      providers: noProviders,
-      logger: fakeLogger(),
-    });
+    registerActionRoutes(app, { declared: () => [], logger: fakeLogger(), actions: {} as ActionsDeps });
     const added = app.routes.slice(before);
     const posts = added.filter((r) => r.method === "POST");
     const gets = added.filter((r) => r.method === "GET");
 
-    expect(posts.map((r) => r.path).sort()).toEqual(
-      ["/api/actions/:id", "/api/actions/runs/:runId/cancel"].sort(),
-    );
-    expect(gets.map((r) => r.path).sort()).toEqual(
-      ["/api/actions", "/api/actions/audit", "/api/actions/audit/:runId"].sort(),
-    );
+    // Relative to the module's prefix (`/api/m/actions`, and the legacy `/api/actions`).
+    expect(posts.map((r) => r.path).sort()).toEqual(["/:id", "/runs/:runId/cancel"].sort());
+    expect(gets.map((r) => r.path).sort()).toEqual(["/", "/audit", "/audit/:runId"].sort());
     // No other methods (PUT/DELETE/PATCH) and no extra routes added.
     expect(added.length).toBe(5);
   });
 
-  it("createApp registers the action routes (POST run answers, not the SPA fallback)", async () => {
+  it("the mounted action routes answer a POST run (not the SPA fallback)", async () => {
     const { app } = harness();
     const response = await app.request("/api/actions/restart-quiet", { method: "POST" });
     expect(response.status).toBe(200);
@@ -168,7 +164,7 @@ describe("registerActionRoutes — route surface", () => {
   });
 
   it("GET /api/actions reports disabled with HTTP 200 when the capability is off", async () => {
-    const { app } = harness({ noActions: true });
+    const { app } = await actionsApp();
     const response = await app.request("/api/actions");
     // 200 (not 403) is the whole point: the web reads this to skip the audit poll.
     expect(response.status).toBe(200);
@@ -228,20 +224,9 @@ describe("POST /api/actions/:id — happy path streaming", () => {
 });
 
 describe("POST /api/actions/:id — pre-run gates", () => {
-  it("gate 1: capability disabled (runtime.enabled=false) → 403 + rejected entry", async () => {
-    const { app, audit, spawner } = harness({ enabled: false });
-    const response = await app.request("/api/actions/restart-quiet", { method: "POST" });
-    expect(response.status).toBe(403);
-    expect(await response.json()).toMatchObject({ code: "ACTIONS_DISABLED" });
-    expect(spawner.calls).toHaveLength(0);
-
-    const list = await audit.list();
-    expect(list).toHaveLength(1);
-    expect(list[0].outcome).toBe("rejected");
-  });
-
-  it("gate 1: deps.actions absent → 403 and no store to write", async () => {
-    const { app, spawner } = harness({ noActions: true });
+  it("gate 1: capability off (the module is not running) → 403 and no store to write", async () => {
+    const spawner = createFakeSpawner({});
+    const { app } = await actionsApp({ createSpawner: () => spawner });
     const response = await app.request("/api/actions/restart-quiet", { method: "POST" });
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ code: "ACTIONS_DISABLED" });
@@ -321,7 +306,7 @@ describe("POST /api/actions/:id — runtime outcomes", () => {
   });
 });
 
-describe("POST /api/actions/:id — client disconnect (REQ-STREAM-03)", () => {
+describe("POST /api/actions/:id — client disconnect", () => {
   it("disconnect does not call executor.cancel; the run completes with a .log + audit entry", async () => {
     const { app, audit, cancelSpy } = harness({
       scripts: { stdout: [enc("chunk-a\n"), enc("chunk-b\n")], exitCode: 0, chunkDelayMs: 20 },
@@ -382,7 +367,7 @@ describe("POST /api/actions/runs/:runId/cancel", () => {
   });
 
   it("cancel is refused 403 when the capability is disabled", async () => {
-    const { app } = harness({ enabled: false });
+    const { app } = await actionsApp();
     const response = await app.request("/api/actions/runs/whatever/cancel", { method: "POST" });
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ code: "ACTIONS_DISABLED" });
@@ -421,8 +406,8 @@ describe("GET /api/actions/audit + /api/actions/audit/:runId", () => {
     expect(await missing.json()).toMatchObject({ code: "AUDIT_NOT_FOUND" });
   });
 
-  it("audit reads are refused 403 when deps.actions is absent", async () => {
-    const { app } = harness({ noActions: true });
+  it("audit reads are refused 403 when the capability is off", async () => {
+    const { app } = await actionsApp();
     const list = await app.request("/api/actions/audit");
     expect(list.status).toBe(403);
     const detail = await app.request("/api/actions/audit/whatever");
@@ -430,7 +415,7 @@ describe("GET /api/actions/audit + /api/actions/audit/:runId", () => {
   });
 });
 
-describe("deriveSource precedence (REQ-AUDIT-02)", () => {
+describe("deriveSource precedence", () => {
   it("falls back X-Forwarded-For → X-Real-IP → 'unknown' in the audit entry", async () => {
     // X-Real-IP used when no X-Forwarded-For.
     const h1 = harness({ scripts: { stdout: [enc("x\n")], exitCode: 0 } });
@@ -451,7 +436,7 @@ describe("deriveSource precedence (REQ-AUDIT-02)", () => {
   });
 });
 
-describe("security posture (REQ-SEC-01/02)", () => {
+describe("security posture", () => {
   it("no route challenges an unauthenticated request", async () => {
     const { app } = harness();
     const responses = await Promise.all([
@@ -492,7 +477,7 @@ describe("security posture (REQ-SEC-01/02)", () => {
       }
     }
 
-    const disabled = harness({ enabled: false });
+    const disabled = await actionsApp();
     const disabledResponse = await disabled.app.request("/api/actions/restart-quiet", {
       method: "POST",
     });

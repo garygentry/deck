@@ -6,7 +6,7 @@ import type {
   HostState,
   SnapshotProviderResult,
   SnapshotReadError,
-} from "../src/contract/index.js";
+} from "@deck/contract";
 import type { SnapshotReadEvent } from "../src/log/logger.js";
 import {
   SNAPSHOT_READ_ERROR_CODES,
@@ -14,7 +14,7 @@ import {
   SnapshotReadFailure,
   normalizeSnapshotFailure,
   type SnapshotReadErrorCode,
-} from "../src/providers/snapshot/errors.js";
+} from "../../../modules/snapshot/server/errors.js";
 
 describe("snapshot wire contract", () => {
   it("HostState covers exactly the five collection states", () => {

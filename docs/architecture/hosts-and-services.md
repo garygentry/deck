@@ -8,7 +8,7 @@ Deck presents declared estate intent beside the latest observed host and service
 2. When `DECK_SNAPSHOT_SOURCE` is present, provider registration creates one `snapshot` provider.
 3. The provider polls its source, validates changed documents, derives host collection state, and publishes a cached provider envelope.
 4. `/api/providers/snapshot` serves that envelope without performing source I/O in the request path.
-5. The browser polls `/api/config` and `/api/providers/snapshot` as one generation, then atomically commits the resulting inventory model.
+5. The browser polls `/api/providers/snapshot` and pairs each envelope with the config (read once per page load through the shared data layer) as one generation, then atomically commits the resulting inventory model.
 
 A failed refresh does not overwrite the last accepted snapshot. Provider freshness describes whether polling succeeds; each host's collection state independently describes the age and coverage of its observation.
 
@@ -25,7 +25,7 @@ Only the two list routes appear in primary navigation. Detail routes remain dire
 
 ## Extension slots
 
-Host and service detail pages expose `findings` and `configs` fragment slots in that order. Other features register fragments through the shared entity-fragment registry. Each fragment is isolated by an error boundary so a failing extension cannot blank the detail page or its sibling slot.
+Host and service detail pages render the sections other modules attach to `entity:host/sections` and `entity:service/sections`, in order: today drift's Findings, then sources' Configs. The pages own no list of sections, so any module can add one (see "Entity sections" in `ui.md`). Each fragment is isolated by an error boundary so a failing extension cannot blank the detail page or a sibling section.
 
 ## Snapshot configuration
 

@@ -1,0 +1,160 @@
+{
+  "validate": {
+    "exitClass": 0,
+    "stdout": "clean\n",
+    "stderr": ""
+  },
+  "config": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "schemaVersion": 1,
+      "estate": {
+        "name": "Actions smoke estate"
+      },
+      "actions": [
+        {
+          "id": "smoke-echo",
+          "title": "Smoke echo",
+          "runner": "smoke-echo",
+          "confirm": "none",
+          "description": "Echo runner exercised by the extended smoke path."
+        }
+      ]
+    }
+  },
+  "providers": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "providers": []
+    }
+  },
+  "envelopes": {
+    "parity-unknown-provider": {
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "error": "No provider registered with id 'parity-unknown-provider'",
+        "code": "PROVIDER_NOT_FOUND"
+      }
+    }
+  },
+  "health": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "status": "ok",
+      "uptimeMs": 0,
+      "providerCount": 0,
+      "providers": {},
+      "modules": {}
+    }
+  },
+  "actions": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "enabled": true
+    }
+  },
+  "actionRefusals": {
+    "unknownAction": {
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "error": "No action is declared with id 'parity-undeclared'.",
+        "code": "ACTION_UNKNOWN"
+      }
+    },
+    "runnerUnresolved": {
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "error": "No action is declared with id 'orphan'.",
+        "code": "ACTION_UNKNOWN"
+      }
+    },
+    "paramsInvalid": {
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "error": "No action is declared with id 'deploy'.",
+        "code": "ACTION_UNKNOWN"
+      }
+    }
+  },
+  "actionsAudit": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": [
+      {
+        "runId": "<uuid:string>",
+        "timestamp": "2026-01-01T00:00:00.000Z",
+        "actionId": "deploy",
+        "runner": "",
+        "outcome": "rejected",
+        "exitStatus": null,
+        "durationMs": 0,
+        "outputBytes": 0
+      },
+      {
+        "runId": "<uuid:string>",
+        "timestamp": "2026-01-01T00:00:00.000Z",
+        "actionId": "orphan",
+        "runner": "",
+        "outcome": "rejected",
+        "exitStatus": null,
+        "durationMs": 0,
+        "outputBytes": 0
+      },
+      {
+        "runId": "<uuid:string>",
+        "timestamp": "2026-01-01T00:00:00.000Z",
+        "actionId": "parity-undeclared",
+        "runner": "",
+        "outcome": "rejected",
+        "exitStatus": null,
+        "durationMs": 0,
+        "outputBytes": 0
+      }
+    ]
+  },
+  "llmUsage": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "enabled": false,
+      "now": 1767225600000,
+      "poll": {
+        "mode": "paused",
+        "nextPollAt": null,
+        "consecutiveErrors": 0
+      },
+      "thresholds": {
+        "warn": 75,
+        "danger": 90
+      },
+      "claude": null,
+      "codex": null
+    }
+  },
+  "routes": [
+    "ALL /*",
+    "GET /api/actions",
+    "GET /api/actions/audit",
+    "GET /api/actions/audit/:runId",
+    "GET /api/config",
+    "GET /api/health",
+    "GET /api/llm-usage",
+    "GET /api/llm-usage/refresh",
+    "GET /api/providers",
+    "GET /api/providers/:id",
+    "GET /api/sources/:id/file",
+    "GET /api/sources/:id/raw",
+    "GET /api/sources/:id/search",
+    "GET /api/sources/:id/tree",
+    "POST /api/actions/:id",
+    "POST /api/actions/runs/:runId/cancel"
+  ]
+}

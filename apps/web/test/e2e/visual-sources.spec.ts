@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { seedTheme } from "./theme-seed.js";
 
 /**
  * Visual baselines for the source browser (Docs + Configs) with a document / file open, against
@@ -60,7 +61,7 @@ test.describe("source browser visual baselines", () => {
       for (const width of WIDTHS) {
         test(`${name} ${width}px ${theme}`, async ({ page }) => {
           await page.clock.setFixedTime(FROZEN_NOW);
-          await page.addInitScript((mode) => localStorage.setItem("deck-theme", mode), theme);
+          await seedTheme(page, theme);
           await page.setViewportSize({ width, height: 900 });
           await pinFreshness(page, name);
           await openSource(page, route, heading);

@@ -2,10 +2,17 @@ import { Suspense, useEffect } from "react";
 import { Callout, LoadingState, PageErrorBoundary, useDocumentTitle } from "@/ui";
 import { Route, Router, Switch, useLocation } from "./router.js";
 import { getPages } from "../registry/registry.js";
+import { useRegistryVersion } from "../registry/use-registry.js";
 import { AppShell } from "./AppShell.js";
-import { matchPage } from "./nav.js";
+import { bootHome } from "./boot.js";
+import { configPageRegistrations } from "./config-page/routes.js";
+import { useBrandTitle } from "./manifest-slot.js";
+import { ModuleNotEnabledPage } from "./ModuleNotEnabledPage.js";
 import { NotFoundPage } from "./NotFoundPage.js";
-import { useConfig } from "./use-config.js";
+import { ReloadNotice } from "./ReloadNotice.js";
+import { HOME_PATH, resolveRoutes, routeForPath, routeLabel, type ResolvedRoutes } from "./routes.js";
+import { useConfig, useUiManifest, type UiManifestState } from "../data/index.js";
+import { runtimePageRegistrations, useRuntimeModules, useRuntimeModulesVersion } from "../runtime/stand-ins.js";
 
 export function App({ url }: { url?: string } = {}) {
   return (
@@ -18,22 +25,47 @@ export function App({ url }: { url?: string } = {}) {
 
 /** The frame around the routed page; reads the location, so it sits inside the Router. */
 function Shell() {
+  // Re-render when an extension registers late (a lazily loaded module).
+  useRegistryVersion();
+  // Runtime modules' web halves load once the manifest is in; until then (or if they cannot
+  // render) their pages route to stand-ins.
+  useRuntimeModules();
+  useRuntimeModulesVersion();
+  const manifest = useUiManifest();
   const pages = getPages();
+  // Config pages (`ui.pages`) exist only in the manifest; they route like any module's page.
+  const routes = resolveRoutes(manifest, [...pages, ...configPageRegistrations(manifest), ...runtimePageRegistrations(manifest, pages)], bootHome());
   const { path } = useLocation();
   const config = useConfig();
-  const title = matchPage(pages, path)?.label;
-  useDocumentTitle(title ?? "Not found");
+  const pending = awaitingConfigPage(manifest, routes, path, bootHome());
+  const route = routeForPath(routes, path);
+  const title = pending ? "Loading" : route === undefined ? undefined : routeLabel(manifest, route);
+  useDocumentTitle(title ?? "Not found", useBrandTitle());
 
   return (
-    <AppShell pages={pages} path={path} title={title}>
+    <AppShell pages={routes.routed} home={routes.home} path={path} title={title}>
       {config.status === "error" && (
         <Callout tone="danger" title="Failed to load config" className="mb-4">
           {config.message}
         </Callout>
       )}
-      <RoutedContent pages={pages} />
+      <ReloadNotice />
+      {pending ? <LoadingState label="Loading page…" /> : <RoutedContent routes={routes} />}
     </AppShell>
   );
+}
+
+/**
+ * Whether the page at `path` may be a config page the manifest has yet to deliver: while it
+ * loads, `/` when the server's home page is not a page this bundle routes on its own (so only
+ * the manifest can route it), and any path no registered page matches. Rendering a loading
+ * state then, instead of the portal or "not found", keeps a config home page or a deep link to
+ * one from flashing the wrong page.
+ */
+export function awaitingConfigPage(manifest: UiManifestState, routes: ResolvedRoutes, path: string, home: string | null | undefined): boolean {
+  if (manifest.status !== "loading") return false;
+  if (path === HOME_PATH) return typeof home === "string" && !routes.routed.some((route) => route.id === home);
+  return routeForPath(routes, path) === undefined;
 }
 
 /**
@@ -78,15 +110,23 @@ function LinkInterceptor() {
  * (the header and nav stay usable). The boundary resets on route change, keyed by
  * the current path. Rendered inside the Router so it can read the location.
  */
-function RoutedContent({ pages }: { pages: ReturnType<typeof getPages> }) {
+function RoutedContent({ routes }: { routes: ResolvedRoutes }) {
   const { path } = useLocation();
   return (
     <PageErrorBoundary resetKey={path}>
       {/* Heavy pages register lazy components; this covers their first load. */}
       <Suspense fallback={<LoadingState label="Loading page…" />}>
         <Switch>
-          {pages.map((page) => (
+          {/* The home page, chosen by id: first, so no page sharing the path can take it. */}
+          {routes.home !== undefined && <Route key="home" path={HOME_PATH} component={routes.home.component} />}
+          {routes.routed.map((page) => (
             <Route key={page.id} path={page.path} component={page.component} />
+          ))}
+          {/* A disabled module's page: say the module is off, not that nothing is there. */}
+          {routes.notEnabled.map((route) => (
+            <Route key={route.id} path={route.path}>
+              <ModuleNotEnabledPage route={route} />
+            </Route>
           ))}
           <Route component={NotFoundPage} />
         </Switch>

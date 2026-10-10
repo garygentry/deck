@@ -123,7 +123,11 @@ export function DataTable<T>({
     return { first, real };
   })();
 
-  const cellPad = density === "compact" ? "h-8 px-2 py-1" : "h-11 px-3 py-2.5";
+  // Spacing tokens (theme.css): the operator's compact density tightens either table density.
+  const cellPad =
+    density === "compact"
+      ? "h-(--table-compact-cell-h) px-(--table-compact-cell-px) py-(--table-compact-cell-py)"
+      : "h-(--table-cell-h) px-(--table-cell-px) py-(--table-cell-py)";
   const rows = table.getRowModel().rows;
   const emptyProps: Omit<EmptyStateProps, "compact"> = isEmptyStateProps(empty)
     ? empty
@@ -192,7 +196,7 @@ export function DataTable<T>({
         <TableBody>
           {rows.length === 0 ? (
             <TableRow className="hover:bg-transparent">
-              <TableCell colSpan={Math.max(1, leafColumns.length)} className="px-3">
+              <TableCell colSpan={Math.max(1, leafColumns.length)} className="px-(--table-cell-px)">
                 <EmptyState compact {...emptyProps} />
               </TableCell>
             </TableRow>

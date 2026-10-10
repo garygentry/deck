@@ -1,0 +1,9 @@
+# A group may list the same service, or the same link, more than once: valid in v1, and
+# still valid in v2 (the portal's identity rows only pair items across layers).
+schemaVersion: 2
+estate:
+  name: repeated-items
+hosts:
+  - { name: apps, kind: vm, purpose: Application host }
+services:
+  - { name: portal, host: apps, kind: docker-compose, purpose: Home dashboard }

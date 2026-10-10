@@ -8,6 +8,10 @@ import { invalid as invalidManifest } from "./invalid/index.js";
 import { config as minimalConfig, snapshot as minimalSnapshot } from "./minimal/estate.js";
 
 export { benchmarkEstate } from "./benchmark.js";
+export { composeFixtures, FIXTURE_MODULE_STANDINS } from "./modules.js";
+export { FIXTURE_DATA_SOURCES } from "./data-sources.js";
+export { fixtureSafeHref } from "./safe-href.js";
+export { kernelInvalid } from "./invalid/kernel.js";
 
 const srcPath = (relative: string): string => fileURLToPath(new URL(relative, import.meta.url));
 type SnapshotKey = "combined" | "fresh" | "stale" | "partial" | "unreachable";

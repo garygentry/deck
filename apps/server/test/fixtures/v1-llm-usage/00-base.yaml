@@ -1,0 +1,6 @@
+# Parity fixture: a v1 estate with the optional llmUsage section (overlay-owned, so it
+# lives in 10-overlay.yaml). The golden pins /api/health.llmUsage and the
+# /api/llm-usage routes.
+schemaVersion: 1
+estate:
+  name: llm-usage-estate

@@ -1,0 +1,87 @@
+import type { UiExtension } from "@deck/module-sdk";
+import { APP_TITLE, isContributedIconName, isIconName } from "@/ui";
+import { useUiManifest, type UiManifestState } from "../data/index.js";
+import { getAllExtensions, type Extension } from "../registry/registry.js";
+import { useRegistryVersion } from "../registry/use-registry.js";
+import { runtimeExtensionStandIn, runtimeModuleIds, useRuntimeModulesVersion } from "../runtime/stand-ins.js";
+
+/**
+ * The extensions a shell slot renders, by order then id. The UI manifest decides which render,
+ * at what order and with what config: each of its entries for the slot renders the web
+ * extension of the same id and kind (one the web does not bundle is skipped), with the entry's
+ * config in place of the registered one. Until the manifest loads the slot is empty;
+ * if it cannot be read, the slot renders what the web registered there, so the shell keeps
+ * working. An entry the web registered nothing for renders `standIn`'s extension, if any (a
+ * runtime module whose web half cannot render shows a tile saying so).
+ */
+export function placeExtensions(
+  slot: string,
+  manifest: UiManifestState,
+  registered: readonly Extension[],
+  standIn: (entry: UiExtension) => Extension | undefined = () => undefined,
+): readonly Extension[] {
+  if (manifest.status === "loading") return [];
+  if (manifest.status === "error" || !Array.isArray(manifest.manifest.extensions)) {
+    return registered.filter((extension) => extension.enabled && extension.attachTo.slot === slot).sort(byOrderThenId);
+  }
+  const byId = new Map(registered.map((extension) => [extension.id as string, extension]));
+  return manifest.manifest.extensions
+    .flatMap((entry) => {
+      if (entry.slot !== slot) return [];
+      const extension = byId.get(entry.id) ?? standIn(entry);
+      // The web's own switch still applies: an extension it registered as off never renders.
+      if (extension?.component === undefined || !extension.enabled || extension.kind !== entry.kind) return [];
+      // The manifest's config is the resolved one (defaults, then overrides): it replaces the
+      // registered config wholesale, never merged.
+      return [{ ...extension, attachTo: { slot, order: entry.order }, config: Object.freeze({ ...(entry.config ?? {}) }) }];
+    })
+    .sort(byOrderThenId);
+}
+
+function byOrderThenId(a: Extension, b: Extension): number {
+  return a.attachTo.order - b.attachTo.order || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+/** {@link placeExtensions} for a slot, re-rendering when the manifest loads or the registry changes. */
+export function useManifestSlot(slot: string): readonly Extension[] {
+  useRegistryVersion();
+  useRuntimeModulesVersion();
+  const manifest = useUiManifest();
+  const runtime = runtimeModuleIds(manifest);
+  return placeExtensions(slot, manifest, getAllExtensions(), (entry) => runtimeExtensionStandIn(entry, runtime));
+}
+
+/** The brand title from the manifest; deck's when it cannot be read, none while it loads. */
+export function brandTitle(manifest: UiManifestState): string | undefined {
+  if (manifest.status === "loading") return undefined;
+  if (manifest.status === "error") return APP_TITLE;
+  const title = manifest.manifest.brand?.title;
+  return typeof title === "string" && title.trim() !== "" ? title : APP_TITLE;
+}
+
+/** The brand's first character (a whole code point, so an emoji stays intact), upper-cased. */
+export function brandInitial(brand: string | undefined): string {
+  return brand === undefined ? "" : (Array.from(brand.trim())[0] ?? "").toUpperCase();
+}
+
+export function useBrandTitle(): string | undefined {
+  return brandTitle(useUiManifest());
+}
+
+/** What the sidebar's brand mark shows: the logo, else the icon, else the title's initial. */
+export type BrandMark = { kind: "logo"; url: string } | { kind: "icon"; name: string } | { kind: "initial" };
+
+/**
+ * The brand mark from the manifest's `brand`, read leniently: a logo URL the server would not
+ * send (not http(s) or root-relative) and an icon the web does not bundle are ignored, so the
+ * mark falls back rather than breaking. A module's icon (`<module>/<name>`) is kept: `Icon`
+ * renders it once the manifest's icons are in, the fallback icon if it never is. The initial
+ * while the manifest loads or is unreadable.
+ */
+export function brandMark(manifest: UiManifestState): BrandMark {
+  if (manifest.status !== "ready") return { kind: "initial" };
+  const { logoUrl, icon } = (manifest.manifest.brand ?? {}) as { logoUrl?: unknown; icon?: unknown };
+  if (typeof logoUrl === "string" && /^(?:https?:\/\/|\/(?!\/))/.test(logoUrl)) return { kind: "logo", url: logoUrl };
+  if (typeof icon === "string" && (isIconName(icon) || isContributedIconName(icon))) return { kind: "icon", name: icon };
+  return { kind: "initial" };
+}

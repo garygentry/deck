@@ -1,0 +1,134 @@
+import { EMBED_SANDBOX } from "@deck/contract/modules/widgets";
+// The one url rule (dependency-free), which config validation runs too.
+import { embedUrlProblem, frameOriginOf } from "@deck/schema/embed";
+import { Button, EmptyState, ErrorState, ExternalLink, Icon, LoadingState, cn } from "@/ui";
+
+import { useUiManifest } from "../../data/index.js";
+import { bootFrameOrigins, bootFrameSelf } from "../../shell/boot.js";
+import type { WidgetProps } from "../../registry/registry.js";
+
+/**
+ * Whether this page's Content-Security-Policy lets it frame `origin`: the origins the server
+ * named when it served the page (`frameOrigins`), or any while the page carries none (the dev
+ * server).
+ */
+export function frameAllowed(origin: string, frameOrigins: readonly string[] | undefined): boolean {
+  return frameOrigins === undefined || frameOrigins.includes(origin);
+}
+
+export interface EmbedOptions {
+  url: string;
+  height?: "sm" | "md" | "lg" | "xl";
+  sandbox?: string[];
+}
+
+// Static class map (Tailwind sees every class literally), so no inline style is needed.
+const HEIGHT: Record<NonNullable<EmbedOptions["height"]>, string> = {
+  sm: "h-60",
+  md: "h-96",
+  lg: "h-144",
+  xl: "h-192",
+};
+
+/** What a framed page may do unless the widget says otherwise: run its own scripts, as its own origin. */
+export const DEFAULT_EMBED_SANDBOX: readonly string[] = ["allow-scripts", "allow-same-origin"];
+
+/**
+ * The sandbox tokens a widget may grant: its options schema's list. Top navigation, modals,
+ * pointer lock and the rest are never granted, whatever reaches the component.
+ */
+const SANDBOX_TOKENS: ReadonlySet<string> = new Set(EMBED_SANDBOX);
+
+/** The frame's `sandbox` attribute: the widget's tokens (default {@link DEFAULT_EMBED_SANDBOX}), known ones only. */
+export function sandboxOf(tokens: readonly string[] | undefined): string {
+  return (tokens ?? DEFAULT_EMBED_SANDBOX).filter((token) => SANDBOX_TOKENS.has(token)).join(" ");
+}
+
+const OWN_PAGES = "Deck does not frame its own pages; place their widgets on a dashboard instead.";
+
+/**
+ * The URL the frame may show: one config validation accepts (`embedUrlProblem`, the same check)
+ * on another origin than deck's. A page of deck's own origin is refused: framed with scripts and
+ * its origin, it could lift its own sandbox and act as deck. Only the configured URL is checked;
+ * where that page later redirects or navigates is the framed site's.
+ */
+export function embedTarget(raw: unknown, ownOrigin: string): { url: URL } | { problem: string } {
+  const problem = embedUrlProblem(raw);
+  if (problem !== null) return { problem };
+  const url = new URL(raw as string);
+  if (url.origin === ownOrigin) return { problem: OWN_PAGES };
+  return { url };
+}
+
+/**
+ * `core/embed`: another site's page in a sandboxed frame, with a link that opens it in a new tab
+ * (for a site that refuses to be framed). It frames nothing unless the UI manifest says the ui
+ * config allows embeds (`ui.allowUnsafeEmbeds: true`); until the manifest arrives it waits, and
+ * when the manifest cannot be read it stays off. The frame sends no referrer and loads lazily.
+ * An origin the page's policy can never name says so; a page served before embeds of its origin
+ * were allowed (a `ui` hot reload since) cannot frame it under its policy, so the widget asks
+ * for a reload instead.
+ */
+export function EmbedWidget({
+  options,
+  widget,
+  frameOrigins = bootFrameOrigins(),
+  frameSelf = bootFrameSelf(),
+}: WidgetProps<EmbedOptions> & { frameOrigins?: readonly string[] | undefined; frameSelf?: readonly string[] }) {
+  const manifest = useUiManifest();
+  const target = embedTarget(options.url, window.location.origin);
+  if ("problem" in target) return <ErrorState compact title="Cannot embed this page" message={target.problem} />;
+  const open = (
+    <ExternalLink href={target.url.href} className="text-sm">
+      Open {target.url.host}
+    </ExternalLink>
+  );
+  if (manifest.status === "loading") return <LoadingState label="Loading widget…" preset="lines" rows={2} />;
+  if (manifest.status !== "ready" || manifest.manifest.allowUnsafeEmbeds !== true) {
+    return <EmptyState compact icon="eye-off" title="Embeds are off" description="Set ui.allowUnsafeEmbeds: true to show this page here." action={open} />;
+  }
+  // Deck's own origin under another name (its public one, behind a proxy): the server left it out.
+  if (frameSelf.includes(target.url.origin)) return <ErrorState compact title="Cannot embed this page" message={OWN_PAGES} />;
+  // An origin no Content-Security-Policy can name (an IPv6 literal, a host with `_`): never framed.
+  if (frameOriginOf(target.url.href) === null) {
+    return (
+      <div data-slot="embed" className="flex flex-col gap-2">
+        <ErrorState compact title="This address can't be embedded" message="Deck can frame only a host name or an IPv4 address." />
+        <div className="flex justify-end">{open}</div>
+      </div>
+    );
+  }
+  if (!frameAllowed(target.url.origin, frameOrigins)) {
+    // Fixed text: the URL is not repeated here.
+    return (
+      <EmptyState
+        compact
+        icon="refresh-cw"
+        title="Reload to show this page"
+        description="Embeds changed after this page loaded."
+        action={(
+          <Button type="button" variant="outline" size="sm" onClick={() => window.location.reload()}>
+            <Icon name="refresh-cw" size={14} />
+            Reload
+          </Button>
+        )}
+      />
+    );
+  }
+  const sandbox = sandboxOf(options.sandbox);
+  return (
+    <div data-slot="embed" className="flex flex-col gap-2">
+      {/* A browser applies sandbox changes only on the next navigation, so a new URL or policy is a new frame. */}
+      <iframe
+        key={`${target.url.href} ${sandbox}`}
+        src={target.url.href}
+        title={widget.title ?? `Page from ${target.url.host}`}
+        sandbox={sandbox}
+        referrerPolicy="no-referrer"
+        loading="lazy"
+        className={cn("block w-full rounded-md border border-border bg-background", HEIGHT[options.height ?? "md"] ?? HEIGHT.md)}
+      />
+      <div className="flex justify-end">{open}</div>
+    </div>
+  );
+}

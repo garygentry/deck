@@ -1,5 +1,5 @@
 import { finding, type Finding } from "../findings.js";
-import { supportedVersions } from "../version.js";
+import { supportedConfigVersions, supportedSnapshotVersions } from "../version.js";
 import type {
   DeckConfigDocument,
   SnapshotDocument,
@@ -94,7 +94,7 @@ export function validateSnapshot(snapshot: unknown, config?: unknown): Validatio
       return toolError("VERSION_UNREADABLE", "schemaVersion is not an integer");
     }
 
-    const versionFinding = checkVersion(version as number);
+    const versionFinding = checkVersion(version as number, supportedSnapshotVersions);
     if (versionFinding) return build([versionFinding]);
 
     if (!checkSnapshot(snapshot)) return build(mapAjvErrors(checkSnapshot.errors, "merged"));
@@ -106,7 +106,7 @@ export function validateSnapshot(snapshot: unknown, config?: unknown): Validatio
       if (!isObject(config)) {
         return toolError("INPUT_NOT_OBJECT", "config is not an object");
       }
-      if (!Number.isInteger(config.schemaVersion) || !supportedVersions.has(config.schemaVersion as number)) {
+      if (!Number.isInteger(config.schemaVersion) || !supportedConfigVersions.has(config.schemaVersion as number)) {
         return toolError("CONFIG_UNSUPPORTED", "config schemaVersion is absent, unreadable, or unsupported");
       }
       findings.push(...crossCheck(document, config as unknown as DeckConfigDocument));

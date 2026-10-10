@@ -1,0 +1,12 @@
+# Parity fixture: one of every network provider kind. The parity harness routes
+# parity-upstream.invalid URLs to canned upstream bodies (test/parity/upstream.ts),
+# so success, error-status and unrouted (network failure) paths are all pinned.
+schemaVersion: 1
+estate:
+  name: Integrations parity estate
+hosts:
+  - { name: web, kind: vm, purpose: Healthy web host }
+  - { name: api, kind: vm, purpose: Host whose health endpoint returns 503 }
+  - { name: edge, kind: appliance, purpose: Host whose health URL is unrouted }
+services:
+  - { name: site, host: web, kind: docker-compose, purpose: Site, status: active }

@@ -20,7 +20,7 @@ function Wide({ children }: { children: ReactNode }) {
   return <div className="w-full min-w-0">{children}</div>;
 }
 
-// A stand-in status marker (icon + text). Real screens pass the §B StatusBadge.
+// A stand-in status marker (icon + text). Real screens pass a StatusBadge.
 function Marker({ tone, children }: { tone: "ok" | "warn" | "danger"; children: ReactNode }) {
   const cls = {
     ok: "border-status-ok-border bg-status-ok-bg text-status-ok-fg",

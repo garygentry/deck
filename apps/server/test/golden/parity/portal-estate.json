@@ -1,0 +1,375 @@
+{
+  "validate": {
+    "exitClass": 0,
+    "stdout": "clean\n",
+    "stderr": ""
+  },
+  "config": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "schemaVersion": 1,
+      "estate": {
+        "name": "Portal smoke estate"
+      },
+      "hosts": [
+        {
+          "name": "atlas",
+          "kind": "bare-metal",
+          "purpose": "Visible application host"
+        },
+        {
+          "name": "shadow",
+          "kind": "vm",
+          "purpose": "Host hidden from the portal",
+          "hidden": true
+        }
+      ],
+      "services": [
+        {
+          "name": "containers",
+          "host": "atlas",
+          "kind": "docker-compose",
+          "purpose": "Docker-backed service",
+          "status": "active",
+          "bindings": {
+            "docker": {
+              "container": "deck-server"
+            }
+          },
+          "links": [
+            {
+              "title": "Containers",
+              "href": "https://containers.example.invalid/"
+            }
+          ]
+        },
+        {
+          "name": "status",
+          "host": "atlas",
+          "kind": "container",
+          "purpose": "Gatus-backed service",
+          "status": "active",
+          "bindings": {
+            "gatus": {
+              "endpoint": "portal-health"
+            }
+          },
+          "links": [
+            {
+              "title": "Status",
+              "href": "https://status.example.invalid/"
+            }
+          ]
+        },
+        {
+          "name": "hidden-service",
+          "host": "atlas",
+          "kind": "systemd",
+          "purpose": "Service hidden from the portal",
+          "status": "active",
+          "hidden": true
+        },
+        {
+          "name": "hidden-host-service",
+          "host": "shadow",
+          "kind": "systemd",
+          "purpose": "Service on a hidden host",
+          "status": "active"
+        },
+        {
+          "name": "no-link",
+          "host": "atlas",
+          "kind": "appliance",
+          "purpose": "Focusable service without navigation",
+          "status": "active"
+        }
+      ],
+      "groups": [
+        {
+          "id": "primary",
+          "title": "Primary services",
+          "order": 10,
+          "icon": "layout-grid",
+          "items": [
+            {
+              "type": "service",
+              "host": "atlas",
+              "name": "containers",
+              "title": "Containers"
+            },
+            {
+              "type": "link",
+              "title": "Runbook",
+              "href": "https://runbook.example.invalid/",
+              "description": "Estate operations"
+            },
+            {
+              "type": "group",
+              "id": "monitoring",
+              "title": "Monitoring",
+              "order": 20,
+              "items": [
+                {
+                  "type": "service",
+                  "host": "atlas",
+                  "name": "status",
+                  "title": "Status checks"
+                },
+                {
+                  "type": "link",
+                  "title": "Metrics",
+                  "href": "https://metrics.example.invalid/"
+                }
+              ]
+            },
+            {
+              "type": "service",
+              "host": "atlas",
+              "name": "no-link",
+              "title": "No-link service"
+            },
+            {
+              "type": "service",
+              "host": "atlas",
+              "name": "hidden-service"
+            },
+            {
+              "type": "service",
+              "host": "shadow",
+              "name": "hidden-host-service"
+            }
+          ]
+        },
+        {
+          "id": "empty",
+          "title": "Empty group",
+          "order": 30,
+          "items": []
+        }
+      ],
+      "integrations": [
+        {
+          "id": "docker-proxy",
+          "kind": "docker",
+          "title": "Docker socket proxy",
+          "baseUrl": "http://127.0.0.1:65534"
+        },
+        {
+          "id": "gatus-api",
+          "kind": "gatus",
+          "title": "Gatus API",
+          "baseUrl": "http://127.0.0.1:65533"
+        }
+      ]
+    }
+  },
+  "providers": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "providers": [
+        {
+          "id": "docker",
+          "kind": "docker"
+        },
+        {
+          "id": "gatus",
+          "kind": "gatus"
+        }
+      ]
+    }
+  },
+  "envelopes": {
+    "docker": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": "docker",
+        "kind": "docker",
+        "freshness": {
+          "state": "fresh",
+          "observedAt": "2026-01-01T00:00:00.000Z",
+          "ageMs": 0,
+          "ttlMs": 30000
+        },
+        "data": {
+          "containers": [
+            {
+              "name": "site",
+              "state": "running",
+              "health": "healthy",
+              "status": "Up 2 hours (healthy)"
+            },
+            {
+              "name": "worker",
+              "state": "running",
+              "health": "unhealthy",
+              "status": "Up 1 minute (unhealthy)"
+            },
+            {
+              "name": "migrate",
+              "state": "exited",
+              "health": "none",
+              "status": "Exited (0) 1 hour ago"
+            },
+            {
+              "name": "cache",
+              "state": "restarting",
+              "health": "starting",
+              "status": "Up 2 seconds (health: starting)"
+            }
+          ]
+        },
+        "error": null
+      }
+    },
+    "gatus": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": "gatus",
+        "kind": "gatus",
+        "freshness": {
+          "state": "fresh",
+          "observedAt": "2026-01-01T00:00:00.000Z",
+          "ageMs": 0,
+          "ttlMs": 30000
+        },
+        "data": {
+          "endpoints": [
+            {
+              "key": "core_site",
+              "name": "Site",
+              "group": "Core",
+              "up": true,
+              "latencyMs": 2
+            },
+            {
+              "key": "core_api",
+              "name": "API",
+              "group": "Core",
+              "up": false,
+              "latencyMs": 999
+            },
+            {
+              "key": "no-results",
+              "name": "Waiting",
+              "up": false,
+              "latencyMs": null
+            }
+          ]
+        },
+        "error": null
+      }
+    },
+    "parity-unknown-provider": {
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "error": "No provider registered with id 'parity-unknown-provider'",
+        "code": "PROVIDER_NOT_FOUND"
+      }
+    }
+  },
+  "health": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "status": "ok",
+      "uptimeMs": 0,
+      "providerCount": 2,
+      "providers": {
+        "docker": {
+          "kind": "docker",
+          "ok": true,
+          "detail": "4 containers"
+        },
+        "gatus": {
+          "kind": "gatus",
+          "ok": true,
+          "detail": "3 endpoints"
+        }
+      },
+      "modules": {}
+    }
+  },
+  "actions": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "enabled": false
+    }
+  },
+  "actionRefusals": {
+    "unknownAction": {
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "error": "The actions capability is disabled on this deck instance.",
+        "code": "ACTIONS_DISABLED"
+      }
+    },
+    "runnerUnresolved": {
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "error": "The actions capability is disabled on this deck instance.",
+        "code": "ACTIONS_DISABLED"
+      }
+    },
+    "paramsInvalid": {
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "error": "The actions capability is disabled on this deck instance.",
+        "code": "ACTIONS_DISABLED"
+      }
+    }
+  },
+  "actionsAudit": {
+    "status": 403,
+    "contentType": "application/json",
+    "body": {
+      "error": "The actions capability is disabled on this deck instance.",
+      "code": "ACTIONS_DISABLED"
+    }
+  },
+  "llmUsage": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "enabled": false,
+      "now": 1767225600000,
+      "poll": {
+        "mode": "paused",
+        "nextPollAt": null,
+        "consecutiveErrors": 0
+      },
+      "thresholds": {
+        "warn": 75,
+        "danger": 90
+      },
+      "claude": null,
+      "codex": null
+    }
+  },
+  "routes": [
+    "ALL /*",
+    "GET /api/actions",
+    "GET /api/actions/audit",
+    "GET /api/actions/audit/:runId",
+    "GET /api/config",
+    "GET /api/health",
+    "GET /api/llm-usage",
+    "GET /api/llm-usage/refresh",
+    "GET /api/providers",
+    "GET /api/providers/:id",
+    "GET /api/sources/:id/file",
+    "GET /api/sources/:id/raw",
+    "GET /api/sources/:id/search",
+    "GET /api/sources/:id/tree",
+    "POST /api/actions/:id",
+    "POST /api/actions/runs/:runId/cancel"
+  ]
+}

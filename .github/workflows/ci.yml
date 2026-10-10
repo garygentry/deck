@@ -1,8 +1,12 @@
 name: ci
 
+# The repo is public, so Actions minutes are free. CI runs on every PR, and on
+# pushes to the long-lived branches only: work branches get CI from their PR, so a
+# push to a branch with an open PR runs once, not twice. There are no path
+# filters, because the required checks must report on every PR.
 on:
   push:
-    branches: ["**"]
+    branches: [main, "epic/**"]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -19,12 +23,20 @@ on:
 permissions:
   contents: read
 
+# A newer push supersedes an in-flight run for the same PR or branch. main is
+# exempt so every merge there keeps a complete result. The event name is part of
+# the group so a push never cancels a workflow_dispatch (e.g. update_visuals).
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   node-pnpm:
     # Typecheck + unit tests under Node. The Playwright e2e runs separately in the
     # sharded `web-e2e` job below, so this job stays fast (~2-3 min) and no longer
     # gates on the full ~10-min browser suite.
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       # The web unit run does not need Bun, but keep parity of the toolchain simple.
@@ -38,11 +50,16 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck all workspaces
         run: pnpm -r typecheck
-      - name: Unit tests (schema + server + web)
+      - name: Unit tests (schema + module-sdk + sdk + contract + drift + server + web + module template)
         run: |
           pnpm --filter @deck/schema test
+          pnpm --filter @deck/module-sdk test
+          pnpm --filter @deck/sdk test
+          pnpm --filter @deck/contract test
+          pnpm --filter @deck/drift test
           pnpm --filter @deck/server test
           pnpm --filter @deck/web test:unit
+          pnpm --filter deck-module-hello test
 
   web-e2e:
     # Playwright e2e, sharded across runners. The suite is workers:1 /
@@ -52,6 +69,8 @@ jobs:
     # and the largest file (inventory, ~42 of 91 tests) is the atomic floor, so
     # two shards (~42 vs ~49) roughly halve the wall time; more shards just idle.
     runs-on: ubuntu-latest
+    # A shard normally takes ~13 min; a hang fails here instead of at the 6 h default.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -62,7 +81,7 @@ jobs:
       # PATH it exits 127.
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -100,40 +119,128 @@ jobs:
           if-no-files-found: error
 
   bun-parity:
+    # One job, one step per workspace: a per-workspace matrix paid a runner
+    # boot, Bun install and per-job minute round-up four times over. Each step
+    # runs even if an earlier one fails, so every workspace still reports.
+    # scripts/bun-parity-vitest.sh runs `bunx --bun vitest run` (plain `bunx`
+    # follows vitest's node shebang and tests under Node), prints the Bun
+    # version, and fails a run that is incomplete, failed, or executed nothing
+    # (scripts/bun-parity-check.ts). Bun comes from .bun-version, the version
+    # the runtime image ships.
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        workspace: [packages/schema, apps/server, apps/web]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
       - name: Install with Bun
+        id: install
         run: bun install
-      - name: Run Vitest under Bun
-        working-directory: ${{ matrix.workspace }}
-        run: bunx vitest run
+      - name: Vitest under Bun (packages/schema)
+        working-directory: packages/schema
+        run: bash ../../scripts/bun-parity-vitest.sh
+      - name: Vitest under Bun (packages/module-sdk)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        working-directory: packages/module-sdk
+        run: bash ../../scripts/bun-parity-vitest.sh
+      - name: Vitest under Bun (packages/contract)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        working-directory: packages/contract
+        run: bash ../../scripts/bun-parity-vitest.sh
+      - name: Guard self-test (a run that executes no test must fail)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        working-directory: packages/contract
+        # GITHUB_ACTIONS=false: the expected failure must not annotate the PR.
+        run: |
+          if GITHUB_ACTIONS=false bash ../../scripts/bun-parity-vitest.sh -t zzz-no-such-test; then
+            echo "::error::bun-parity-vitest.sh passed a run that executed no test"
+            exit 1
+          fi
+      - name: Vitest under Bun (packages/drift)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        working-directory: packages/drift
+        run: bash ../../scripts/bun-parity-vitest.sh
+      - name: Vitest under Bun (apps/server)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        working-directory: apps/server
+        run: bash ../../scripts/bun-parity-vitest.sh
+      - name: Vitest under Bun (apps/web)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        working-directory: apps/web
+        run: bash ../../scripts/bun-parity-vitest.sh
+
+  kernel-touch:
+    # Informational: lists the kernel files this branch changes (see scripts/kernel-touch.ts).
+    # It never fails the build; the count is a trend to watch, not a gate.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Kernel files touched
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: |
+          # Informational: a script failure (e.g. a git error, exit 2) is reported in the
+          # summary with its stderr, but never fails the job.
+          status=0
+          bun scripts/kernel-touch.ts --base "origin/${BASE_REF}" > kernel-touch.txt 2>&1 || status=$?
+          cat kernel-touch.txt
+          {
+            echo '### Kernel files touched'
+            if [ "$status" -ne 0 ]; then echo "**kernel-touch exited ${status}** (output below)"; fi
+            echo '```'; cat kernel-touch.txt; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  image-build:
+    # Informational, like kernel-touch: builds the runtime image (and so the builder stage, with
+    # its modules/*/package.json manifests stage and frozen install) on every PR, without pushing
+    # it. The release workflow is the only other place the Dockerfile is exercised.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the image (not pushed)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha,scope=image-build
+          cache-to: type=gha,scope=image-build,mode=max
 
   gates:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
       - name: Install with Bun
         run: bun install
-      - name: Regenerate provider barrel
-        working-directory: apps/server
-        run: bun run gen:providers
-      - name: Check provider barrel drift
-        run: git diff --exit-code apps/server/src/providers/generated.ts
       - name: Check golden render
         run: |
           bun apps/server/src/cli/deck.ts render packages/schema/src/fixtures/primary --out /tmp/rendered.deck.config.json
           diff -u apps/server/test/golden/deck.config.json /tmp/rendered.deck.config.json
+      - name: Web bundle carries no select engine
+        # A widget's `select` (JMESPath) is evaluated on the server only; the built bundle must
+        # not contain the engine, however it might be reached.
+        run: |
+          (cd apps/web && bunx vite build --outDir /tmp/web-dist --emptyOutDir)
+          if grep -rlE "TreeInterpreter|jmespath" /tmp/web-dist; then
+            echo "::error::the JMESPath engine reached the web bundle"
+            exit 1
+          fi
+      - name: Web build shares one React through its import map
+        run: node apps/web/scripts/check-web-build.mjs /tmp/web-dist
       - name: Bare-Bun boot smoke
         run: |
           export DECK_PORT=8787

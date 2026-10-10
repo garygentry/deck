@@ -8,10 +8,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   ACTIONS_ENV,
   DEFAULT_ACTION_TIMEOUT_MS,
-  DEFAULT_ACTIONS_ENABLED,
   resolveActionsRuntime,
-} from "../src/actions/runtime.js";
-import { loadRunners, lookupRunner } from "../src/actions/runners.js";
+} from "../../../modules/actions/server/runtime.js";
+import { loadRunners, lookupRunner } from "../../../modules/actions/server/runners.js";
 
 /** A throwaway scratch dir cleaned up after each test. */
 const scratchDirs: string[] = [];
@@ -44,119 +43,39 @@ afterEach(() => {
   }
 });
 
+// The capability switch (DECK_ACTIONS_ENABLED) is the actions module's `enabledBy.env`, and
+// the audit store lives in its data dir: both are covered in actions-module.test.ts. This
+// resolver runs only once the module starts.
 describe("resolveActionsRuntime", () => {
-  it("returns an inert runtime and reads no manifest when disabled (empty env)", () => {
-    const runtime = resolveActionsRuntime({});
-    expect(runtime.enabled).toBe(false);
-    expect(runtime.timeoutMs).toBe(DEFAULT_ACTION_TIMEOUT_MS);
-    expect(runtime.dataDir).toBe("");
-    expect(runtime.runners.size).toBe(0);
-    // Sanity: DEFAULT_ACTIONS_ENABLED is the safe-by-default false.
-    expect(DEFAULT_ACTIONS_ENABLED).toBe(false);
-  });
-
-  it("stays disabled for a non-truthy DECK_ACTIONS_ENABLED and reads no manifest", () => {
-    // A bogus runners file path would throw if read; it must not be read while disabled.
-    const runtime = resolveActionsRuntime({
-      [ACTIONS_ENV.ENABLED]: "false",
-      [ACTIONS_ENV.DATA_DIR]: "/nope",
-      [ACTIONS_ENV.RUNNERS_FILE]: "/does/not/exist.json",
-    });
-    expect(runtime.enabled).toBe(false);
-    expect(runtime.runners.size).toBe(0);
-  });
-
-  it("treats 'true'/'1' (case-insensitive) as enabled", () => {
+  it("resolves the runner allowlist from the manifest and the default timeout", () => {
     const runner = realRunner("restart");
     const file = manifestFile(JSON.stringify({ restart: runner }));
-    for (const raw of ["true", "TRUE", "1"]) {
-      const runtime = resolveActionsRuntime({
-        [ACTIONS_ENV.ENABLED]: raw,
-        [ACTIONS_ENV.DATA_DIR]: scratch(),
-        [ACTIONS_ENV.RUNNERS_FILE]: file,
-      });
-      expect(runtime.enabled).toBe(true);
-    }
-  });
-
-  it("resolves an enabled runtime with runners populated from the manifest", () => {
-    const runner = realRunner("restart");
-    const file = manifestFile(JSON.stringify({ restart: runner }));
-    const dataDir = scratch();
-
-    const runtime = resolveActionsRuntime({
-      [ACTIONS_ENV.ENABLED]: "true",
-      [ACTIONS_ENV.DATA_DIR]: dataDir,
-      [ACTIONS_ENV.RUNNERS_FILE]: file,
-    });
-
-    expect(runtime.enabled).toBe(true);
-    expect(runtime.dataDir).toBe(dataDir);
+    const runtime = resolveActionsRuntime({ [ACTIONS_ENV.RUNNERS_FILE]: file });
     expect(runtime.timeoutMs).toBe(DEFAULT_ACTION_TIMEOUT_MS);
     expect(runtime.runners.get("restart")).toBe(runner);
   });
 
-  it("throws ACTIONS_CONFIG_INVALID when enabled but DECK_DATA_DIR is missing", () => {
-    const file = manifestFile(JSON.stringify({ restart: realRunner("restart") }));
-    expect(() =>
-      resolveActionsRuntime({
-        [ACTIONS_ENV.ENABLED]: "true",
-        [ACTIONS_ENV.RUNNERS_FILE]: file,
-      }),
-    ).toThrow(expect.objectContaining({ code: "ACTIONS_CONFIG_INVALID" }));
+  it.each(["", "   "])("throws ACTIONS_CONFIG_INVALID when DECK_RUNNERS_FILE is %j", (value) => {
+    expect(() => resolveActionsRuntime({ [ACTIONS_ENV.RUNNERS_FILE]: value })).toThrow(
+      expect.objectContaining({ code: "ACTIONS_CONFIG_INVALID", message: "DECK_RUNNERS_FILE is required when DECK_ACTIONS_ENABLED is true." }),
+    );
   });
 
-  it("throws ACTIONS_CONFIG_INVALID when enabled but DECK_RUNNERS_FILE is missing", () => {
-    expect(() =>
-      resolveActionsRuntime({
-        [ACTIONS_ENV.ENABLED]: "true",
-        [ACTIONS_ENV.DATA_DIR]: scratch(),
-      }),
-    ).toThrow(expect.objectContaining({ code: "ACTIONS_CONFIG_INVALID" }));
-  });
-
-  it("treats an empty-string required env var as missing", () => {
-    const file = manifestFile(JSON.stringify({ restart: realRunner("restart") }));
-    expect(() =>
-      resolveActionsRuntime({
-        [ACTIONS_ENV.ENABLED]: "true",
-        [ACTIONS_ENV.DATA_DIR]: "   ",
-        [ACTIONS_ENV.RUNNERS_FILE]: file,
-      }),
-    ).toThrow(expect.objectContaining({ code: "ACTIONS_CONFIG_INVALID" }));
+  it("throws ACTIONS_CONFIG_INVALID when DECK_RUNNERS_FILE is unset", () => {
+    expect(() => resolveActionsRuntime({})).toThrow(expect.objectContaining({ code: "ACTIONS_CONFIG_INVALID" }));
   });
 
   it("honors a valid positive-integer DECK_ACTION_TIMEOUT_MS", () => {
     const file = manifestFile(JSON.stringify({ restart: realRunner("restart") }));
-    const runtime = resolveActionsRuntime({
-      [ACTIONS_ENV.ENABLED]: "true",
-      [ACTIONS_ENV.DATA_DIR]: scratch(),
-      [ACTIONS_ENV.RUNNERS_FILE]: file,
-      [ACTIONS_ENV.TIMEOUT_MS]: "1234",
-    });
+    const runtime = resolveActionsRuntime({ [ACTIONS_ENV.RUNNERS_FILE]: file, [ACTIONS_ENV.TIMEOUT_MS]: "1234" });
     expect(runtime.timeoutMs).toBe(1234);
-  });
-
-  it("uses the default timeout when DECK_ACTION_TIMEOUT_MS is unset", () => {
-    const file = manifestFile(JSON.stringify({ restart: realRunner("restart") }));
-    const runtime = resolveActionsRuntime({
-      [ACTIONS_ENV.ENABLED]: "true",
-      [ACTIONS_ENV.DATA_DIR]: scratch(),
-      [ACTIONS_ENV.RUNNERS_FILE]: file,
-    });
-    expect(runtime.timeoutMs).toBe(DEFAULT_ACTION_TIMEOUT_MS);
   });
 
   it("throws for a non-positive or non-integer DECK_ACTION_TIMEOUT_MS", () => {
     const file = manifestFile(JSON.stringify({ restart: realRunner("restart") }));
     for (const bad of ["0", "-5", "1.5", "abc", "12px"]) {
       expect(() =>
-        resolveActionsRuntime({
-          [ACTIONS_ENV.ENABLED]: "true",
-          [ACTIONS_ENV.DATA_DIR]: scratch(),
-          [ACTIONS_ENV.RUNNERS_FILE]: file,
-          [ACTIONS_ENV.TIMEOUT_MS]: bad,
-        }),
+        resolveActionsRuntime({ [ACTIONS_ENV.RUNNERS_FILE]: file, [ACTIONS_ENV.TIMEOUT_MS]: bad }),
       ).toThrow(expect.objectContaining({ code: "ACTIONS_CONFIG_INVALID" }));
     }
   });
@@ -241,9 +160,9 @@ describe("lookupRunner", () => {
     expect(lookupRunner(runners, "restart/../backup")).toBeUndefined();
 
     // Source discipline: the name is used only as a Map key — no join()/resolve() calls
-    // anywhere in runners.ts (REQ-SEC-03, CON-01).
+    // anywhere in runners.ts.
     const src = readFileSync(
-      fileURLToPath(new URL("../src/actions/runners.ts", import.meta.url)),
+      fileURLToPath(new URL("../../../modules/actions/server/runners.ts", import.meta.url)),
       "utf8",
     );
     expect(src).not.toMatch(/\bjoin\s*\(/);

@@ -1,51 +1,58 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { logger } from "../src/log/logger.js";
-import { PrometheusProvider, registerPrometheus } from "../src/providers/prometheus/index.js";
-import { parseSummaryCard, type SummaryQuery } from "../src/providers/prometheus/parse-card.js";
+import type { ModuleLogger } from "@deck/module-sdk";
+
+import { scopedLogger } from "../src/modules/context.js";
+import { PrometheusProvider } from "../../../modules/prometheus/server/index.js";
+import { parseSummaryCard, type SummaryQuery } from "../../../modules/prometheus/server/parse-card.js";
 import { providerCount, read, stopScheduler } from "../src/providers/registry.js";
+import { captureLogger } from "./util/modules.js";
+import { processEnv, registerPrometheus } from "./util/register-kinds.js";
 
 const fixture = (name: string): unknown => JSON.parse(readFileSync(
   fileURLToPath(new URL(`./fixtures/prometheus/${name}.json`, import.meta.url)),
   "utf8",
 ));
 
-describe("parseSummaryCard", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+/** The prometheus module's scoped logger over a captured sink, as the kernel injects it. */
+function moduleSink(): { logger: ModuleLogger; lines: Record<string, unknown>[] } {
+  const { logger, lines } = captureLogger();
+  return { logger: scopedLogger(logger, "prometheus"), lines };
+}
 
+describe("parseSummaryCard", () => {
   it.each([null, undefined, 1, "card", [], {}, { summaries: null }, { summaries: {} }])(
     "returns an empty list without throwing for %j",
-    (card) => expect(() => parseSummaryCard(card)).not.toThrow(),
+    (card) => expect(() => parseSummaryCard(card, moduleSink().logger)).not.toThrow(),
   );
 
   it("keeps only valid known fields in declaration order and keeps the first duplicate id", () => {
-    const warn = vi.spyOn(logger, "warn").mockImplementation(() => logger);
+    const { logger, lines } = moduleSink();
     const result = parseSummaryCard({ summaries: [
       { id: "first", label: "First", query: "up", extra: "ignored" },
       { id: "bad", label: "Bad", query: "secret-query", warning: 1 },
       { id: "second", label: "Second", query: "load", unit: "%", warning: 70, critical: 90, direction: "above" },
       { id: "first", label: "Duplicate", query: "other" },
       { id: "bare", label: "Bare direction", query: "temperature", direction: "below" },
-    ] });
+    ] }, logger);
 
     expect(result).toEqual([
       { id: "first", label: "First", query: "up" },
       { id: "second", label: "Second", query: "load", unit: "%", warning: 70, critical: 90, direction: "above" },
       { id: "bare", label: "Bare direction", query: "temperature", direction: "below" },
     ]);
-    expect(warn).toHaveBeenCalledTimes(2);
-    expect(warn.mock.calls.map(([fields]) => fields)).toEqual([
-      { event: "prometheus.summary.dropped", index: 1, id: "bad", reason: "direction_required" },
-      { event: "prometheus.summary.dropped", index: 3, id: "first", reason: "id_duplicate" },
+    // Drops go to the injected module logger: warn level, tagged with the module id.
+    expect(lines.map(({ level, module, event, index, id, reason }) => ({ level, module, event, index, id, reason }))).toEqual([
+      { level: 40, module: "prometheus", event: "prometheus.summary.dropped", index: 1, id: "bad", reason: "direction_required" },
+      { level: 40, module: "prometheus", event: "prometheus.summary.dropped", index: 3, id: "first", reason: "id_duplicate" },
     ]);
-    expect(JSON.stringify(warn.mock.calls)).not.toContain("secret-query");
+    expect(JSON.stringify(lines)).not.toContain("secret-query");
   });
 
   it("drops every mistyped field independently and never lets getters or logging throw", () => {
-    vi.spyOn(logger, "warn").mockImplementation(() => { throw new Error("logger down"); });
+    const down = (): never => { throw new Error("logger down"); };
+    const logger: ModuleLogger = { debug: down, info: down, warn: down, error: down };
     const unreadable = Object.defineProperty({}, "id", { get: () => { throw new Error("getter"); } });
     const invalid = [
       null, [], {}, { id: "", label: "x", query: "x" }, { id: "x", label: 1, query: "x" },
@@ -55,8 +62,8 @@ describe("parseSummaryCard", () => {
       { id: "x", label: "x", query: "x", critical: Infinity, direction: "above" },
       { id: "x", label: "x", query: "x", direction: "sideways" }, unreadable,
     ];
-    expect(() => parseSummaryCard({ summaries: invalid })).not.toThrow();
-    expect(parseSummaryCard({ summaries: invalid })).toEqual([]);
+    expect(() => parseSummaryCard({ summaries: invalid }, logger)).not.toThrow();
+    expect(parseSummaryCard({ summaries: invalid }, logger)).toEqual([]);
   });
 });
 
@@ -133,7 +140,7 @@ describe("PrometheusProvider", () => {
     await expect(provider(query("metric", "q")).fetch()).resolves.toMatchObject({ summaries: [{ value: null, status: "error" }] });
   });
 
-  it("isolates per-query failures but rejects only when no query gets a 2xx", async () => {
+  it("isolates per-query failures but rejects only when no query reaches Prometheus", async () => {
     const fetchStub = vi.fn()
       .mockRejectedValueOnce(new Error("secret transport detail"))
       .mockResolvedValueOnce(Response.json(scalar(3)));
@@ -150,6 +157,66 @@ describe("PrometheusProvider", () => {
     await expect(unreachable.health()).resolves.toEqual({ ok: false, detail: "Prometheus endpoint unreachable" });
   });
 
+  it.each([
+    { status: 400, body: { status: "error", errorType: "bad_data", error: "parse error" } },
+    { status: 422, body: { status: "error", errorType: "execution", error: "many-to-many matching" } },
+    { status: 400, body: "not json" },
+    { status: 409, body: { status: "error", errorType: "bad_data", error: "conflict" } },
+  ])("shows a query error (HTTP $status) as an errored summary on a healthy provider", async ({ status, body }) => {
+    vi.stubGlobal("fetch", vi.fn(async () => typeof body === "string" ? new Response(body, { status }) : Response.json(body, { status })));
+    const refused = provider(query("metric", "rate(up[5m]"));
+    await expect(refused.fetch()).resolves.toEqual({ summaries: [{ id: "metric", label: "Metric", value: null, status: "error" }] });
+    await expect(refused.health()).resolves.toEqual({ ok: true, detail: "1 summaries, 1 errored" });
+  });
+
+  it.each([
+    { status: 401, detail: "Prometheus authentication refused (401)" },
+    { status: 403, detail: "Prometheus authentication refused (403)" },
+    { status: 404, detail: "Prometheus not a Prometheus endpoint (404)" },
+    { status: 407, detail: "Prometheus proxy authentication refused (407)" },
+    { status: 429, detail: "Prometheus rate limited (429)" },
+    { status: 418, detail: "Prometheus answered HTTP 418" },
+  ])("reports an HTTP $status refusal of every query as an unhealthy endpoint", async ({ status, detail }) => {
+    // Even with Prometheus's error envelope: an auth, path or rate-limit refusal is the endpoint's.
+    const envelope = status === 418 ? { status: "nope" } : { status: "error", errorType: "unauthorized" };
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(envelope, { status })));
+    const refused = provider(query("metric", "up"));
+    await expect(refused.fetch()).rejects.toThrowError(detail);
+    await expect(refused.health()).resolves.toEqual({ ok: false, detail });
+  });
+
+  it("does not read an oversized 4xx body as a query error", async () => {
+    const big = JSON.stringify({ status: "error", errorType: "bad_data", pad: "x".repeat(70 * 1024) });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(big, { status: 409 })));
+    await expect(provider(query("metric", "up")).fetch()).rejects.toThrowError("Prometheus answered HTTP 409");
+  });
+
+  it("keeps a good query beside a refused one healthy", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request) =>
+      String(url).includes("broken") ? new Response("bad", { status: 400 }) : Response.json(scalar(7))));
+    const mixed = new PrometheusProvider("prometheus", { baseUrl: "http://prom", summaries: [query("bad", "broken("), query("good", "up")] });
+    await expect(mixed.fetch()).resolves.toMatchObject({ summaries: [{ id: "bad", status: "error" }, { id: "good", value: 7 }] });
+    await expect(mixed.health()).resolves.toEqual({ ok: true, detail: "2 summaries, 1 errored" });
+  });
+
+  it.each([
+    ["a refused connection", () => Promise.reject(new TypeError("fetch failed"))],
+    ["a 502 from a proxy", async () => new Response(null, { status: 502 })],
+  ])("reports %s as unreachable", async (_name, answer) => {
+    vi.stubGlobal("fetch", vi.fn(answer));
+    const down = provider(query("metric", "up"));
+    await expect(down.fetch()).rejects.toThrowError("Prometheus endpoint unreachable");
+    await expect(down.health()).resolves.toEqual({ ok: false, detail: "Prometheus endpoint unreachable" });
+  });
+
+  it.each([400, 503])("drains the body of an HTTP %i answer", async (status) => {
+    const cancel = vi.fn();
+    const body = new ReadableStream({ pull: () => {}, cancel });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { status })));
+    await provider(query("metric", "up")).fetch().catch(() => {});
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
   it("does no I/O for zero summaries and resolves credentials inline", async () => {
     const fetchStub = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => Response.json(scalar(1)));
     vi.stubGlobal("fetch", fetchStub);
@@ -157,7 +224,7 @@ describe("PrometheusProvider", () => {
     await expect(empty.fetch()).resolves.toEqual({ summaries: [] });
     expect(fetchStub).not.toHaveBeenCalled();
 
-    const secured = new PrometheusProvider("secured", { baseUrl: "http://prom", credentialEnv: "DECK_PROM_TOKEN", summaries: [query("metric", "q")] });
+    const secured = new PrometheusProvider("secured", { baseUrl: "http://prom", credentialEnv: "DECK_PROM_TOKEN", env: processEnv, summaries: [query("metric", "q")] });
     process.env.DECK_PROM_TOKEN = "Bearer super-secret";
     await secured.fetch();
     delete process.env.DECK_PROM_TOKEN;

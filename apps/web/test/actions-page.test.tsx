@@ -1,15 +1,17 @@
 // @vitest-environment jsdom
-import type { Action, DeckConfig } from "@deck/server";
+import type { DeckConfig } from "@deck/server";
+import type { Action } from "../../../modules/actions/server/types.js";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { JSX } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ConfigState } from "../src/shell/use-config.js";
+import type { ConfigState } from "../src/data/hooks.js";
 
 // ActionsPage sources its config through `useConfig()` (via ConfigGate); mocking
 // it yields deterministic loading/error/ready views with no poll lifecycle.
 let configState: ConfigState;
-vi.mock("../src/shell/use-config.js", () => ({
+vi.mock("../src/data/hooks.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/data/hooks.js")>()),
   useConfig: () => configState,
 }));
 
@@ -17,9 +19,9 @@ vi.mock("../src/shell/use-config.js", () => ({
 import {
   ActionsPage,
   ActionsPageBoundary,
-} from "../src/features/governed-actions/ActionsPage.js";
+} from "../../../modules/actions/web/ActionsPage.js";
 // eslint-disable-next-line import/first
-import { beginRun, failRun, resetRun } from "../src/features/governed-actions/run-store.js";
+import { beginRun, failRun, resetRun } from "../../../modules/actions/web/run-store.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures. The run store is a real module singleton; cases that need a
@@ -49,7 +51,7 @@ const ACTION_TYPED: Action = {
 };
 
 function readyConfig(actions: readonly Action[]): ConfigState {
-  return { status: "ready", config: { actions } as unknown as DeckConfig };
+  return { status: "ready", config: { modules: { actions: { actions } } } as unknown as DeckConfig };
 }
 
 /**
@@ -122,10 +124,10 @@ describe("ActionsPage — useConfig branching", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Capability-disabled read-only posture (REQ-GATE-01, SC-08).
+// Capability-disabled read-only posture.
 // ---------------------------------------------------------------------------
 
-describe("ActionsPage — capability-disabled posture (SC-08)", () => {
+describe("ActionsPage — capability-disabled posture", () => {
   it("shows a read-only banner and mounts no run affordance after an ACTIONS_DISABLED refusal", () => {
     configState = readyConfig([ACTION_NONE]);
     mountPage();
@@ -161,11 +163,38 @@ describe("ActionsPage — capability-disabled posture (SC-08)", () => {
   });
 });
 
+describe("ActionsPage — a malformed section while the module is off", () => {
+  // Switched off, deck reports a broken `modules.actions` section but still serves it.
+  it.each<[string, unknown]>([
+    ["actions as an object", { actions: {} }],
+    ["actions as a string", { actions: "oops" }],
+    ["a null action", { actions: [null] }],
+    ["params that are not a list", { actions: [{ ...ACTION_NONE, params: 5 }] }],
+    ["a target without a host", { actions: [{ ...ACTION_NONE, target: {} }] }],
+    ["the section as a list", [ACTION_NONE]],
+  ])("keeps the disabled view, listing nothing, for %s", async (_label, section) => {
+    configState = { status: "ready", config: { modules: { actions: section } } as unknown as DeckConfig };
+    mountPage(false);
+    expect(await screen.findByText("The actions capability is disabled on this deck instance.")).toBeInTheDocument();
+    expect(screen.getByText("No actions are declared for this deck instance.")).toBeInTheDocument();
+    expect(screen.queryByText(/could not be displayed/i)).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("still lists a well-formed section read-only", async () => {
+    configState = readyConfig([ACTION_NONE, ACTION_CONFIRM]);
+    mountPage(false);
+    expect(await screen.findByText("The actions capability is disabled on this deck instance.")).toBeInTheDocument();
+    expect(screen.getByText(ACTION_NONE.title)).toBeInTheDocument();
+    expect(screen.getByText(ACTION_CONFIRM.title)).toBeInTheDocument();
+  });
+});
+
 // ---------------------------------------------------------------------------
-// Selection, param form, and arm-reset on selection change (V-020).
+// Selection, param form, and arm-reset on selection change.
 // ---------------------------------------------------------------------------
 
-describe("ActionsPage — selection and arming (V-020)", () => {
+describe("ActionsPage — selection and arming", () => {
   it("selecting a row marks it current and shows its confirm step; Cancel deselects", () => {
     configState = readyConfig([ACTION_CONFIRM, ACTION_NONE]);
     mountPage();

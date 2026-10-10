@@ -1,0 +1,43 @@
+{
+  "title": "Prometheus integration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "title",
+    "baseUrl"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Integration id, unique across integrations."
+    },
+    "kind": {
+      "const": "prometheus",
+      "description": "Provider kind."
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable integration title."
+    },
+    "baseUrl": {
+      "type": "string",
+      "description": "Base URL of Prometheus."
+    },
+    "deepLink": {
+      "type": "string",
+      "description": "Optional deep-link template into Prometheus."
+    },
+    "card": {
+      "type": "object",
+      "description": "Card specification; its optional `summaries` list declares the instant queries the provider runs (an invalid entry is dropped with a warning).",
+      "additionalProperties": true
+    },
+    "credentialEnv": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "description": "Environment variable name holding a credential, never its value."
+    }
+  }
+}

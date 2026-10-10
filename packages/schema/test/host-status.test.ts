@@ -3,7 +3,7 @@ import { validate } from "../src/index.js";
 import type { JsonObject } from "../src/types.js";
 
 const doc = (host: JsonObject): JsonObject => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   estate: { name: "atlas" },
   hosts: [{ name: "alpha", kind: "vm", purpose: "lifecycle host", ...host }],
 });

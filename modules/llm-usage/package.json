@@ -1,0 +1,28 @@
+{
+  "name": "@deck/module-llm-usage",
+  "version": "0.3.2",
+  "private": true,
+  "description": "deck's built-in llm-usage module: Claude and Codex usage collection, its routes, page, header pill and portal card.",
+  "type": "module",
+  "dependencies": {
+    "@deck/contract": "workspace:*",
+    "@deck/module-sdk": "workspace:*",
+    "hono": "^4.6.0",
+    "iso8601-duration": "^2"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.104.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "vitest": "^4.1.0"
+  },
+  "devDependencies": {
+    "@tanstack/react-query": "^5.104.0",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^22",
+    "@types/react": "^19.3.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "vitest": "^4.1.0"
+  }
+}

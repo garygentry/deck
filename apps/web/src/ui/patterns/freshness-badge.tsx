@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { FreshnessStamp, FreshnessState } from "@deck/server";
+import type { FreshnessStamp, FreshnessState } from "@deck/contract";
 import { formatAge } from "@/ui/lib/format";
 import { defineStatusMap } from "@/ui/lib/status";
 import { useNow } from "@/ui/hooks/use-now";

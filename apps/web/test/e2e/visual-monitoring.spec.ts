@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockUiManifest } from "./ui-manifest.js";
+import { seedTheme } from "./theme-seed.js";
 
 /**
  * Visual baselines for `/monitoring` in its main states, independent of the `/_ui`
@@ -107,17 +109,13 @@ const SCENARIOS: Record<string, Scenario> = {
 
 async function routeScenario(page: Page, scenario: Scenario): Promise<void> {
   const providers = "json" in scenario.alertmanager || "json" in scenario.prometheus;
-  await page.route("**/api/providers", async (route) => {
-    const response = await route.fetch();
-    const body = (await response.json()) as { providers: JsonObject[] };
-    const extra = providers
-      ? [
-          { id: "alertmanager", kind: "alertmanager" },
-          { id: "prometheus", kind: "prometheus" },
-        ]
-      : [];
-    await route.fulfill({ json: { providers: [...body.providers, ...extra] } });
-  });
+  const extra = providers
+    ? [
+        { id: "alertmanager", kind: "alertmanager" },
+        { id: "prometheus", kind: "prometheus" },
+      ]
+    : [];
+  await mockUiManifest(page, (real) => [...real, ...extra]);
   for (const id of ["alertmanager", "prometheus"] as const) {
     const stage = scenario[id];
     await page.route(`**/api/providers/${id}`, (route) =>
@@ -141,7 +139,7 @@ test.describe("monitoring visual baselines", () => {
       for (const width of WIDTHS) {
         test(`${name} ${width}px ${theme}`, async ({ page }) => {
           await page.clock.setFixedTime(FROZEN_NOW);
-          await page.addInitScript((mode) => localStorage.setItem("deck-theme", mode), theme);
+          await seedTheme(page, theme);
           await page.setViewportSize({ width, height: 900 });
           await routeScenario(page, scenario);
           const monitoring = page.getByTestId("monitoring");

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { deriveDriftProjection } from "@deck/server";
-import type { SnapshotProviderResult } from "@deck/server";
+import { deriveDriftProjection } from "@deck/drift";
+import type { SnapshotProviderResult } from "@deck/contract";
 import {
   act,
   cleanup,
@@ -31,8 +31,8 @@ import {
   resetInventoryTestEnv,
   serviceDecl,
 } from "./inventory-harness.js";
-import type { InventoryGeneration } from "../src/features/hosts-and-services/inventory-store.js";
-import type { DriftGenerationState } from "../src/features/drift-and-coverage/store.js";
+import type { InventoryGeneration } from "../../../modules/inventory/web/inventory-store.js";
+import type { DriftGenerationState } from "../../../modules/drift/web/store.js";
 import { buildAboveScaleFixture, DRIFT_FIXTURE_NOW } from "./drift-fixtures.js";
 
 // ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ import { buildAboveScaleFixture, DRIFT_FIXTURE_NOW } from "./drift-fixtures.js";
 // ---------------------------------------------------------------------------
 
 let driftState: DriftGenerationState;
-vi.mock("../src/features/drift-and-coverage/use-drift-generation.js", () => ({
+vi.mock("../../../modules/drift/web/use-drift-generation.js", () => ({
   useDriftGeneration: () => driftState,
 }));
 
@@ -70,25 +70,21 @@ vi.mock("@/shell/router", async (importOriginal) => {
 import {
   DriftPage,
   DriftPageBoundary,
-} from "../src/features/drift-and-coverage/DriftPage.js";
+} from "../../../modules/drift/web/DriftPage.js";
 import {
   __resetDriftRenderDedupForTest,
   setDriftDiagnosticSink,
-} from "../src/features/drift-and-coverage/diagnostics.js";
-import type { DriftDiagnosticEvent } from "../src/features/drift-and-coverage/diagnostics.js";
-import { FindingGroups } from "../src/features/drift-and-coverage/components/FindingGroups.js";
-import { FindingRow } from "../src/features/drift-and-coverage/components/FindingRow.js";
-import { EvidenceValue } from "../src/features/drift-and-coverage/components/EvidenceValue.js";
-import { CoverageTable } from "../src/features/drift-and-coverage/components/CoverageTable.js";
+} from "../../../modules/drift/web/diagnostics.js";
+import type { DriftDiagnosticEvent } from "../../../modules/drift/web/diagnostics.js";
+import { FindingGroups } from "../../../modules/drift/web/components/FindingGroups.js";
+import { FindingRow } from "../../../modules/drift/web/components/FindingRow.js";
+import { EvidenceValue } from "../../../modules/drift/web/components/EvidenceValue.js";
+import { CoverageTable } from "../../../modules/drift/web/components/CoverageTable.js";
 import {
   buildInventoryModel,
   type InventoryModel,
-} from "../src/features/hosts-and-services/model.js";
-import type {
-  CoverageRow,
-  DriftFindingProjection,
-  FindingHostGroup,
-} from "@deck/server";
+} from "../../../modules/inventory/web/model.js";
+import type { CoverageRow, DriftFindingProjection, FindingHostGroup } from "@deck/drift";
 
 // ---------------------------------------------------------------------------
 // jsdom gaps used by Radix Popover / cmdk / Tooltip (this file only).
@@ -376,7 +372,7 @@ function silenceErrors(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Unavailable states (06 §5.1).
+// Unavailable states.
 // ---------------------------------------------------------------------------
 
 describe("unavailable generation states", () => {
@@ -431,7 +427,7 @@ describe("unavailable generation states", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Overview and available state (06 §3).
+// Overview and available state.
 // ---------------------------------------------------------------------------
 
 describe("available overview and totals", () => {
@@ -499,7 +495,7 @@ describe("available overview and totals", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Qualified no-drift and no-match (06 §3.3).
+// Qualified no-drift and no-match.
 // ---------------------------------------------------------------------------
 
 describe("qualified empty states", () => {
@@ -526,7 +522,7 @@ describe("qualified empty states", () => {
 });
 
 // ---------------------------------------------------------------------------
-// URL scope (06 §4).
+// URL scope.
 // ---------------------------------------------------------------------------
 
 describe("URL entity scope", () => {
@@ -590,7 +586,7 @@ describe("URL entity scope", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Local filters, composition, chips, and clears (06 §4.3).
+// Local filters, composition, chips, and clears.
 // ---------------------------------------------------------------------------
 
 describe("local filters and chips", () => {
@@ -682,7 +678,7 @@ describe("local filters and chips", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Retained warnings and recovery (06 §5.2).
+// Retained warnings and recovery.
 // ---------------------------------------------------------------------------
 
 describe("retained warnings and recovery", () => {
@@ -736,7 +732,7 @@ describe("retained warnings and recovery", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Page boundary and read-only behavior (06 §10.1, §4.4).
+// Page boundary and read-only behavior.
 // ---------------------------------------------------------------------------
 
 describe("page boundary and read-only behavior", () => {
@@ -780,7 +776,7 @@ describe("page boundary and read-only behavior", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Grouped findings, inert evidence, and progressive disclosure (06 §§6, 03 §§5–7).
+// Grouped findings, inert evidence, and progressive disclosure.
 // ---------------------------------------------------------------------------
 
 /** The default accepted-generation inventory model (compute-a/b/c, api, web). */
@@ -1135,7 +1131,7 @@ describe("FindingGroups controlled disclosure", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Semantic coverage rendering and progressive disclosure (06 §7).
+// Semantic coverage rendering and progressive disclosure.
 // ---------------------------------------------------------------------------
 
 /** One projected coverage row with inert defaults and targeted overrides. */
@@ -1461,7 +1457,7 @@ describe("coverage progressive disclosure", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Mounted keyboard grammar and focus (06 §8).
+// Mounted keyboard grammar and focus.
 // One window keydown listener drives the visible finding-then-coverage results.
 // ---------------------------------------------------------------------------
 
@@ -1679,7 +1675,7 @@ describe("mounted keyboard grammar", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Focus reconciliation across refreshes and progressive reveal (06 §§6.4, 8.2).
+// Focus reconciliation across refreshes and progressive reveal.
 // ---------------------------------------------------------------------------
 
 describe("keyboard focus reconciliation", () => {
@@ -1754,7 +1750,7 @@ describe("keyboard focus reconciliation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Bounded live regions (06 §9.1).
+// Bounded live regions.
 // ---------------------------------------------------------------------------
 
 describe("live region announcements", () => {
@@ -1774,7 +1770,7 @@ describe("live region announcements", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Render diagnostics: one transition per surface/generation/outcome (06 §10.3).
+// Render diagnostics: one transition per surface/generation/outcome.
 // ---------------------------------------------------------------------------
 
 describe("render diagnostics", () => {
@@ -1831,7 +1827,7 @@ describe("render diagnostics", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Above-scale mounted reachability and isolation (spec 08 §5.5).
+// Above-scale mounted reachability and isolation.
 //
 // The strictly-above-scale invented fixture passes its matching config and
 // available envelope through the real `buildInventoryModel`, and its projection is

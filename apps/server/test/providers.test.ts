@@ -4,13 +4,15 @@ import {
   type Provider,
   type ProviderFetchContext,
 } from "../src/contract/index.js";
-import { HttpHealthProvider, registerHttpHealth } from "../src/providers/http-health/index.js";
-import { LinkProvider, registerLink } from "../src/providers/link/index.js";
+import { HttpHealthProvider } from "../../../modules/http-health/server/index.js";
+import { LinkProvider } from "../../../modules/link/server/index.js";
+import { registerHttpHealth, registerLink } from "./util/register-kinds.js";
 import {
   deriveState,
   listEnvelopes,
   listHealth,
   listMetrics,
+  listStats,
   providerCount,
   read,
   register,
@@ -86,8 +88,8 @@ describe("provider registry", () => {
 
   it("seeds a permanent static link without an interval", async () => {
     const interval = vi.spyOn(globalThis, "setInterval");
-    register(makeProvider("link-b", "link", async () => ({ href: "/b" })));
-    register(makeProvider("link-a", "link", async () => ({ href: "/a" })));
+    register(makeProvider("link-b", "link", async () => ({ href: "/b" })), undefined, undefined, { static: true });
+    register(makeProvider("link-a", "link", async () => ({ href: "/a" })), undefined, undefined, { static: true });
     await vi.advanceTimersByTimeAsync(0);
 
     expect(interval).not.toHaveBeenCalled();
@@ -154,6 +156,23 @@ describe("provider registry", () => {
       { id: "flaky", kind: "test", successTotal: 1, failureTotal: 1, lastLatencyMs: 250 },
     ]);
   });
+
+  it("adds each provider's cached-data age to its counters for listStats", async () => {
+    register(makeProvider("polled", "test", async () => "ok"), { pollIntervalMs: 10_000 });
+    register(makeProvider("fixed", "test", async () => "ok"), undefined, undefined, { static: true });
+
+    expect(listStats()).toEqual([
+      { id: "fixed", kind: "test", successTotal: 0, failureTotal: 0, lastLatencyMs: null, ageMs: null },
+      { id: "polled", kind: "test", successTotal: 0, failureTotal: 0, lastLatencyMs: null, ageMs: null },
+    ]);
+
+    startScheduler();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(4_000);
+
+    expect(listStats().find((entry) => entry.id === "polled")).toMatchObject({ successTotal: 1, ageMs: 4_000 });
+    expect(listStats().find((entry) => entry.id === "fixed")).toMatchObject({ ageMs: null });
+  });
 });
 
 describe("stage-one providers", () => {
@@ -197,7 +216,7 @@ describe("stage-one providers", () => {
     const provider = new HttpHealthProvider("probe", { url: "https://example.invalid/probe", method: "HEAD" });
 
     expect(await provider.fetch()).toEqual({ up: false, status: 503, latencyMs: expect.any(Number) });
-    expect(fetchStub).toHaveBeenCalledWith("https://example.invalid/probe", { method: "HEAD" });
+    expect(fetchStub).toHaveBeenCalledWith("https://example.invalid/probe", { method: "HEAD", redirect: "manual" });
     expect(await provider.health()).toEqual({ ok: false, detail: "status 503" });
 
     registerHttpHealth("registered-probe", {

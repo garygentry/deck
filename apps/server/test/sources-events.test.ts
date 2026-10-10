@@ -1,6 +1,6 @@
 /**
- * `sources-events.test.ts` — the credential-non-leak guarantee (SC-13; REQ-OBS-02,
- * REQ-SEC-03; 08 §3.6, 02 §7).
+ * `sources-events.test.ts` — the credential-non-leak guarantee: a source failure's logs carry
+ * no credential, and auth reaches git through its env only.
  *
  * With a fixture private-repo source whose `credentialEnv` names an env var set to a sentinel
  * secret, drive a clone failure and assert the sentinel token — and any tokenized remote URL a
@@ -16,11 +16,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Source } from "@deck/schema";
 
-import { acquireSource, type AcquireContext } from "../src/sources/acquire.js";
-import { SourceFailure } from "../src/sources/errors.js";
+import { acquireSource, type AcquireContext } from "../../../modules/sources/server/acquire.js";
+import { SourceFailure } from "../../../modules/sources/server/errors.js";
 import { logger } from "../src/log/logger.js";
-import { createFakeGitSpawner, type FakeGitSpawner } from "./util/fake-git-spawner.js";
-import { makeCacheDir } from "./util/make-cache-dir.js";
+import { createFakeGitSpawner, type FakeGitSpawner } from "../../../modules/sources/test/server/util/fake-git-spawner.js";
+import { makeCacheDir } from "../../../modules/sources/test/server/util/make-cache-dir.js";
 
 // --- Fixtures & helpers ---------------------------------------------------------------
 
@@ -63,7 +63,7 @@ function loggedText(warn: { mock: { calls: unknown[][] } }): string {
   return warn.mock.calls.map((args) => JSON.stringify(args)).join("\n");
 }
 
-// --- Credential non-leak on a failed private-repo clone (SC-13) -----------------------
+// --- Credential non-leak on a failed private-repo clone -----------------------
 
 describe("acquireSource — credential non-leak (private-repo auth)", () => {
   it("never leaks the token or tokenized URL to logs, message, or toPublic(); log is id+kind+code", async () => {
@@ -124,7 +124,7 @@ describe("acquireSource — credential non-leak (private-repo auth)", () => {
     // The token appears in NO argv element (the arg list is visible via ps/proc).
     expect(clone!.argv.some((a) => a.includes(SENTINEL))).toBe(false);
     expect(clone!.argv.some((a) => a.includes("x-access-token"))).toBe(false);
-    // The positive half of REQ-SEC-03: auth rides GIT_CONFIG_* env for this spawn only.
+    // The positive half: auth rides GIT_CONFIG_* env for this spawn only.
     const basic = Buffer.from(`x-access-token:${SENTINEL}`).toString("base64");
     expect(clone!.env?.GIT_CONFIG_COUNT).toBe("1");
     expect(clone!.env?.GIT_CONFIG_KEY_0).toBe("http.extraheader");

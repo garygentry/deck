@@ -14,9 +14,9 @@ import { expect, test, type Page } from "@playwright/test";
  * identity is invented; no estate fact is copied and no runner command line is
  * ever synthesized by deck.
  *
- * Coverage: SC-01 (a full streamed run through a confirm action to a distinct
- * succeeded outcome) and SC-07 (cancel a long-running action → terminal
- * `cancelled` + a `cancelled` audit entry).
+ * Coverage: a full streamed run through a confirm action to a distinct
+ * succeeded outcome, and cancelling a long-running action → terminal
+ * `cancelled` + a `cancelled` audit entry.
  */
 
 /**
@@ -43,7 +43,7 @@ const outcomeBanner = (page: Page, outcome: string) =>
   page.locator(`[data-slot="callout"][data-outcome="${outcome}"]`);
 
 test.describe("governed actions write path", () => {
-  test("happy path: a confirm action streams to a distinct succeeded outcome (SC-01)", async ({
+  test("happy path: a confirm action streams to a distinct succeeded outcome", async ({
     page,
   }) => {
     await gotoActions(page);
@@ -56,7 +56,7 @@ test.describe("governed actions write path", () => {
     await page.getByRole("button", { name: "Arm run" }).click();
     await page.getByRole("button", { name: /^Run E2E echo/ }).click();
 
-    // A distinct terminal SUCCEEDED banner renders (never silent — SC-04), and
+    // A distinct terminal SUCCEEDED banner renders (never silent), and
     // the runner's streamed stdout is present (the real echo runner's output).
     const banner = outcomeBanner(page, "succeeded");
     await expect(banner).toHaveAttribute("role", "status");
@@ -68,7 +68,7 @@ test.describe("governed actions write path", () => {
     );
   });
 
-  test("cancel: a long-running action reaches cancelled with a cancelled audit entry (SC-07)", async ({
+  test("cancel: a long-running action reaches cancelled with a cancelled audit entry", async ({
     page,
   }) => {
     await gotoActions(page);
@@ -82,7 +82,7 @@ test.describe("governed actions write path", () => {
     await expect(cancelButton).toBeVisible({ timeout: 30_000 });
     await cancelButton.click();
 
-    // The terminal state is a distinct CANCELLED banner (REQ-LIFE-02, SC-07).
+    // The terminal state is a distinct CANCELLED banner.
     const banner = outcomeBanner(page, "cancelled");
     await expect(banner).toBeVisible({ timeout: 30_000 });
     await expect(banner).toContainText("Cancelled");

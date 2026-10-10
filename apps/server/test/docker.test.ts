@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Provider } from "../src/contract/index.js";
 import { logger } from "../src/log/logger.js";
-import { DockerProvider, registerDocker } from "../src/providers/docker/index.js";
+import { DockerProvider } from "../../../modules/docker/server/index.js";
 import { read, register, startScheduler, stopScheduler } from "../src/providers/registry.js";
+import { processEnv, registerDocker } from "./util/register-kinds.js";
 
 describe("DockerProvider", () => {
   beforeEach(() => {
@@ -58,7 +59,7 @@ describe("DockerProvider", () => {
   });
 
   it("resolves credentials from the environment at fetch time and omits absent credentials", async () => {
-    const config = { baseUrl: "http://proxy", credentialEnv: "DECK_DOCKER_TOKEN" };
+    const config = { baseUrl: "http://proxy", credentialEnv: "DECK_DOCKER_TOKEN", env: processEnv };
     const provider = new DockerProvider("docker", config);
     const fetchStub = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => Response.json([]));
     vi.stubGlobal("fetch", fetchStub);
@@ -75,7 +76,7 @@ describe("DockerProvider", () => {
       { Authorization: "Bearer rotated" },
       {},
     ]);
-    expect(config).toEqual({ baseUrl: "http://proxy", credentialEnv: "DECK_DOCKER_TOKEN" });
+    expect(config).toEqual({ baseUrl: "http://proxy", credentialEnv: "DECK_DOCKER_TOKEN", env: processEnv });
     expect(JSON.stringify(provider)).not.toContain("Bearer");
   });
 
@@ -94,10 +95,19 @@ describe("DockerProvider", () => {
     });
   });
 
+  // The parse error's wording is the runtime's own (V8: "Unexpected token …", Bun: "Failed to
+  // parse JSON"), and the envelope passes it through verbatim, so expect what this runtime says.
+  const jsonParseMessage = () => new Response("not-json").json().then(
+    () => "",
+    (error: Error) => error.message,
+  );
+
   it.each([
-    ["transport rejection", () => Promise.reject(new Error("connection refused")), "connection refused"],
-    ["malformed JSON", () => Promise.resolve(new Response("not-json", { status: 200 })), "Unexpected token"],
-  ])("throws on %s and publishes unreachable while retaining prior data", async (_label, failure, message) => {
+    ["transport rejection", () => Promise.reject(new Error("connection refused")), async () => "connection refused"],
+    ["malformed JSON", () => Promise.resolve(new Response("not-json", { status: 200 })), jsonParseMessage],
+  ])("throws on %s and publishes unreachable while retaining prior data", async (_label, failure, expectedMessage) => {
+    const message = await expectedMessage();
+    expect(message).not.toBe("");
     // Persistent failure so the second poll fails deterministically; health() is now non-I/O.
     const fetchStub = vi.fn()
       .mockResolvedValueOnce(Response.json([{ Names: ["/cached"], State: "running", Status: "Up (healthy)" }]))

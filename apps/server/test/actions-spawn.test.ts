@@ -3,7 +3,8 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createBunRunnerSpawner } from "../src/actions/spawn.js";
+import { createBunRunnerSpawner } from "../../../modules/actions/server/spawn.js";
+import { stubBun, unstubBun } from "./util/stub-bun.js";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const dec = (chunks: Uint8Array[]) =>
@@ -29,7 +30,7 @@ interface Capture {
 }
 
 function installFakeBun(capture: Capture): void {
-  (globalThis as { Bun?: unknown }).Bun = {
+  stubBun({
     spawn(options: Capture["options"]) {
       capture.options = options;
       return {
@@ -39,15 +40,17 @@ function installFakeBun(capture: Capture): void {
         kill: (signal?: number | NodeJS.Signals) => capture.kills.push(signal),
       };
     },
-  };
+  });
 }
 
 afterEach(() => {
-  delete (globalThis as { Bun?: unknown }).Bun;
+  unstubBun();
 });
 
 describe("createBunRunnerSpawner", () => {
-  it("references Bun only inside spawn() — importing the module never touches Bun", () => {
+  // Under Bun the global always exists, so "no Bun installed" cannot be set up there. The
+  // source-scan test below covers the same discipline on both runtimes.
+  it.skipIf(process.versions.bun)("references Bun only inside spawn() — importing the module never touches Bun", () => {
     // No global Bun installed here: constructing the spawner must not throw, proving Bun
     // is not referenced at module scope (mirrors lazyServeStatic discipline).
     expect(() => createBunRunnerSpawner()).not.toThrow();
@@ -56,7 +59,7 @@ describe("createBunRunnerSpawner", () => {
 
   it("the source references Bun only within spawn(), never at module scope", () => {
     const src = readFileSync(
-      fileURLToPath(new URL("../src/actions/spawn.ts", import.meta.url)),
+      fileURLToPath(new URL("../../../modules/actions/server/spawn.ts", import.meta.url)),
       "utf8",
     );
     // The only executable `Bun.` reference is `Bun.spawn(` inside the spawn() body.

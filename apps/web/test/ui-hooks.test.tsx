@@ -472,6 +472,18 @@ describe("useDocumentTitle", () => {
     expect(formatDocumentTitle("  ")).toBe("Deck");
     expect(formatDocumentTitle(" Hosts ")).toBe("Hosts · Deck");
   });
+
+  it("ends the title with the brand it is given", () => {
+    expect(formatDocumentTitle("Hosts", "Gentry Lab")).toBe("Hosts · Gentry Lab");
+    expect(formatDocumentTitle(null, "Gentry Lab")).toBe("Gentry Lab");
+    function Branded() {
+      useDocumentTitle("Drift", "Gentry Lab");
+      return null;
+    }
+    const { unmount } = render(<Branded />);
+    expect(document.title).toBe("Drift · Gentry Lab");
+    unmount();
+  });
 });
 
 // ---------------------------------------------------------------------------

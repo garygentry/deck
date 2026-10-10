@@ -4,11 +4,11 @@ import { describe, expect, it } from "vitest";
 import config from "../playwright.config.js";
 
 /**
- * Configuration-focused assertions for the Playwright + Vite API bridge (item 020).
+ * Configuration-focused assertions for the Playwright + Vite API bridge.
  *
  * The config is loaded directly. Its Bun API and Vite web-server commands are plain
- * strings, so importing the config never requires `test/e2e/start-inventory-api.ts`
- * or the mutable-runtime helper (item 021) to exist yet.
+ * strings, so importing the config never loads `test/e2e/start-inventory-api.ts` or the
+ * mutable-runtime helper.
  */
 describe("playwright.config", () => {
   it("defines exactly one Chromium project", () => {
@@ -44,12 +44,14 @@ describe("playwright.config", () => {
     // The API command is Bun; it carries the same absolute runtime dir.
     expect(api?.command).toContain("bun ");
     expect(api?.command).toContain("start-inventory-api.ts");
-    expect(api?.port).toBe(8788);
+    // Ports follow the same env overrides the config honours (defaults 8788/4173),
+    // so the test also passes when a parallel suite runs on other ports.
+    expect(api?.port).toBe(Number(process.env.DECK_E2E_API_PORT ?? 8788));
     expect(api?.env?.DECK_INVENTORY_E2E_RUNTIME_DIR).toBe(runtimeDir);
 
     // The second command is Vite.
     expect(vite?.command).toContain("vite");
-    expect(vite?.port).toBe(4173);
+    expect(vite?.port).toBe(Number(process.env.DECK_E2E_WEB_PORT ?? 4173));
 
     // Both web-server cwd values are absolute, independent of process cwd.
     expect(isAbsolute(api?.cwd ?? "")).toBe(true);

@@ -1,34 +1,43 @@
 // @vitest-environment jsdom
-import type { DeckConfig, FreshnessStamp, ProviderEnvelope } from "@deck/server";
+import type { FreshnessStamp, ProviderEnvelope } from "@deck/contract";
+import type { DeckConfig } from "@deck/server";
+import type { PortalModuleConfig } from "../../../modules/portal/server/types.js";
+import type { JsonObject, UiPage, UiWidgetInstance } from "@deck/module-sdk";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DockerResult, GatusResult, PortalData } from "../src/features/portal/card-status.js";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { BUILTIN_STATUS_KINDS } from "@deck/contract/modules/data-sources";
+import type { GatusResult, PortalData } from "../../../modules/portal/web/card-status.js";
 
 let portalData: PortalData;
 
-vi.mock("../src/features/portal/usePortalData.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/features/portal/usePortalData.js")>();
+vi.mock("../../../modules/portal/web/usePortalData.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../modules/portal/web/usePortalData.js")>();
   return { ...actual, usePortalData: () => portalData };
 });
 
 // These side-effect imports intentionally exercise the same registration path as discovery.
-import "../src/features/_home/index.js";
-import "../src/features/portal/index.js";
+import "../../../modules/portal/web/index.js";
 import { App } from "../src/shell/App.js";
-import { HomePage } from "../src/features/_home/HomePage.js";
+import { PortalPage } from "../../../modules/portal/web/PortalPage.js";
+import { ConfigPage } from "../src/shell/config-page/ConfigPage.js";
+import { declaredLayout } from "../src/shell/config-page/layout.js";
 import {
   orderedGroups,
   orderedItems,
-  PortalPage,
-} from "../src/features/portal/PortalPage.js";
+  portalGroups,
+} from "../../../modules/portal/web/PortalGroupsWidget.js";
 import {
   deriveEndpointSummary,
   EndpointStatusSummary,
-} from "../src/features/portal/EndpointStatusSummary.js";
-import { CARD_STATUS, PortalCard } from "../src/features/portal/PortalCard.js";
-import { getPages } from "../src/registry/registry.js";
-import { resetProvidersIndexCache } from "../src/shell/providers-index.js";
+} from "../../../modules/portal/web/EndpointStatusSummary.js";
+import { CARD_STATUS, PortalCard } from "../../../modules/portal/web/PortalCard.js";
+import { PORTAL_SUMMARY_SLOT, PORTAL_UI } from "@deck/contract/modules/portal";
+import { getAllExtensions, getPages, getSlot, registerCard } from "../src/registry/registry.js";
+import { getQueryClient, resetQueryClient } from "../src/data/query-client.js";
+import { queryKeys } from "../src/data/index.js";
+import { manifestPlacing } from "./support/manifest.js";
+import { resolveComponent } from "./support/lazy.js";
 
 const fresh: FreshnessStamp = {
   state: "fresh",
@@ -37,7 +46,7 @@ const fresh: FreshnessStamp = {
   ttlMs: 60_000,
 };
 
-const docker: ProviderEnvelope<DockerResult> = {
+const docker: ProviderEnvelope = {
   id: "docker",
   kind: "docker",
   data: {
@@ -64,7 +73,7 @@ const gatus: ProviderEnvelope<GatusResult> = {
 };
 
 const config: DeckConfig = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   estate: { name: "Portal component estate" },
   hosts: [
     { name: "atlas", kind: "bare-metal", purpose: "Visible host" },
@@ -84,7 +93,7 @@ const config: DeckConfig = {
       purpose: "Hidden through host",
     },
   ],
-  groups: [
+  modules: { portal: { groups: [
     {
       id: "z-last",
       title: "Last group",
@@ -129,7 +138,7 @@ const config: DeckConfig = {
       order: 3,
       items: [{ type: "service", host: "atlas", name: "hidden" }],
     },
-  ],
+  ] } },
 };
 
 function service(name: string, bindings?: Record<string, unknown>, href?: string) {
@@ -144,7 +153,15 @@ function service(name: string, bindings?: Record<string, unknown>, href?: string
 }
 
 function loaded(overrides: Partial<PortalData> = {}): PortalData {
-  return { config, docker, gatus, loading: false, ...overrides };
+  return {
+    config,
+    statusKinds: BUILTIN_STATUS_KINDS,
+    registered: null,
+    pending: new Set(),
+    envelopes: new Map<string, ProviderEnvelope | null>([["docker", docker], ["gatus", gatus]]),
+    loading: false,
+    ...overrides,
+  };
 }
 
 /** Every card (link or inert tile) in document order, by its title. */
@@ -166,15 +183,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();
-  resetProvidersIndexCache();
+  resetQueryClient();
 });
 
 describe("portal registration and assembled page", () => {
-  it("takes over / ahead of the dogfooded home page", () => {
+  it("is routed at /portal and renders at / as the default home page", () => {
     portalData = loaded();
     const pages = getPages();
-    expect(pages.map(({ id }) => id)).toEqual(["portal", "home"]);
-    expect(pages[0]).toMatchObject({ id: "portal", path: "/", order: -1, component: PortalPage });
+    expect(pages.map(({ id }) => id)).toEqual(["page:portal/overview"]);
+    expect(pages[0]).toMatchObject({ id: "page:portal/overview", path: "/portal", component: PortalPage });
 
     vi.stubGlobal("location", new URL("http://localhost/"));
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
@@ -188,10 +205,21 @@ describe("portal registration and assembled page", () => {
     expect(screen.queryByRole("heading", { name: "Portal links" })).not.toBeInTheDocument();
   });
 
-  it("keeps the hidden home page renderable: one labelled region with its registered cards", () => {
-    render(<HomePage />);
-    const region = screen.getByRole("region", { name: "Portal" });
-    expect(within(region).getByRole("heading", { level: 2, name: "Portal links" })).toBeInTheDocument();
+  it("registers exactly its module's contributions, with no placement of its own", async () => {
+    const ours = getAllExtensions().filter(({ module }) => module === "portal");
+    const declared = PORTAL_UI.contributes!;
+    expect(ours.map(({ id }) => id).sort()).toEqual(
+      [...declared.pages!, ...declared.nav!, ...declared.extensions!].map(({ id }) => id).sort(),
+    );
+    // The nav entry keeps the manifest's order; the route takes none of its own.
+    expect(ours.find(({ id }) => id === "nav:portal/overview")!.attachTo).toEqual({ slot: "app/nav", order: -1 });
+    const pill = ours.find(({ id }) => id === "pill:portal/endpoints")!;
+    expect(pill.attachTo).toEqual({ slot: "app/topbar.status", order: 100 });
+    expect(await resolveComponent(pill.component!)).toBe(EndpointStatusSummary);
+    expect(getPages()[0]).toMatchObject({ label: "Portal", icon: "layout-grid", group: "overview", navOrder: -1 });
+    // The portal hosts the summary slot, declared from its manifest.
+    expect(PORTAL_SUMMARY_SLOT).toBe("portal/summary");
+    expect(getSlot(PORTAL_SUMMARY_SLOT)).toMatchObject({ accepts: "widget", module: "portal" });
   });
 
   it("renders one page landmark with no nested <main>", () => {
@@ -221,20 +249,20 @@ describe("portal registration and assembled page", () => {
     const hiddenOnly = screen.getByRole("region", { name: "Hidden only" });
     expect(within(hiddenOnly).getByRole("status")).toHaveTextContent("No visible items.");
 
-    expect(orderedGroups(config.groups ?? []).map(({ id }) => id))
+    expect(orderedGroups(portalGroups(config)).map(({ id }) => id))
       .toEqual(["a-first", "b-second", "hidden-only", "z-last"]);
-    expect(orderedItems(config.groups?.[2]?.items ?? []).map((item) => item.type === "group" ? item.id : item.type))
+    expect(orderedItems(portalGroups(config)[2]?.items ?? []).map((item) => item.type === "group" ? item.id : item.type))
       .toEqual(["early-subgroup", "link"]);
   });
 
-  it.each([undefined, []] as Array<DeckConfig["groups"]>)("renders an accessible empty state for groups=%s", (groups) => {
-    portalData = loaded({ config: { ...config, groups } });
+  it.each([undefined, []] as Array<PortalModuleConfig["groups"]>)("renders an accessible empty state for groups=%s", (groups) => {
+    portalData = loaded({ config: { ...config, modules: { portal: { groups } } } });
     render(<PortalPage />);
     expect(screen.getByText("No groups configured.").closest('[role="status"]')).not.toBeNull();
   });
 
   it("shows a loading state until the first config arrives", () => {
-    portalData = { config: null, docker: null, gatus: null, loading: true };
+    portalData = { config: null, statusKinds: [], registered: null, envelopes: new Map(), pending: new Set(), loading: true };
     render(<PortalPage />);
     expect(screen.getByRole("status", { name: "Loading the portal…" })).toHaveAttribute("aria-busy", "true");
     expect(screen.queryByText("No groups configured.")).not.toBeInTheDocument();
@@ -242,14 +270,16 @@ describe("portal registration and assembled page", () => {
 });
 
 describe("card affordances and targets", () => {
-  it("renders all six distinct icon-and-text states, each with a tone", () => {
-    portalData = loaded();
+  it("renders all seven distinct icon-and-text states, each with a tone", () => {
+    portalData = loaded({ pending: new Set(["pending-probe"]) });
     render(<PortalPage />);
     const entries = Object.values(CARD_STATUS);
-    expect(new Set(entries.map((value) => value.icon))).toHaveLength(6);
-    expect(new Set(entries.map((value) => value.label))).toHaveLength(6);
+    expect(new Set(entries.map((value) => value.icon))).toHaveLength(7);
+    expect(new Set(entries.map((value) => value.label))).toHaveLength(7);
     expect(CARD_STATUS["not-found"]).not.toEqual(CARD_STATUS["broken-reference"]);
-    const page = screen.getByTestId("portal");
+    // A pending card shows only before its provider first answers; the fixture's have answered.
+    render(<PortalCard vm={{ item: { type: "service", host: "atlas", name: "probe" }, status: "pending", freshness: { ...fresh, state: "pending" } }} />);
+    const page = document.body;
     for (const { label, tone } of entries) {
       const badge = within(page).getAllByText(label, { selector: '[data-slot="status-badge"] > span' })[0]!;
       expect(badge.parentElement).toHaveAttribute("data-tone", tone);
@@ -297,27 +327,28 @@ describe("summary", () => {
     expect(container.querySelector('[data-slot="health-header"]')).toBeNull();
   });
 
-  it("renders the self-sufficient endpoint summary as a / link with icon + text", () => {
-    portalData = loaded();
+  it("renders the self-sufficient endpoint summary as a link to the portal's own path (not /, which is home) with icon + text", () => {
+    getQueryClient().setQueryData(queryKeys.uiManifest, { ...manifestPlacing([]), providers: [{ id: "gatus", kind: "gatus" }] });
+    getQueryClient().setQueryData(queryKeys.provider("gatus"), gatus);
     render(<EndpointStatusSummary />);
     const link = screen.getByRole("link", { name: /1 up \/ 1 down/ });
-    expect(link).toHaveAttribute("href", "/");
+    expect(link).toHaveAttribute("href", "/portal");
     expect(link.querySelector("svg.lucide-triangle-alert")).not.toBeNull();
   });
 
   it("derives mixed, all-down, all-up, and honest zero rich summaries", () => {
-    expect(deriveEndpointSummary(loaded())).toMatchObject({
-      label: "1 up / 1 down", status: "warning", count: 1, href: "/",
+    expect(deriveEndpointSummary(gatus)).toMatchObject({
+      label: "1 up / 1 down", status: "warning", count: 1, href: "/portal",
     });
-    expect(deriveEndpointSummary(loaded({ gatus: { ...gatus, data: { endpoints: [
+    expect(deriveEndpointSummary({ ...gatus, data: { endpoints: [
       { key: "a", up: false, latencyMs: null }, { key: "b", up: false, latencyMs: null },
-    ] } } }))).toMatchObject({ label: "0 up / 2 down", status: "critical", count: 2 });
-    expect(deriveEndpointSummary(loaded({ gatus: { ...gatus, data: { endpoints: [
+    ] } })).toMatchObject({ label: "0 up / 2 down", status: "critical", count: 2 });
+    expect(deriveEndpointSummary({ ...gatus, data: { endpoints: [
       { key: "a", up: true, latencyMs: null },
-    ] } } }))).toMatchObject({ label: "1 up / 0 down", status: "ok", count: 0 });
-    expect(deriveEndpointSummary(loaded({ gatus: null })))
+    ] } })).toMatchObject({ label: "1 up / 0 down", status: "ok", count: 0 });
+    expect(deriveEndpointSummary(null))
       .toMatchObject({ label: "No monitored endpoints", status: "ok", count: 0 });
-    expect(deriveEndpointSummary(loaded({ gatus: { ...gatus, data: { endpoints: [] } } })))
+    expect(deriveEndpointSummary({ ...gatus, data: { endpoints: [] } }))
       .toMatchObject({ label: "No monitored endpoints", status: "ok", count: 0 });
   });
 });
@@ -351,70 +382,9 @@ describe("filters", () => {
 });
 
 describe("shared data and keyboard integration contracts", () => {
-  it("keeps polling aggregate-only and cleans up its guarded interval", async () => {
-    vi.useFakeTimers();
-    let runEffect: (() => void | (() => void)) | undefined;
-    const setData = vi.fn();
-    vi.doMock("react", async (importOriginal) => ({
-      ...await importOriginal<typeof import("react")>(),
-      useState: () => [loaded(), setData],
-      useEffect: (effect: () => void | (() => void)) => { runEffect = effect; },
-    }));
-    vi.doUnmock("../src/features/portal/usePortalData.js");
-    const hookModule = "../src/features/portal/usePortalData.js?hook-test";
-    const { usePortalData } = await import(/* @vite-ignore */ hookModule) as typeof import("../src/features/portal/usePortalData.js");
-    resetProvidersIndexCache();
-    const providersIndex = {
-      providers: [
-        { id: "docker", kind: "docker" },
-        { id: "gatus", kind: "gatus" },
-      ],
-    };
-    const fetchMock = vi.fn(async (input: string | URL | Request) => {
-      const url = String(input);
-      if (url === "/api/providers") return Response.json(providersIndex);
-      return Response.json(url === "/api/config" ? config : url.includes("docker") ? docker : gatus);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    // Count only the aggregate endpoints; the once-memoized provider-index fetch
-    // is infrastructure, so behavior is asserted on the config/docker/gatus polls.
-    const aggregateCalls = (): string[] =>
-      fetchMock.mock.calls.map(([url]) => String(url)).filter((url) => url !== "/api/providers");
-
-    usePortalData(1_000);
-    expect(runEffect).toBeTypeOf("function");
-    const cleanupEffect = runEffect!();
-    await vi.advanceTimersByTimeAsync(0);
-    // The index was consulted once before any provider poll.
-    expect(fetchMock.mock.calls.filter(([url]) => String(url) === "/api/providers")).toHaveLength(1);
-    expect(aggregateCalls()).toEqual([
-      "/api/config", "/api/providers/docker", "/api/providers/gatus",
-    ]);
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(aggregateCalls()).toHaveLength(6);
-    expect(setData).toHaveBeenCalledTimes(2);
-
-    expect(cleanupEffect).toBeTypeOf("function");
-    cleanupEffect!();
-    await vi.advanceTimersByTimeAsync(5_000);
-    expect(aggregateCalls()).toHaveLength(6);
-
-    let settle!: (value: Response) => void;
-    fetchMock.mockImplementation(() => new Promise<Response>((resolve) => { settle = resolve; }));
-    runEffect = undefined;
-    usePortalData(1_000);
-    const pendingCleanup = runEffect!();
-    // The memoized index gate defers the provider polls by a microtask; flush it
-    // so the third generation's three aggregate requests are issued.
-    await vi.advanceTimersByTimeAsync(0);
-    expect(aggregateCalls()).toHaveLength(9);
-    pendingCleanup!();
-    settle(Response.json(config));
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(setData).toHaveBeenCalledTimes(2);
-
-    expect(await import("../src/features/portal/PortalCard.js?raw").then((module) => module.default)).not.toContain("fetch(");
+  it("renders cards from shared data without fetching on its own", async () => {
+    // Polling and sharing live in the data layer (see data-layer.test.tsx); a card only renders.
+    expect(await import("../../../modules/portal/web/PortalCard.js?raw").then((module) => module.default)).not.toContain("fetch(");
   });
 
   it("drives search, filtering, navigation and opening through the keyboard", async () => {
@@ -480,4 +450,205 @@ describe("shared data and keyboard integration contracts", () => {
 
     document.removeEventListener("click", onClick);
   }, 30_000);
+});
+
+describe("portal as a dashboard", () => {
+  const groupsWidget = (options: JsonObject = {}): UiWidgetInstance => ({
+    id: "widget:ui/media.apps",
+    type: "portal/groups",
+    title: "Apps",
+    source: null,
+    options,
+    span: 1,
+    rows: 1,
+  });
+  const dashboard = (widget: UiWidgetInstance): UiPage => ({
+    id: "page:ui/media",
+    module: "ui",
+    path: "/media",
+    title: "Media",
+    component: "ConfigPage",
+    layout: { sections: [{ title: "Apps", columns: 2, widgets: [widget] }] },
+  });
+
+  it("renders the portal's layout from the manifest: an override that switches the groups widget off leaves the summary", () => {
+    portalData = loaded();
+    getQueryClient().setQueryData(queryKeys.uiManifest, {
+      ...manifestPlacing([]),
+      pages: [{ ...PORTAL_UI.contributes!.pages![0]!, module: "portal", layout: { sections: [{ slot: PORTAL_SUMMARY_SLOT }] } }],
+    });
+    render(<PortalPage />);
+    expect(screen.getByRole("heading", { level: 1, name: "Portal" })).toBeInTheDocument();
+    expect(screen.queryByRole("search", { name: "Portal filters" })).not.toBeInTheDocument();
+    expect(cardTitles()).toEqual([]);
+  });
+
+  it("renders the declared layout without card chrome while the manifest loads", () => {
+    portalData = loaded();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    render(<PortalPage />);
+    const widget = screen.getByTestId("portal").querySelector('[data-slot="widget"]')!;
+    expect(widget).toHaveAttribute("data-widget-id", "widget:portal/overview.groups");
+    // No card: the groups list is the widget's only child, as the page's own content.
+    expect([...widget.children].map((child) => child.getAttribute("data-slot"))).toEqual(["portal-groups"]);
+    expect(within(widget as HTMLElement).queryByRole("heading", { level: 3, name: "portal/groups" })).not.toBeInTheDocument();
+    expect(cardTitles()).toHaveLength(10);
+  });
+
+  it("shows only the groups its options name, in that order, in a titled card", () => {
+    portalData = loaded();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    render(<ConfigPage page={dashboard(groupsWidget({ groups: ["z-last", "a-first", "no-such-group"] }))} />);
+    // The outline nests: section h2, the widget's card h3, its groups h4 and their subgroups h5.
+    expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Apps"]);
+    expect(screen.getByRole("heading", { level: 3, name: "Apps" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 4 }).map((heading) => heading.textContent)).toEqual(["Last group", "First group"]);
+    expect(screen.getAllByRole("heading", { level: 5 }).map((heading) => heading.textContent)).toEqual(["Early subgroup"]);
+    expect(cardTitles()).toEqual(["Always visible link", "Subgroup Z", "Subgroup A", "Direct item"]);
+    const group = screen.getByRole("toolbar", { name: "Group" });
+    expect(within(group).getAllByRole("button").map((button) => button.textContent)).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^Last group/), expect.stringMatching(/^First group/)]),
+    );
+    expect(within(group).queryByRole("button", { name: /^Second group/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps the portal page's group anchors, and namespaces ids per widget on a dashboard", () => {
+    portalData = loaded();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    const { unmount } = render(<PortalPage />);
+    expect(document.getElementById("group-a-first")).not.toBeNull();
+    expect(document.getElementById("subgroup-early-subgroup")).not.toBeNull();
+    unmount();
+
+    const page = dashboard(groupsWidget());
+    const second = { ...groupsWidget({ groups: ["a-first"] }), id: "widget:ui/media.second" as const };
+    const twice: UiPage = { ...page, layout: { sections: [{ title: "Apps", columns: 2, widgets: [groupsWidget(), second] }] } };
+    render(<ConfigPage page={twice} />);
+    const ids = [...document.querySelectorAll("[id]")].map((element) => element.id);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(document.getElementById("group-a-first")).toBeNull();
+  });
+
+  it("falls back to the declared layout when the manifest's portal layout is malformed", () => {
+    portalData = loaded();
+    getQueryClient().setQueryData(queryKeys.uiManifest, {
+      ...manifestPlacing([]),
+      pages: [{ ...PORTAL_UI.contributes!.pages![0]!, module: "portal", layout: { sections: [{ widgets: "nope" }, null] } }],
+    });
+    render(<PortalPage />);
+    expect(screen.getByRole("search", { name: "Portal filters" })).toBeInTheDocument();
+    expect(cardTitles()).toHaveLength(10);
+  });
+
+  it("builds the declared layout once per page, so a widget's boundary is not reset every render", () => {
+    const page = PORTAL_UI.contributes!.pages![0]!;
+    expect(declaredLayout(page)).toBe(declaredLayout(page));
+  });
+
+  it("says so when none of its groups are configured", () => {
+    portalData = loaded();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    render(<ConfigPage page={dashboard(groupsWidget({ groups: ["gone"] }))} />);
+    expect(screen.getByText("None of this widget's groups are configured.")).toBeInTheDocument();
+  });
+
+  it("on a dashboard, takes keys only while focus is inside it", async () => {
+    const user = userEvent.setup();
+    portalData = loaded();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    render(<ConfigPage page={dashboard(groupsWidget())} />);
+    const search = screen.getByRole("searchbox", { name: "Search the portal" });
+    // "/" from the page does not reach a widget's search: that is the page's own shortcut.
+    await user.keyboard("/");
+    expect(search).not.toHaveFocus();
+    expect(search).not.toHaveAttribute("aria-keyshortcuts");
+
+    // With focus inside it, its keys work: j walks the cards and "/" focuses its search.
+    const links = [...document.querySelectorAll<HTMLAnchorElement>('a[data-slot="link-tile"]')];
+    links[0]!.focus();
+    await user.keyboard("j");
+    expect(links[1]).toHaveFocus();
+    await user.keyboard("/");
+    expect(search).toHaveFocus();
+    await user.keyboard("Subgroup");
+    expect(cardTitles()).toEqual(["Subgroup Z", "Subgroup A"]);
+  }, 30_000);
+});
+
+// Last in the file: these register into the shared registry singleton, once, in `beforeAll`, so
+// each test (alone with -t, or in the file) sees the same registered cards and seeds only its
+// manifest.
+describe("portal summary placement", () => {
+  const Throws = (): never => {
+    throw new Error("internal card failure must never reach the UI");
+  };
+  const First = () => <p>first card</p>;
+  const Second = () => <p>second card</p>;
+  const placed = (id: string, order: number) => ({ id, kind: "widget", module: "probe", slot: PORTAL_SUMMARY_SLOT, order });
+
+  beforeAll(() => {
+    registerCard({ id: "card:probe/first", slot: PORTAL_SUMMARY_SLOT, component: First, order: 10 });
+    registerCard({ id: "card:probe/second", slot: PORTAL_SUMMARY_SLOT, component: Second, order: 20 });
+    registerCard({ id: "card:probe/throws", slot: PORTAL_SUMMARY_SLOT, component: Throws, order: 30 });
+  });
+
+  /** What renders in the summary area (between the page header and the groups widget), in order. */
+  function summary(): string[] {
+    const items: string[] = [];
+    let node = screen.getByTestId("portal").querySelector('[data-slot="page-header"]')!.nextElementSibling;
+    for (; node !== null && node.getAttribute("data-slot") !== "widget"; node = node.nextElementSibling) {
+      items.push(node.querySelector('[role="alert"]') !== null || node.getAttribute("role") === "alert" ? "alert" : node.textContent ?? "");
+    }
+    return items;
+  }
+
+  function renderQuietly(): void {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    render(<PortalPage />);
+    quiet.mockRestore();
+  }
+
+  it("a throwing portal/summary widget leaves the portal heading, filters and cards intact (review L8)", () => {
+    getQueryClient().setQueryData(queryKeys.uiManifest, { ...manifestPlacing([]), extensions: [placed("card:probe/throws", 1)] });
+    portalData = loaded();
+    renderQuietly();
+    expect(screen.getByRole("heading", { level: 1, name: "Portal" })).toBeInTheDocument();
+    expect(screen.getByRole("search", { name: "Portal filters" })).toBeInTheDocument();
+    expect(cardTitles().length).toBeGreaterThan(0);
+    expect(summary()).toEqual(["alert"]);
+    expect(screen.getByRole("alert")).toHaveTextContent("Summary card unavailable");
+    expect(document.body.textContent).not.toContain("internal card failure");
+  });
+
+  it("renders the cards the UI manifest places, in its order, and none of a module that is off", () => {
+    portalData = loaded();
+
+    // The manifest's order wins over the registered one.
+    getQueryClient().setQueryData(queryKeys.uiManifest, { ...manifestPlacing([]), extensions: [placed("card:probe/second", 1), placed("card:probe/first", 2)] });
+    renderQuietly();
+    expect(summary()).toEqual(["second card", "first card"]);
+    cleanup();
+
+    // A card the manifest does not list (its module is off) renders nothing.
+    getQueryClient().setQueryData(queryKeys.uiManifest, { ...manifestPlacing([]), extensions: [placed("card:probe/first", 1)] });
+    renderQuietly();
+    expect(summary()).toEqual(["first card"]);
+    cleanup();
+
+    // Until the manifest loads, none render.
+    resetQueryClient();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    renderQuietly();
+    expect(summary()).toEqual([]);
+    expect(screen.getByRole("heading", { level: 1, name: "Portal" })).toBeInTheDocument();
+  });
+
+  it("falls back to every registered card, in registry order, when the manifest cannot be read", () => {
+    portalData = loaded();
+    getQueryClient().setQueryData(queryKeys.uiManifest, { unavailable: true, message: "down" });
+    renderQuietly();
+    expect(summary()).toEqual(["first card", "second card", "alert"]);
+    expect(document.body.textContent).not.toContain("internal card failure");
+  });
 });

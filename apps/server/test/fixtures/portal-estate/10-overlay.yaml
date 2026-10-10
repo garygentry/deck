@@ -1,4 +1,4 @@
-schemaVersion: 1
+schemaVersion: 2
 hosts:
   - name: atlas
   - name: shadow
@@ -23,28 +23,30 @@ services:
     host: shadow
   - name: no-link
     host: atlas
-groups:
-  - id: primary
-    title: Primary services
-    order: 10
-    icon: layout-grid
-    items:
-      - { type: service, host: atlas, name: containers, title: Containers }
-      - { type: link, title: Runbook, href: "https://runbook.example.invalid/", description: Estate operations }
-      - type: group
-        id: monitoring
-        title: Monitoring
-        order: 20
+modules:
+  portal:
+    groups:
+      - id: primary
+        title: Primary services
+        order: 10
+        icon: layout-grid
         items:
-          - { type: service, host: atlas, name: status, title: Status checks }
-          - { type: link, title: Metrics, href: "https://metrics.example.invalid/" }
-      - { type: service, host: atlas, name: no-link, title: No-link service }
-      - { type: service, host: atlas, name: hidden-service }
-      - { type: service, host: shadow, name: hidden-host-service }
-  - id: empty
-    title: Empty group
-    order: 30
-    items: []
+          - { type: service, host: atlas, name: containers, title: Containers }
+          - { type: link, title: Runbook, href: "https://runbook.example.invalid/", description: Estate operations }
+          - type: group
+            id: monitoring
+            title: Monitoring
+            order: 20
+            items:
+              - { type: service, host: atlas, name: status, title: Status checks }
+              - { type: link, title: Metrics, href: "https://metrics.example.invalid/" }
+          - { type: service, host: atlas, name: no-link, title: No-link service }
+          - { type: service, host: atlas, name: hidden-service }
+          - { type: service, host: shadow, name: hidden-host-service }
+      - id: empty
+        title: Empty group
+        order: 30
+        items: []
 integrations:
   - id: docker-proxy
     kind: docker

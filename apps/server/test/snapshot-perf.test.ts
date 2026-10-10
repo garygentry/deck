@@ -50,7 +50,7 @@ function serialize(snapshot: SnapshotDocument): string {
   return JSON.stringify(snapshot);
 }
 
-describe("snapshot parse + validate performance (REQ-PERF-02)", () => {
+describe("snapshot parse + validate performance", () => {
   it("parses and validates a valid 5 MiB document under 500 ms (fastest of three)", () => {
     const { text, config, bytes } = buildFiveMiBDocument();
 

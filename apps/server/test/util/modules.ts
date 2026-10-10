@@ -1,0 +1,92 @@
+import {
+  defineServerModule,
+  type ModuleManifest,
+  type ServerModule,
+  type ServerModuleInit,
+  type TaskHandle,
+} from "@deck/module-sdk";
+import pino, { type Logger } from "pino";
+
+import { ACTIONS_MANIFEST } from "../../../../modules/actions/server/module.js";
+import { DRIFT_MANIFEST } from "../../../../modules/drift/server/module.js";
+import { INVENTORY_MANIFEST } from "../../../../modules/inventory/server/module.js";
+import { LLM_USAGE_MANIFEST } from "../../../../modules/llm-usage/server/module.js";
+import { METRICS_MANIFEST } from "../../../../modules/metrics/server/module.js";
+import { MONITORING_MANIFEST } from "../../../../modules/monitoring/server/module.js";
+import { ALERTMANAGER_MANIFEST } from "../../../../modules/alertmanager/server/module.js";
+import { DOCKER_MANIFEST } from "../../../../modules/docker/server/module.js";
+import { FILE_TREE_MANIFEST } from "../../../../modules/file-tree/server/module.js";
+import { GATUS_MANIFEST } from "../../../../modules/gatus/server/module.js";
+import { HTTP_HEALTH_MANIFEST } from "../../../../modules/http-health/server/module.js";
+import { HTTP_JSON_MANIFEST } from "../../../../modules/http-json/server/module.js";
+import { LINK_MANIFEST } from "../../../../modules/link/server/module.js";
+import { MARKDOWN_TREE_MANIFEST } from "../../../../modules/markdown-tree/server/module.js";
+import { PROMETHEUS_MANIFEST } from "../../../../modules/prometheus/server/module.js";
+import { REMOTE_MANIFEST } from "../../../../modules/remote/server/module.js";
+import { SNAPSHOT_MANIFEST } from "../../../../modules/snapshot/server/module.js";
+import { createModuleHost, type ModuleHostOptions } from "../../src/modules/host.js";
+import { PORTAL_MANIFEST } from "../../../../modules/portal/server/module.js";
+import { SOURCES_MANIFEST } from "../../../../modules/sources/server/module.js";
+
+/** A test module: `deckApi: "^0.1"`, always on unless the manifest says otherwise. */
+export function testModule(
+  manifest: Partial<ModuleManifest> & { id: string },
+  init: ServerModuleInit = () => {},
+): ServerModule {
+  return defineServerModule({ version: "1.0.0", deckApi: "^0.1", ...manifest }, init);
+}
+
+/** A pino logger whose JSON lines are captured for assertions. */
+export function captureLogger(): { logger: Logger; lines: Record<string, unknown>[] } {
+  const lines: Record<string, unknown>[] = [];
+  const logger = pino({ level: "debug" }, { write: (line: string) => void lines.push(JSON.parse(line)) });
+  return { logger, lines };
+}
+
+const inertHandle = (): TaskHandle => ({ wake() {}, async runNow() {}, async stop() {} });
+
+/**
+ * The built-in modules' manifests. Imported from each module, never from `modules/builtin.js`:
+ * tests mock that file with factories that import this util, and importing it here would
+ * make the mock await itself (a hang). `module-host.test.ts` keeps this list in step.
+ */
+export const BUILTIN_MANIFESTS: ReadonlySet<ModuleManifest> = new Set([
+  ACTIONS_MANIFEST,
+  ALERTMANAGER_MANIFEST,
+  DOCKER_MANIFEST,
+  DRIFT_MANIFEST,
+  FILE_TREE_MANIFEST,
+  GATUS_MANIFEST,
+  HTTP_HEALTH_MANIFEST,
+  HTTP_JSON_MANIFEST,
+  INVENTORY_MANIFEST,
+  LINK_MANIFEST,
+  LLM_USAGE_MANIFEST,
+  MARKDOWN_TREE_MANIFEST,
+  METRICS_MANIFEST,
+  MONITORING_MANIFEST,
+  PORTAL_MANIFEST,
+  PROMETHEUS_MANIFEST,
+  REMOTE_MANIFEST,
+  SNAPSHOT_MANIFEST,
+  SOURCES_MANIFEST,
+]);
+
+/**
+ * A host over the given modules with captured logs and no registry side effects. Modules
+ * carrying a built-in's manifest (the built-ins themselves, or instances their factories
+ * build) count as built-in unless `builtins` says otherwise.
+ */
+export function testHost(modules: ServerModule<any>[], options: Partial<ModuleHostOptions> = {}) {
+  const { logger, lines } = captureLogger();
+  const host = createModuleHost({
+    modules,
+    builtins: new Set(modules.filter((module) => BUILTIN_MANIFESTS.has(module.manifest))),
+    sectionOf: () => undefined,
+    env: {},
+    logger,
+    registerProvider: () => inertHandle(),
+    ...options,
+  });
+  return { host, lines };
+}

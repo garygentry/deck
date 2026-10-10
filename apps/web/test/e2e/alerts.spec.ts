@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { FIXTURE } from "./inventory-fixture.js";
+import { mockUiManifest } from "./ui-manifest.js";
 
 /** The Vite origin under test (see DECK_E2E_WEB_PORT in playwright.config.ts). */
 const WEB_ORIGIN = `http://127.0.0.1:${process.env.DECK_E2E_WEB_PORT ?? 4173}`;
@@ -45,7 +46,7 @@ const healthHeader = (page: Page) => page.locator('[data-slot="health-header"]')
 const alertSegment = (page: Page) => healthHeader(page).locator('a[href="/monitoring#alerts"]');
 const metricsSegment = (page: Page) => healthHeader(page).locator('a[href="/monitoring#metrics"]');
 const driftSegment = (page: Page) => healthHeader(page).locator('a[href="/drift"]');
-const endpointSegment = (page: Page) => healthHeader(page).locator('a[href="/"]');
+const endpointSegment = (page: Page) => healthHeader(page).locator('a[href="/portal"]');
 
 /**
  * Navigate to a fresh app route, retrying the load if the Vite dev server serves
@@ -185,22 +186,14 @@ async function fulfilStage(route: Route, stage: Stage): Promise<void> {
 
 /** Intercept both feature providers, reading each poll's response from `box`. */
 async function routeProviders(page: Page, box: { current: ProviderBox }): Promise<void> {
-  // The web polls only providers listed by GET /api/providers. These two are not
-  // in the booted fixture, so augment the real discovery index with them (mirrors
-  // mockConfigIntegrations) — otherwise the gated web would never poll them.
-  await page.route("**/api/providers", async (route) => {
-    const response = await route.fetch();
-    const body = (await response.json()) as { providers: JsonObject[] };
-    await route.fulfill({
-      json: {
-        providers: [
-          ...body.providers,
-          { id: "alertmanager", kind: "alertmanager" },
-          { id: "prometheus", kind: "prometheus" },
-        ],
-      },
-    });
-  });
+  // The web polls only providers the UI manifest lists. These two are not in the
+  // booted fixture, so add them to the real manifest (mirrors mockConfigIntegrations)
+  // — otherwise the gated web would never poll them.
+  await mockUiManifest(page, (providers) => [
+    ...providers,
+    { id: "alertmanager", kind: "alertmanager" },
+    { id: "prometheus", kind: "prometheus" },
+  ]);
   await page.route("**/api/providers/alertmanager", (route) =>
     fulfilStage(route, box.current.alertmanager),
   );
@@ -219,7 +212,7 @@ async function mockConfigIntegrations(page: Page, integrations: JsonObject[]): P
 }
 
 // ===========================================================================
-// 1. Persistent shell header on every route (SC-03).
+// 1. Persistent shell header on every route.
 // ===========================================================================
 
 test.describe("persistent health-header", () => {
@@ -242,7 +235,7 @@ test.describe("persistent health-header", () => {
 });
 
 // ===========================================================================
-// 2. Header nav affordances (SC-11) and the monitoring page in primary nav (SC-12).
+// 2. Header nav affordances and the monitoring page in primary nav.
 // ===========================================================================
 
 test.describe("header navigation and primary nav", () => {
@@ -268,18 +261,18 @@ test.describe("header navigation and primary nav", () => {
     await expect(alerts).toBeInViewport();
   });
 
-  test("the drift count reaches /drift and the endpoint count reaches /", async ({ page }) => {
+  test("the drift count reaches /drift and the endpoint count reaches /portal", async ({ page }) => {
     await gotoApp(page, "/monitoring");
     // The sibling drift segment (real snapshot provider) owns /drift.
     await expect(driftSegment(page)).toBeVisible();
     await driftSegment(page).click();
     await expect(page).toHaveURL(/\/drift$/);
 
-    // The sibling endpoint segment (portal) owns the root href.
+    // The sibling endpoint segment links to the portal's own path (/ renders the home page).
     await gotoApp(page, "/monitoring");
     await expect(endpointSegment(page)).toBeVisible();
     await endpointSegment(page).click();
-    await expect(page).toHaveURL(new RegExp(`^${WEB_ORIGIN.replace(/\./g, "\\.")}/$`));
+    await expect(page).toHaveURL(new RegExp(`^${WEB_ORIGIN.replace(/\./g, "\\.")}/portal$`));
   });
 
   test("/monitoring is in the primary nav and #metrics scrolls into view on entry", async ({
@@ -303,7 +296,7 @@ test.describe("header navigation and primary nav", () => {
 
 // ===========================================================================
 // 3. States via route mocks + clock: re-poll, freshness flip, last-known-good
-//    on unreachable (never a fabricated 0), and silenced/suppressed (SC-06/SC-07).
+//    on unreachable (never a fabricated 0), and silenced/suppressed.
 // ===========================================================================
 
 test.describe("provider states and deterministic re-poll", () => {
@@ -397,7 +390,7 @@ test.describe("provider states and deterministic re-poll", () => {
 });
 
 // ===========================================================================
-// 4. Per-segment degradation (SC-04).
+// 4. Per-segment degradation.
 // ===========================================================================
 
 test.describe("per-segment header degradation", () => {

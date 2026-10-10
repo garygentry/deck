@@ -3,7 +3,7 @@
 #
 # Emits an initial stdout line so the client observes live output, then sleeps
 # long enough to be cancelled or time out. deck kills the local child on
-# cancel/timeout (REQ-LIFE-01/02/03); the sleep dies with it.
+# cancel/timeout; the sleep dies with it.
 set -uo pipefail
 cat >/dev/null
 printf 'long runner: started, now waiting\n'

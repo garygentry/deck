@@ -16,8 +16,23 @@ export interface ValidateOptions {
   layer?: ValidateLayer;
   /** Base layer used for overlay reference checks. */
   base?: unknown;
-  /** Additional provider kinds accepted for this call. */
-  knownKinds?: readonly string[];
+  /**
+   * The composed config contract to validate against; default: the kernel plus the
+   * built-in contributions (`composeDefault()`).
+   */
+  composed?: ComposedConfig;
+  /**
+   * How sections of modules that are not enabled are checked: `advisory` (default) reports
+   * their problems at info; `strict` at their real severity, as if the module were on. It
+   * also sets the severity of PROVIDER_KIND_DISABLED (a kind only an off module provides).
+   */
+  disabledSections?: DisabledSections;
+  /**
+   * The environment deck runs with, for the checks that depend on it: a fixed provider id a
+   * variable registers (`snapshot` while `DECK_SNAPSHOT_SOURCE` is set) is reserved
+   * (PROVIDER_ID_RESERVED). Absent: no variable is set.
+   */
+  env?: Readonly<Record<string, string | undefined>>;
 }
 
 /** Per-severity counts in a validation result. */
@@ -28,9 +43,11 @@ export type ToolErrorCode =
   | "INPUT_NOT_OBJECT"
   | "VERSION_UNREADABLE"
   | "CONFIG_UNSUPPORTED"
+  | "CONFIG_MIGRATION_REQUIRED"
   | "INTERNAL";
 
-import type { Finding, FindingCode } from "./findings.js";
+import type { ComposedConfig, ConfigContribution, DisabledSections } from "./compose/compose.js";
+import type { AnyFindingCode, Finding } from "./findings.js";
 
 /** Validator result discriminated by exit classification. */
 export type ValidationResult =
@@ -41,16 +58,23 @@ export type ValidationResult =
 export interface InvalidFixture {
   name: string;
   layer: ValidateLayer | "snapshot";
-  expect: FindingCode;
+  expect: AnyFindingCode;
   document: JsonObject;
   base?: JsonObject;
   config?: JsonObject;
+  /**
+   * Contributions an installed module would add, composed with the built-in ones to validate
+   * this fixture (for a code no built-in contribution can trigger).
+   */
+  contributions?: readonly ConfigContribution[];
+  /** Validate strictly or advisorily (default advisory), for a code whose severity depends on it. */
+  disabledSections?: DisabledSections;
 }
 
 export type {
-  DeckConfigDocument, Estate, Host, Service, Group, GroupItem, ServiceItem, LinkItem,
-  Subgroup, Source, Integration, Action, ActionParam, Agent, Bindings, Address, Access,
-  Backup, SecretRef, ManagedConfig, Link, HostKind, HostStatus, ServiceKind, ServiceStatus,
+  DeckConfigDocument, Estate, Host, Service, Source, Integration, Bindings, Address, Access,
+  Backup, SecretRef, ManagedConfig, Link, HostKind, HostStatus, ServiceKind, ServiceStatus, UiTheme,
+  UiPage, UiPageNav, UiSection, UiWidget, UiStatusMap, UiStatusRule, UiTone,
 } from "./types.config.generated.js";
 
 export type {
@@ -58,4 +82,13 @@ export type {
   ObservedManagedConfig, DriftFinding, DriftLocation, Waiver, Coverage, ServiceState,
 } from "./types.snapshot.generated.js";
 
-export type { Finding, FindingCode, Severity, ExitClassification } from "./findings.js";
+export type {
+  AnyFindingCode, Finding, FindingCode, FindingCodeEntry, ModuleHostFindingCode, Severity,
+  ExitClassification,
+} from "./findings.js";
+export type {
+  ComposedConfig, ComposedReference, ComposeOptions, ConfigContribution, ContributedFinding,
+  ContributedProviderKind, ContributedReference, ContributedRule, ContributedUnique, ContributedWidgetType,
+  DisabledSections,
+} from "./compose/compose.js";
+export type { IdentitySpec, Owner } from "./ownership.js";

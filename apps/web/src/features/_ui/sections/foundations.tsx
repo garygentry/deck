@@ -27,7 +27,7 @@ const SURFACES = [
   { name: "secondary", className: "bg-secondary text-secondary-foreground" },
   { name: "accent", className: "bg-accent text-accent-foreground" },
   { name: "primary", className: "bg-primary text-primary-foreground" },
-  { name: "destructive", className: "bg-destructive text-white" },
+  { name: "destructive", className: "bg-destructive text-(--destructive-control-foreground)" },
 ] as const;
 
 const hostHref = (host: string): string => `/inventory/hosts/${encodeURIComponent(host)}`;

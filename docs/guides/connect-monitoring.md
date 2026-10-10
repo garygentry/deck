@@ -24,7 +24,7 @@ The `kind` selects the provider; `baseUrl` is the root URL deck appends each
 backend's API path to.
 
 ```yaml
-schemaVersion: 1
+schemaVersion: 2
 integrations:
   - id: gatus-api
     kind: gatus
@@ -52,7 +52,7 @@ Each summary needs an `id`, `label`, and PromQL `query`; add `warning`,
 for display.
 
 ```yaml
-schemaVersion: 1
+schemaVersion: 2
 integrations:
   - id: prometheus-primary
     kind: prometheus
@@ -81,7 +81,7 @@ Add it to the host or service you want to watch; `method` (`GET` or `HEAD`) is
 optional and defaults to `GET`.
 
 ```yaml
-schemaVersion: 1
+schemaVersion: 2
 services:
   - name: beacon
     host: cirrus
@@ -101,7 +101,7 @@ credential with `credentialEnv`.
 and the name must match `^[A-Z][A-Z0-9_]*$`.
 
 ```yaml
-schemaVersion: 1
+schemaVersion: 2
 integrations:
   - id: prometheus-primary
     kind: prometheus
@@ -202,6 +202,8 @@ curl -s http://localhost:8080/metrics
 | `deck_provider_poll_failure_total` | counter | `id`, `kind` | Completed polls that failed or timed out. |
 | `deck_provider_last_poll_latency_seconds` | gauge | `id`, `kind` | Duration of the latest completed poll; absent until a provider's first poll completes. |
 | `deck_snapshot_age_seconds` | gauge | — | Seconds since deck last successfully read the snapshot; absent when no snapshot source is configured or no read has succeeded. |
+| `deck_snapshot_generated_age_seconds` | gauge | — | Seconds since the last successfully read snapshot was generated (now minus its `generatedAt`), computed at each scrape and floored at 0; absent when no snapshot source is configured, until a read succeeds, or when that snapshot's `generatedAt` is missing or not an RFC 3339 date-time with an offset. |
+| `deck_snapshot_generated_timestamp_seconds` | gauge | — | That snapshot's `generatedAt` as Unix seconds, unclamped (a producer clock ahead of deck's shows here); absent under the same conditions. |
 
 Counters reset when deck restarts.
 Like the rest of deck's HTTP surface, `/metrics` has no authentication of its own: scrape it
@@ -214,3 +216,33 @@ scrape_configs:
     static_configs:
       - targets: ["deck:8080"]
 ```
+
+`deck_snapshot_age_seconds` only says deck can still read the snapshot.
+If the estate's producer stops publishing but the last file stays readable, deck keeps
+re-reading it and that gauge stays near zero.
+To catch a stalled producer, alert on the age of the snapshot's content instead:
+
+```yaml
+groups:
+  - name: deck
+    rules:
+      - alert: DeckSnapshotStale
+        # The snapshot deck serves was generated more than 6 hours ago.
+        expr: deck_snapshot_generated_age_seconds > 6 * 3600
+        for: 15m
+        annotations:
+          summary: "deck's snapshot is {{ $value | humanizeDuration }} old"
+      - alert: DeckSnapshotAgeUnknown
+        # The rule above cannot fire without the gauge.
+        expr: absent(deck_snapshot_generated_age_seconds)
+        for: 15m
+        annotations:
+          summary: "deck reports no snapshot content age"
+```
+
+The age gauge is absent until deck has read a snapshot, and while the snapshot it serves has
+a missing or malformed `generatedAt`, so the first rule alone goes quiet in exactly those
+cases: the `absent()` rule covers them (and a deck that is down or not scraped).
+`time() - deck_snapshot_generated_timestamp_seconds > 6 * 3600` is the same staleness check
+against Prometheus's clock rather than deck's.
+Pick a threshold that matches how often your producer publishes.

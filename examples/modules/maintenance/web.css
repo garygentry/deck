@@ -1,0 +1,12 @@
+/* A runtime module's own styles, linked before its web.js runs. Colours come from deck's theme
+   tokens only, so the module follows the operator's preset and light/dark mode. */
+.maintenance-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.maintenance-when {
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}

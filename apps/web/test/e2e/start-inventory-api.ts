@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { boot, type BootHandle } from "../../../server/src/server/boot.js";
 import { writeRunnersManifest } from "../../../server/test/fixtures/actions-runners/index.js";
 import { materializeSourceFixture } from "../../../server/test/fixtures/materialize-source-fixture.js";
@@ -41,16 +41,16 @@ async function main(): Promise<void> {
   // base; "overlay.yaml" sorts after the base "estate.yaml" so it applies last.
   await writeFile(join(runtime.configDir, "overlay.yaml"), JSON.stringify(overlay));
 
-  // Enable the governed-actions write path for the actions e2e spec. `actions` is
-  // an overlay-owned key, so it is written as a third overlay layer whose name
+  // Enable the governed-actions write path for the actions e2e spec. `modules.actions`
+  // is overlay-owned, so it is written as a third overlay layer whose name
   // sorts after "estate.yaml"/"overlay.yaml" (kept overlays, not the base). The
   // runner manifest and audit data dir live under the ephemeral root so the
   // owner's cleanup removes them with the rest of the runtime.
   await writeFile(
     join(runtime.configDir, "zz-actions.yaml"),
     JSON.stringify({
-      schemaVersion: 1,
-      actions: [
+      schemaVersion: 2,
+      modules: { actions: { actions: [
         {
           id: "e2e-echo",
           title: "E2E echo",
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
           confirm: "none",
           description: "Long-running action used to exercise cancel.",
         },
-      ],
+      ] } },
     }),
   );
   const actionsDataDir = join(rootDir, "actions-data");
@@ -82,10 +82,22 @@ async function main(): Promise<void> {
   // run on shutdown alongside the runtime owner's cleanup.
   const docsFixture = materializeSourceFixture("markdown-tree");
   const configsFixture = materializeSourceFixture("file-tree");
+  // A spec booting its own API may add files to the docs source (a JSON object of relative path
+  // to content in DECK_E2E_DOCS_FILES), so the shared fixture and its baselines stay as they are.
+  // Each path must stay inside the source root; its directories are created.
+  for (const [relPath, content] of Object.entries(JSON.parse(process.env.DECK_E2E_DOCS_FILES ?? "{}") as Record<string, string>)) {
+    const target = resolve(docsFixture.root, relPath);
+    const inside = relative(docsFixture.root, target);
+    if (inside === "" || inside.startsWith("..") || isAbsolute(inside)) {
+      throw new Error(`DECK_E2E_DOCS_FILES: ${relPath} is not a path inside the docs source`);
+    }
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, content);
+  }
   await writeFile(
     join(runtime.configDir, "zzz-sources.yaml"),
     JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       sources: [
         {
           id: "docs",
@@ -104,11 +116,27 @@ async function main(): Promise<void> {
   );
   process.env.DECK_SOURCES_CACHE_DIR = join(rootDir, "sources-cache");
 
+  // A spec booting its own API may set a `ui` section (JSON in DECK_E2E_UI), add integrations
+  // (a JSON array in DECK_E2E_INTEGRATIONS, merged by id) and module sections (a JSON object in
+  // DECK_E2E_MODULES), written as the last overlay layer: all are overlay-owned.
+  if (process.env.DECK_E2E_UI !== undefined || process.env.DECK_E2E_INTEGRATIONS !== undefined || process.env.DECK_E2E_MODULES !== undefined) {
+    await writeFile(
+      join(runtime.configDir, "zzzz-ui.yaml"),
+      JSON.stringify({
+        schemaVersion: 2,
+        ...(process.env.DECK_E2E_UI === undefined ? {} : { ui: JSON.parse(process.env.DECK_E2E_UI) }),
+        ...(process.env.DECK_E2E_INTEGRATIONS === undefined ? {} : { integrations: JSON.parse(process.env.DECK_E2E_INTEGRATIONS) }),
+        ...(process.env.DECK_E2E_MODULES === undefined ? {} : { modules: JSON.parse(process.env.DECK_E2E_MODULES) }),
+      }),
+    );
+  }
+
   // Absolute inputs; boot reads DECK_SNAPSHOT_SOURCE once and never logs it.
   process.env.DECK_CONFIG_DIR = runtime.configDir;
   process.env.DECK_SNAPSHOT_SOURCE = runtime.snapshotPath;
-  // resolveActionsRuntime(process.env) reads these once during boot().
-  process.env.DECK_ACTIONS_ENABLED = "true";
+  // resolveActionsRuntime(process.env) reads these once during boot(). Actions are on unless
+  // DECK_E2E_ACTIONS_ENABLED is "false" (a spec booting its own actions-off API).
+  process.env.DECK_ACTIONS_ENABLED = process.env.DECK_E2E_ACTIONS_ENABLED === "false" ? "false" : "true";
   process.env.DECK_RUNNERS_FILE = runnersFile;
   process.env.DECK_DATA_DIR = actionsDataDir;
 
@@ -137,7 +165,9 @@ async function main(): Promise<void> {
   process.on("SIGTERM", shutdown);
 
   try {
-    handle = await boot({ configDir: runtime.configDir, port: API_PORT });
+    // DECK_E2E_WEB_DIST: serve a production build of the shell too (the page, its policy).
+    const webDistDir = process.env.DECK_E2E_WEB_DIST;
+    handle = await boot({ configDir: runtime.configDir, port: API_PORT, ...(webDistDir === undefined ? {} : { webDistDir }) });
   } catch {
     await cleanup();
     fail("Inventory E2E API failed to start.");

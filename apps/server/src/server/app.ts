@@ -1,4 +1,9 @@
+import { readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
+
+import { apiErrorBody, type UiManifest } from "@deck/module-sdk";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
+import { every } from "hono/combine";
 import type { Logger } from "pino";
 
 import type {
@@ -10,14 +15,15 @@ import type {
   ProviderHealthEntry,
   ProvidersResponse,
 } from "../contract/index.js";
-import type { ActionsDeps } from "../actions/runtime.js";
-import { registerActionRoutes } from "../actions/route.js";
-import { registerLlmUsageRoutes, type LlmUsageDeps } from "../llm-usage/routes.js";
-import { registerMetricsRoutes } from "../metrics/route.js";
-import type { ProviderPollMetrics } from "../providers/registry.js";
-import { registerSourceRoutes } from "../sources/route.js";
-import type { SourceReader } from "../sources/store.js";
-import { requestLogger } from "../log/logger.js";
+import type { ModuleHost } from "../modules/host.js";
+import type { ProviderSelects } from "../providers/registry.js";
+import { requestLogger, type FrameSourceDroppedEvent } from "../log/logger.js";
+import { etagMatches, etagOf, type LiveUi } from "../ui/live.js";
+import type { RuntimeWebAssets } from "../modules/runtime.js";
+import { deckBootOf, renderIndexHtml } from "./index-html.js";
+import { frameAncestorsOf, frameOriginsFor, requestOrigins, scriptNonce, securityHeaders, shellPolicy } from "./security-headers.js";
+import { mountModuleAssets } from "./module-assets.js";
+import { RESERVED_ROOT_PATHS } from "./reserved-paths.js";
 
 export interface ProviderReader {
   /** Read one cached provider envelope. */
@@ -28,23 +34,30 @@ export interface ProviderReader {
   listHealth(): Readonly<Record<string, ProviderHealthEntry>>;
   /** Return the registered providers' identities (id + kind) without upstream I/O. */
   listProviders(): readonly ProviderDescriptor[];
-  /** Return per-provider poll counters and last-poll latency without upstream I/O. */
-  listMetrics?(): readonly ProviderPollMetrics[];
+  /**
+   * Replace the selects the envelopes carry as `projections` (the registry's `setProjections`).
+   * Building a UI manifest sets them from its config pages, so every manifest build wires them.
+   */
+  setProjections(selects: ReadonlyMap<string, ProviderSelects>): void;
 }
 
 export interface AppDeps {
   config: DeckConfig;
   providers: ProviderReader;
   logger: Logger;
-  /** Actions capability bundle; absent OR runtime.enabled=false => capability off. */
-  actions?: ActionsDeps;
-  /** Sources capability registry; absent => capability off (every /api/sources/* → 404). */
-  sources?: SourceReader;
-  /** LLM usage collector; absent => `llmUsage` not configured (GET routes report enabled:false). */
-  llmUsage?: LlmUsageDeps;
-  /** DECK_METRICS_ENABLED; absent or false => GET /metrics is not registered (404). */
-  metricsEnabled?: boolean;
+  /** Started module host: mounts module routes and contributes `/api/health.modules`. */
+  modules?: Pick<ModuleHost, "mount" | "health" | "rootPaths">;
+  /** The resolved UI manifest served at `/api/ui`, built once at boot. */
+  ui?: UiManifest;
+  /**
+   * What to serve now, read per request: the config and UI manifest a `ui` hot reload swaps.
+   * When given, it takes the place of `config` and `ui` for `/api/config`, `/api/ui` and the
+   * page's boot object.
+   */
+  live?: () => LiveUi;
   webDistDir?: string;
+  /** Runtime modules' web halves to serve under `/modules` (see `servedWebModules`). */
+  moduleWeb?: ReadonlyMap<string, RuntimeWebAssets>;
   startedAtMs?: number;
 }
 
@@ -62,26 +75,82 @@ function lazyServeStatic(options: StaticOptions): MiddlewareHandler {
   };
 }
 
-// Must stay a hoisted `function` declaration: `actions/route.ts` imports this
-// through a module cycle (app.ts -> actions/route.ts -> app.ts). A `const`/arrow
-// binding would sit in the temporal dead zone during that cyclic evaluation.
+/**
+ * A file's text, kept while the file's mtime is unchanged: one `stat` per call, and a re-read
+ * when the file changes (a rebuilt web dist). `undefined` while it does not exist.
+ */
+function cachedText(path: string): () => Promise<string | undefined> {
+  let cached: { mtimeMs: number; text: string } | undefined;
+  return async () => {
+    const mtimeMs = await stat(path).then((stats) => stats.mtimeMs, () => undefined);
+    if (mtimeMs === undefined) return (cached = undefined);
+    if (cached?.mtimeMs !== mtimeMs) {
+      const text = await readFile(path, "utf8").catch(() => undefined);
+      cached = text === undefined ? undefined : { mtimeMs, text };
+    }
+    return cached?.text;
+  };
+}
+
 export function apiError(
   context: Context,
   status: number,
   error: string,
   code?: string,
 ): Response {
-  const body: ApiError = { error, ...(code === undefined ? {} : { code }) };
+  const body: ApiError = apiErrorBody(error, code);
   return context.json(body, status as 400 | 403 | 404 | 422 | 500);
 }
+
+/**
+ * The kernel's route table (method + pattern) for these deps, without any module: what a
+ * module's prefixes and root paths are checked against before the module runs.
+ */
+export function kernelRouteTable(deps: Omit<AppDeps, "modules">): { method: string; path: string }[] {
+  return createApp(deps).routes.map(({ method, path }) => ({ method, path }));
+}
+
+/**
+ * independent of config and env. Module planning uses it both when config is validated and
+ * at boot, so the two always agree on which modules run. The handlers are never called.
+ */
+export function planningRouteTable(): { method: string; path: string }[] {
+  const inert = () => {
+    throw new Error("planning route table: handler called");
+  };
+  return kernelRouteTable({
+    config: { schemaVersion: 2, estate: { name: "planning" } },
+    providers: { read: inert, count: () => 0, listHealth: () => ({}), listProviders: () => [], setProjections: () => {} },
+    logger: { info: inert, warn: inert, error: inert } as unknown as Logger,
+  });
+}
+
+export { RESERVED_ROOT_PATHS } from "./reserved-paths.js";
 
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
   const startedAtMs = deps.startedAtMs ?? Date.now();
+  const staticUi = deps.ui === undefined ? undefined : { config: deps.config, ui: deps.ui, etag: etagOf(deps.ui) };
+  const current = (): { config: DeckConfig; ui?: UiManifest; etag?: string } =>
+    deps.live?.() ?? staticUi ?? { config: deps.config };
 
-  app.use("*", requestLogger(deps.logger));
+  // One kernel middleware (the route table stays as it was): the request log, and who may frame
+  // deck on every response (the shell's own policy also names it).
+  app.use("*", every(requestLogger(deps.logger), securityHeaders(() => frameAncestorsOf(current().config))));
 
-  app.get("/api/config", (context) => context.json(deps.config));
+  app.get("/api/config", (context) => context.json(current().config));
+
+  app.get("/api/ui", (context) => {
+    const { ui, etag } = current();
+    if (ui === undefined || etag === undefined) {
+      return apiError(context, 404, "No UI manifest was resolved for this server", "UI_MANIFEST_UNAVAILABLE");
+    }
+    // Revalidated on every read, so a reloaded manifest is seen at once and an unchanged one costs a 304.
+    context.header("ETag", etag);
+    context.header("Cache-Control", "no-cache");
+    if (etagMatches(context.req.header("If-None-Match"), etag)) return context.body(null, 304);
+    return context.json(ui);
+  });
 
   app.get("/api/providers", (context) => {
     const response: ProvidersResponse = { providers: [...deps.providers.listProviders()] };
@@ -104,12 +173,14 @@ export function createApp(deps: AppDeps): Hono {
 
   app.get("/api/health", (context) => {
     const providers = deps.providers.listHealth();
+    const modules = deps.modules?.health() ?? { modules: {}, legacy: {} };
     const response: HealthResponse = {
       status: Object.values(providers).some((entry) => !entry.ok) ? "degraded" : "ok",
       uptimeMs: Date.now() - startedAtMs,
       providerCount: deps.providers.count(),
       providers,
-      ...(deps.llmUsage ? { llmUsage: deps.llmUsage.collector.health() } : {}),
+      ...modules.legacy,
+      modules: modules.modules,
     };
     return context.json(response);
   });
@@ -128,31 +199,52 @@ export function createApp(deps: AppDeps): Hono {
     return context.text("404 Not Found", 404);
   });
 
-  // Action routes: after the GET routes and error/notFound boundaries, before the
-  // static/SPA fallback so /api/actions/* matches the API rather than the index rewrite.
-  registerActionRoutes(app, deps);
+  // Runtime modules' web halves: before module routes and the static/SPA fallback, so every
+  // path under /modules is answered here (a file or a plain 404), API-only or not.
+  mountModuleAssets(app, deps.moduleWeb ?? new Map());
 
-  // Source browsing routes: same placement contract (after GET provider routes, before the
-  // static/SPA fallback) so /api/sources/* resolves as API (05 §1.2).
-  registerSourceRoutes(app, deps);
-
-  // LLM usage routes: same placement contract, so /api/llm-usage* resolves as API.
-  registerLlmUsageRoutes(app, deps);
-
-  // Metrics route: outside /api/* (so it never hits the API notFound JSON branch) and
-  // before the static/SPA fallback so /metrics is not rewritten to index.html.
-  registerMetricsRoutes(app, deps);
+  // Module routes (/api/m/<id>, declared legacy aliases and root paths): same placement
+  // contract, after the built-in feature routes and before the static/SPA fallback.
+  deps.modules?.mount(app, { reservedRootPaths: RESERVED_ROOT_PATHS });
 
   if (deps.webDistDir !== undefined) {
-    app.use("/*", lazyServeStatic({ root: deps.webDistDir }));
-    const serveIndex = lazyServeStatic({
-      root: deps.webDistDir,
-      rewriteRequestPath: () => "/index.html",
-    });
+    // Root paths outside /api that are never rewritten to the SPA shell, so a disabled
+    // module's root path 404s instead of serving index.html.
+    const reserved = new Set([...RESERVED_ROOT_PATHS, ...(deps.modules?.rootPaths() ?? [])]);
+    const serveStatic = lazyServeStatic({ root: deps.webDistDir });
+    // The page itself is never served as a file: the fallback below writes the boot object in.
+    app.use("/*", async (context, next) =>
+      context.req.path === "/" || context.req.path === "/index.html" ? next() : serveStatic(context, next),
+    );
+    const indexTemplate = cachedText(join(deps.webDistDir, "index.html"));
+    // A ui.frameSources entry that covers deck itself is dropped whole: said once per config.
+    const warned = new WeakMap<object, Set<string>>();
+    const warnDropped = (config: DeckConfig, entries: readonly string[]) => {
+      let seen = warned.get(config);
+      if (seen === undefined) warned.set(config, (seen = new Set()));
+      for (const source of entries) {
+        if (seen.has(source)) continue;
+        seen.add(source);
+        deps.logger.warn({ event: "ui.frame-source-dropped", source } satisfies FrameSourceDroppedEvent, "ui.frameSources entry covers deck's own origin, so it is ignored; list hosts instead");
+      }
+    };
     app.get("/*", async (context, next) => {
-      // /metrics is reserved: with the metrics flag off it must 404, not serve the SPA shell.
-      if (context.req.path.startsWith("/api/") || context.req.path === "/metrics") return next();
-      return serveIndex(context, next);
+      // Reserved root paths (a disabled module's, say) must 404, not serve the SPA shell.
+      if (context.req.path.startsWith("/api/") || reserved.has(context.req.path)) return next();
+      const template = await indexTemplate();
+      if (template === undefined) return next();
+      // Rendered per request from the current manifest and config: it carries their brand, and
+      // a fresh script nonce its policy names, so a cached copy is always revalidated.
+      context.header("Cache-Control", "no-cache");
+      const { ui, config } = current();
+      const nonce = scriptNonce();
+      // Never deck's own origin, as this request reached it (directly or through the proxy).
+      const { allowed: frameOrigins, dropped } = frameOriginsFor(ui, config, requestOrigins(context.req.url, (name) => context.req.header(name)));
+      warnDropped(config, dropped.frameSources);
+      context.header("Content-Security-Policy", shellPolicy({ nonce, frameOrigins }));
+      // `frameSelf`: embeds of deck's own origin, which the widget says deck does not frame.
+      const boot = { ...deckBootOf(ui, config), frameOrigins, ...(dropped.embeds.length === 0 ? {} : { frameSelf: dropped.embeds }) };
+      return context.html(renderIndexHtml(template, boot, nonce));
     });
   }
 

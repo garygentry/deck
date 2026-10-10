@@ -14,9 +14,9 @@ import { LLM_USAGE_MANIFEST } from "../../../../modules/llm-usage/server/module.
 import { METRICS_MANIFEST } from "../../src/metrics/module.js";
 import { MONITORING_MANIFEST } from "../../src/monitoring/module.js";
 import { ALERTMANAGER_MANIFEST } from "../../src/providers/alertmanager/module.js";
-import { DOCKER_MANIFEST } from "../../src/providers/docker/module.js";
+import { DOCKER_MANIFEST } from "../../../../modules/docker/server/module.js";
 import { FILE_TREE_MANIFEST } from "../../src/providers/file-tree/module.js";
-import { GATUS_MANIFEST } from "../../src/providers/gatus/module.js";
+import { GATUS_MANIFEST } from "../../../../modules/gatus/server/module.js";
 import { HTTP_HEALTH_MANIFEST } from "../../../../modules/http-health/server/module.js";
 import { HTTP_JSON_MANIFEST } from "../../src/providers/http-json/module.js";
 import { LINK_MANIFEST } from "../../../../modules/link/server/module.js";

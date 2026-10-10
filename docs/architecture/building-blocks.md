@@ -105,7 +105,7 @@ snapshot can read as fresh or stale depending on when it is derived.
 
 ### Sources runtime
 
-The sources subsystem (`apps/server/src/sources/**`) browses declared document and config
+The sources subsystem (`modules/sources/server/**`) browses declared document and config
 repositories read-only, with path confinement, git acquisition, and an on-disk cache.
 It runs as three built-in modules: the `markdown-tree` and `file-tree` data sources build a store
 and a provider for each source of their kind, and the `sources` module serves the browsing routes

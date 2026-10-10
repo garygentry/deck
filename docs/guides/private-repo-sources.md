@@ -45,7 +45,7 @@ Deck reads its value only when it acquires the source.
 export RUNBOOKS_TOKEN=ghp_your_token_here
 ```
 
-How deck uses the token (verified in `apps/server/src/sources/acquire.ts`):
+How deck uses the token (verified in `modules/sources/server/acquire.ts`):
 
 - The token applies only to an **HTTPS** git remote.
   An `ssh://` or `git@` remote is left untouched — it uses its own key agent, and the token is

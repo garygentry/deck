@@ -256,11 +256,14 @@ Migration below).
    Content-Security-Policy cannot name (an IPv6 literal, or a hostname with `_`) is
    `UI_EMBED_NOT_FRAMEABLE` (warning), and the widget says it can't be embedded. `frameSources`
    does not help: give the service a DNS-style hostname, or link to it instead.
-5. **Sources: symlinks and excludes.** A repository that symlinks a file from outside its
-   `include` globs into an included directory, or that relied on `exclude` being case-sensitive,
-   loses those files: the symlinked ones are no longer listed or served, and a differently-cased
-   path that an `exclude` matches is now hidden. Copy the file into an included path, widen
-   `include`, or narrow the `exclude` glob.
+5. **Sources: symlinks, excludes and raw files.** A repository that symlinks a file from outside
+   its `include` globs into an included directory, or that relied on `exclude` being
+   case-sensitive, loses those files: the symlinked ones are no longer listed or served, and a
+   differently-cased path that an `exclude` matches is now hidden. Copy the file into an included
+   path, widen `include`, or narrow the `exclude` glob. `/raw` likewise no longer serves a file
+   that is outside the tree and not an image under an `include` glob's base, nor an image whose
+   name and bytes disagree on its type (a `.png` that is really a JPEG, say): rename or re-save
+   it.
 
 ## [0.3.2] - 2026-09-25
 

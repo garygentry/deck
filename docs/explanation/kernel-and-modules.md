@@ -144,8 +144,7 @@ and [ADR-006](../architecture/decisions/adr-006-config-driven-ui.md).
 
 | Module | Where it lives | How deck finds it |
 | --- | --- | --- |
-| A built-in moved to its own package | `modules/<id>/`: `schema.json`, `server/`, `web/`, `test/server/`, `test/web/` | `apps/server/src/modules/builtin.ts` imports `server/module.ts`; the web app discovers every `modules/*/web/index.ts` |
-| A built-in not yet moved | `apps/server/src/<id>/` or `apps/server/src/providers/<kind>/`, and `apps/web/src/features/<feature>/` | The same static list, and `features/*/index.ts` |
+| A built-in | `modules/<id>/`: `schema.json`, `server/`, `web/`, `test/server/`, `test/web/` | `apps/server/src/modules/builtin.ts` imports `server/module.ts`; the web app discovers every `modules/*/web/index.ts` |
 | A runtime module | `$DECK_MODULES_DIR/<id>/`: `deck-module.json`, an optional server entry, `web.js`, `web.css` | Read at boot; its code is imported only while `DECK_MODULES_ENABLED` is on |
 | A sidecar | Anywhere on deck's network | A `remote` entry in `integrations[]` |
 

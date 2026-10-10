@@ -7,8 +7,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { load } from "../src/config/load.js";
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { kindRuntimes, planModules } from "../src/modules/host.js";
-import { HttpJsonError, HttpJsonProvider, nestsDeeperThan, type HttpJsonConfig } from "../src/providers/http-json/index.js";
-import { credentialBodyKeys, isCredentialName } from "../src/providers/http-json/literal.js";
+import { HttpJsonError, HttpJsonProvider, nestsDeeperThan, type HttpJsonConfig } from "../../../modules/http-json/server/index.js";
+import { credentialBodyKeys, isCredentialName } from "../../../modules/http-json/server/literal.js";
 import { registerAllProviders } from "../src/providers/index.js";
 import { listHealth, listProviders, providerCount, read, register, setProjections, startScheduler, stopScheduler } from "../src/providers/registry.js";
 import { createApp } from "../src/server/app.js";

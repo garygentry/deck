@@ -23,7 +23,7 @@ apps/web/src/
   runtime/        loading runtime modules' web halves, and their loading and failure stand-ins
   sdk/            `@deck/sdk` as the page serves it to runtime modules, and the import map
   shell/          AppShell, AppSidebar, Topbar, ThemeMenu, NotFoundPage, the health header
-  features/*/     one directory per feature not yet co-located; `index.ts` registers its web half
+  features/*/     the kernel's own web features (`core-widgets`, the `_ui` workbench); `index.ts` registers each
   styles/         app.css (Tailwind entry + base rules), theme.css (tokens), hljs.css; the token
                   utilities (`@theme inline`) are packages/sdk/tailwind/theme.css, shared with
                   runtime modules' styles
@@ -482,7 +482,7 @@ manifest lists it under the module's `web` (`script`, optional `styles`).
 ### Sidecar pages
 
 A `remote` integration's page (`page:remote/<id>`) is not a component either. The server
-builds it at runtime from the sidecar's describe document (`providers/remote/pages.ts`) as a
+builds it at runtime from the sidecar's describe document (`modules/remote/server/pages.ts`) as a
 config page of module `remote`. `ConfigPage` renders it like any other: one section of the
 sidecar's widgets, each reading only that integration, then its links as a `core/link-tiles`
 widget. Until a describe succeeds, it shows a fixed placeholder. Markdown in a sidecar's widgets

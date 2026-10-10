@@ -4,15 +4,15 @@ import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 // checkDescribe throws (a bug in deck's own check, not the sidecar's answer).
-vi.mock("../src/providers/remote/describe.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/providers/remote/describe.js")>()),
+vi.mock("../../../modules/remote/server/describe.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../modules/remote/server/describe.js")>()),
   checkDescribe: () => {
     throw new Error("checker bug with sidecar text <script>");
   },
 }));
 
-const { RemoteDirectory } = await import("../src/providers/remote/directory.js");
-const { RemoteProvider } = await import("../src/providers/remote/provider.js");
+const { RemoteDirectory } = await import("../../../modules/remote/server/directory.js");
+const { RemoteProvider } = await import("../../../modules/remote/server/provider.js");
 
 let server: Server;
 let url: string;

@@ -46,9 +46,6 @@ package has no build, typecheck or test script of its own. Copy `package.json` f
 co-located module, such as `modules/llm-usage`, and change its name, description and
 dependencies. Then run `pnpm install` at the repository root to link it.
 
-Some built-ins have not moved yet: they still live in `apps/server/src/<id>/` (or
-`providers/<kind>/`) and `apps/web/src/features/<feature>/`. They follow the same contract.
-
 ## Declare what it adds to the UI
 
 Write the identity and UI contributions as a `WebModuleManifest` in
@@ -220,9 +217,9 @@ defineServerModule(manifest, init, {
 
 The kernel calls the handlers before any `init`, and registers what they offer. `envFor`
 unlocks only the credential variable that one instance names. See
-[Provider kinds](../../packages/module-sdk/README.md#provider-kinds) in the SDK README, the
-`apps/server/src/providers/*` modules, and the co-located `modules/docker` (integration instances
-with `envFor` and a `fixedId`) and `modules/http-health` (host and service bindings).
+[Provider kinds](../../packages/module-sdk/README.md#provider-kinds) in the SDK README, and the
+data-source modules under `modules/`: `modules/docker` (integration instances with `envFor` and a
+`fixedId`) and `modules/http-health` (host and service bindings).
 
 ## Test it
 

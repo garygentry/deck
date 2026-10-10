@@ -9,11 +9,11 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { load } from "../src/config/load.js";
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { createModuleHost, kindRuntimes, planModules } from "../src/modules/host.js";
-import { HttpJsonError } from "../src/providers/http-json/index.js";
+import { HttpJsonError } from "../../../modules/http-json/server/index.js";
 import { registerAllProviders } from "../src/providers/index.js";
-import { checkDescribe, REMOTE_MAX_STRING, REMOTE_WIDGET_TYPES } from "../src/providers/remote/describe.js";
-import { RemoteDirectory } from "../src/providers/remote/directory.js";
-import { RemoteProvider } from "../src/providers/remote/provider.js";
+import { checkDescribe, REMOTE_MAX_STRING, REMOTE_WIDGET_TYPES } from "../../../modules/remote/server/describe.js";
+import { RemoteDirectory } from "../../../modules/remote/server/directory.js";
+import { RemoteProvider } from "../../../modules/remote/server/provider.js";
 import { listHealth, listProviders, providerCount, read, register, setProjections, startScheduler, stopScheduler } from "../src/providers/registry.js";
 import { createApp } from "../src/server/app.js";
 import { buildUiManifest } from "../src/ui/manifest.js";

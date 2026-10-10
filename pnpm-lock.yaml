@@ -42,9 +42,6 @@ importers:
         specifier: ^2.9.0
         version: 2.9.0
     devDependencies:
-      '@types/markdown-it':
-        specifier: ^14.2.0
-        version: 14.2.0
       '@types/node':
         specifier: ^22
         version: 22.20.1
@@ -310,6 +307,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/module-sdk
 
+  modules/http-json:
+    dependencies:
+      '@deck/module-sdk':
+        specifier: workspace:*
+        version: link:../../packages/module-sdk
+
   modules/inventory:
     dependencies:
       '@deck/contract':
@@ -463,6 +466,25 @@ importers:
       '@deck/module-sdk':
         specifier: workspace:*
         version: link:../../packages/module-sdk
+
+  modules/remote:
+    dependencies:
+      '@deck/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
+      '@deck/module-sdk':
+        specifier: workspace:*
+        version: link:../../packages/module-sdk
+      '@deck/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
+      markdown-it:
+        specifier: ^14.3.2
+        version: 14.3.2
+    devDependencies:
+      '@types/markdown-it':
+        specifier: ^14.2.0
+        version: 14.2.0
 
   modules/snapshot:
     dependencies:

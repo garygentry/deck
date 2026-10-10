@@ -24,14 +24,12 @@
     "@deck/schema": "workspace:*",
     "hono": "^4.6.0",
     "markdown-it": "^14.3.2",
-    "picomatch": "^4.0.2",
     "pino": "^9.0.0",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",
     "@types/node": "^22",
-    "@types/picomatch": "^3.0.1",
     "json-schema-to-typescript": "^16.0.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.0"

@@ -81,7 +81,7 @@ function run(config: ListNavConfig, keys: readonly string[], count: number, colu
 }
 
 // ---------------------------------------------------------------------------
-// sources (modules/sources/web; sources-keyboard.test.ts)
+// sources (modules/sources/web/SourceBrowserPage.tsx; its keys are exercised by sources-states.test.tsx)
 // ---------------------------------------------------------------------------
 
 describe("ported: sources tree/search keys (arrows preset)", () => {

@@ -21,6 +21,8 @@ data half (pages, nav entries, sections) is `@deck/contract/modules/sources`, wh
 too, and `server/module.ts` spreads it into the server manifest. There is no build or test script
 here: each half compiles and is tested inside its host app. React, react-dom and vitest are peer
 dependencies (with dev dependencies for the tests): the app and its modules share one instance of
-each. Tests that drive the module through the kernel (the module host, the registry, the app, the
+each. The libraries only this module uses (picomatch on the server; markdown-it,
+markdown-it-task-lists, DOMPurify and highlight.js in the browser) are its own dependencies, not
+the host apps'. Tests that drive the module through the kernel (the module host, the registry, the app, the
 config pipeline) stay in `apps/server/test` and `apps/web/test`, as do the tests that address the
 module's files by path string (`vi.mock`).

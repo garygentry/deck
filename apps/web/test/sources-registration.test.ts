@@ -24,7 +24,7 @@ async function loadPages() {
   return { DocsPage, ConfigsPage };
 }
 
-describe("the sources-docs-and-configs web half", () => {
+describe("the sources web half", () => {
   beforeEach(() => {
     vi.resetModules();
   });

@@ -138,7 +138,7 @@
         { "heading": "Enable the sources capability", "intent": "What must be present for the Docs/Configs surfaces and /api/sources routes to activate.", "sourceRefs": ["s-sources"] },
         { "heading": "Browse and search", "intent": "How the tree, file view, raw, and search behave in the UI.", "sourceRefs": ["s-sources", "s-e2e"] }
       ],
-      "verification": "Source model and capability gating verified against apps/server/src/sources/** and sources-routes integration + e2e. Private-repo authentication is covered separately in h7."
+      "verification": "Source model and capability gating verified against modules/sources/server/** and sources-routes integration + e2e. Private-repo authentication is covered separately in h7."
     },
     {
       "id": "h4",

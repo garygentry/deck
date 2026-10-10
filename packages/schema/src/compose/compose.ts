@@ -35,17 +35,22 @@ export interface ContributedProviderKind {
   instanceList?: "integrations" | "sources";
   /** May appear in `hosts[].bindings` / `services[].bindings`. */
   bindable?: boolean;
-  /** Finding codes `validate` may report. */
+  /** Finding codes `validate` and `validateBinding` may report. */
   findings?: readonly ({ code: string } & FindingCodeEntry)[];
   /** A pure check over one instance; finding paths are relative to the instance. */
   validate?: ContributedInstanceRule;
+  /**
+   * A pure check over one host or service binding of a `bindable` kind; finding paths are
+   * relative to the binding.
+   */
+  validateBinding?: ContributedInstanceRule;
   /** The fixed provider id the kind's instances register under (a built-in's only). */
   fixedId?: string;
   /** With `fixedId`: the variable whose non-empty value registers it with no instance. */
   fixedIdEnv?: string;
 }
 
-/** A pure check over one `integrations[]` / `sources[]` instance of a contributed kind. */
+/** A pure check over one `integrations[]` / `sources[]` instance, or one binding, of a contributed kind. */
 export type ContributedInstanceRule = (
   instance: any,
   context: { layer: ValidateLayer; document: Readonly<JsonObject>; fixedIds: ReadonlyMap<string, string> },
@@ -288,6 +293,7 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
   };
   const rules: Array<{ id: string; codes: ReadonlySet<string>; rule: ContributedRule }> = [];
   const instanceRules: Array<{ id: string; kind: string; list: "integrations" | "sources"; codes: ReadonlySet<string>; rule: ContributedInstanceRule }> = [];
+  const bindingRules: Array<{ id: string; kind: string; codes: ReadonlySet<string>; rule: ContributedInstanceRule }> = [];
   const fixedIds = new Map<string, string>();
   const fixedIdEnvs = new Map<string, string>();
   const sectionRoots: Array<{ id: string; def: string }> = [];
@@ -387,6 +393,9 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
       if (declared.fixedId !== undefined && declared.fixedIdEnv !== undefined) fixedIdEnvs.set(declared.kind, declared.fixedIdEnv);
       if (declared.validate !== undefined) {
         instanceRules.push({ id, kind: declared.kind, list: declared.instanceList ?? "integrations", codes: kindCodes, rule: declared.validate });
+      }
+      if (declared.validateBinding !== undefined && declared.bindable === true) {
+        bindingRules.push({ id, kind: declared.kind, codes: kindCodes, rule: declared.validateBinding });
       }
       if (declared.instanceSchema !== undefined) {
         instanceSchemas[declared.instanceList ?? "integrations"].push({
@@ -562,6 +571,7 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
         }
       }
       if (layer === "merged") findings.push(...instanceFindings(document, layer, instanceRules, catalogued, moduleFinding, fixedIds));
+      if (layer === "merged") findings.push(...bindingFindings(document, layer, bindingRules, catalogued, moduleFinding, fixedIds));
       if (layer === "merged") findings.push(...reservedIdFindings(document, { lists: kindLists, bindable: bindableKinds, fixedIds, fixedIdEnvs }, options.env ?? {}, catalogued));
       if (layer === "merged") {
         for (const [id, section] of disabled) {
@@ -682,29 +692,66 @@ function instanceFindings(
     if (!Array.isArray(instances)) continue;
     instances.forEach((instance, index) => {
       if (!isObject(instance) || instance.kind !== kind) return;
-      const prefix = `/${list}/${index}`;
-      let reported: readonly ContributedFinding[];
-      try {
-        reported = rule(instance, { layer, document, fixedIds });
-        if (!Array.isArray(reported)) throw new Error("did not return a list of findings");
-      } catch (error) {
-        // The path names the instance, not the module, so the module is carried explicitly.
-        findings.push({ ...moduleFinding("MODULE_RULE_FAILED", id, `A config rule of module "${id}" for kind "${kind}" failed: ${(error as Error)?.message ?? String(error)}`), path: prefix, module: id });
-        return;
-      }
-      for (const item of reported) {
-        if (!codes.has(item.code)) {
-          findings.push({ ...moduleFinding("MODULE_RULE_FAILED", id, `A config rule of module "${id}" reported ${String(item.code)}, which its kind "${kind}" does not declare.`), path: prefix, module: id });
-          continue;
-        }
-        findings.push({
-          code: item.code,
-          severity: catalogued[item.code]!.severity,
-          path: `${prefix}${item.path}`,
-          message: item.message,
-          ...(item.hint ? { hint: item.hint } : {}),
-        });
-      }
+      findings.push(...kindRuleFindings({ id, kind, codes, rule }, instance, `/${list}/${index}`, { layer, document, fixedIds }, catalogued, moduleFinding));
+    });
+  }
+  return findings;
+}
+
+/**
+ * Run each bindable kind's binding rule over the host and service bindings of that kind, in
+ * document order (hosts, then services). A rule that throws, or reports a code its kind does not
+ * declare, is MODULE_RULE_FAILED.
+ */
+function bindingFindings(
+  document: JsonObject,
+  layer: ValidateLayer,
+  bindingRules: ReadonlyArray<{ id: string; kind: string; codes: ReadonlySet<string>; rule: ContributedInstanceRule }>,
+  catalogued: Readonly<Record<string, FindingCodeEntry>>,
+  moduleFinding: (code: "MODULE_RULE_FAILED", id: string, message: string) => Finding,
+  fixedIds: ReadonlyMap<string, string>,
+): Finding[] {
+  if (bindingRules.length === 0) return [];
+  const bindings = estateBindings(document as Pick<DeckConfigDocument, "hosts" | "services">);
+  const findings: Finding[] = [];
+  for (const entry of bindingRules) {
+    for (const binding of bindings) {
+      if (binding.kind !== entry.kind) continue;
+      findings.push(...kindRuleFindings(entry, binding.value, binding.path, { layer, document, fixedIds }, catalogued, moduleFinding));
+    }
+  }
+  return findings;
+}
+
+/** One kind rule over one instance or binding at `prefix`: its findings, or MODULE_RULE_FAILED. */
+function kindRuleFindings(
+  { id, kind, codes, rule }: { id: string; kind: string; codes: ReadonlySet<string>; rule: ContributedInstanceRule },
+  target: unknown,
+  prefix: string,
+  context: Parameters<ContributedInstanceRule>[1],
+  catalogued: Readonly<Record<string, FindingCodeEntry>>,
+  moduleFinding: (code: "MODULE_RULE_FAILED", id: string, message: string) => Finding,
+): Finding[] {
+  let reported: readonly ContributedFinding[];
+  try {
+    reported = rule(target, context);
+    if (!Array.isArray(reported)) throw new Error("did not return a list of findings");
+  } catch (error) {
+    // The path names the instance or binding, not the module, so the module is carried explicitly.
+    return [{ ...moduleFinding("MODULE_RULE_FAILED", id, `A config rule of module "${id}" for kind "${kind}" failed: ${(error as Error)?.message ?? String(error)}`), path: prefix, module: id }];
+  }
+  const findings: Finding[] = [];
+  for (const item of reported) {
+    if (!codes.has(item.code)) {
+      findings.push({ ...moduleFinding("MODULE_RULE_FAILED", id, `A config rule of module "${id}" reported ${String(item.code)}, which its kind "${kind}" does not declare.`), path: prefix, module: id });
+      continue;
+    }
+    findings.push({
+      code: item.code,
+      severity: catalogued[item.code]!.severity,
+      path: `${prefix}${item.path}`,
+      message: item.message,
+      ...(item.hint ? { hint: item.hint } : {}),
     });
   }
   return findings;

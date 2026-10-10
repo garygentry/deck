@@ -81,7 +81,7 @@ modules declaring it fail boot (`MODULE_MANIFEST_CONFLICT`).
 | `bindable` | boolean | May appear in `hosts[].bindings` and `services[].bindings`. The server half must then handle it (`kinds[kind].binding`). A binding of a kind that is not bindable is ignored and reported (`PROVIDER_BINDING_UNSUPPORTED`, info). |
 | `statusCapable` | boolean | Its data can drive a status tone. |
 | `status` | object | Only on a `bindable`, `statusCapable` kind: how a binding gives a portal card its up or down status, as data the web reads (see below). |
-| `findings` | array of finding codes | The codes the kind handler's `validate` rule may report. |
+| `findings` | array of finding codes | The codes the kind handler's `validate` and `validateBinding` rules may report. |
 | `fixedId` | string | Built-in modules only: the fixed, public provider id the kind's instances register under (`prometheus`, `docker`, `gatus`). Config validation reserves it (`PROVIDER_ID_RESERVED`). |
 | `fixedIdEnv` | string | Built-in modules only, with `fixedId`: a variable whose non-empty value registers the fixed id with no instance (`snapshot`'s `DECK_SNAPSHOT_SOURCE`). |
 
@@ -101,7 +101,7 @@ modules declaring it fail boot (`MODULE_MANIFEST_CONFLICT`).
 A kind that is bindable and status-capable but declares no `status` is reported in
 `GET /api/ui` (`UI_STATUS_UNDECLARED`), and its bindings give cards no status.
 
-The handlers (`binding`, `instances`, `validate`) are code, on the server half's `kinds`; see
+The handlers (`binding`, `instances`, `validate`, `validateBinding`) are code, on the server half's `kinds`; see
 [Provider kinds](../../packages/module-sdk/README.md#provider-kinds) in the SDK README.
 
 ## services

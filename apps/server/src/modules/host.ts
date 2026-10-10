@@ -367,11 +367,14 @@ function kindsProblem(manifest: ModuleManifest, kinds: Readonly<Record<string, P
   for (const [kind, handler] of Object.entries(handlers)) {
     if (!declared.has(kind)) return `kinds has a handler for "${kind}", which the manifest does not declare`;
     if (handler === null || typeof handler !== "object") return `the handler for "${kind}" must be an object`;
-    for (const name of ["binding", "instances", "validate"] as const) {
+    for (const name of ["binding", "instances", "validate", "validateBinding"] as const) {
       if (handler[name] !== undefined && typeof handler[name] !== "function") return `the ${name} handler for "${kind}" must be a function`;
     }
     if (declared.get(kind)!.static === true && handler.instances !== undefined) {
       return `provider kind "${kind}" is static, so it cannot handle instances`;
+    }
+    if (declared.get(kind)!.bindable !== true && handler.validateBinding !== undefined) {
+      return `provider kind "${kind}" is not bindable, so it cannot validate bindings`;
     }
   }
   for (const [kind, decl] of declared) {
@@ -426,7 +429,7 @@ function fixedStatusProblem(manifest: ModuleManifest): string | null {
 }
 
 /**
- * Read a module's kind handlers exactly once: a copy of the map, and of each handler's two
+ * Read a module's kind handlers exactly once: a copy of the map, and of each handler's
  * functions, so what is validated is what runs. A throwing getter, or a value of the wrong
  * shape, is the module's own defect.
  */
@@ -438,11 +441,12 @@ function snapshotKinds(module: ServerModule<any>): { kinds: Readonly<Record<stri
     const kinds: Record<string, ProviderKindHandler> = {};
     for (const [kind, handler] of Object.entries(raw as Record<string, unknown>)) {
       if (handler === null || typeof handler !== "object") return { problem: `the handler for "${kind}" must be an object` };
-      const { binding, instances, validate } = handler as ProviderKindHandler;
+      const { binding, instances, validate, validateBinding } = handler as ProviderKindHandler;
       kinds[kind] = Object.freeze({
         ...(binding === undefined ? {} : { binding }),
         ...(instances === undefined ? {} : { instances }),
         ...(validate === undefined ? {} : { validate }),
+        ...(validateBinding === undefined ? {} : { validateBinding }),
       });
     }
     return { kinds: Object.freeze(kinds) };

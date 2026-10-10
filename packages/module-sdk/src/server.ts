@@ -396,6 +396,14 @@ export interface ProviderKindHandler {
    * to the instance, and its `code` one the kind's declaration lists in `findings`.
    */
   validate?(instance: JsonObject, context: InstanceRuleContext): readonly ConfigRuleFinding[];
+  /**
+   * The same check over one `hosts[].bindings.<kind>` or `services[].bindings.<kind>` value of
+   * this kind, for a `bindable` kind (it is not run for one that is not). It runs on the merged
+   * document of every validation, for each binding of the kind in document order (hosts, then
+   * services), and must be pure in the same way. Each finding's `path` is relative to the
+   * binding, and its `code` one the kind's declaration lists in `findings`.
+   */
+  validateBinding?(binding: JsonObject, context: InstanceRuleContext): readonly ConfigRuleFinding[];
 }
 
 export interface ServerModule<C = unknown> {

@@ -95,6 +95,14 @@ are). `document` is the merged document, read-only, and `fixedIds` maps each bui
 declares `fixedId` (the provider id its instances register under) to that id. A rule that throws
 or reports an undeclared code is `MODULE_RULE_FAILED`, and disables the module that owns the kind.
 
+A `bindable` kind's handler may carry `validateBinding(binding, { layer, document, fixedIds })`
+too: the same kind of check over one `hosts[].bindings.<kind>` or `services[].bindings.<kind>`
+value, which has no schema of its own (`link` refuses an `href` that is not `isSafeHref`, say). It
+runs on the merged document for each binding of the kind, hosts first, then services, in document
+order. Each finding's `path` is relative to the binding, its code is one from the kind's
+`findings`, and a rule that throws or reports an undeclared code is `MODULE_RULE_FAILED`, as for
+`validate`. A kind that is not bindable may not carry it (`MODULE_MANIFEST_INVALID`).
+
 Each offered provider must be of the handler's own kind. A provider that keeps its binding's or
 instance's own id follows the estate: a duplicate fails boot (`PROVIDER_DUPLICATE_ID`) as it
 always has. An id the module chooses itself must not be taken by any other provider. A built-in

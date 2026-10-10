@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { isIconName, TONES, type StatusPresentation } from "../src/ui/index.js";
+import { isIconName, TONES, type StatusPresentation } from "@/ui/index.js";
 import {
   DRIFT_COVERAGE,
   DRIFT_SEVERITY,
   DRIFT_UNRESOLVED_LOCATION,
   DRIFT_WAIVER,
-} from "../src/features/drift-and-coverage/constants.js";
-import { AA_TEXT_TOKENS, resolveTokenName } from "./support/tokens.js";
+} from "../../web/constants.js";
+import { AA_TEXT_TOKENS, resolveTokenName } from "@web-test/support/tokens.js";
 
 // ---------------------------------------------------------------------------
 // Drift presentation contrast.

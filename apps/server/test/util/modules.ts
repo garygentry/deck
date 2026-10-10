@@ -8,7 +8,7 @@ import {
 import pino, { type Logger } from "pino";
 
 import { ACTIONS_MANIFEST } from "../../../../modules/actions/server/module.js";
-import { DRIFT_MANIFEST } from "../../src/drift/module.js";
+import { DRIFT_MANIFEST } from "../../../../modules/drift/server/module.js";
 import { INVENTORY_MANIFEST } from "../../src/inventory/module.js";
 import { LLM_USAGE_MANIFEST } from "../../../../modules/llm-usage/server/module.js";
 import { METRICS_MANIFEST } from "../../src/metrics/module.js";

@@ -7,7 +7,7 @@ import {
   emitDriftDiagnostic,
   setDriftDiagnosticSink,
   type DriftDiagnosticEvent,
-} from "../src/features/drift-and-coverage/diagnostics.js";
+} from "../../../modules/drift/web/diagnostics.js";
 
 // ---------------------------------------------------------------------------
 // Drift meta-guards (spec 08 §10.2 — the closed, enumerated protection set).
@@ -28,8 +28,9 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../../..");
-const webFeatureDir = resolve(here, "../src/features/drift-and-coverage");
-const serverDriftDir = resolve(repoRoot, "apps/server/src/drift");
+const webFeatureDir = resolve(repoRoot, "modules/drift/web");
+const serverDriftDir = resolve(repoRoot, "modules/drift/server");
+const moduleTestDir = resolve(repoRoot, "modules/drift/test");
 
 /** Recursively collect every `.ts`/`.tsx` source file under a directory. */
 function sourceFiles(dir: string): string[] {
@@ -339,7 +340,7 @@ describe("7. registration behavior is delegated to registry accessors", () => {
     expect(registrationText.length).toBeGreaterThan(0);
     // The authority for the exact four ids/paths/slots is behavioral: it imports
     // the feature entry and reads registry accessors rather than scanning source.
-    expect(registrationText).toContain("../src/features/drift-and-coverage/index.js");
+    expect(registrationText).toContain("../../../modules/drift/web/index.js");
     expect(registrationText).toMatch(/getPages|getEntityFragments|getExtensions/);
   });
 });
@@ -357,7 +358,8 @@ describe("8. no focused or skipped drift tests", () => {
   const serverDriftTests = sourceFiles(serverTestDir).filter((file) =>
     /drift-/.test(file),
   );
-  const driftTestFiles = [...webDriftTests, ...serverDriftTests];
+  const moduleDriftTests = sourceFiles(moduleTestDir);
+  const driftTestFiles = [...webDriftTests, ...serverDriftTests, ...moduleDriftTests];
 
   it("collects the drift test files to scan", () => {
     expect(driftTestFiles.length).toBeGreaterThan(0);
@@ -430,7 +432,7 @@ describe("10. invented estate sentinels and hostnames only", () => {
   // URLs (the ephemeral .tmp E2E runtime is uncommitted and excluded).
   const committedFixtures = [
     join(here, "drift-store.test.ts"),
-    join(here, "drift-keyboard.test.tsx"),
+    join(moduleTestDir, "web/drift-keyboard.test.tsx"),
     join(here, "e2e/drift.spec.ts"),
   ];
   const fixtureText = committedFixtures.map((file) => readFileSync(file, "utf8"));

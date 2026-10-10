@@ -1,10 +1,10 @@
 import { deriveDriftProjection } from "@deck/drift";
 import type { DriftProjection } from "@deck/drift";
-import type { InventoryGeneration } from "../hosts-and-services/inventory-store.js";
+import type { InventoryGeneration } from "@/features/hosts-and-services/inventory-store.js";
 import {
   getInventoryGeneration,
   subscribeInventoryGeneration,
-} from "../hosts-and-services/inventory-store.js";
+} from "@/features/hosts-and-services/inventory-store.js";
 import { emitDriftDiagnostic } from "./diagnostics.js";
 
 /** One projection accepted from exactly one inventory generation. */

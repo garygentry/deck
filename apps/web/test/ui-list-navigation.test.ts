@@ -217,7 +217,7 @@ describe("ported: monitoring keys (vim, no search)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// drift-and-coverage (drift-keyboard.test.tsx, keyboard sections)
+// drift (modules/drift/test/web/drift-keyboard.test.tsx, keyboard sections)
 // ---------------------------------------------------------------------------
 
 describe("ported: drift keys (vim, search, Escape)", () => {

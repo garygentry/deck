@@ -1,20 +1,20 @@
 import { describe, expect, it } from "vitest";
-import type { InventoryModel } from "../src/features/hosts-and-services/model.js";
-import { isIconName, type StatusPresentation } from "../src/ui/index.js";
+import type { InventoryModel } from "@/features/hosts-and-services/model.js";
+import { isIconName, type StatusPresentation } from "@/ui/index.js";
 import {
   DRIFT_COVERAGE,
   DRIFT_SEVERITY,
   DRIFT_UNRESOLVED_LOCATION,
   DRIFT_WAIVER,
   nextProgressiveCount,
-} from "../src/features/drift-and-coverage/constants.js";
+} from "../../web/constants.js";
 import {
   driftScopeHref,
   parseDriftScope,
   resolveDriftScope,
   type DriftEntityScope,
   type DriftScopeResult,
-} from "../src/features/drift-and-coverage/scope.js";
+} from "../../web/scope.js";
 
 // Drift's keyboard grammar now runs on the shared `useListNavigation` resolver;
 // its intent cases live in `ui-list-navigation.test.ts` ("ported: drift keys").

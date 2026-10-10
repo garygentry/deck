@@ -15,7 +15,7 @@ import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
 
 import { load } from "../src/config/load.js";
 import type { DeckConfig } from "../src/contract/index.js";
-import { DRIFT_MANIFEST } from "../src/drift/module.js";
+import { DRIFT_MANIFEST } from "../../../modules/drift/server/module.js";
 import { builtinComposition } from "../src/modules/config.js";
 import { KERNEL_ENV_NAMES } from "../src/modules/context.js";
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";

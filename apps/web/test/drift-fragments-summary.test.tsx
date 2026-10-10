@@ -30,7 +30,7 @@ import {
   serviceDecl,
 } from "./inventory-harness.js";
 import type { InventoryGeneration } from "../src/features/hosts-and-services/inventory-store.js";
-import type { DriftGenerationState } from "../src/features/drift-and-coverage/store.js";
+import type { DriftGenerationState } from "../../../modules/drift/web/store.js";
 import type { EntityRef } from "../src/registry/registry.js";
 import type { HealthSummary } from "../src/shell/health-header/health-summary.js";
 
@@ -42,23 +42,23 @@ import type { HealthSummary } from "../src/shell/health-header/health-summary.js
 // ---------------------------------------------------------------------------
 
 let driftState: DriftGenerationState;
-vi.mock("../src/features/drift-and-coverage/use-drift-generation.js", () => ({
+vi.mock("../../../modules/drift/web/use-drift-generation.js", () => ({
   useDriftGeneration: () => driftState,
 }));
 
 import {
   FindingsFragment,
   FragmentPresentationBoundary,
-} from "../src/features/drift-and-coverage/FindingsFragment.js";
+} from "../../../modules/drift/web/FindingsFragment.js";
 import {
   DriftHealthSummary,
   SummaryPresentationBoundary,
-} from "../src/features/drift-and-coverage/DriftHealthSummary.js";
+} from "../../../modules/drift/web/DriftHealthSummary.js";
 import {
   __resetDriftRenderDedupForTest,
   setDriftDiagnosticSink,
-} from "../src/features/drift-and-coverage/diagnostics.js";
-import type { DriftDiagnosticEvent } from "../src/features/drift-and-coverage/diagnostics.js";
+} from "../../../modules/drift/web/diagnostics.js";
+import type { DriftDiagnosticEvent } from "../../../modules/drift/web/diagnostics.js";
 
 // ---------------------------------------------------------------------------
 // Deterministic fixtures.
@@ -916,7 +916,7 @@ describe("DriftHealthSummary — placeholder props are ignored", () => {
   it("imports nothing from alerts-and-health and stays meaningful alone", () => {
     const source = readFileSync(
       new URL(
-        "../src/features/drift-and-coverage/DriftHealthSummary.tsx",
+        "../../../modules/drift/web/DriftHealthSummary.tsx",
         TEST_FILE_URL,
       ),
       "utf8",

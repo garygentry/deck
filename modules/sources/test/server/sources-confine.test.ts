@@ -6,8 +6,9 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 // `node:fs/promises`.realpath is a non-configurable export, so it cannot be spied with
-// `vi.spyOn`. Replace the module with a call-through vi.fn (mirrors snapshot-source.test.ts)
-// so the syntactic-reject tests can assert the filesystem was never touched.
+// `vi.spyOn`. Replace the module with a call-through vi.fn (mirrors
+// modules/snapshot/test/server/snapshot-source.test.ts) so the syntactic-reject tests can assert
+// the filesystem was never touched.
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   return { ...actual, realpath: vi.fn(actual.realpath) };

@@ -146,20 +146,39 @@ API paths are unchanged (the `/api/config` body is the new shape).
 **Upgrade checklist for an image deployment.** 0.3.2 cannot boot a schemaVersion 2 config, and
 0.4.0 cannot boot a version 1 config, so migrate and re-pin together. The 0.4.0 image carries the
 CLI at `/app/apps/server/src/cli/deck.ts`; run it with the config directory mounted **writable**
-(the deployment mounts it read-only):
+(the deployment mounts it read-only). Docker options, such as the deployment's `-e` or
+`--env-file` settings (some checks read `DECK_SNAPSHOT_SOURCE`, say), go before the image name:
 
 ```sh
-cp -a /path/to/your/estate /path/to/your/estate.v1-backup     # 1. back up every layer
-deck_cli() { docker run --rm -v /path/to/your/estate:/config --entrypoint bun \
-  ghcr.io/garygentry/deck:0.4.0 /app/apps/server/src/cli/deck.ts "$@"; }
-deck_cli config migrate /config --dry-run                     # 2. review the diff
-deck_cli config migrate /config                               # 3. apply
-deck_cli validate /config                                     # 4. expect exit 0
+# 1. Back up every layer as data: -L copies the files a symlinked directory or layer points at.
+cp -aL /path/to/your/estate /path/to/your/estate.v1-backup
+
+deck_cli() {
+  docker run --rm \
+    -v /path/to/your/estate:/config \
+    --env-file /path/to/deck.env \
+    --entrypoint bun ghcr.io/garygentry/deck:0.4.0 \
+    /app/apps/server/src/cli/deck.ts "$@"
+}
+deck_cli config migrate /config --dry-run   # 2. review the diff
+deck_cli config migrate /config             # 3. apply
+deck_cli validate /config                   # 4. expect exit 0
 ```
 
-Give `deck_cli validate` the same `-e` settings as the deployment (`DECK_SNAPSHOT_SOURCE`, say),
-since some checks read them. Then re-pin the deployment to `0.4.0` straight away and check
-`/api/health`. To roll back, restore the backup over the config directory and re-pin `0.3.2`.
+Replace or drop the `--env-file` line to match the deployment. A layer that is a symlink is
+migrated at its target, so the target must be visible in the container too. Mount a target
+outside the estate directory at the same path (`-v /srv/shared:/srv/shared`), or run the
+migration from a checkout instead (`bun apps/server/src/cli/deck.ts config migrate <dir>`).
+Otherwise migrate stops with `CONFIG_MIGRATE_FAILED` ("cannot read the layer") and writes
+nothing.
+
+Then re-pin the deployment to `0.4.0` straight away and check `/api/health`. To roll back, copy
+the backup over the config directory, which writes through symlinked layers to their targets, and
+re-pin `0.3.2`:
+
+```sh
+cp -aL /path/to/your/estate.v1-backup/. /path/to/your/estate/
+```
 
 ### 0.5.0
 

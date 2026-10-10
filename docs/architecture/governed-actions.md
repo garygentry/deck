@@ -233,8 +233,8 @@ stream that drops mid-read — resolves to a visible terminal state rather than 
 unhandled rejection or a hung UI; the server-side run is unaffected and remains
 visible in the audit history regardless of what happens to the client stream.
 
-**Run store** (`run-store.ts`) is a module-singleton, mirroring the pattern used by
-`drift-and-coverage`: one frozen `RunState` value (`idle → requesting → streaming →
+**Run store** (`run-store.ts`) is a module-singleton, mirroring
+`modules/drift/web/store.ts`: one frozen `RunState` value (`idle → requesting → streaming →
 terminal`) replaced atomically by the client's event handlers, a `Set` of listener
 records notified from a stable snapshot (one throwing listener never blocks the
 rest), and a `useRun()` hook that subscribes a component and re-reads once after

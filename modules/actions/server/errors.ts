@@ -2,7 +2,7 @@
  * Typed error class for governed action runs.
  *
  * Mirrors the closed message-table + `.toPublic()` discipline of
- * `apps/server/src/providers/snapshot/errors.ts`: a closed-union `code`, a safe
+ * `modules/snapshot/server/errors.ts`: a closed-union `code`, a safe
  * canonical message table, non-public `details`, and a `.toPublic()` that strips
  * internals before the wire/audit.
  */

@@ -66,6 +66,17 @@ sources:
 ```
 
 With no `include`, every file is included; with no `exclude`, none is excluded.
+The same globs apply to reads by path, matched against both the path requested and the real
+path a symlink leads to: a file left out of the tree reads as `404` `PATH_NOT_FOUND`, the
+answer a missing file gets. `exclude` globs match regardless of letter case; `include` globs
+match it exactly.
+Images get one allowance, so documents keep their pictures: an image file (png, jpg/jpeg, gif,
+webp, bmp, ico or svg) that `include` leaves out of the tree is still served when it is not
+excluded and sits under the fixed leading directory of an `include` glob (each `{a,b}`
+alternative counts; a plain file name counts its own directory). With
+`include: ["**/*.md"]`, `["*.md"]` or `["README.md"]` that is anywhere in the source; with
+`include: ["docs/**/*.md"]` it is only under `docs/`, and with `["{docs,guides}/**/*.md"]`
+only under `docs/` and `guides/`. An `exclude` always hides images too.
 Dotfiles are matched verbatim and are not hidden by default — curating what a source exposes
 is your job, so exclude anything sensitive.
 
@@ -113,7 +124,9 @@ Deck suppresses the body in two cases and shows a placeholder instead:
 
 **Images.**
 Relative images referenced from rendered Markdown load through the `raw` route, which serves
-image bytes only — any non-image path is refused.
+image bytes only — any non-image path is refused. Every image is served under a sandboxing
+Content-Security-Policy, so an SVG holding script, opened by its URL, runs no script on
+deck's origin; in a document it renders like any other image.
 
 **Search.**
 The search box queries one source at a time.

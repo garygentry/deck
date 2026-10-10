@@ -4,7 +4,7 @@
  * Every file access in this feature (tree walk, file read, raw image serve, content
  * search) resolves its on-disk target through {@link confine}. It rejects `..`,
  * absolute paths, NUL bytes, and symlink-escape, returning a resolved, symlink-collapsed
- * absolute path proven to live inside the resolved source root (REQ-SEC-02; SC-07, SC-17).
+ * absolute path proven to live inside the resolved source root.
  *
  * Two invariants make this a real-filesystem guarantee, not a string game:
  *   - `realpath` collapses symlinks, so a symlink escaping the root resolves to an
@@ -43,7 +43,7 @@ import { SourceFailure } from "./errors.js";
  *                (`?path=…`) or produced during the walk. Untrusted.
  * @returns The confined, symlink-resolved absolute path of an existing target.
  * @throws {SourceFailure} `PATH_NOT_CONFINED` — absolute / `..` / NUL / symlink-escape /
- *         resolves outside root (REQ-SEC-02). `details.attemptedPath = relPath` (log-only).
+ *         resolves outside root. `details.attemptedPath = relPath` (log-only).
  * @throws {SourceFailure} `PATH_NOT_FOUND` — syntactically safe and contained, but no such
  *         file exists (its existing-ancestor prefix was confirmed contained first).
  */
@@ -83,8 +83,8 @@ export async function confine(root: string, relPath: string): Promise<string> {
 }
 
 /**
- * The confinement choke point, named per `03-path-confinement-and-tree.md`. Alias of
- * {@link confine}; `tree.ts` (item 003) imports this name.
+ * The confinement choke point under the name its callers use. Alias of {@link confine};
+ * `tree.ts` and `store.ts` import this name.
  */
 export const confinePath = confine;
 

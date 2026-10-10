@@ -27,7 +27,7 @@ import { perfBudget } from "./perf-budget.js";
 
 /**
  * Stable browser presentation of the drift-and-coverage feature against the real
- * Bun API + Vite harness (item 015). These scenarios prove routing, complete
+ * Bun API + Vite harness. These scenarios prove routing, complete
  * finding/group/waiver/evidence/coverage rendering, both entity fragments, the
  * health-header summary, entity links, representative filters, keyboard-only
  * flow, evidence disclosure, and qualified zero drift — all through the real app
@@ -42,7 +42,7 @@ import { perfBudget } from "./perf-budget.js";
  *
  * Every identity is invented under the `fixture-` / `.invalid` namespaces; no
  * estate fact is copied. Request/decode/derivation failure and atomic recovery
- * transitions are item 016 and are intentionally absent here.
+ * transitions are covered by the live-interception blocks further down.
  */
 
 const enc = encodeURIComponent;
@@ -242,7 +242,7 @@ async function toggleFacet(page: Page, facet: string, option: string): Promise<v
 
 // ---------------------------------------------------------------------------
 // Qualified zero drift — the baseline generation the API boots with carries no
-// drift, so these run before any runtime mutation. (SC-05)
+// drift, so these run before any runtime mutation.
 // ---------------------------------------------------------------------------
 
 test.describe("qualified zero drift (baseline generation)", () => {
@@ -721,15 +721,15 @@ test.describe("drift presentation (published generation)", () => {
 });
 
 // ===========================================================================
-// Item 016 — failure retention and atomic recovery.
+// Failure retention and atomic recovery.
 //
 // These blocks are independent of the stable-presentation coverage above. They
 // prove the no-usable-generation classification states (no-config, pending,
 // failed-empty, failed-first request, failed-first derivation) and the retained
 // request/decode/derivation failure → later-valid recovery sequence, all through
 // the real browser drift/inventory store graph reading the two existing GET
-// endpoints. State is driven by read-only HTTP interception (spec 08 §3 permits
-// interception for these classification and browser-failure paths), never by a
+// endpoints. State is driven by read-only HTTP interception (for these
+// classification and browser-failure paths only), never by a
 // test-only production endpoint, non-GET operation, persistence, or retry.
 //
 // The retention/recovery block installs Playwright's clock so the drift store's
@@ -909,7 +909,7 @@ async function expectGenC(page: Page): Promise<void> {
 // ---------------------------------------------------------------------------
 // Pre-success classification states (read-only interception, no fabricated
 // counts). Each is a fresh page whose snapshot endpoint is intercepted before
-// the first poll. (SC-06, spec 08 §6.2, §8.1)
+// the first poll.
 // ---------------------------------------------------------------------------
 
 test.describe("no-usable-generation classification (read-only interception)", () => {
@@ -1005,7 +1005,7 @@ test.describe("no-usable-generation classification (read-only interception)", ()
 // ---------------------------------------------------------------------------
 // Retained failure and atomic recovery in one live page (no reload). Interception
 // plus the installed clock drive the store's real polls; each transition is
-// asserted before the next. (SC-07, spec 08 §6.2, §8.4)
+// asserted before the next.
 // ---------------------------------------------------------------------------
 
 test.describe("retained failure and atomic recovery (live interception + clock)", () => {
@@ -1122,11 +1122,11 @@ test.describe("retained failure and atomic recovery (live interception + clock)"
 
 // ---------------------------------------------------------------------------
 // Structured diagnostics carry only the allowlisted keys and never leak source
-// or caught-error content. (SC-14, spec 08 §5.6, §6.6)
+// or caught-error content.
 // ---------------------------------------------------------------------------
 
 test.describe("drift diagnostics allowlist (live interception + clock)", () => {
-  /** Exact §5.6 key allowlists. */
+  /** Exact diagnostic key allowlists. */
   const DERIVE_KEYS = [
     "durationMs",
     "event",
@@ -1229,10 +1229,10 @@ test.describe("drift diagnostics allowlist (live interception + clock)", () => {
 });
 
 // ===========================================================================
-// Item 019 — Chromium performance gates and above-scale reachability.
+// Chromium performance gates and above-scale reachability.
 //
 // Chromium is authoritative for the complete-page render/update (< 1,000 ms) and
-// composed filter/search (< 100 ms) budgets (spec 08 §6.5, §9). The fixed E2E
+// composed filter/search (< 100 ms) budgets. The fixed E2E
 // config declares 7 hosts and 5 services; only the snapshot is mutable, so
 // `buildScaleGeneration` publishes a generation whose declared ∪ observed union
 // is exactly 150 hosts and 300 services, and these blocks add the required drift
@@ -1786,7 +1786,7 @@ test.describe("browser performance gates (exact 150/300/1,000 scale)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Above-scale browser reachability and evidence responsiveness (spec 08 §9.4).
+// Above-scale browser reachability and evidence responsiveness.
 //
 // A strictly above-scale generation (160 hosts, 320 services, 1,010 findings)
 // with one concentrated finding subgroup and > 25 coverage rows. It proves that

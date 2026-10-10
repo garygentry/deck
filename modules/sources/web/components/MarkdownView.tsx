@@ -1,8 +1,8 @@
 /**
- * Docs document view (REQ-DOCS-02/03, REQ-RO-01/SC-10).
+ * Docs document view.
  *
  * Renders the selected markdown document read-only via the {@link renderMarkdown} pipeline. This
- * is the ONLY consumer of the markdown pipeline and the ONLY place sanitized HTML reaches the DOM:
+ * is the ONLY place the Docs view's sanitized HTML reaches the DOM:
  * `Prose` injects the pipeline's already-sanitized return value (the XSS boundary — `Prose` itself
  * does not sanitize); there is no second, un-sanitized injection path. No editing affordance
  * exists (read-only); task-list checkboxes render disabled.
@@ -10,8 +10,10 @@
 
 import type { JSX } from "react";
 import { Callout, EmptyState, ErrorState, LoadingState, Prose } from "@/ui";
+// ui-deep-import: the markdown pipeline is not in the barrel, so it stays out of the main bundle.
+import { renderMarkdown } from "@/ui/lib/markdown.js";
 import type { FileState } from "../client.js";
-import { renderMarkdown } from "../markdown.js";
+import { docsMarkdownContext } from "../markdown-context.js";
 import { FILE_NOTICE } from "../status.js";
 
 export interface MarkdownViewProps {
@@ -55,7 +57,7 @@ export function MarkdownView({ sourceId, file, selectedPath }: MarkdownViewProps
     );
   }
 
-  const html = renderMarkdown(result.content ?? "", { sourceId, docPath: result.path });
+  const html = renderMarkdown(result.content ?? "", docsMarkdownContext(sourceId, result.path));
   return (
     <article aria-label="Document" className="min-w-0">
       {/* Already sanitized by renderMarkdown (DOMPurify); Prose does not sanitize. */}

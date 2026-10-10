@@ -3,18 +3,22 @@
  * DeckConfig that declares it. Local-path sources acquire in place (no git, no network), so a
  * store built over this config reads real files on disk.
  *
- * The estate declares one of each shape the route tests (008) and the e2e/smoke item (016)
- * exercise:
+ * The estate declares one of each shape the route tests exercise:
  *  - `docs`    — a local-path markdown-tree source (docs + a relative image)
  *  - `configs` — a local-path file-tree source (highlightable .yaml/.json/Dockerfile)
  *  - `owned`   — an owner-bearing file-tree source (owner.host)
  *  - `empty`   — a matches-nothing source (include matches no file ⇒ fileCount 0)
+ *  - `curated` — a markdown-tree source whose include/exclude leave files out of its tree, with
+ *                symlinks that alias its excluded files
+ *  - `scoped`  — a markdown-tree source whose include reaches only under `docs/`
+ *  - `readme`, `braced`, `rootmd` — markdown-tree sources whose includes name a literal file,
+ *                braces, and root-level markdown, for the images each reaches
  *  - `future`  — an unsupported-kind source (dropped by resolveSourcesRuntime ⇒ no store)
  *
  * `cleanup()` removes the whole temp tree; call it in an afterEach.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -24,7 +28,7 @@ import type { DeckConfig } from "../../../src/contract/index.js";
 
 /** The materialized estate: the config, its cache root, the tree root, and a cleanup. */
 export interface MaterializedFixture {
-  /** The merged DeckConfig declaring the five sources over the temp tree. */
+  /** The merged DeckConfig declaring the ten sources over the temp tree. */
   config: DeckConfig;
   /** A fresh, empty cache dir to pass as DECK_SOURCES_CACHE_DIR. */
   cacheDir: string;
@@ -38,6 +42,10 @@ export interface MaterializedFixture {
 const PNG_BYTES = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x00,
 ]);
+
+/** An SVG that runs script when opened as a document: the raw route must serve it inert. */
+export const ACTIVE_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><script>document.documentElement.setAttribute("data-ran", "1")</script><rect width="8" height="8"/></svg>';
 
 /**
  * Build the estate on disk in a fresh temp dir. Idempotent per call — each invocation gets its
@@ -53,12 +61,29 @@ export function materializeFixture(): MaterializedFixture {
   const ownedDir = join(root, "owned");
   const emptyDir = join(root, "empty");
   const futureDir = join(root, "future");
+  const curatedDir = join(root, "curated");
+  const scopedDir = join(root, "scoped");
+  const readmeDir = join(root, "readme");
+  const bracedDir = join(root, "braced");
+  const rootmdDir = join(root, "rootmd");
 
   // markdown-tree docs source: an index linking a sibling doc, a guide, and a relative image.
   mkdirSync(join(docsDir, "img"), { recursive: true });
   writeFileSync(join(docsDir, "index.md"), "# Index\n\nSee [guide](guide.md).\n\n![logo](img/logo.png)\n");
   writeFileSync(join(docsDir, "guide.md"), "# Guide\n\nSteps to restart nginx here.\n");
   writeFileSync(join(docsDir, "img", "logo.png"), PNG_BYTES);
+  writeFileSync(join(docsDir, "img", "active.svg"), ACTIVE_SVG);
+  // Files that are not images but whose bytes look like SVG, and an image name aliasing an SVG.
+  writeFileSync(join(docsDir, "img", "widget.tsx"), ACTIVE_SVG);
+  writeFileSync(join(docsDir, "img", "page.html"), `<!doctype html><html><body>${ACTIVE_SVG}</body></html>`);
+  writeFileSync(join(docsDir, "img", "data.json"), JSON.stringify({ icon: ACTIVE_SVG }));
+  symlinkSync("active.svg", join(docsDir, "img", "alias.png"));
+  // An .svg whose root is HTML, and a real SVG behind a full prolog.
+  writeFileSync(join(docsDir, "img", "not-svg.svg"), `<html><body>${ACTIVE_SVG}</body></html>`);
+  writeFileSync(
+    join(docsDir, "img", "prolog.svg"),
+    `\ufeff<?xml version="1.0"?>\n<!-- drawn by hand -->\n<!DOCTYPE svg [ <!ENTITY a "b"> ]>\n${ACTIVE_SVG}`,
+  );
 
   // file-tree configs source: highlightable configs of a few languages.
   mkdirSync(configsDir, { recursive: true });
@@ -73,6 +98,53 @@ export function materializeFixture(): MaterializedFixture {
   // matches-nothing source: a real file exists, but the include matches no path ⇒ fileCount 0.
   mkdirSync(emptyDir, { recursive: true });
   writeFileSync(join(emptyDir, "present.txt"), "present but excluded by the include glob\n");
+
+  // curated source: include keeps markdown, exclude drops private/ (its documents and images).
+  mkdirSync(join(curatedDir, "img"), { recursive: true });
+  mkdirSync(join(curatedDir, "private"), { recursive: true });
+  writeFileSync(join(curatedDir, "index.md"), "# Curated\n\n![logo](img/logo.png)\n");
+  writeFileSync(join(curatedDir, "notes.txt"), "not markdown, so outside the include\n");
+  writeFileSync(join(curatedDir, "img", "logo.png"), PNG_BYTES);
+  writeFileSync(join(curatedDir, "private", "secret.md"), "# Secret\n");
+  writeFileSync(join(curatedDir, "private", "photo.png"), PNG_BYTES);
+  mkdirSync(join(curatedDir, "deep", "art"), { recursive: true });
+  writeFileSync(join(curatedDir, "deep", "art", "pic.png"), PNG_BYTES);
+  mkdirSync(join(curatedDir, "Private"), { recursive: true });
+  writeFileSync(join(curatedDir, "Private", "upper.md"), "# Excluded whatever its case\n");
+  // Aliases of the excluded files: a file symlink, and a directory symlink.
+  symlinkSync(join("private", "secret.md"), join(curatedDir, "alias.md"));
+  symlinkSync("private", join(curatedDir, "pub"));
+  // A markdown name for a file the include leaves out, and a differently-cased excluded dir.
+  symlinkSync("notes.txt", join(curatedDir, "notes-link.md"));
+  mkdirSync(join(curatedDir, "Build"), { recursive: true });
+  writeFileSync(join(curatedDir, "Build", "out.md"), "# Build output\n");
+
+  // scoped source: include reaches only markdown under docs/, so only docs/ images are served.
+  mkdirSync(join(scopedDir, "docs", "img"), { recursive: true });
+  mkdirSync(join(scopedDir, "other"), { recursive: true });
+  writeFileSync(join(scopedDir, "docs", "index.md"), "# Scoped\n\n![x](img/x.png)\n");
+  writeFileSync(join(scopedDir, "docs", "img", "x.png"), PNG_BYTES);
+  writeFileSync(join(scopedDir, "other", "y.png"), PNG_BYTES);
+
+  // readme: a literal include reaches its own directory (the root), so README's assets load.
+  mkdirSync(join(readmeDir, "assets"), { recursive: true });
+  mkdirSync(join(readmeDir, "docs"), { recursive: true });
+  writeFileSync(join(readmeDir, "README.md"), "# Readme\n\n![logo](assets/logo.png)\n");
+  writeFileSync(join(readmeDir, "assets", "logo.png"), PNG_BYTES);
+  writeFileSync(join(readmeDir, "docs", "a.md"), "# A\n");
+
+  // braced: {docs,guides} reaches docs/ and guides/, not personal/.
+  for (const dir of ["docs", "guides", "personal"]) mkdirSync(join(bracedDir, dir), { recursive: true });
+  writeFileSync(join(bracedDir, "docs", "a.md"), "# A\n");
+  writeFileSync(join(bracedDir, "docs", "x.png"), PNG_BYTES);
+  writeFileSync(join(bracedDir, "guides", "b.md"), "# B\n");
+  writeFileSync(join(bracedDir, "guides", "y.png"), PNG_BYTES);
+  writeFileSync(join(bracedDir, "personal", "scan.png"), PNG_BYTES);
+
+  // rootmd: `*.md` names root-level files, so it reaches the whole source.
+  mkdirSync(join(rootmdDir, "img"), { recursive: true });
+  writeFileSync(join(rootmdDir, "index.md"), "# Root\n\n![z](img/z.png)\n");
+  writeFileSync(join(rootmdDir, "img", "z.png"), PNG_BYTES);
 
   // unsupported-kind source: resolveSourcesRuntime drops it (no store, id 404s).
   mkdirSync(futureDir, { recursive: true });
@@ -95,6 +167,24 @@ export function materializeFixture(): MaterializedFixture {
       location: { path: emptyDir },
       include: ["**/*.md"], // present.txt does not match ⇒ acquired-but-empty
     },
+    {
+      id: "curated",
+      kind: "markdown-tree",
+      title: "Curated",
+      location: { path: curatedDir },
+      include: ["**/*.md"],
+      exclude: ["private/**", "build/**"],
+    },
+    {
+      id: "scoped",
+      kind: "markdown-tree",
+      title: "Scoped",
+      location: { path: scopedDir },
+      include: ["docs/**/*.md"],
+    },
+    { id: "readme", kind: "markdown-tree", title: "Readme", location: { path: readmeDir }, include: ["README.md", "docs/**/*.md"] },
+    { id: "braced", kind: "markdown-tree", title: "Braced", location: { path: bracedDir }, include: ["{docs,guides}/**/*.md"] },
+    { id: "rootmd", kind: "markdown-tree", title: "Root markdown", location: { path: rootmdDir }, include: ["*.md"] },
     { id: "future", kind: "diagram-tree", title: "Future", location: { path: futureDir } },
   ];
 

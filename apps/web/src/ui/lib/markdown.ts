@@ -1,15 +1,15 @@
 /**
- * The markdown rendering pipeline (06 §5, REQ-DOCS-03/04/05, REQ-SEC-01/SC-08/SC-17).
+ * deck's markdown rendering pipeline, shared by every surface that shows markdown (the docs
+ * view, the markdown widget).
  *
  * Composes `markdown-it` + `markdown-it-task-lists` + `highlight.js` + `DOMPurify` into a pure
  * string→string transform: raw markdown → **sanitized** HTML ready to inject into the DOM. The
- * DOMPurify pass is the single enforced XSS boundary — untrusted repository markdown cannot
- * execute script in the hub. The component (`MarkdownView`, 06 §11) injects only this return
- * value; there is no un-sanitized render path.
+ * DOMPurify pass is the single enforced XSS boundary — untrusted markdown cannot execute script
+ * in the hub. A caller injects only this return value (through `Prose`); there is no
+ * un-sanitized render path.
  *
- * Relative inter-doc links are rewritten to stay inside the Docs view; relative images are
- * rewritten to the confined raw route; external links stay external with
- * `rel="noopener noreferrer"`.
+ * Given a document context, relative links and images are rewritten through it (the caller
+ * decides where they point); external links stay external with `rel="noopener noreferrer"`.
  */
 
 import { isExternalHref, isSafeHref } from "@deck/module-sdk";
@@ -17,16 +17,18 @@ import DOMPurify, { type Config as DOMPurifyConfig } from "dompurify";
 import MarkdownIt from "markdown-it";
 import taskLists from "markdown-it-task-lists";
 
-import { rawAssetUrl } from "./client.js";
 import { highlightCode } from "./highlight.js";
 
 /** Context the renderer needs to rewrite relative links/images against the current doc. */
 export interface MarkdownRenderContext {
-  /** The active source id — the `:id` segment for in-app Docs routes and the raw route. */
-  readonly sourceId: string;
-  /** POSIX path of the document being rendered, relative to the source root. Relative links
+  /** POSIX path of the document being rendered, relative to its tree's root. Relative links
    *  and images inside the doc resolve against this path's directory. */
   readonly docPath: string;
+  /** The href of a relative link: its target resolved against `docPath`, and its `#fragment`
+   *  (empty when it has none). */
+  linkHref(resolvedPath: string, hash: string): string;
+  /** The `src` of a relative image: its target resolved against `docPath`. */
+  imageSrc(resolvedPath: string): string;
 }
 
 /** True for an absolute web/mail URL that must stay external (never rewritten in-app). */
@@ -49,17 +51,17 @@ function splitHash(target: string): { readonly path: string; readonly hash: stri
 }
 
 /**
- * Resolve a link/image target relative to a document into a POSIX path relative to the source
- * root. Collapses `./` and `../`, strips a leading `/` (root-relative within the source), and
- * never returns a path that escapes the root's own prefix (a `../` past the root normalizes
- * away — the server then confines whatever remains). Pure; exported for standalone tests.
+ * Resolve a link/image target relative to a document into a POSIX path relative to the root of
+ * the document's tree. Collapses `./` and `../`, strips a leading `/` (root-relative within the
+ * tree), and never returns a path that escapes the root's own prefix (a `../` past the root
+ * normalizes away; whatever serves the path still confines it). Pure; exported for tests.
  *
  * @example resolveRelative("guides/setup.md", "../intro.md") === "intro.md"
  * @example resolveRelative("guides/setup.md", "./img/x.png") === "guides/img/x.png"
  */
 export function resolveRelative(docPath: string, target: string): string {
   const segments = target.startsWith("/")
-    ? [] // root-relative within the source root
+    ? [] // root-relative within the tree
     : dirnamePosix(docPath).split("/").filter(Boolean);
   for (const segment of target.split("/")) {
     if (segment === "" || segment === ".") continue;
@@ -87,39 +89,40 @@ const md: MarkdownIt = new MarkdownIt({
   highlight: highlightFence,
 }).use(taskLists, { enabled: false, label: true });
 
+/** markdown-it's per-render `env`: the caller's document context, if any. */
+interface RenderEnv {
+  readonly context?: MarkdownRenderContext;
+}
+
 /** Rewrite `link_open` hrefs: external links open in a new tab with a safe `rel`; relative
- *  inter-doc links become in-app `/docs?source=…&path=…` routes (06 §5.3). */
+ *  links go through the context's `linkHref`. */
 md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
-  const context = env as Partial<MarkdownRenderContext>;
+  const { context } = env as RenderEnv;
   const token = tokens[idx];
   const href = token.attrGet("href") ?? "";
   if (isExternal(href)) {
     token.attrSet("target", "_blank");
     token.attrSet("rel", "noopener noreferrer");
-  } else if (!href.startsWith("#") && context.sourceId !== undefined && context.docPath !== undefined) {
+  } else if (!href.startsWith("#") && context !== undefined) {
     const { path, hash } = splitHash(href);
-    const resolved = resolveRelative(context.docPath, path);
-    token.attrSet(
-      "href",
-      `/docs?source=${encodeURIComponent(context.sourceId)}&path=${encodeURIComponent(resolved)}${hash}`,
-    );
+    token.attrSet("href", context.linkHref(resolveRelative(context.docPath, path), hash));
   }
   return self.renderToken(tokens, idx, options);
 };
 
-/** Rewrite relative image `src` to the confined raw route; absolute URLs pass through (06 §5.4). */
+/** Rewrite a relative image `src` through the context's `imageSrc`; absolute URLs pass through. */
 md.renderer.rules.image = (tokens, idx, options, env, self) => {
-  const context = env as Partial<MarkdownRenderContext>;
+  const { context } = env as RenderEnv;
   const token = tokens[idx];
   const src = token.attrGet("src") ?? "";
-  if (!isExternal(src) && context.sourceId !== undefined && context.docPath !== undefined) {
-    token.attrSet("src", rawAssetUrl(context.sourceId, resolveRelative(context.docPath, src)));
+  if (!isExternal(src) && context !== undefined) {
+    token.attrSet("src", context.imageSrc(resolveRelative(context.docPath, src)));
   }
   return self.renderToken(tokens, idx, options);
 };
 
-/** DOMPurify config — the XSS boundary (06 §5.2). Permit the rewritten link/image attrs;
- *  forbid script/style/embedding tags and event-handler attributes. */
+/** DOMPurify config — the XSS boundary. Permit the rewritten link/image attrs; forbid
+ *  script/style/embedding tags and event-handler attributes. */
 const SANITIZE_CONFIG: DOMPurifyConfig = {
   ADD_ATTR: ["target", "rel"],
   FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form"],
@@ -130,15 +133,15 @@ const SANITIZE_CONFIG: DOMPurifyConfig = {
 /**
  * Render a markdown document to a **sanitized** HTML string, ready to inject into the DOM. GFM
  * (tables, strikethrough, task lists) + fenced-code syntax highlighting; relative links/images
- * rewritten (§5.3/§5.4); embedded raw HTML/scripts stripped by DOMPurify BEFORE the string is
- * returned (the XSS boundary). Pure and synchronous; safe to call in render.
+ * rewritten through `context`; embedded raw HTML/scripts stripped by DOMPurify BEFORE the string
+ * is returned (the XSS boundary). Pure and synchronous; safe to call in render.
  *
- * Without a context (a dashboard's markdown widget, which belongs to no source) links and images
+ * Without a context (a dashboard's markdown widget, which belongs to no tree) links and images
  * keep their targets as written; external links still open in a new tab, and DOMPurify still
  * sanitizes everything.
  *
- * @param markdown  the raw document body (`FileReadResult.content`).
- * @param context   the source id + doc path used for relative rewriting, if any.
+ * @param markdown  the raw document body.
+ * @param context   the document path and the rewrites for its relative links and images, if any.
  * @param options   how the caller embeds it (a heading offset for a dashboard widget).
  * @returns a sanitized HTML string containing no executable script or event-handler attrs.
  */
@@ -147,7 +150,8 @@ export function renderMarkdown(
   context?: MarkdownRenderContext,
   options: MarkdownRenderOptions = {},
 ): string {
-  const rendered = md.render(markdown, { ...context });
+  const env: RenderEnv = context === undefined ? {} : { context };
+  const rendered = md.render(markdown, env);
   const html = options.headingOffset === undefined ? rendered : demoteHeadings(rendered, options.headingOffset);
   // The sanitiser runs last: nothing parses, changes or re-serialises its output. The link
   // policy runs inside it, on the very nodes it returns, for this call only (it is synchronous).
@@ -257,7 +261,7 @@ function externalLinksOnly(node: Element): void {
 export interface MarkdownRenderOptions {
   /**
    * Levels to move every heading down (at most `h6`), raw HTML headings included: a dashboard
-   * widget's markdown sits under its card's `h3`. The docs view leaves headings as written.
+   * widget's markdown sits under its card's `h3`. Without it, headings stay as written.
    */
   headingOffset?: number;
   /**

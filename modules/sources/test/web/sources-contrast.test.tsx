@@ -10,7 +10,7 @@ import { BinaryPlaceholder } from "../../web/components/BinaryPlaceholder.js";
 import { TruncatedNotice } from "../../web/components/TruncatedNotice.js";
 
 // ---------------------------------------------------------------------------
-// Sources status convention (SC-14 / REQ-A11Y-01): every status/placeholder surface this feature
+// Sources status convention: every status/placeholder surface this feature
 // renders conveys its state by an aria-hidden ICON *plus* an authoritative TEXT label — colour is
 // never the sole signal.
 //

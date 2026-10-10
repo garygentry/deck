@@ -1,15 +1,15 @@
 /**
- * Syntax-highlighting wrapper over `highlight.js`, shared by two surfaces (tech-spec §3.8):
- * the markdown fenced-code hook (`markdown.ts`, §5) and the Configs `FileViewer` (07). One
+ * Syntax-highlighting wrapper over `highlight.js`, shared by the markdown fenced-code hook
+ * (`markdown.ts`) and any code viewer (`highlightCode`, `highlightFile`). One
  * highlight.js instance, one language-selection table, one plaintext fallback that **never
  * throws** on an unknown or unregistered language.
  *
  * The output of {@link highlightCode} is HTML-escaped highlight.js markup (or escaped
  * plaintext on fallback) — safe to embed in a `<code>` element. For markdown it is further
- * passed through the DOMPurify sanitize boundary (`markdown.ts` §5.2).
+ * passed through the DOMPurify sanitize boundary (`markdown.ts`).
  */
 
-// Import the highlight.js CORE build and register ONLY the languages this feature can select
+// Import the highlight.js CORE build and register ONLY the languages deck can select
 // (the LANGUAGE_BY_* tables below). The default `highlight.js` entry bundles ~190 languages —
 // hundreds of KB we never use. Core + a curated set keeps the bundle small; any token we don't
 // register (e.g. `hcl`, which has no core language module) is simply not found by
@@ -76,8 +76,7 @@ const LANGUAGE_BY_NAME: Readonly<Record<string, string>> = Object.freeze({
   ".dockerignore": "plaintext",
 });
 
-/** highlight.js language tokens chosen by (lowercased) extension. Mirrors the server hint
- *  table (`modules/sources/server/tree.ts` `languageForPath`) so both surfaces agree. */
+/** highlight.js language tokens chosen by (lowercased) extension. */
 const LANGUAGE_BY_EXT: Readonly<Record<string, string>> = Object.freeze({
   ts: "typescript",
   tsx: "typescript",
@@ -116,8 +115,8 @@ const LANGUAGE_BY_EXT: Readonly<Record<string, string>> = Object.freeze({
 /**
  * Resolve a highlight.js language token from a file name or bare extension, or `undefined`
  * for an unknown type (⇒ plaintext). Accepts either a full path/basename (`config/app.yaml`,
- * `Dockerfile`) or a bare extension (`yaml`, `.yaml`). Pure; exported for the FileViewer (013)
- * and tests.
+ * `Dockerfile`) or a bare extension (`yaml`, `.yaml`). Pure; exported for file viewers and
+ * tests.
  */
 export function languageForName(name: string): string | undefined {
   const base = name.split(/[/\\]/).pop()?.toLowerCase() ?? "";
@@ -157,7 +156,7 @@ export function highlightCode(code: string, language: string | undefined): Highl
 
 /**
  * Highlight `code` for a named file — resolves the language from the file name/extension
- * (`languageForName`) then highlights. Convenience for the Configs `FileViewer` (013), which
+ * (`languageForName`) then highlights. Convenience for a file viewer, which
  * highlights by extension. Never throws.
  */
 export function highlightFile(code: string, name: string): HighlightResult {

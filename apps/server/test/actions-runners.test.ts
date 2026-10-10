@@ -160,7 +160,7 @@ describe("lookupRunner", () => {
     expect(lookupRunner(runners, "restart/../backup")).toBeUndefined();
 
     // Source discipline: the name is used only as a Map key — no join()/resolve() calls
-    // anywhere in runners.ts (REQ-SEC-03, CON-01).
+    // anywhere in runners.ts.
     const src = readFileSync(
       fileURLToPath(new URL("../../../modules/actions/server/runners.ts", import.meta.url)),
       "utf8",

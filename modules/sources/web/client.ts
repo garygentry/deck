@@ -8,12 +8,12 @@
  * components branch exhaustively, the UI never hangs, and no stack trace or attempted path
  * reaches the DOM.
  *
- * The wire types are imported from `@deck/server` (re-exported through its contract barrel) as
- * `import type` — never from `@deck/schema` directly (tech-spec §7 "Library discipline"). This
+ * The wire types are imported from the module's server half (`../server/types.ts`) as
+ * `import type` — never from `@deck/schema` directly. This
  * module holds NO knowledge of the browse store; `sources-store.ts` and its store-writing
  * wrappers land in a later item and compose these primitives.
  *
- * Every request is a GET (REQ-RO-01): no wrapper here issues POST/PUT/PATCH/DELETE.
+ * Every request is a GET: no wrapper here issues POST/PUT/PATCH/DELETE.
  */
 
 import type { ProviderEnvelope } from "@deck/contract";
@@ -24,16 +24,15 @@ import { setFile, setManifest, setSearch } from "./sources-store.js";
 
 /**
  * One declared source (`DeckConfig.sources[]`). `Source` is not re-exported by the `@deck/server`
- * contract barrel; per 06 (Warnings) it is derived from `DeckConfig` here rather than imported
- * from `@deck/schema` (which this feature must never do).
+ * contract barrel, so it is derived from `DeckConfig` here rather than imported from
+ * `@deck/schema` (which the web half never imports).
  */
 export type Source = NonNullable<DeckConfig["sources"]>[number];
 
 /**
  * Fixed server endpoints for the sources feature (the analogue of the frozen `ACTION_ENDPOINTS`
  * in `modules/actions/web/client.ts`). Not configurable by page or component code. `:id` and
- * query values are percent-encoded here so callers pass raw ids/paths. Every endpoint is a GET
- * (REQ-RO-01).
+ * query values are percent-encoded here so callers pass raw ids/paths. Every endpoint is a GET.
  */
 export const SOURCE_ENDPOINTS = Object.freeze({
   /** GET the provider envelope: manifest + freshness. Drives the tree and the freshness badge. */
@@ -43,8 +42,8 @@ export const SOURCE_ENDPOINTS = Object.freeze({
   /** GET one confined file (1 MiB cap → truncated; binary → flagged). */
   file: (id: string, path: string): string =>
     `/api/sources/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`,
-  /** Raw-bytes URL for a confined asset — used as an `<img src>` by the markdown pipeline
-   *  (REQ-DOCS-05). Returned as a string, not fetched by JS (the browser fetches the img). */
+  /** Raw-bytes URL for a confined asset — used as an `<img src>` in a rendered document.
+   *  Returned as a string, not fetched by JS (the browser fetches the img). */
   raw: (id: string, path: string): string =>
     `/api/sources/${encodeURIComponent(id)}/raw?path=${encodeURIComponent(path)}`,
   /** GET server-side name+content search (capped at 200 matches). */
@@ -56,12 +55,12 @@ export const SOURCE_ENDPOINTS = Object.freeze({
 
 /**
  * The typed error a wrapper resolves to on any expected failure. Mirrors the server's
- * `SourceApiError` body (`{ error, code }`, 00 §8) mapped to a UI-safe shape.
+ * `SourceApiError` body (`{ error, code }`) mapped to a UI-safe shape.
  */
 export interface SourceClientError {
-  /** Safe canonical message (never a path/credential/stack — 00 §8). */
+  /** Safe canonical message (never a path/credential/stack). */
   readonly message: string;
-  /** Stable code from SOURCE_ERROR_CODES (00 §8), or "REQUEST" for a transport/parse failure
+  /** Stable code from SOURCE_ERROR_CODES, or "REQUEST" for a transport/parse failure
    *  the client itself classified (fetch rejected, non-JSON body, body === null). */
   readonly code: string;
 }
@@ -86,7 +85,7 @@ export type SearchState =
   | { readonly status: "ready"; readonly result: SourceSearchResult }
   | { readonly status: "error"; readonly query: string; readonly error: SourceClientError };
 
-/** Shape of a non-2xx JSON error body (00 §8 `SourceApiError`). */
+/** Shape of a non-2xx JSON error body (`SourceApiError`). */
 interface ErrorBody {
   readonly error?: unknown;
   readonly code?: unknown;
@@ -121,7 +120,7 @@ function errorFromBody(body: ErrorBody | null): SourceClientError {
  * Shared never-throw JSON GET. Resolves to the parsed body on 2xx, or a {@link SourceClientError}
  * on any non-2xx / transport / parse failure. NEVER throws to the caller.
  *
- * On a non-2xx response it parses the typed `{ error, code }` body (00 §8) into a
+ * On a non-2xx response it parses the typed `{ error, code }` body into a
  * `SourceClientError`. A missing/unparseable body — or a rejected fetch (offline, aborted) —
  * degrades to `{ message: <generic>, code: "REQUEST" }`. A 2xx body that fails to parse as JSON
  * is likewise a transport-shaped `REQUEST` failure.
@@ -185,8 +184,8 @@ export async function fetchTree(
 
 /**
  * Read one confined file/document (`GET /api/sources/:id/file?path=`). `truncated` / `binary`
- * are NOT errors — they arrive as a successful {@link FileReadResult} with `content` omitted
- * (00 §3). Never throws.
+ * are NOT errors — they arrive as a successful {@link FileReadResult} with `content` omitted.
+ * Never throws.
  *
  * @param id    the source id.
  * @param path  POSIX path relative to the source root (from the selected tree node).
@@ -226,15 +225,16 @@ export async function fetchConfig(
 }
 
 /**
- * Build the raw-asset URL for a confined path (REQ-DOCS-05). Pure string builder — no fetch;
- * the browser fetches it as an `<img>` src. Re-used by `markdown.ts`'s image rewrite.
+ * Build the raw-asset URL for a confined path. Pure string builder — no fetch;
+ * the browser fetches it as an `<img>` src. The Docs view's image rewrite
+ * (`markdown-context.ts`) builds its URLs with it.
  */
 export function rawAssetUrl(id: string, path: string): string {
   return SOURCE_ENDPOINTS.raw(id, path);
 }
 
 // ---------------------------------------------------------------------------
-// Store-writing load wrappers (06 §3.3). These compose the never-throw `fetch*`
+// Store-writing load wrappers. These compose the never-throw `fetch*`
 // primitives with the `sources-store.ts` mutators — `client.ts` is the sole network writer.
 // Each is called from a `use-source.ts` load hook and never throws; an expected failure becomes
 // a typed `"error"` state, and the store's stale-response guards drop a superseded response.
@@ -243,7 +243,7 @@ export function rawAssetUrl(id: string, path: string): string {
 /**
  * Load the active source's manifest+freshness envelope and publish it (`setManifest`). Called on
  * source selection/mount and on manual refresh. A `data:null`+`error` envelope is still a
- * successful `"ready"` state whose content discriminates to the error UI (06 §6.2), distinct from
+ * successful `"ready"` state whose content discriminates to the error UI, distinct from
  * a transport `"error"`. Never throws.
  */
 export async function loadManifest(id: string, signal?: AbortSignal): Promise<void> {
@@ -258,7 +258,7 @@ export async function loadManifest(id: string, signal?: AbortSignal): Promise<vo
 
 /**
  * Load one confined file/document and publish it (`setFile`). `truncated` / `binary` are NOT
- * errors — they arrive as a successful `FileReadResult` the view handles (06 §11). Never throws.
+ * errors — they arrive as a successful `FileReadResult` the view handles. Never throws.
  */
 export async function loadFile(id: string, path: string, signal?: AbortSignal): Promise<void> {
   const body = await fetchFile(id, path, signal);

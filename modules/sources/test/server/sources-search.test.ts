@@ -20,7 +20,7 @@ function matchesFor(matches: SourceSearchMatch[], path: string, kind?: "name" | 
   return matches.filter((m) => m.path === path && (kind === undefined || m.kind === kind));
 }
 
-describe("searchTree — server-side confined search (SC-03; REQ-SEARCH-01, REQ-PERF-02)", () => {
+describe("searchTree — server-side confined search", () => {
   let base: string;
   let root: string; // name/content/include-exclude/binary/over-cap
   let capRoot: string; // > MAX_SEARCH_MATCHES name matches
@@ -66,7 +66,7 @@ describe("searchTree — server-side confined search (SC-03; REQ-SEARCH-01, REQ-
     rmSync(base, { recursive: true, force: true });
   });
 
-  describe("name + content matches (REQ-SEARCH-01)", () => {
+  describe("name + content matches", () => {
     it("a name/path match yields kind:'name'", async () => {
       const res = await searchTree(root, OPTS, "setup");
       expect(res.sourceId).toBe("docs");
@@ -100,7 +100,7 @@ describe("searchTree — server-side confined search (SC-03; REQ-SEARCH-01, REQ-
     });
   });
 
-  describe("include / exclude honored (REQ-SRC-04)", () => {
+  describe("include / exclude honored", () => {
     it("never returns a path excluded from the manifest", async () => {
       const res = await searchTree(root, { ...OPTS, exclude: ["**/secret/**"] }, "needle");
       expect(matchesFor(res.matches, "secret/hidden.md")).toHaveLength(0);
@@ -114,7 +114,7 @@ describe("searchTree — server-side confined search (SC-03; REQ-SEARCH-01, REQ-
     });
   });
 
-  describe("binary & over-cap files are name-matched only (REQ-PERF-02)", () => {
+  describe("binary & over-cap files are name-matched only", () => {
     it("a binary file matches by name but its content is never scanned", async () => {
       const res = await searchTree(root, OPTS, "needle");
       expect(matchesFor(res.matches, "needle-blob.bin", "name")).toHaveLength(1);
@@ -128,7 +128,7 @@ describe("searchTree — server-side confined search (SC-03; REQ-SEARCH-01, REQ-
     });
   });
 
-  describe("match cap → truncated (REQ-PERF-02)", () => {
+  describe("match cap → truncated", () => {
     it("a query over MAX_SEARCH_MATCHES returns exactly 200 with truncated:true", async () => {
       const res = await searchTree(capRoot, OPTS, "zzz");
       expect(res.matches).toHaveLength(MAX_SEARCH_MATCHES);

@@ -73,7 +73,7 @@ afterEach(() => {
   cache.cleanup();
 });
 
-describe("MarkdownTreeProvider.fetch — manifest payload (REQ-SRC-03)", () => {
+describe("MarkdownTreeProvider.fetch — manifest payload", () => {
   it("returns a SourceManifest with POSIX-relative paths and never leaks the on-disk root", async () => {
     const git = createFakeGitSpawner({ writeFiles: { "a.md": "# A", "docs/b.md": "# B" } });
     const src = gitSource("runbooks", "markdown-tree");
@@ -97,7 +97,7 @@ describe("MarkdownTreeProvider.fetch — manifest payload (REQ-SRC-03)", () => {
   });
 });
 
-describe("provider.health — cached, no live I/O (REQ-SRC-03)", () => {
+describe("provider.health — cached, no live I/O", () => {
   it("returns a copy of latestHealth and never reads the store on health()", async () => {
     const git = createFakeGitSpawner({ writeFiles: { "a.md": "A" } });
     const src = gitSource("md", "markdown-tree");
@@ -135,7 +135,7 @@ describe("provider.health — cached, no live I/O (REQ-SRC-03)", () => {
   });
 });
 
-describe("freshness transitions under the real registry (REQ-FRESH-01)", () => {
+describe("freshness transitions under the real registry", () => {
   it("moves pending → fresh → stale → unreachable on POLL_DEFAULTS as the clock advances", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
@@ -160,7 +160,7 @@ describe("freshness transitions under the real registry (REQ-FRESH-01)", () => {
   });
 });
 
-describe("retain-last-good and first-ever failure (REQ-FRESH-02/03)", () => {
+describe("retain-last-good and first-ever failure", () => {
   it("keeps the last-good manifest and sets error when a later poll fails", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
@@ -205,7 +205,7 @@ describe("retain-last-good and first-ever failure (REQ-FRESH-02/03)", () => {
   });
 });
 
-describe("registerAllProviders — the source data-source modules (REQ-SRC-05, SC-12)", () => {
+describe("registerAllProviders — the source data-source modules", () => {
   /** The kind handlers of the markdown-tree, file-tree and sources modules (fake git). */
   function sourceKinds() {
     const git = () => createFakeGitSpawner({ writeFiles: { "a.md": "A" } });
@@ -266,7 +266,7 @@ describe("registerAllProviders — the source data-source modules (REQ-SRC-05, S
 
 // A file-tree provider is byte-identical to the markdown-tree one bar its kind; a focused
 // smoke keeps the sibling honest without re-testing every freshness path.
-describe("FileTreeProvider (REQ-SRC-02)", () => {
+describe("FileTreeProvider", () => {
   it("reports kind 'file-tree' and registers as that kind", async () => {
     const git = createFakeGitSpawner({ writeFiles: { "app.yaml": "a: 1" } });
     const src = gitSource("cfg", "file-tree");

@@ -625,7 +625,7 @@ test.describe("fragment slots", () => {
 });
 
 /**
- * Keyboard-only operation of both lists (REQ-SEARCH-01, REQ-A11Y-02).
+ * Keyboard-only operation of both lists.
  *
  * These prove the real focus/routing behaviour the pure `keyboard.ts` reducer
  * and mounted Vitest cases can only approximate: `/`, Ctrl-K, Escape, arrows,
@@ -913,7 +913,7 @@ test.describe("computed contrast", () => {
 });
 
 /**
- * Security sentinel scans (REQ-SEC-01…04).
+ * Security sentinel scans.
  *
  * No forbidden secret value and no runtime source-path sentinel may appear in
  * rendered text, the serialized DOM, the JSON the browser receives, or page
@@ -978,7 +978,7 @@ test.describe("security sentinel scans", () => {
 });
 
 /**
- * Live mutable-source refresh and recovery (REQ-CONC-01/02, REQ-PERF-04, SC-15).
+ * Live mutable-source refresh and recovery.
  *
  * These scenarios mutate the single ephemeral snapshot file the real Bun API
  * serves and prove the already-loaded page reflects each complete generation
@@ -1146,7 +1146,7 @@ test.describe("live source refresh and recovery", () => {
 });
 
 /**
- * Browser render-performance gates at the exact generated scale (REQ-PERF-01, SC-18).
+ * Browser render-performance gates at the exact generated scale.
  *
  * The fixed E2E config declares 7 hosts and 5 services; only the snapshot is
  * mutable, so `buildScaleGeneration` publishes a complete valid generation that

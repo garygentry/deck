@@ -57,7 +57,7 @@ async function runSources(cfg: DeckConfig, env: Record<string, string>) {
   return { host, get, readers };
 }
 
-// --- Store construction per declared source (REQ-SRC-01/05) ---------------------------
+// --- Store construction per declared source ---------------------------
 
 describe("the source modules — store construction", () => {
   it("build one store per supported-kind source and skip unknown kinds", async () => {
@@ -100,7 +100,7 @@ describe("the source modules — store construction", () => {
 
 });
 
-// --- Cache dir default & fail-fast (REQ-FRESH-05, exit-2 posture) ----------------------
+// --- Cache dir default & fail-fast (exit-2 posture) -------------------------------------
 
 describe("the sources cache dir", () => {
   it("DECK_SOURCES_CACHE_DIR unset falls back to a stable OS-temp subdir", () => {
@@ -135,7 +135,7 @@ describe("the sources cache dir", () => {
   });
 });
 
-// --- Orphaned cache pruning (REQ-FRESH-05) --------------------------------------------
+// --- Orphaned cache pruning --------------------------------------------
 
 describe("the sources module — orphan cache prune", () => {
   it("prunes cache dirs with no matching source id and preserves declared ones", async () => {
@@ -158,7 +158,7 @@ describe("the sources module — orphan cache prune", () => {
   });
 });
 
-// --- readRaw — sniffed image content-type + confined bounded bytes (REQ-DOCS-05) -------
+// --- readRaw — sniffed image content-type + confined bounded bytes -------
 
 describe("SourceStore.readRaw", () => {
   it("returns an image content-type and the confined bytes for an image", async () => {

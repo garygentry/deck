@@ -11,13 +11,13 @@ import {
 } from "../../../modules/drift/web/diagnostics.js";
 
 // ---------------------------------------------------------------------------
-// Drift meta-guards (spec 08 §10.2 — the closed, enumerated protection set).
+// Drift meta-guards (the closed, enumerated protection set).
 //
 // These lexical/filesystem/runtime guards protect ONLY the eleven items below.
 // They deliberately do NOT prove — and must not be read as proving — WCAG
 // conformance, visual layout, keyboard behavior, semantic rendering,
 // grouping/counting/filtering correctness, atomicity, performance, upstream
-// secret absence, dependency-tree purity, or general security (spec 08 §10.3).
+// secret absence, dependency-tree purity, or general security.
 // Those live in the behavioral Vitest and Chromium suites and in typecheck/
 // build/dependency review. A new lexical shape outside this set is not by
 // itself a defect in this guard.
@@ -154,7 +154,7 @@ describe("3. no raw-HTML or HTML-evaluator path in value renderers", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. Diagnostics carry only the exact DERIVE_KEYS / RENDER_KEYS (spec 08 §5.6).
+// 4. Diagnostics carry only the exact DERIVE_KEYS / RENDER_KEYS.
 //    Runtime recorder assertions elsewhere remain the authority for VALUES; this
 //    proves the emitted KEY sets are exactly those and nothing else.
 // ---------------------------------------------------------------------------
@@ -342,7 +342,7 @@ describe("6. no forbidden endpoint, schema-deep import, or sibling dependency", 
 
 // ---------------------------------------------------------------------------
 // 7. Exact behavioral registration is delegated to the registry test.
-//    Spec 08 §10.2(7): checked behaviorally through registry accessors, NOT by
+//    Checked behaviorally through registry accessors, NOT by
 //    scanning registration source text here.
 // ---------------------------------------------------------------------------
 
@@ -490,7 +490,7 @@ describe("10. invented estate sentinels and hostnames only", () => {
 
 // ---------------------------------------------------------------------------
 // 11. Forbidden implementation-path diff boundaries.
-//     Spec 08 §10.2(11): implementation review/diff is authoritative because a
+//     Implementation review/diff is authoritative because a
 //     runtime test cannot prove historical non-editing. This guard confines the
 //     feature's implementation FOOTPRINT — the feature directories own only
 //     feature source, never a schema, CI, Playwright-config, or route file — and

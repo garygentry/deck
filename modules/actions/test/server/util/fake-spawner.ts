@@ -1,8 +1,8 @@
 import type { RunnerSpawner, SpawnedRun } from "../../../server/spawn.js";
 
 /**
- * Scripted behaviour for one fake spawn call. Reused by the executor tests (item 004)
- * and the route integration tests (item 006) — no Bun, no real subprocess.
+ * Scripted behaviour for one fake spawn call. Reused by the executor tests and the route
+ * integration tests — no Bun, no real subprocess.
  */
 export interface FakeSpawnerScript {
   /** stdout chunks yielded incrementally (one wire event per non-empty decode). */

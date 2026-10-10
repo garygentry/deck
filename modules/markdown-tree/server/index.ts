@@ -9,14 +9,14 @@ import type { SourceManifest } from "../../sources/server/tree.js";
 export const MARKDOWN_TREE_KIND = "markdown-tree";
 
 /**
- * The `markdown-tree` provider (REQ-SRC-02): a thin adapter that turns a shared
+ * The `markdown-tree` provider: a thin adapter that turns a shared
  * `SourceStore` into a `Provider<SourceManifest>`. It implements ONLY the five Provider
- * members (REQ-SRC-03) — polling, TTL, timeout, atomic envelope publish, and freshness are
- * registry-owned (00 §7, REQ-FRESH-01). All acquisition/read work lives in the store
+ * members — polling, TTL, timeout, atomic envelope publish, and freshness are
+ * registry-owned. All acquisition/read work lives in the store
  * (02 + 03); this class never touches the filesystem or `git` directly.
  */
 export class MarkdownTreeProvider implements Provider<SourceManifest> {
-  /** Literal kind — the ONLY thing that differs from FileTreeProvider (tech-spec §3.1). */
+  /** Literal kind — the ONLY thing that differs from FileTreeProvider. */
   readonly kind = MARKDOWN_TREE_KIND;
   /** Cached health from the last fetch(); health() returns a copy with no live I/O. */
   private latestHealth: ProviderHealth = { ok: false, detail: "Awaiting first poll" };
@@ -27,17 +27,17 @@ export class MarkdownTreeProvider implements Provider<SourceManifest> {
     private readonly store: SourceStore,
   ) {}
 
-  /** Cached health only (no live I/O), mirroring the HTTP providers (00 §7). */
+  /** Cached health only (no live I/O), mirroring the HTTP providers. */
   async health(): Promise<ProviderHealth> {
     return { ...this.latestHealth };
   }
 
   /**
-   * Refresh the source and produce its manifest (REQ-FRESH-01). Delegates to
-   * store.buildManifest, which acquires (git/local + atomic swap, 02) then walks the
-   * freshly-published confined root (03). Honors ctx.signal (the registry's per-poll
+   * Refresh the source and produce its manifest. Delegates to
+   * store.buildManifest, which acquires (git/local + atomic swap) then walks the
+   * freshly-published confined root. Honors ctx.signal (the registry's per-poll
    * timeout AbortSignal). Sets latestHealth as a side effect. On failure it THROWS — the
-   * registry then retains the last-good envelope and flips freshness (REQ-FRESH-02);
+   * registry then retains the last-good envelope and flips freshness;
    * onFetchError (below) decides data retention.
    */
   async fetch(context?: ProviderFetchContext): Promise<SourceManifest> {
@@ -52,8 +52,8 @@ export class MarkdownTreeProvider implements Provider<SourceManifest> {
       };
       return manifest;
     } catch (cause) {
-      // Normalize to the closed-code SourceFailure (00 §8); the message is credential-safe
-      // and path-safe (REQ-SEC-03, REQ-OBS-02). Health detail carries no secret.
+      // Normalize to the closed-code SourceFailure; the message is credential-safe
+      // and path-safe. Health detail carries no secret.
       const failure = normalizeSourceFailure(cause, { sourceId: this.id });
       this.latestHealth = { ok: false, detail: failure.message };
       throw failure;
@@ -61,10 +61,10 @@ export class MarkdownTreeProvider implements Provider<SourceManifest> {
   }
 
   /**
-   * Retain the last-good manifest on a refresh failure (REQ-FRESH-02): returning `retained`
+   * Retain the last-good manifest on a refresh failure: returning `retained`
    * keeps the registry serving the previous tree with a stale/unreachable freshness stamp.
    * On a FIRST-EVER acquisition failure `retained` is null, so this returns null and the
-   * envelope's `data` stays null → web renders the explicit error state (REQ-FRESH-03).
+   * envelope's `data` stays null → web renders the explicit error state.
    */
   onFetchError(
     _error: unknown,

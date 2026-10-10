@@ -306,7 +306,7 @@ describe("POST /api/actions/:id — runtime outcomes", () => {
   });
 });
 
-describe("POST /api/actions/:id — client disconnect (REQ-STREAM-03)", () => {
+describe("POST /api/actions/:id — client disconnect", () => {
   it("disconnect does not call executor.cancel; the run completes with a .log + audit entry", async () => {
     const { app, audit, cancelSpy } = harness({
       scripts: { stdout: [enc("chunk-a\n"), enc("chunk-b\n")], exitCode: 0, chunkDelayMs: 20 },
@@ -415,7 +415,7 @@ describe("GET /api/actions/audit + /api/actions/audit/:runId", () => {
   });
 });
 
-describe("deriveSource precedence (REQ-AUDIT-02)", () => {
+describe("deriveSource precedence", () => {
   it("falls back X-Forwarded-For → X-Real-IP → 'unknown' in the audit entry", async () => {
     // X-Real-IP used when no X-Forwarded-For.
     const h1 = harness({ scripts: { stdout: [enc("x\n")], exitCode: 0 } });
@@ -436,7 +436,7 @@ describe("deriveSource precedence (REQ-AUDIT-02)", () => {
   });
 });
 
-describe("security posture (REQ-SEC-01/02)", () => {
+describe("security posture", () => {
   it("no route challenges an unauthenticated request", async () => {
     const { app } = harness();
     const responses = await Promise.all([

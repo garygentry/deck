@@ -1,5 +1,5 @@
 /**
- * Integration tests for the four read-only source routes (05-http-routes.md), driven through
+ * Integration tests for the four read-only source routes, driven through
  * `app.request()` on an app running the source modules (markdown-tree, file-tree, sources) as
  * boot runs them. Covers the read routes at the legacy `/api/sources` alias and the module
  * prefix, HTTP confinement rejections (400/404 with no leaked path), the unknown-id 404s, an
@@ -13,8 +13,8 @@ import type { Hono } from "hono";
 
 import { stopScheduler } from "../src/providers/registry.js";
 import { sourcesModule } from "../../../modules/sources/server/module.js";
-import { registerSourceRoutes, type SourceRoutesDeps } from "../../../modules/sources/server/route.js";
-import { materializeFixture } from "./fixtures/sources-estate/materialize.js";
+import { RAW_ASSET_POLICY, registerSourceRoutes, type SourceRoutesDeps } from "../../../modules/sources/server/route.js";
+import { ACTIVE_SVG, materializeFixture } from "./fixtures/sources-estate/materialize.js";
 import { sourcesApp } from "./util/sources-module.js";
 
 const cleanups: Array<() => void> = [];
@@ -113,6 +113,120 @@ describe("source routes — read surface", () => {
     expect(body.sourceId).toBe("docs");
     expect(body.matches.length).toBeGreaterThan(0);
     expect(body.matches.some((m) => m.path === "guide.md")).toBe(true);
+  });
+});
+
+describe("source routes — raw assets are served inert", () => {
+  it("every raw image carries the sandbox policy, so an SVG cannot run script as deck", async () => {
+    const { app } = await buildApp(true);
+    expect(RAW_ASSET_POLICY).toBe("sandbox; default-src 'none'; style-src 'unsafe-inline'");
+    for (const [path, type] of [["img/active.svg", "image/svg+xml"], ["img/logo.png", "image/png"]] as const) {
+      const res = await app.request(`/api/sources/docs/raw?path=${path}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toBe(type);
+      expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+      // The framing policy every response carries is a second policy beside it (both apply).
+      expect(res.headers.get("Content-Security-Policy")?.split(", ")).toContain(RAW_ASSET_POLICY);
+    }
+    // The bytes are served as committed (the policy, not a rewrite, makes the script inert).
+    const svg = await app.request("/api/sources/docs/raw?path=img/active.svg");
+    expect(await svg.text()).toBe(ACTIVE_SVG);
+  });
+});
+
+/** GET `path` at both route prefixes; they must agree, and the legacy answer is returned. */
+async function atBoth(app: Hono, path: string): Promise<{ status: number; code?: string }> {
+  const answers = await Promise.all(
+    ["/api/sources", "/api/m/sources"].map(async (prefix) => {
+      const res = await app.request(`${prefix}${path}`);
+      const code = res.ok ? undefined : ((await res.json()) as { code: string }).code;
+      return { status: res.status, ...(code === undefined ? {} : { code }) };
+    }),
+  );
+  expect(answers[1], path).toEqual(answers[0]);
+  return answers[0];
+}
+
+const q = (path: string): string => encodeURIComponent(path);
+
+describe("source routes — reads honour include/exclude", () => {
+  it("lists only the files include/exclude keep, by listed and real path, whatever the exclude's case", async () => {
+    const { app } = await buildApp(true);
+    const manifest = (await (await app.request("/api/sources/curated/tree")).json()) as { fileCount: number; tree: unknown };
+    // index.md only: not alias.md or pub/secret.md (aliases of excluded files), notes-link.md (a
+    // markdown name for a non-included file), Private/upper.md or Build/out.md (excluded by
+    // `private/**` and `build/**` whatever the case).
+    expect(manifest.fileCount).toBe(1);
+    expect(JSON.stringify(manifest.tree)).not.toMatch(/alias|pub|secret|notes|Private|Build/);
+  });
+
+  it("a file in the tree reads; one left out by include or exclude is 404 PATH_NOT_FOUND", async () => {
+    const { app } = await buildApp(true);
+    expect((await atBoth(app, "/curated/file?path=index.md")).status).toBe(200);
+    const missing = await (await app.request("/api/sources/curated/file?path=missing.md")).json();
+    // Spelled any way, an excluded or not-included path reads like a missing file.
+    for (const path of ["private/secret.md", "./private/secret.md", "private//secret.md", "Private/upper.md", "Build/out.md", "notes.txt", "notes-link.md", "img/logo.png"]) {
+      expect(await atBoth(app, `/curated/file?path=${q(path)}`), path).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
+      expect(await (await app.request(`/api/sources/curated/file?path=${q(path)}`)).json()).toEqual(missing);
+    }
+  });
+
+  it("an alias of an excluded file (a file or directory symlink) is 404 on file and raw, and absent from search", async () => {
+    const { app } = await buildApp(true);
+    for (const path of ["/curated/file?path=alias.md", "/curated/file?path=pub/secret.md", "/curated/raw?path=pub/photo.png"]) {
+      expect(await atBoth(app, path), path).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
+    }
+    const search = (await (await app.request("/api/sources/curated/search?q=secret")).json()) as { matches: unknown[] };
+    expect(search.matches).toEqual([]);
+  });
+
+  it("raw serves an image in the tree or under an include's base, and nothing excluded or out of reach", async () => {
+    const { app } = await buildApp(true);
+    // include ["**/*.md"]: its base is the root, so images anywhere not excluded are served.
+    for (const path of ["img/logo.png", "deep/art/pic.png"]) {
+      expect((await atBoth(app, `/curated/raw?path=${q(path)}`)).status, path).toBe(200);
+    }
+    for (const path of ["private/photo.png", "./private/photo.png", "private//photo.png", "notes.txt"]) {
+      expect(await atBoth(app, `/curated/raw?path=${q(path)}`), path).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
+    }
+    // include ["docs/**/*.md"]: the image a doc embeds is served; one outside docs/ is not.
+    expect((await atBoth(app, "/scoped/raw?path=docs/img/x.png")).status).toBe(200);
+    expect(await atBoth(app, "/scoped/raw?path=other/y.png")).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
+  });
+
+  it("an include reaches the directories of its brace alternatives and of its literal files", async () => {
+    const { app } = await buildApp(true);
+    // ["README.md", "docs/**/*.md"]: README.md reaches its own directory, the root.
+    expect((await atBoth(app, "/readme/raw?path=assets/logo.png")).status).toBe(200);
+    // ["{docs,guides}/**/*.md"]: docs/ and guides/, nothing else.
+    expect((await atBoth(app, "/braced/raw?path=docs/x.png")).status).toBe(200);
+    expect((await atBoth(app, "/braced/raw?path=guides/y.png")).status).toBe(200);
+    expect(await atBoth(app, "/braced/raw?path=personal/scan.png")).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
+    // ["*.md"]: root-level files, so the root, so the whole source.
+    expect((await atBoth(app, "/rootmd/raw?path=img/z.png")).status).toBe(200);
+  });
+
+  it("raw refuses bytes that are not the image their name promises", async () => {
+    const { app } = await buildApp(true);
+    // SVG text in a .tsx or .json, SVG inside HTML, and an image name that links to an SVG.
+    // An .svg whose root element is not <svg> (an <svg> inside HTML) is not SVG either.
+    for (const path of ["img/widget.tsx", "img/page.html", "img/data.json", "img/alias.png", "img/not-svg.svg"]) {
+      expect(await atBoth(app, `/docs/raw?path=${q(path)}`), path).toEqual({ status: 400, code: "PATH_NOT_CONFINED" });
+    }
+  });
+
+  it("raw serves an SVG whose root follows a byte-order mark, XML declaration, comment and doctype", async () => {
+    const { app } = await buildApp(true);
+    const res = await app.request("/api/sources/docs/raw?path=img/prolog.svg");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("image/svg+xml");
+  });
+
+  it("a traversal outside the tree still answers 400 PATH_NOT_CONFINED", async () => {
+    const { app } = await buildApp(true);
+    for (const route of ["file", "raw"]) {
+      expect(await atBoth(app, `/curated/${route}?path=../docs/index.md`)).toEqual({ status: 400, code: "PATH_NOT_CONFINED" });
+    }
   });
 });
 
@@ -218,7 +332,7 @@ describe("source routes — acquired-but-empty tree", () => {
   });
 });
 
-describe("source routes — read-only meta-guard (REQ-RO-01, SC-10)", () => {
+describe("source routes — read-only meta-guard", () => {
   it("registerSourceRoutes adds exactly four routes, all GET, no mutating verb", async () => {
     const calls: Array<{ method: string; path: string }> = [];
     // A recorder that captures any HTTP verb registerSourceRoutes might call. If the module

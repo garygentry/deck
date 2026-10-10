@@ -1,14 +1,14 @@
 /**
- * Read-only HTTP route surface for the sources capability (05-http-routes.md).
+ * Read-only HTTP route surface for the sources capability.
  *
  * The single exported function `registerSourceRoutes(app, deps)` adds exactly four `GET`
  * routes — tree, file, raw, search — and no others, on the `sources` module's routes (mounted
- * at `/api/m/sources` and the legacy `/api/sources`). Every route is `GET` (REQ-RO-01): there
+ * at `/api/m/sources` and the legacy `/api/sources`). Every route is `GET`: there
  * is no `app.post/put/patch/delete` anywhere in this file. Handlers gate on `deps.sources`
  * (capability off ⇒ 404) and the known-id gate, then delegate to the per-source
- * `SourceStore`, whose methods route every path through `confine.ts` (REQ-SEC-02). The
+ * `SourceStore`, whose methods route every path through `confine.ts`. The
  * shared failure boundary maps any thrown `SourceFailure` to a typed `ApiError` via
- * `SOURCE_HTTP_STATUS` and logs it with source id + failure kind only (REQ-OBS-02) — never a
+ * `SOURCE_HTTP_STATUS` and logs it with source id + failure kind only — never a
  * credential, an upstream message, the attempted absolute path, or a stack trace.
  *
  * This module COMPOSES pieces defined elsewhere; it declares no wire type, store method, or
@@ -31,7 +31,7 @@ import type {
 export interface SourceRoutesDeps {
   /** The source stores; absent => capability off (every route 404s). */
   sources?: SourceReader;
-  /** Log one source failure (id + failure kind + code only — REQ-OBS-02). */
+  /** Log one source failure (id + failure kind + code only). */
   logFailure(event: SourceLogEvent): void;
 }
 
@@ -43,7 +43,7 @@ function apiError(context: Context, status: number, error: string, code: string)
  * Resolve the store for a request, applying the capability gate (`deps.sources` absent ⇒
  * feature off) and the known-id gate. Returns the store on success, or a typed 404 Response
  * on either miss. Both misses surface as `SOURCE_NOT_FOUND` so a disabled deployment is
- * indistinguishable from an unknown id (§2.1), leaking no route topology.
+ * indistinguishable from an unknown id, leaking no route topology.
  */
 function resolveStore(context: Context, deps: SourceRoutesDeps): SourceStore | Response {
   const id = context.req.param("id");
@@ -58,9 +58,9 @@ function resolveStore(context: Context, deps: SourceRoutesDeps): SourceStore | R
 /**
  * Run one bounded store operation behind the shared failure boundary. On success the result
  * of `run` is returned; on any throwable it is normalized to a `SourceFailure`, logged (source
- * id + failure kind only — REQ-OBS-02), and mapped to a typed `ApiError` via
+ * id + failure kind only), and mapped to a typed `ApiError` via
  * `SOURCE_HTTP_STATUS`. The public body is `{ error, code }` — never a path, credential,
- * upstream message, or stack trace (§5.2).
+ * upstream message, or stack trace.
  */
 async function withFailureBoundary(
   context: Context,
@@ -78,7 +78,7 @@ async function withFailureBoundary(
         ? error
         : normalizeSourceFailure(error, { sourceId: store.id });
     // Server-side diagnostic: id + failure kind only. `details.attemptedPath` stays internal
-    // and is NEVER echoed to the client (00 §8).
+    // and is NEVER echoed to the client.
     deps.logFailure({
       sourceId: store.id,
       failureKind: failure.details.failureKind ?? "read",
@@ -89,38 +89,47 @@ async function withFailureBoundary(
   }
 }
 
-/** GET /api/sources/:id/tree → 200 SourceManifest (00 §2). No query params. */
+/** GET /api/sources/:id/tree → 200 SourceManifest. No query params. */
 async function getTree(context: Context, deps: SourceRoutesDeps): Promise<Response> {
   const store = resolveStore(context, deps);
-  if (store instanceof Response) return store; // 404 already produced (§2)
+  if (store instanceof Response) return store; // 404 already produced
   return withFailureBoundary(context, deps, store, async (signal) => {
     const manifest: SourceManifest = await store.buildManifest(signal);
-    return context.json(manifest); // 200; tree carries only POSIX-relative paths (00 §1)
+    return context.json(manifest); // 200; tree carries only POSIX-relative paths
   });
 }
 
-/** GET /api/sources/:id/file?path=<rel> → 200 FileReadResult (00 §3). */
+/** GET /api/sources/:id/file?path=<rel> → 200 FileReadResult. */
 async function getFile(context: Context, deps: SourceRoutesDeps): Promise<Response> {
   const store = resolveStore(context, deps);
   if (store instanceof Response) return store;
 
   const relPath = context.req.query("path");
   if (!relPath) {
-    // Presence/shape check only; confinement itself is the store's job (§4.5, REQ-SEC-02).
+    // Presence/shape check only; confinement itself is the store's job.
     return apiError(context, 400, "A `path` query parameter is required.", "PATH_NOT_FOUND");
   }
 
   return withFailureBoundary(context, deps, store, async (signal) => {
-    // Confined read: `..`, absolute, or symlink-escape ⇒ store throws PATH_NOT_CONFINED (03),
-    // mapped to 400 by the boundary WITHOUT echoing the attempted path (00 §8).
+    // Confined read: `..`, absolute, or symlink-escape ⇒ store throws PATH_NOT_CONFINED,
+    // mapped to 400 by the boundary WITHOUT echoing the attempted path.
     const result: FileReadResult = await store.readFile(relPath, signal);
     return context.json(result); // 200; `content` omitted when truncated or binary
   });
 }
 
 /**
+ * The policy every raw asset is served under. An SVG is a document that can hold script, and
+ * opened by its URL it would run as deck, on deck's origin. Under `sandbox` it runs in an opaque
+ * origin with scripts off, and `default-src 'none'` stops it fetching anything; its own inline
+ * styles still apply. An `<img>` that embeds the asset is unaffected: images never run script.
+ */
+export const RAW_ASSET_POLICY = "sandbox; default-src 'none'; style-src 'unsafe-inline'";
+
+/**
  * GET /api/sources/:id/raw?path=<rel> → 200 image bytes for markdown-relative images.
- * Confined + image-only + nosniff. Non-image paths are refused 400 (REQ-RO-01, §3.11).
+ * Confined + image-only + nosniff, under {@link RAW_ASSET_POLICY}. Non-image paths are refused
+ * 400.
  */
 async function getRaw(context: Context, deps: SourceRoutesDeps): Promise<Response> {
   const store = resolveStore(context, deps);
@@ -132,9 +141,9 @@ async function getRaw(context: Context, deps: SourceRoutesDeps): Promise<Respons
   }
 
   return withFailureBoundary(context, deps, store, async (signal) => {
-    const raw: RawReadResult = await store.readRaw(relPath, signal); // confined (03), bounded (00 §9)
+    const raw: RawReadResult = await store.readRaw(relPath, signal); // confined, bounded
     if (!raw.contentType.startsWith("image/")) {
-      // A served asset must not be able to execute as HTML/script (REQ-RO-01, REQ-SEC-02).
+      // A served asset must not be able to execute as HTML/script.
       return apiError(
         context,
         400,
@@ -149,12 +158,13 @@ async function getRaw(context: Context, deps: SourceRoutesDeps): Promise<Respons
       headers: {
         "Content-Type": raw.contentType,
         "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": RAW_ASSET_POLICY,
       },
     });
   });
 }
 
-/** GET /api/sources/:id/search?q=<q> → 200 SourceSearchResult (00 §4), capped at 200. */
+/** GET /api/sources/:id/search?q=<q> → 200 SourceSearchResult, capped at 200. */
 async function getSearch(context: Context, deps: SourceRoutesDeps): Promise<Response> {
   const store = resolveStore(context, deps);
   if (store instanceof Response) return store;
@@ -166,7 +176,7 @@ async function getSearch(context: Context, deps: SourceRoutesDeps): Promise<Resp
   }
 
   return withFailureBoundary(context, deps, store, async (signal) => {
-    const result: SourceSearchResult = await store.search(q, signal); // scoped, capped (00 §9)
+    const result: SourceSearchResult = await store.search(q, signal); // scoped, capped
     return context.json(result); // 200; `truncated` true ⇒ web invites a narrower query
   });
 }
@@ -174,8 +184,7 @@ async function getSearch(context: Context, deps: SourceRoutesDeps): Promise<Resp
 /**
  * Register the four read-only source browsing routes on `app`, the `sources` module's routes,
  * so they answer at `/api/m/sources/:id/*` and the legacy `/api/sources/:id/*`. Handlers gate
- * on deps.sources (§2) and delegate to the per-source SourceStore; every route is GET
- * (REQ-RO-01, §6).
+ * on deps.sources and delegate to the per-source SourceStore; every route is GET.
  */
 export function registerSourceRoutes(app: Hono, deps: SourceRoutesDeps): void {
   app.get("/:id/tree", (context) => getTree(context, deps));

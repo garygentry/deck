@@ -1,26 +1,27 @@
 // @vitest-environment jsdom
 //
 // DOMPurify requires a DOM `window`; the default server-render (renderToStaticMarkup) path has none, so
-// this one file runs under vitest's jsdom environment (06 §5.5, 08 §5.1). It exercises the
-// pure markdown.ts string→sanitized-HTML pipeline (the enforced XSS boundary, SC-08) — it is
-// not a component render test.
+// this one file runs under vitest's jsdom environment. It exercises the pure markdown.ts
+// string→sanitized-HTML pipeline (the enforced XSS boundary) — it is not a component render test.
 
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  renderMarkdown,
-  resolveRelative,
-} from "../../web/markdown.js";
-import {
   highlightCode,
   highlightFile,
   languageForName,
-} from "../../web/highlight.js";
+} from "@/ui/lib/highlight.js";
+import {
+  renderMarkdown,
+  resolveRelative,
+  type MarkdownRenderContext,
+} from "@/ui/lib/markdown.js";
 
-const SOURCE_ID = "docs";
-const ctx = (docPath: string): { sourceId: string; docPath: string } => ({
-  sourceId: SOURCE_ID,
+/** A document context whose rewrites show the resolved path (and hash) they were given. */
+const ctx = (docPath: string): MarkdownRenderContext => ({
   docPath,
+  linkHref: (path, hash) => `/read/${path}${hash}`,
+  imageSrc: (path) => `/asset/${path}`,
 });
 
 /** Parse rendered HTML and read one element's attribute (entities decoded, %-encoding kept). */
@@ -80,7 +81,7 @@ describe("markdown.ts — resolveRelative", () => {
   });
 });
 
-describe("markdown.ts — GFM rendering (REQ-DOCS-03)", () => {
+describe("markdown.ts — GFM rendering", () => {
   it("renders tables, disabled task-list checkboxes, and highlighted fenced code", () => {
     const doc = [
       "| A | B |",
@@ -97,7 +98,7 @@ describe("markdown.ts — GFM rendering (REQ-DOCS-03)", () => {
     const html = renderMarkdown(doc, ctx("index.md"));
 
     expect(html).toContain("<table>");
-    // Task-list checkboxes render as disabled inputs (read-only, REQ-RO-01).
+    // Task-list checkboxes render as disabled inputs (read-only).
     const checkboxes = parse(html).querySelectorAll('input[type="checkbox"]');
     expect(checkboxes.length).toBe(2);
     for (const box of checkboxes) expect(box.hasAttribute("disabled")).toBe(true);
@@ -107,7 +108,7 @@ describe("markdown.ts — GFM rendering (REQ-DOCS-03)", () => {
   });
 });
 
-describe("markdown.ts — sanitization (REQ-SEC-01, SC-08) — the XSS boundary", () => {
+describe("markdown.ts — sanitization — the XSS boundary", () => {
   it("strips <script>, onerror, and javascript: hrefs from the injected string", () => {
     // Raw HTML vectors (html:true parses them so DOMPurify — the single sanitizer — cleans
     // them uniformly). Assert on the exact string the component will inject.
@@ -132,12 +133,15 @@ describe("markdown.ts — sanitization (REQ-SEC-01, SC-08) — the XSS boundary"
   });
 });
 
-describe("markdown.ts — link rewriting (REQ-DOCS-04)", () => {
-  it("rewrites a relative inter-doc link to an in-app Docs route", () => {
-    // Path segments are percent-encoded (spec §5.3 uses encodeURIComponent(path)); the DOM
-    // href attribute keeps `%2F` and decodes the `&amp;` entity back to `&`.
-    const href = attr(renderMarkdown("[guide](./sub/guide.md)", ctx("index.md")), "a", "href");
-    expect(href).toBe(`/docs?source=${SOURCE_ID}&path=sub%2Fguide.md`);
+describe("markdown.ts — link rewriting", () => {
+  it("rewrites a relative link through the context, resolved against the document", () => {
+    expect(attr(renderMarkdown("[guide](./sub/guide.md)", ctx("index.md")), "a", "href")).toBe("/read/sub/guide.md");
+    expect(attr(renderMarkdown("[up](../intro.md#start)", ctx("guides/setup.md")), "a", "href")).toBe("/read/intro.md#start");
+  });
+
+  it("leaves a fragment-only link, and every link without a context, as written", () => {
+    expect(attr(renderMarkdown("[top](#top)", ctx("index.md")), "a", "href")).toBe("#top");
+    expect(attr(renderMarkdown("[guide](./sub/guide.md)"), "a", "href")).toBe("./sub/guide.md");
   });
 
   it("leaves an absolute link external with rel=noopener noreferrer", () => {
@@ -148,10 +152,10 @@ describe("markdown.ts — link rewriting (REQ-DOCS-04)", () => {
   });
 });
 
-describe("markdown.ts — image rewriting (REQ-DOCS-05, SC-17)", () => {
-  it("rewrites a relative image to the confined raw route", () => {
-    const src = attr(renderMarkdown("![logo](img/logo.png)", ctx("index.md")), "img", "src");
-    expect(src).toBe(`/api/sources/${SOURCE_ID}/raw?path=img%2Flogo.png`);
+describe("markdown.ts — image rewriting", () => {
+  it("rewrites a relative image through the context, resolved against the document", () => {
+    expect(attr(renderMarkdown("![logo](img/logo.png)", ctx("guides/index.md")), "img", "src")).toBe("/asset/guides/img/logo.png");
+    expect(attr(renderMarkdown("![logo](img/logo.png)"), "img", "src")).toBe("img/logo.png");
   });
 
   it("passes an absolute image URL through unchanged", () => {

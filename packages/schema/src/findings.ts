@@ -43,7 +43,7 @@ export const FINDING_CATALOG = {
  * planning modules from their manifests, and config validation reports MODULE_SECTION_DISABLED
  * and MODULE_RULE_FAILED for a module's section. They are catalogued here so every code deck can
  * print has one severity and one fix. Those two are `info`: a broken or disabled module is
- * reported and set aside (X2), never a reason to refuse the whole config.
+ * reported and set aside, never a reason to refuse the whole config.
  * MODULE_CREDENTIAL_ENV_REFUSED is reported by deck's config loading for an instance's
  * `credentialEnv`: at its severity by `deck validate`, and as `info` when deck boots.
  */

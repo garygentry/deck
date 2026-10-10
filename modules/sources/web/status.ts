@@ -1,5 +1,5 @@
 /**
- * Presentation of the source browser's file-level notices (REQ-CFG-03/04, SC-14): each one pairs
+ * Presentation of the source browser's file-level notices: each one pairs
  * a tone and a decorative icon with a text label, so colour is never the only signal. Expected
  * conditions, not failures, so both announce politely (`role="status"`).
  */

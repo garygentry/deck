@@ -400,7 +400,7 @@ describe("ShowMore", () => {
   });
 });
 
-describe("workbench §D section", () => {
+describe("workbench content section", () => {
   it("renders every specimen without throwing", async () => {
     const { content } = await import("../src/features/_ui/sections/content.js");
     const { Demo } = content;

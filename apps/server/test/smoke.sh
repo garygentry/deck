@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# Project smoke path (governed-actions extended it — spec 06 §7).
+# Project smoke path.
 #
 # Proves three things end-to-end against a real Bun server:
 #   1. Portal read path boots and serves a provider GET (the original smoke).
 #   2. With actions ENABLED, POST /api/actions/smoke-echo streams a real run to a
-#      terminal end/succeeded event (real Bun spawn + real audit write; SC-01/05).
+#      terminal end/succeeded event (real Bun spawn + real audit write).
 #   3. With actions DISABLED (default), the same POST refuses 403 ACTIONS_DISABLED
-#      (safe-by-default read-only posture; SC-08).
+#      (safe-by-default read-only posture).
 #   4. Sources read path serves a fixture markdown tree with confinement intact.
 #   5. With DECK_METRICS_ENABLED=true, GET /metrics serves Prometheus text; the
 #      default (off) returns 404.
@@ -159,7 +159,7 @@ stop_server
 
 # ---------------------------------------------------------------------------
 # 4. Sources read path: boot a fixture local-path markdown-tree source and prove
-#    the confined read path end to end (no git, no network — spec 08 §7).
+#    the confined read path end to end (no git, no network).
 # ---------------------------------------------------------------------------
 # Write a config declaring the committed markdown-tree fixture as a local-path
 # source. JSON is valid YAML and the loader reads *.yaml, so an absolute path is

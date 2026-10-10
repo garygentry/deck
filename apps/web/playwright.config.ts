@@ -6,8 +6,8 @@ const webDir = dirname(fileURLToPath(import.meta.url));
 const runtimeDir = resolve(webDir, ".tmp/inventory-e2e");
 
 // Assign the one absolute mutable-runtime root before Playwright forks workers,
-// then pass the same value to the Bun API web-server process. Item 021 creates
-// the helper that consumes it; this config only publishes the shared location.
+// then pass the same value to the Bun API web-server process. The mutable-runtime
+// helper (test/e2e/fixture-runtime.ts) consumes it; this config only publishes the shared location.
 process.env.DECK_INVENTORY_E2E_RUNTIME_DIR = runtimeDir;
 
 // The API port defaults to 8788; set DECK_E2E_API_PORT when another local

@@ -4,11 +4,11 @@ import { describe, expect, it } from "vitest";
 import config from "../playwright.config.js";
 
 /**
- * Configuration-focused assertions for the Playwright + Vite API bridge (item 020).
+ * Configuration-focused assertions for the Playwright + Vite API bridge.
  *
  * The config is loaded directly. Its Bun API and Vite web-server commands are plain
- * strings, so importing the config never requires `test/e2e/start-inventory-api.ts`
- * or the mutable-runtime helper (item 021) to exist yet.
+ * strings, so importing the config never loads `test/e2e/start-inventory-api.ts` or the
+ * mutable-runtime helper.
  */
 describe("playwright.config", () => {
   it("defines exactly one Chromium project", () => {

@@ -12,7 +12,7 @@ sources (`modules/markdown-tree`, `modules/file-tree`) build, and reads them thr
 | Path | Holds |
 |---|---|
 | `server/` | the server half; `server/module.ts` is what `apps/server/src/modules/builtin.ts` lists. It also holds what the two source kinds share: acquisition, confinement, the store, the tree manifest and `kind-module.ts`, which builds a source-kind module. `server/types.ts` is the wire types the web half renders (types only) |
-| `web/` | the web half; `web/index.ts` registers it, discovered by `apps/web/src/registry/discover.ts`. `web/markdown.ts` is also the renderer the kernel's markdown widget uses |
+| `web/` | the web half; `web/index.ts` registers it, discovered by `apps/web/src/registry/discover.ts`. It renders markdown and highlights code with the kernel's pipeline (`apps/web/src/ui/lib/markdown.ts`, `highlight.ts`); `web/markdown-context.ts` gives that pipeline the Docs view's link and image rewrites |
 | `test/server/`, `test/web/` | unit tests, run by `@deck/server` and `@deck/web`'s test suites; `test/server/util/` holds the fake git spawner and scratch cache dir the server tests share |
 
 There is no `schema.json` (sources has no `modules.sources` section: the sources are the
@@ -21,8 +21,8 @@ data half (pages, nav entries, sections) is `@deck/contract/modules/sources`, wh
 too, and `server/module.ts` spreads it into the server manifest. There is no build or test script
 here: each half compiles and is tested inside its host app. React, react-dom and vitest are peer
 dependencies (with dev dependencies for the tests): the app and its modules share one instance of
-each. The libraries only this module uses (picomatch on the server; markdown-it,
-markdown-it-task-lists, DOMPurify and highlight.js in the browser) are its own dependencies, not
-the host apps'. Tests that drive the module through the kernel (the module host, the registry, the app, the
+each. The library only this module uses (picomatch, on the server) is its own dependency, not
+the host app's; the markdown pipeline's libraries (markdown-it, DOMPurify, highlight.js) belong
+to the web app, whose kernel holds the pipeline. Tests that drive the module through the kernel (the module host, the registry, the app, the
 config pipeline) stay in `apps/server/test` and `apps/web/test`, as do the tests that address the
 module's files by path string (`vi.mock`).

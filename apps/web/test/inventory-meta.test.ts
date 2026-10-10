@@ -19,7 +19,7 @@ const repoRoot = join(here, "../../..");
 const featureDir = join(here, "../../../modules/inventory/web");
 
 // ---------------------------------------------------------------------------
-// Meta-guard scope (spec 08 §7.3).
+// Meta-guard scope.
 //
 // These guards protect the enumerated protection set: frozen registration,
 // provider, route, and slot contracts; the absence of schema edits, estate
@@ -31,7 +31,7 @@ const featureDir = join(here, "../../../modules/inventory/web");
 // keyboard behavior, contrast, or any success-criterion behavior — those live in
 // the behavioral Vitest and Chromium suites. Where a behavioral assertion exists
 // we reference the runtime contract value rather than re-asserting implementation
-// text (spec 08 §7.3 non-goals).
+// text.
 // ---------------------------------------------------------------------------
 
 /** Recursively collect every `.ts`/`.tsx` source file under a directory. */
@@ -88,7 +88,7 @@ describe("frozen inventory registration and route contracts", () => {
 
 // A compile-time frozen-contract guard: the shared provider result must have
 // exactly these five top-level keys. Renaming/adding/removing one fails
-// `pnpm -r typecheck`, catching sibling-contract drift (spec 07 §9.3, CON-07).
+// `pnpm -r typecheck`, catching sibling-contract drift.
 const RESULT_KEYS = ["snapshot", "findings", "hostStates", "lastReadAt", "readError"] as const;
 type ResultKey = keyof SnapshotProviderResult;
 type ExpectedKey = (typeof RESULT_KEYS)[number];

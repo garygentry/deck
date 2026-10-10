@@ -20,11 +20,12 @@ import type { FILE_TREE_KIND } from "../../file-tree/server/index.js";
 import type { MARKDOWN_TREE_KIND } from "../../markdown-tree/server/index.js";
 import { confinePath } from "./confine.js";
 import { SourceFailure, normalizeSourceFailure } from "./errors.js";
+import { languageForPath } from "./language.js";
 
 /**
  * One node in a source's file tree. A `dir` node carries `children`; a `file` node
  * carries `size` and `binary`. The root node has `path === ""` and `type === "dir"`.
- * Rendered read-only by the web tree view (REQ-DOCS-02, REQ-CFG-02).
+ * Rendered read-only by the web tree view.
  */
 export interface SourceTreeNode {
   /** POSIX path relative to the source root ("" for the root node). Never absolute. */
@@ -35,7 +36,7 @@ export interface SourceTreeNode {
   type: "dir" | "file";
   /** Files only: byte size on disk. Undefined for directories. */
   size?: number;
-  /** Files only: true when a NUL byte was found in the leading 8 KiB (REQ-CFG-04). */
+  /** Files only: true when a NUL byte was found in the leading 8 KiB. */
   binary?: boolean;
   /** Directories only: child nodes, sorted dirs-first then by name. Undefined for files. */
   children?: SourceTreeNode[];
@@ -45,7 +46,7 @@ export interface SourceTreeNode {
  * The lightweight manifest a source publishes on each successful acquisition: the tree
  * plus enough metadata for the web to render, switch, and stamp freshness. Content,
  * images, and search hit separate on-demand routes. `data` of the envelope is this
- * manifest, or `null` before the first successful acquisition (REQ-FRESH-03).
+ * manifest, or `null` before the first successful acquisition.
  */
 export interface SourceManifest {
   /** The declaring `Source.id`. Also the provider id and the route path segment. */
@@ -56,7 +57,7 @@ export interface SourceManifest {
   title: string;
   /** Resolved git ref/commit for repo sources; undefined for local-path sources. */
   ref?: string;
-  /** Count of renderable files after include/exclude. 0 ⇒ acquired-but-empty (REQ-SRC-06). */
+  /** Count of renderable files after include/exclude. 0 ⇒ acquired-but-empty. */
   fileCount: number;
   /** Root tree node; its `children` describe the whole confined tree. */
   tree: SourceTreeNode;
@@ -111,28 +112,28 @@ export interface SourceSearchResult {
   truncated?: boolean;
 }
 
-/** Max renderable file size (REQ-CFG-03, resolves OQ-03): 1 MiB. Over ⇒ FileReadResult.truncated. */
+/** Max renderable file size: 1 MiB. Over ⇒ FileReadResult.truncated. */
 export const MAX_FILE_BYTES = 1024 * 1024;
-/** Binary-sniff window (REQ-CFG-04, resolves OQ-03): a NUL in the leading 8 KiB ⇒ binary. */
+/** Binary-sniff window: a NUL in the leading 8 KiB ⇒ binary. */
 export const BINARY_SNIFF_BYTES = 8 * 1024;
 /** Bounded read chunk size for streamed file/raw reads (mirrors snapshot CHUNK_BYTES). */
 export const READ_CHUNK_BYTES = 64 * 1024;
-/** Max search matches returned per query (REQ-SEARCH-01, REQ-PERF-02): 200. Over ⇒ truncated. */
+/** Max search matches returned per query: 200. Over ⇒ truncated. */
 export const MAX_SEARCH_MATCHES = 200;
 /** Max content-match snippet length in characters (bounds the search payload). */
 export const MAX_SNIPPET_CHARS = 200;
 
 // ---------------------------------------------------------------------------
-// Confined tree walk, bounded reads, and language hint (item 003).
+// Confined tree walk, bounded reads, and language hint.
 //
 // Every filesystem access below routes through `confinePath` (the choke point in
 // `confine.ts`) or descends into a directory a parent already proved in-root, and each
 // read is bounded — never the whole tree's content, never more than `MAX_FILE_BYTES` of a
-// single file (REQ-SEC-02, REQ-PERF-02). Read-only: only realpath/stat/opendir/
-// createReadStream syscalls appear here (REQ-RO-01).
+// single file. Read-only: only realpath/stat/opendir/
+// createReadStream syscalls appear here.
 // ---------------------------------------------------------------------------
 
-/** Inputs for one manifest build; supplied by the `SourceStore` (04) that owns the root. */
+/** Inputs for one manifest build; supplied by the `SourceStore` that owns the root. */
 export interface BuildManifestOptions {
   /** The declaring `Source.id`; echoed into the manifest and used in log/error details. */
   readonly sourceId: string;
@@ -142,43 +143,195 @@ export interface BuildManifestOptions {
   readonly title: string;
   /** Resolved git ref/commit for repo sources; omitted for local-path sources. */
   readonly ref?: string;
-  /** `Source.include` globs; empty/absent ⇒ include-all (REQ-SRC-04). */
+  /** `Source.include` globs; empty/absent ⇒ include-all. */
   readonly include?: readonly string[];
-  /** `Source.exclude` globs; empty/absent ⇒ exclude-none (REQ-SRC-04). */
+  /** `Source.exclude` globs; empty/absent ⇒ exclude-none. */
   readonly exclude?: readonly string[];
 }
 
-// --- Glob matchers (REQ-SRC-04) -------------------------------------------------------
+// --- Glob matchers -------------------------------------------------------
 
 interface Matchers {
   /** True ⇒ the POSIX rel path passes the include set (always true when no includes). */
   readonly included: (posixRel: string) => boolean;
   /** True ⇒ the POSIX rel path is excluded (always false when no excludes). */
   readonly excluded: (posixRel: string) => boolean;
+  /**
+   * True ⇒ the POSIX rel path lies under a directory some include glob reaches (see
+   * `includeBases`); always true when no includes.
+   */
+  readonly underIncludeBase: (posixRel: string) => boolean;
 }
 
 /**
  * Compile include/exclude into matchers. Patterns are matched against the POSIX path
  * RELATIVE to the source root (e.g. `docs/setup.md`), matching operator intuition and the
  * paths stored on every `SourceTreeNode`. `dot: true` so patterns can address dotfiles —
- * deck matches verbatim and does not hide dotfiles by default (REQ-SEC-04 curation is the
- * operator's job).
+ * deck matches verbatim and does not hide dotfiles by default (curation is the operator's
+ * job). Exclude globs match regardless of case, so an exclusion also holds on a
+ * case-insensitive filesystem, where `Private/x` opens `private/x`; include globs match case
+ * exactly, so a differently-cased request there fails closed.
  */
 function compileMatchers(include?: readonly string[], exclude?: readonly string[]): Matchers {
   const inc = include && include.length > 0 ? picomatch([...include], { dot: true }) : null;
-  const exc = exclude && exclude.length > 0 ? picomatch([...exclude], { dot: true }) : null;
+  const exc = exclude && exclude.length > 0 ? picomatch([...exclude], { dot: true, nocase: true }) : null;
+  const bases = (include ?? []).flatMap(includeBases);
   return {
     included: (rel) => (inc ? inc(rel) : true),
     excluded: (rel) => (exc ? exc(rel) : false),
+    underIncludeBase: (rel) =>
+      inc === null || bases.some((base) => base === "" || base === "." || rel === base || rel.startsWith(`${base}/`)),
   };
 }
 
-/** A file is renderable iff it passes include AND is not excluded (REQ-SRC-04). */
+/** The most alternatives one include glob's braces may expand to before it grants no base. */
+const MAX_BRACE_ALTERNATIVES = 256;
+
+/**
+ * The literal directories an include glob reaches, one per brace alternative: the directory
+ * part before its first wildcard (`docs` for a glob that starts `docs/` and then a wildcard),
+ * or for a glob with no wildcard (`README.md`) the directory that holds it. "" is the source
+ * root, so a glob that starts with a wildcard, or names a root-level file (`*.md`,
+ * `README.md`), reaches the whole source. A negated glob reaches nothing, and so does one
+ * whose braces cannot be expanded (a `{1..3}` range, or too many alternatives): such an include
+ * serves no image outside the tree.
+ */
+function includeBases(glob: string): string[] {
+  if (glob.startsWith("!")) return [];
+  const alternatives = expandBraces(glob);
+  if (alternatives === undefined) return [];
+  return alternatives.flatMap((alternative) => {
+    const scanned = picomatch.scan(alternative);
+    if (scanned.negated || /[{}]/.test(scanned.base)) return [];
+    const base = scanned.isGlob ? scanned.base : path.posix.dirname(scanned.base);
+    return [base.replace(/^\.(?:\/|$)/, "").replace(/\/+$/, "")];
+  });
+}
+
+/**
+ * Expand a glob's comma-list braces (`{docs,guides}/x`, nested too) into the globs they stand
+ * for, or undefined when a brace group has no comma (a range such as `{1..3}`) or the expansion
+ * passes {@link MAX_BRACE_ALTERNATIVES}. A backslash-escaped brace is literal.
+ */
+export function expandBraces(glob: string): string[] | undefined {
+  let pending = [glob];
+  const done: string[] = [];
+  while (pending.length > 0) {
+    const next: string[] = [];
+    for (const current of pending) {
+      const group = firstBraceGroup(current);
+      if (group === null) {
+        done.push(current);
+      } else if (group.parts.length < 2) {
+        return undefined;
+      } else {
+        for (const part of group.parts) next.push(current.slice(0, group.start) + part + current.slice(group.end + 1));
+      }
+      if (done.length + next.length > MAX_BRACE_ALTERNATIVES) return undefined;
+    }
+    pending = next;
+  }
+  return done;
+}
+
+/** The first unescaped top-level `{…}` group: its bounds and its top-level comma parts. */
+function firstBraceGroup(glob: string): { start: number; end: number; parts: string[] } | null {
+  let start = -1;
+  let depth = 0;
+  let partStart = 0;
+  const parts: string[] = [];
+  for (let i = 0; i < glob.length; i++) {
+    const ch = glob[i];
+    if (ch === "\\") {
+      i++;
+      continue;
+    }
+    if (ch === "{") {
+      if (depth === 0) {
+        start = i;
+        partStart = i + 1;
+      }
+      depth++;
+    } else if (ch === "}" && depth > 0) {
+      depth--;
+      if (depth === 0) {
+        parts.push(glob.slice(partStart, i));
+        return { start, end: i, parts };
+      }
+    } else if (ch === "," && depth === 1) {
+      parts.push(glob.slice(partStart, i));
+      partStart = i + 1;
+    }
+  }
+  return null;
+}
+
+/** A file is renderable iff it passes include AND is not excluded. */
 function isRenderable(m: Matchers, posixRel: string): boolean {
   return m.included(posixRel) && !m.excluded(posixRel);
 }
 
-// --- The confined walk (REQ-SEC-02, REQ-PERF-02) --------------------------------------
+/** The image types the raw route serves, by (lowercased) file extension. */
+const IMAGE_TYPE_BY_EXT: Readonly<Record<string, string>> = Object.freeze({
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+  ico: "image/x-icon",
+  svg: "image/svg+xml",
+});
+
+/** The image content type a path's extension names, or undefined for any other extension. */
+export function imageTypeForPath(relPath: string): string | undefined {
+  const ext = path.posix.extname(relPath).slice(1).toLowerCase();
+  return Object.hasOwn(IMAGE_TYPE_BY_EXT, ext) ? IMAGE_TYPE_BY_EXT[ext] : undefined;
+}
+
+/** What a direct read of one path may return, by the source's include/exclude globs. */
+export interface ReadMatchers {
+  /** True ⇒ the file is in the tree: it passes include and is not excluded. */
+  readonly inTree: (relPath: string) => boolean;
+  /**
+   * True ⇒ the raw route may serve the path: it is not excluded, and it is in the tree or is
+   * an image (by extension) under the base of an include glob. So an `include` that lists only
+   * markdown still serves the images beside it, and nothing outside the include's reach (an
+   * include of markdown under `docs/` serves images under `docs/` only).
+   */
+  readonly rawAllowed: (relPath: string) => boolean;
+}
+
+/** A request's path in the walk's own spelling: no empty or `.` segments. */
+function walkSpelling(relPath: string): string {
+  return relPath.split("/").filter((segment) => segment !== "" && segment !== ".").join("/");
+}
+
+/**
+ * The include/exclude matchers the tree walk applies, for a read by path: a request names a
+ * path as it likes (`./a.md`, `docs//a.md`), so it is first reduced to the walk's own spelling
+ * and only then matched, and a respelling cannot slip past a glob. `..` is left in place:
+ * confinement rejects it. A store applies each matcher to the requested path and to the real
+ * path it opens, so an alias (a symlink) cannot reach what the globs leave out.
+ */
+export function compileReadMatchers(include?: readonly string[], exclude?: readonly string[]): ReadMatchers {
+  const m = compileMatchers(include, exclude);
+  return {
+    inTree: (relPath) => isRenderable(m, walkSpelling(relPath)),
+    rawAllowed: (relPath) => {
+      const rel = walkSpelling(relPath);
+      if (m.excluded(rel)) return false;
+      return m.included(rel) || (imageTypeForPath(rel) !== undefined && m.underIncludeBase(rel));
+    },
+  };
+}
+
+/** The POSIX path of `real` relative to `rootReal`, both canonical absolute paths. */
+export function realRelative(rootReal: string, real: string): string {
+  return path.relative(rootReal, real).split(path.sep).join("/");
+}
+
+// --- The confined walk --------------------------------------
 
 /**
  * Secondary depth backstop for the tree walk. The visited-realpath set (threaded through
@@ -192,23 +345,23 @@ function throwIfAborted(signal?: AbortSignal): void {
 }
 
 /**
- * The classification of one directory entry. `realDir` is set ONLY for a symlinked
- * directory — it carries the confined realpath the link resolves to, so the walk can
- * detect an in-root symlink cycle (a link whose target is an already-visited directory).
- * A non-symlink directory's realpath is derived from its parent's during the walk.
+ * The classification of one directory entry. `real` is set ONLY for a symlink — it carries
+ * the confined realpath the link resolves to, so the walk can detect an in-root symlink cycle
+ * (a link whose target is an already-visited directory) and match the globs on the path the
+ * link opens. A non-symlink entry's realpath is derived from its parent's during the walk.
  */
 interface EntryClass {
   readonly kind: "file" | "dir" | "skip";
-  /** Symlinked directory only: the confined realpath the link resolves to. */
-  readonly realDir?: string;
+  /** Symlink only: the confined realpath the link resolves to. */
+  readonly real?: string;
 }
 
 /**
  * Classify one directory entry as `"file"`, `"dir"`, or `"skip"`. Non-symlink entries are
  * classified from the dirent directly. A symlink is re-confined through `confinePath`; on
- * `PATH_NOT_CONFINED` (or a dangling link) it is `"skip"` (excluded — REQ-SEC-02),
- * otherwise its realpath target is `stat`-ed to decide file vs dir. A symlinked directory
- * additionally carries its resolved realpath (`realDir`) so the walk can guard cycles.
+ * `PATH_NOT_CONFINED` (or a dangling link) it is `"skip"` (excluded),
+ * otherwise its realpath target is `stat`-ed to decide file vs dir. A symlink also carries its
+ * resolved realpath (`real`), so the walk can guard cycles and match globs on the real path.
  * Special files (socket/fifo/device) are `"skip"`.
  */
 async function classifyEntry(
@@ -227,8 +380,8 @@ async function classifyEntry(
     }
     try {
       const st = await stat(target); // follows to the (in-root) real target
-      if (st.isDirectory()) return { kind: "dir", realDir: target };
-      return { kind: st.isFile() ? "file" : "skip" };
+      if (st.isDirectory()) return { kind: "dir", real: target };
+      return st.isFile() ? { kind: "file", real: target } : { kind: "skip" };
     } catch {
       return { kind: "skip" };
     }
@@ -238,6 +391,7 @@ async function classifyEntry(
 
 async function walkDir(
   root: string,
+  rootReal: string,
   dirAbs: string,
   dirPosixRel: string,
   dirReal: string,
@@ -272,14 +426,15 @@ async function walkDir(
     if (entry.kind === "dir") {
       // The child directory's realpath: a symlinked dir carries its resolved target; a real
       // subdirectory's realpath derives from its parent's (dirReal is always canonical).
-      const childReal = entry.realDir ?? path.join(dirReal, name);
-      // Cycle guard (REQ-SEC-02): never descend into a directory realpath already on/along the
+      const childReal = entry.real ?? path.join(dirReal, name);
+      // Cycle guard: never descend into a directory realpath already on/along the
       // walk. An in-root symlink cycle (self→., latest→., sub/back→..) resolves to an
       // ancestor/already-visited realpath and is skipped rather than re-descended (no phantoms).
       if (visited.has(childReal)) continue;
       visited.add(childReal);
       const children = await walkDir(
         root,
+        rootReal,
         childAbs,
         childPosix,
         childReal,
@@ -288,14 +443,16 @@ async function walkDir(
         depth + 1,
         signal,
       );
-      // Prune: a directory survives only if it holds ≥1 renderable descendant (REQ-SRC-06).
+      // Prune: a directory survives only if it holds ≥1 renderable descendant.
       if (children.length > 0) {
         nodes.push({ path: childPosix, name, type: "dir", children });
       }
     } else {
-      // kind === "file": include only when renderable after include/exclude (REQ-SRC-04).
-      if (!isRenderable(m, childPosix)) continue;
-      const meta = await fileMeta(childAbs); // bounded: stat + ≤8 KiB sniff (§3.4)
+      // kind === "file": include only when renderable after include/exclude, by the path it
+      // is listed at AND the real path it opens (a symlink cannot alias an excluded file in).
+      const fileReal = entry.real ?? path.join(dirReal, name);
+      if (!isRenderable(m, childPosix) || !isRenderable(m, realRelative(rootReal, fileReal))) continue;
+      const meta = await fileMeta(childAbs); // bounded: stat + ≤8 KiB sniff
       nodes.push({ path: childPosix, name, type: "file", size: meta.size, binary: meta.binary });
     }
   }
@@ -311,14 +468,14 @@ function sortNodes(nodes: SourceTreeNode[]): void {
   });
 }
 
-// --- Per-file metadata: size + bounded binary sniff (REQ-CFG-04, REQ-PERF-02) ---------
+// --- Per-file metadata: size + bounded binary sniff ---------
 
 interface FileMeta {
   size: number;
   binary: boolean;
 }
 
-/** Stat for size, then sniff ≤ BINARY_SNIFF_BYTES for a NUL byte (bounded — REQ-PERF-02). */
+/** Stat for size, then sniff ≤ BINARY_SNIFF_BYTES for a NUL byte (bounded). */
 async function fileMeta(absPath: string): Promise<FileMeta> {
   const st = await stat(absPath);
   const binary = await sniffBinary(absPath);
@@ -348,19 +505,19 @@ export async function sniffBinary(absPath: string): Promise<boolean> {
   });
 }
 
-// --- buildManifest (REQ-SRC-04/06, REQ-PERF-02) ---------------------------------------
+// --- buildManifest ---------------------------------------
 
 /**
  * Walk the confined source `root`, apply `include`/`exclude`, and build a `SourceManifest`
  * (paths + per-file `size`/`binary` metadata — NEVER file content, so a manifest is bounded
- * regardless of tree size, REQ-PERF-02). Directories that contain no renderable file after
- * filtering are pruned, so an empty result surfaces as `fileCount: 0` (REQ-SRC-06), never a
+ * regardless of tree size). Directories that contain no renderable file after
+ * filtering are pruned, so an empty result surfaces as `fileCount: 0`, never a
  * throw. Symlinked entries that escape the root are excluded during the walk.
  *
- * @param root Absolute path to the confined on-disk tree root (from acquisition, 02).
+ * @param root Absolute path to the confined on-disk tree root (from acquisition).
  * @param opts Source identity + include/exclude.
  * @param signal Optional abort signal, honored between directory reads.
- * @returns The manifest; `fileCount === 0` for an acquired-but-empty tree (REQ-SRC-06).
+ * @returns The manifest; `fileCount === 0` for an acquired-but-empty tree.
  * @throws {SourceFailure} `SOURCE_UNAVAILABLE`/`INTERNAL` if the root itself is unreadable.
  */
 export async function buildManifest(
@@ -375,13 +532,13 @@ export async function buildManifest(
     // visited-realpath set with the root so a self-link (self→.) is caught on the first hop.
     const rootAbs = await confinePath(root, "");
     const visited = new Set<string>([rootAbs]);
-    children = await walkDir(root, rootAbs, "", rootAbs, matchers, visited, 0, signal);
+    children = await walkDir(root, rootAbs, rootAbs, "", rootAbs, matchers, visited, 0, signal);
   } catch (cause) {
     if (cause instanceof SourceFailure) throw cause;
     throw normalizeSourceFailure(cause, { sourceId: opts.sourceId, failureKind: "walk" });
   }
   const tree: SourceTreeNode = { path: "", name: "", type: "dir", children };
-  const fileCount = countFiles(tree); // 0 ⇒ acquired-but-empty (REQ-SRC-06)
+  const fileCount = countFiles(tree); // 0 ⇒ acquired-but-empty
   return {
     sourceId: opts.sourceId,
     kind: opts.kind,
@@ -392,21 +549,21 @@ export async function buildManifest(
   };
 }
 
-/** Count `file` nodes across the tree. `0` is the acquired-but-empty signal (REQ-SRC-06). */
+/** Count `file` nodes across the tree. `0` is the acquired-but-empty signal. */
 function countFiles(node: SourceTreeNode): number {
   if (node.type === "file") return 1;
   return (node.children ?? []).reduce((sum, c) => sum + countFiles(c), 0);
 }
 
-// --- Confined bounded file read (REQ-CFG-03/04, REQ-PERF-02) --------------------------
+// --- Confined bounded file read --------------------------
 
 /**
  * Read one confined file as the read-only `FileReadResult`. Enforces, server-side:
  *   - confinement (via `confinePath`) — throws PATH_NOT_CONFINED / PATH_NOT_FOUND;
  *   - the 1 MiB cap — a file over `MAX_FILE_BYTES` returns `{ truncated: true }` with NO
- *     content read (bounded — REQ-CFG-03/REQ-PERF-02);
+ *     content read (bounded);
  *   - the binary flag — a NUL in the leading `BINARY_SNIFF_BYTES` returns `{ binary: true }`
- *     with NO content (REQ-CFG-04);
+ *     with NO content;
  *   - otherwise `content` is the UTF-8 body and `language` is the highlight.js hint.
  * `truncated` and `binary` are independent; either one omits `content`.
  */
@@ -428,7 +585,7 @@ export async function readFile(
   const language = languageForPath(relPath);
   const size = st.size;
 
-  // Cap FIRST — never read the body of an oversize file (REQ-CFG-03, REQ-PERF-02).
+  // Cap FIRST — never read the body of an oversize file.
   if (size > MAX_FILE_BYTES) {
     return { path: relPath, language, size, truncated: true, binary: false };
   }
@@ -449,7 +606,7 @@ interface BoundedRead {
  * Stream `absPath` in READ_CHUNK_BYTES chunks up to MAX_FILE_BYTES, honoring `signal`.
  * On the first chunk, scan the leading BINARY_SNIFF_BYTES for a NUL — if present, stop and
  * return `{ binary: true }` without accumulating the body. Otherwise accumulate and return
- * the UTF-8 text. Never holds more than MAX_FILE_BYTES of buffers (REQ-PERF-02); a file that
+ * the UTF-8 text. Never holds more than MAX_FILE_BYTES of buffers; a file that
  * grew past the cap since `stat` is surfaced as READ_TOO_LARGE rather than over-buffered.
  */
 function readBoundedText(absPath: string, signal?: AbortSignal): Promise<BoundedRead> {
@@ -494,12 +651,12 @@ function readBoundedText(absPath: string, signal?: AbortSignal): Promise<Bounded
   });
 }
 
-// --- Server-side confined search (REQ-SEARCH-01, REQ-PERF-02) -------------------------
+// --- Server-side confined search -------------------------
 //
-// Search runs server-side over the confined tree (resolves OQ-02): it reuses the confined
+// Search runs server-side over the confined tree: it reuses the confined
 // walk (name/path matching + include/exclude) and the same bounded reader as `readFile`
 // (content matching, text files under the cap only). Binary and over-`MAX_FILE_BYTES` files
-// are name-matched ONLY — their content is never scanned (bounded — REQ-PERF-02). The whole
+// are name-matched ONLY — their content is never scanned (bounded). The whole
 // result is capped at `MAX_SEARCH_MATCHES` so a broad query can never return an unbounded
 // response (the search-path analogue of the file size cap).
 // ---------------------------------------------------------------------------
@@ -517,10 +674,10 @@ const MAX_MATCHES_PER_FILE = 5;
  * manifest is never returned) and the bounded reader (content matching over text files under
  * the cap only — binary and over-cap files are name-matched only, their content never
  * scanned). Case-insensitive substring match (V1). A single unreadable file is swallowed —
- * one bad file never fails the whole search (REQ-OBS-02).
+ * one bad file never fails the whole search.
  *
  * @param root   Confined on-disk source root.
- * @param opts   Same include/exclude + identity used by `buildManifest` (§3.1).
+ * @param opts   Same include/exclude + identity used by `buildManifest`.
  * @param query  Raw query string (already URL-decoded by the route). Empty ⇒ no matches.
  * @param signal Optional abort signal, honored between files.
  * @returns `{ sourceId, matches, truncated }` — `truncated: true` iff the cap was hit.
@@ -548,13 +705,13 @@ export async function searchTree(
 
   for (const file of files) {
     throwIfAborted(signal);
-    // Name/path match (also covers binary + over-cap files — REQ-SEARCH-01).
+    // Name/path match (also covers binary + over-cap files).
     if (file.path.toLowerCase().includes(needle)) {
       if (!pushCapped({ path: file.path, kind: "name" })) {
         return { sourceId: opts.sourceId, matches, truncated: true };
       }
     }
-    // Content match only for text files under the cap (never scan binary/over-cap — §3.4/§4).
+    // Content match only for text files under the cap (never scan binary/over-cap).
     if (file.binary || (file.size ?? 0) > MAX_FILE_BYTES) continue;
     const capReached = await scanContent(root, file.path, needle, pushCapped, signal);
     if (capReached) return { sourceId: opts.sourceId, matches, truncated: true };
@@ -572,7 +729,7 @@ function collectFiles(node: SourceTreeNode): SourceTreeNode[] {
  * Scan one text file's content for `needle`, pushing content matches through `pushCapped`.
  * Records at most `MAX_MATCHES_PER_FILE` content hits for this file. Returns true iff the
  * GLOBAL cap was reached (caller stops entirely). A per-file read fault is swallowed — one
- * bad file never fails the whole search (REQ-OBS-02); a file that sniffs binary on this pass
+ * bad file never fails the whole search; a file that sniffs binary on this pass
  * is skipped (its content is never scanned).
  */
 async function scanContent(
@@ -613,53 +770,6 @@ function makeSnippet(line: string): string {
   return `${trimmed.slice(0, MAX_SNIPPET_CHARS - 1)}…`;
 }
 
-// --- Language hint by extension (REQ-CFG-02) ------------------------------------------
+// --- Language hint by extension ------------------------------------------
 
-/**
- * Map a file path to a highlight.js language token by extension/basename, or `undefined`
- * for an unknown type (⇒ plaintext, REQ-CFG-02). Lowercased; matches common config/doc
- * types. This is a hint only — the web may fall back to plaintext if the language is not
- * registered in its highlight.js bundle.
- */
-export function languageForPath(relPath: string): string | undefined {
-  const base = path.posix.basename(relPath).toLowerCase();
-  const ext = path.posix.extname(base).replace(/^\./, "");
-  const byName: Record<string, string> = {
-    dockerfile: "dockerfile",
-    makefile: "makefile",
-    ".gitignore": "plaintext",
-  };
-  if (byName[base]) return byName[base];
-  const byExt: Record<string, string> = {
-    ts: "typescript",
-    tsx: "typescript",
-    js: "javascript",
-    jsx: "javascript",
-    json: "json",
-    jsonc: "json",
-    yaml: "yaml",
-    yml: "yaml",
-    toml: "ini",
-    ini: "ini",
-    conf: "ini",
-    env: "bash",
-    sh: "bash",
-    bash: "bash",
-    zsh: "bash",
-    md: "markdown",
-    markdown: "markdown",
-    xml: "xml",
-    html: "xml",
-    sql: "sql",
-    py: "python",
-    rb: "ruby",
-    go: "go",
-    rs: "rust",
-    nginx: "nginx",
-    service: "ini",
-    properties: "properties",
-    hcl: "hcl",
-    tf: "hcl",
-  };
-  return byExt[ext];
-}
+export { languageForPath };

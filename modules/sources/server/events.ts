@@ -1,5 +1,5 @@
 /**
- * Log-event shape and loggers for source failures (REQ-OBS-02, SC-13).
+ * Log-event shape and loggers for source failures.
  *
  * The single place a source failure is logged. **Only** the source id, the failure kind,
  * and (optionally) the `SourceFailureCode` are ever emitted — never the credential value,
@@ -10,7 +10,7 @@
 import type { SourceFailureCode } from "./errors.js";
 import { logger, type Logger } from "../../../apps/server/src/log/logger.js";
 
-/** The redaction-safe payload logged for any source failure (REQ-OBS-02, SC-13). */
+/** The redaction-safe payload logged for any source failure. */
 export interface SourceLogEvent {
   /** The declaring source id (safe to log). */
   sourceId: string;
@@ -21,7 +21,7 @@ export interface SourceLogEvent {
 }
 
 /**
- * Canonical failure logger used by the browsing routes (`05-http-routes.md`): logs the
+ * Canonical failure logger used by the browsing routes (`route.ts`): logs the
  * event through the injected engine-core logger. Emits nothing beyond `SourceLogEvent`.
  */
 export function logSourceFailure(logger: Logger, event: SourceLogEvent): void {
@@ -29,7 +29,7 @@ export function logSourceFailure(logger: Logger, event: SourceLogEvent): void {
 }
 
 /**
- * Acquisition-side convenience (`02-acquisition-and-caching.md`) where no request logger is
+ * Acquisition-side convenience (`acquire.ts`) where no request logger is
  * threaded: logs the same `SourceLogEvent` via the module's engine-core logger. Same
  * redaction guarantee as `logSourceFailure` — id + kind only.
  */

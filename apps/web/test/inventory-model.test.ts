@@ -340,7 +340,7 @@ describe("snapshot HTTP classification", () => {
     },
     {
       // A first-poll request failure is a retained transient error, not an
-      // accepted `snapshot:request-error` generation (store §5.4).
+      // accepted `snapshot:request-error` generation.
       name: "other non-2xx -> transient error with decimal status",
       responder: () => jsonResponse(503, {}),
       expected: (d) => {
@@ -623,7 +623,7 @@ describe("context and memoization", () => {
 });
 
 // ===========================================================================
-// buildInventoryModel — immutable normalization (item 012)
+// buildInventoryModel — immutable normalization
 // ===========================================================================
 
 // --- Pure model fixture builders (no DOM/fetch) ----------------------------
@@ -1112,7 +1112,7 @@ describe("buildInventoryModel at 150 hosts / 300 services", () => {
 });
 
 // ===========================================================================
-// search-filter — pure host/service projection (item 013)
+// search-filter — pure host/service projection
 // ===========================================================================
 
 /** A rich available model: declared+observed, hidden, undeclared, mixed kinds/states. */

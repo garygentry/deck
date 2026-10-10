@@ -5,10 +5,10 @@
  *
  * Local-path sources are used in place (no clone, no copy). Git sources are shallow-cloned
  * through the injected `GitSpawner` seam into a bounded per-source cache and published
- * atomically via a symlink swap so a reader never observes a half-updated tree
- * (REQ-FRESH-04). Writes ONLY under `deps.cacheDir`, never to the source (REQ-RO-01).
+ * atomically via a symlink swap so a reader never observes a half-updated tree. Writes ONLY
+ * under `deps.cacheDir`, never to the source.
  *
- * Private-repo auth (REQ-ACQ-03, REQ-SEC-03): when a git source declares `Source.credentialEnv`,
+ * Private-repo auth: when a git source declares `Source.credentialEnv`,
  * the token named by that env var is read (through `AcquireDeps.env`) at acquisition time and sent as an
  * ephemeral `http.extraheader: Authorization: Basic …` injected via `GIT_CONFIG_*` env for the
  * clone spawn ONLY. The token is NEVER placed in the clone URL or argv — git persists the remote
@@ -16,7 +16,7 @@
  * credential on disk in the source cache. Env-injected `-c` config is process-scoped: git never
  * writes it to the repo config, and it stays out of the process arg list. The token is never
  * logged (git stdout/stderr are drained and discarded; `events.ts` logs only
- * `{ sourceId, failureKind }`). Public repos and local paths read no credential (REQ-ACQ-04).
+ * `{ sourceId, failureKind }`). Public repos and local paths read no credential.
  */
 
 import { randomUUID } from "node:crypto";
@@ -49,7 +49,7 @@ export interface SpawnedGit {
 export interface GitSpawner {
   /**
    * @param argv  Full argument vector, e.g. ["git","clone","--depth","1", …]. argv[0] is "git".
-   * @param opts  Working directory and process env (credential injected in-memory only — REQ-SEC-03).
+   * @param opts  Working directory and process env (credential injected in-memory only).
    * @throws when the process cannot be started (git absent ⇒ acquisition SOURCE_UNAVAILABLE).
    */
   spawn(argv: readonly string[], opts?: { cwd?: string; env?: NodeJS.ProcessEnv }): SpawnedGit;
@@ -97,8 +97,7 @@ export interface AcquireContext {
 /**
  * Acquire (or refresh) one source into a confined, complete, last-good on-disk tree and
  * return its root. Local-path sources are used in place; git sources are shallow-cloned to a
- * bounded per-source cache and published atomically. Writes ONLY under `deps.cacheDir`
- * (REQ-RO-01).
+ * bounded per-source cache and published atomically. Writes ONLY under `deps.cacheDir`.
  *
  * @throws {SourceFailure} `SOURCE_UNAVAILABLE` (git missing / clone non-zero / local root
  *   unreadable) or `ACQUIRE_TIMEOUT` (signal aborted).
@@ -117,13 +116,13 @@ export async function acquireSource(src: Source, ctx: AcquireContext): Promise<A
   );
 }
 
-// --- Local-path acquisition (REQ-ACQ-01, REQ-ACQ-04, REQ-RO-01) -----------------------
+// --- Local-path acquisition -----------------------
 
 /**
  * Acquire a local-path source: resolve its realpath and confirm it is a readable directory.
  * The "current root" is the realpath-resolved `path` (symlinks collapsed here so the store's
  * per-access confinement has a stable, canonical root). No credential is ever read. Deck
- * writes NOTHING (REQ-RO-01) — this arm is read-only stat/realpath.
+ * writes NOTHING — this arm is read-only stat/realpath.
  */
 async function acquireLocalPath(src: Source, path: string): Promise<AcquiredTree> {
   try {
@@ -149,13 +148,12 @@ async function acquireLocalPath(src: Source, path: string): Promise<AcquiredTree
   }
 }
 
-// --- Git shallow-clone acquisition (REQ-ACQ-01/02, REQ-FRESH-04) ----------------------
+// --- Git shallow-clone acquisition ----------------------
 
 /**
  * Acquire a git-repo source: shallow-clone into a fresh incoming generation dir, resolve the
  * checked-out commit, then atomically publish by swapping the `current` symlink. On any
- * failure the incoming dir is removed and `current` (last-good) is left untouched
- * (REQ-FRESH-02/03).
+ * failure the incoming dir is removed and `current` (last-good) is left untouched.
  */
 async function acquireGitRepo(src: Source, repo: string, ctx: AcquireContext): Promise<AcquiredTree> {
   const { deps, signal } = ctx;
@@ -163,7 +161,7 @@ async function acquireGitRepo(src: Source, repo: string, ctx: AcquireContext): P
   await mkdir(sourceDir, { recursive: true });
 
   // Sweep crash-leftover generations, but keep the live `current` target (last-good) so a
-  // refresh never discards a good tree before its replacement is published (REQ-FRESH-02).
+  // refresh never discards a good tree before its replacement is published.
   const liveBefore = await currentTarget(sourceDir);
   await pruneGenerations(sourceDir, liveBefore);
 
@@ -176,7 +174,7 @@ async function acquireGitRepo(src: Source, repo: string, ctx: AcquireContext): P
       // The clone URL is the declared repo VERBATIM — no credential is ever embedded in the URL
       // or argv (that would persist to the clone's .git/config on disk). When a token applies it
       // rides an ephemeral `http.extraheader` injected via env for THIS spawn only (never
-      // persisted, never in the arg list, never logged — REQ-SEC-03).
+      // persisted, never in the arg list, never logged).
       buildCloneArgv(repo, src.location.ref, incoming),
       { cwd: sourceDir, env: { ...gitEnv(), ...gitAuthEnv(src, repo, deps.env ?? processEnv) } },
       signal,
@@ -186,7 +184,7 @@ async function acquireGitRepo(src: Source, repo: string, ctx: AcquireContext): P
 
     const ref = await resolveCommit(deps.git, incoming, signal);
     const root = await publish(sourceDir, incoming, signal, src);
-    await pruneGenerations(sourceDir, root); // drop the superseded generation (REQ-FRESH-05)
+    await pruneGenerations(sourceDir, root); // drop the superseded generation
     return ref !== undefined ? { root, ref } : { root };
   } catch (error) {
     // Remove the half-cloned incoming dir; leave `current` (last-good) untouched.
@@ -208,7 +206,7 @@ function buildCloneArgv(remoteUrl: string, ref: string | undefined, dest: string
     "--single-branch", // fetch only the target branch's tip
   ];
   if (typeof ref === "string" && ref !== "") {
-    argv.push("--branch", ref); // pin to the declared ref/branch/tag (REQ-ACQ-02)
+    argv.push("--branch", ref); // pin to the declared ref/branch/tag
   }
   // `--` terminates options so a hostile repo/ref string can never be read as a flag.
   argv.push("--", remoteUrl, dest);
@@ -217,7 +215,7 @@ function buildCloneArgv(remoteUrl: string, ref: string | undefined, dest: string
 
 /**
  * Compute the ephemeral git auth config for a private HTTPS repo. Public repos, local paths, and
- * ssh:// / git@ remotes need no credential (REQ-ACQ-04) — returns an empty env. When
+ * ssh:// / git@ remotes need no credential — returns an empty env. When
  * `Source.credentialEnv` names a SET env var and the repo is an HTTPS URL, the token becomes an
  * `http.extraheader: Authorization: Basic base64("x-access-token:<token>")` carried through
  * `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_0` / `GIT_CONFIG_VALUE_0` — applied to the clone spawn ONLY.
@@ -225,7 +223,7 @@ function buildCloneArgv(remoteUrl: string, ref: string | undefined, dest: string
  * This deliberately does NOT put the token in the clone URL/argv: git writes the remote URL into
  * the clone's `.git/config` (and reflog), so URL-embedded userinfo would persist the credential to
  * disk in the source cache. Env-injected `-c` config is process-scoped — git never writes it to the
- * repo config, and it stays out of the process arg list too (REQ-SEC-03). The token is never logged
+ * repo config, and it stays out of the process arg list too. The token is never logged
  * (git output is drained/discarded; `events.ts` logs id + kind only).
  *
  * Mirrors the `modules/prometheus` `authHeaders(credentialEnv)` convention: config carries the
@@ -237,7 +235,7 @@ function buildCloneArgv(remoteUrl: string, ref: string | undefined, dest: string
  */
 function gitAuthEnv(src: Source, repo: string, env: { get(name: string): string | undefined }): NodeJS.ProcessEnv {
   const envName = src.credentialEnv;
-  if (envName === undefined || envName === "") return {}; // public/local — no credential (REQ-ACQ-04)
+  if (envName === undefined || envName === "") return {}; // public/local — no credential
 
   const token = env.get(envName);
   if (token === undefined || token === "") return {}; // named but unset ⇒ attempt unauthenticated
@@ -315,7 +313,7 @@ async function runGit(
   }
 }
 
-/** Consume an async byte stream to EOF, discarding every chunk (never logged — REQ-OBS-02). */
+/** Consume an async byte stream to EOF, discarding every chunk (never logged). */
 async function drain(stream: AsyncIterable<Uint8Array>): Promise<void> {
   for await (const _chunk of stream) {
     // discard: output may contain a tokenized URL — never inspected or logged.
@@ -356,7 +354,7 @@ async function resolveCommit(
   }
 }
 
-// --- Atomic publish (REQ-FRESH-04, REQ-CONC-01) ---------------------------------------
+// --- Atomic publish ---------------------------------------
 
 /** The per-source cache directory. `id` is a config-declared source id (no traversal risk). */
 function sourceCacheDir(cacheDir: string, sourceId: string): string {
@@ -378,7 +376,7 @@ async function currentTarget(sourceDir: string): Promise<string | undefined> {
 }
 
 /**
- * Atomically publish `incoming` as the new `current` (REQ-FRESH-04). Creates a temporary
+ * Atomically publish `incoming` as the new `current`. Creates a temporary
  * symlink to the new generation, then renames it onto `current` — an atomic replace of the
  * symlink within the one filesystem. Returns the realpath of the newly-published generation.
  */
@@ -397,11 +395,11 @@ async function publish(
   const link = currentLink(sourceDir);
   const tmpLink = `${link}.tmp-${randomToken()}`;
   await symlink(incoming, tmpLink); // create the new symlink out of the reader's path
-  await rename(tmpLink, link); // ATOMIC replace of the `current` symlink (REQ-FRESH-04)
+  await rename(tmpLink, link); // ATOMIC replace of the `current` symlink
   return realpath(link); // resolve to the just-published generation dir
 }
 
-// --- Bounded cache & pruning (REQ-FRESH-05) -------------------------------------------
+// --- Bounded cache & pruning -------------------------------------------
 
 /**
  * Keep the per-source cache bounded to the published generation plus, transiently, one
@@ -427,8 +425,8 @@ async function pruneGenerations(sourceDir: string, keep: string | undefined): Pr
 }
 
 /**
- * Prune every source cache directory whose name is not a currently-declared source id
- * (REQ-FRESH-05 release-on-removal). Used by the boot-time runtime reconciliation (item 006).
+ * Prune every source cache directory whose name is not a currently-declared source id, so a
+ * removed source releases its cache. Used by the boot-time runtime reconciliation.
  * Only ever removes children of `cacheDir`.
  */
 export async function pruneOrphanSources(
@@ -453,7 +451,7 @@ async function removeDir(dir: string): Promise<void> {
   await rm(dir, { recursive: true, force: true }).catch(() => undefined);
 }
 
-// --- Error handling & observability (REQ-FRESH-02/03, REQ-OBS-02) ---------------------
+// --- Error handling & observability ---------------------
 
 /**
  * Coerce any throwable into a SourceFailure carrying the source id + failure kind. A generic
@@ -549,7 +547,7 @@ export function createBunGitSpawner(): GitSpawner {
 /**
  * Adapt a `ReadableStream<Uint8Array>` to an `AsyncIterable<Uint8Array>` so `SpawnedGit`'s
  * contract holds regardless of whether the underlying stream is natively async-iterable.
- * `runGit` drains both streams and discards every chunk (never logged — REQ-OBS-02).
+ * `runGit` drains both streams and discards every chunk (never logged).
  */
 async function* readableToIterable(
   stream: ReadableStream<Uint8Array>,

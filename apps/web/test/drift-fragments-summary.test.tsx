@@ -30,6 +30,7 @@ import {
   serviceDecl,
 } from "./inventory-harness.js";
 import type { InventoryGeneration } from "../src/features/hosts-and-services/inventory-store.js";
+import { MONITORING_IMPLEMENTATION_IMPORT } from "./support/monitoring-imports.js";
 import type { DriftGenerationState } from "../../../modules/drift/web/store.js";
 import type { EntityRef } from "../src/registry/registry.js";
 import type { HealthSummary } from "../src/shell/health-header/health-summary.js";
@@ -913,7 +914,7 @@ describe("DriftHealthSummary — placeholder props are ignored", () => {
     expectPill(link, "ok");
   });
 
-  it("imports nothing from alerts-and-health and stays meaningful alone", () => {
+  it("imports nothing from the monitoring module and stays meaningful alone", () => {
     const source = readFileSync(
       new URL(
         "../../../modules/drift/web/DriftHealthSummary.tsx",
@@ -921,7 +922,7 @@ describe("DriftHealthSummary — placeholder props are ignored", () => {
       ),
       "utf8",
     );
-    expect(source).not.toMatch(/from\s+["'][^"']*(alerts-and-health|modules\/monitoring)/);
+    expect(source).not.toMatch(MONITORING_IMPLEMENTATION_IMPORT);
     // Rendered as the only summary contribution, it still produces complete text.
     driftState = availableGenState({ ...coverageOnly("fresh") });
     expect(renderSummary().link).toHaveTextContent("hosts need coverage attention");

@@ -8,7 +8,7 @@ import { REPO_ROOT, serverSourceRoots } from "./util/source-roots.js";
 
 const PROVIDERS = resolve(__dirname, "../src/providers");
 
-/** Every `providers/<dir>` holding an `index.ts`: a provider implementation. */
+/** Every `providers/<dir>` holding an `index.ts`: a provider implementation outside a module. */
 const providerDirs = readdirSync(PROVIDERS)
   .filter((name) => statSync(join(PROVIDERS, name)).isDirectory() && existsSync(join(PROVIDERS, name, "index.ts")))
   .sort();
@@ -25,21 +25,20 @@ async function expectOneBuiltinExport(file: string): Promise<void> {
 }
 
 /**
- * With the generated barrel gone, a provider reaches deck only through its data-source module:
- * a provider folder without a `module.ts` that BUILTIN_MODULES lists would be dead code. The
- * same holds for a co-located module's server half.
+ * A provider kind lives in its data-source module (`modules/<id>/server`), which BUILTIN_MODULES
+ * lists: `providers/` holds only the kernel (the registry and the provider wiring). A provider
+ * folder there would bypass the module contract.
  */
-describe("every provider folder is a registered data-source module", () => {
-  it("finds the provider folders", () => {
-    expect(providerDirs.length).toBeGreaterThan(0);
-  });
-
-  it.each(providerDirs)("providers/%s has a module.ts whose module is built in", async (dir) => {
-    expect(existsSync(join(PROVIDERS, dir, "module.ts")), `providers/${dir}/module.ts`).toBe(true);
-    await expectOneBuiltinExport(join(PROVIDERS, dir, "module.ts"));
+describe("providers/ holds no provider folders", () => {
+  it("has none", () => {
+    expect(providerDirs, "move each providers/<kind> into modules/<id>/server").toEqual([]);
   });
 });
 
+/**
+ * With the generated barrel gone, a provider reaches deck only through its data-source module:
+ * a module server half without a `module.ts` that BUILTIN_MODULES lists would be dead code.
+ */
 describe("every co-located module server half is a registered built-in", () => {
   it("finds the module server halves", () => {
     expect(moduleServerDirs).toContain("modules/link/server");

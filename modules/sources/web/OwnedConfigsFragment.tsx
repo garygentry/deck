@@ -17,10 +17,10 @@ import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import type { ProviderEnvelope } from "@deck/contract";
 import type { DeckConfig } from "@deck/server";
-import type { SourceManifest, SourceTreeNode } from "@deck/server/sources";
+import type { SourceManifest, SourceTreeNode } from "../server/types.js";
 import { useConfig } from "@/data";
 import { EmptyState, ErrorState, FreshnessBadge, List, ListItem, LoadingState } from "@/ui";
-import type { EntityRef } from "../../registry/registry.js";
+import type { EntityRef } from "@/registry/registry.js";
 import { fetchManifest, type Source } from "./client.js";
 import { configsHref } from "./links.js";
 

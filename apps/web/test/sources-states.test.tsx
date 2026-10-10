@@ -16,9 +16,9 @@
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SourceKind } from "@deck/server/sources";
+import type { SourceKind } from "../../../modules/sources/server/types.js";
 
-vi.mock("../src/features/sources-docs-and-configs/use-source.js", async (importOriginal) => ({
+vi.mock("../../../modules/sources/web/use-source.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useManifestLoad: () => {},
   useFileLoad: () => {},
@@ -29,14 +29,14 @@ import {
   SourceBrowserReady,
   SourceBrowserView,
   type SourceBrowserKind,
-} from "../src/features/sources-docs-and-configs/SourceBrowserPage.js";
+} from "../../../modules/sources/web/SourceBrowserPage.js";
 import {
   getSourceBrowse,
   resetBrowse,
   selectSource,
   setFilter,
   setManifest,
-} from "../src/features/sources-docs-and-configs/sources-store.js";
+} from "../../../modules/sources/web/sources-store.js";
 import { dirNode, envelope, fileNode, manifest, sourcesConfig } from "./support/sources.js";
 
 afterEach(() => {
@@ -284,7 +284,7 @@ for (const { label, kind, sourceKind, emptyText, noSourcesText, loadingText } of
 describe("render-failure isolation", () => {
   it("a throw in the page renders the page's own failure heading + Retry", async () => {
     const { SourceBrowserPage } = await import(
-      "../src/features/sources-docs-and-configs/SourceBrowserPage.js"
+      "../../../modules/sources/web/SourceBrowserPage.js"
     );
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     // An invalid store state (a ready manifest whose tree is missing) makes the page throw.

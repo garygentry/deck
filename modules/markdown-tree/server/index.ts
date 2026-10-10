@@ -1,9 +1,9 @@
 import type { Source } from "@deck/schema";
 
-import type { Provider, ProviderFetchContext, ProviderHealth } from "../../contract/index.js";
-import { normalizeSourceFailure } from "../../sources/errors.js";
-import type { SourceStore } from "../../sources/store.js";
-import type { SourceManifest } from "../../sources/tree.js";
+import type { Provider, ProviderFetchContext, ProviderHealth } from "../../../apps/server/src/contract/index.js";
+import { normalizeSourceFailure } from "../../sources/server/errors.js";
+import type { SourceStore } from "../../sources/server/store.js";
+import type { SourceManifest } from "../../sources/server/tree.js";
 
 /** The provider kind of the `markdown-tree` data-source module. */
 export const MARKDOWN_TREE_KIND = "markdown-tree";

@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { GitSpawner, SpawnedGit } from "../../src/sources/acquire.js";
+import type { GitSpawner, SpawnedGit } from "../../../server/acquire.js";
 
 /**
  * Scripted behaviour for one fake `git clone`. Applied per CLONE spawn (in order for the

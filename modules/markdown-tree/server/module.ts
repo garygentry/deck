@@ -1,6 +1,6 @@
 import type { JsonSchema } from "@deck/module-sdk";
 
-import { defineSourceKindModule, sourceKindManifest, type SourceKindModuleOptions } from "../../sources/kind-module.js";
+import { defineSourceKindModule, sourceKindManifest, type SourceKindModuleOptions } from "../../sources/server/kind-module.js";
 import { MARKDOWN_TREE_KIND, MarkdownTreeProvider } from "./index.js";
 import instanceSchema from "./instance.schema.json" with { type: "json" };
 

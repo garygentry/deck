@@ -5,9 +5,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { FreshnessStamp } from "@deck/contract";
 
 import { EmptyState, ErrorState, FRESHNESS_STATUS, FreshnessBadge, TONES } from "@/ui";
-import { FILE_NOTICE } from "../src/features/sources-docs-and-configs/status.js";
-import { BinaryPlaceholder } from "../src/features/sources-docs-and-configs/components/BinaryPlaceholder.js";
-import { TruncatedNotice } from "../src/features/sources-docs-and-configs/components/TruncatedNotice.js";
+import { FILE_NOTICE } from "../../web/status.js";
+import { BinaryPlaceholder } from "../../web/components/BinaryPlaceholder.js";
+import { TruncatedNotice } from "../../web/components/TruncatedNotice.js";
 
 // ---------------------------------------------------------------------------
 // Sources status convention (SC-14 / REQ-A11Y-01): every status/placeholder surface this feature

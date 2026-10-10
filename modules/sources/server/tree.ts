@@ -16,8 +16,8 @@ import * as path from "node:path";
 
 import picomatch from "picomatch";
 
-import type { FILE_TREE_KIND } from "../providers/file-tree/index.js";
-import type { MARKDOWN_TREE_KIND } from "../providers/markdown-tree/index.js";
+import type { FILE_TREE_KIND } from "../../file-tree/server/index.js";
+import type { MARKDOWN_TREE_KIND } from "../../markdown-tree/server/index.js";
 import { confinePath } from "./confine.js";
 import { SourceFailure, normalizeSourceFailure } from "./errors.js";
 

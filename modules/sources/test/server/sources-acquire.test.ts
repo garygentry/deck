@@ -10,9 +10,9 @@ import {
   acquireSource,
   pruneOrphanSources,
   type AcquireContext,
-} from "../src/sources/acquire.js";
-import { SourceFailure } from "../src/sources/errors.js";
-import { buildManifest, type BuildManifestOptions, type SourceTreeNode } from "../src/sources/tree.js";
+} from "../../server/acquire.js";
+import { SourceFailure } from "../../server/errors.js";
+import { buildManifest, type BuildManifestOptions, type SourceTreeNode } from "../../server/tree.js";
 import { createFakeGitSpawner, gitAbsentError, type FakeGitSpawner } from "./util/fake-git-spawner.js";
 import { makeCacheDir } from "./util/make-cache-dir.js";
 

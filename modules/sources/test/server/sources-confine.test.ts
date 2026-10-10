@@ -15,8 +15,8 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 
 import * as fsPromises from "node:fs/promises";
 
-import { SourceFailure } from "../src/sources/errors.js";
-import { confine } from "../src/sources/confine.js";
+import { SourceFailure } from "../../server/errors.js";
+import { confine } from "../../server/confine.js";
 
 /**
  * Every vector resolves outside the source root and MUST be rejected as PATH_NOT_CONFINED.

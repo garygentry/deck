@@ -1,0 +1,35 @@
+{
+  "name": "@deck/module-sources",
+  "version": "0.3.2",
+  "private": true,
+  "description": "deck's built-in sources module: source acquisition, caching and confined browsing, the /api/sources routes, the Docs and Configs pages and the owned-configs sections.",
+  "type": "module",
+  "dependencies": {
+    "@deck/contract": "workspace:*",
+    "@deck/module-sdk": "workspace:*",
+    "@deck/schema": "workspace:*",
+    "@deck/server": "workspace:*",
+    "dompurify": "^3.2.4",
+    "highlight.js": "^11.10.0",
+    "hono": "^4.6.0",
+    "markdown-it": "^14.1.0",
+    "markdown-it-task-lists": "^2.1.1",
+    "picomatch": "^4.0.2"
+  },
+  "peerDependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "vitest": "^4.1.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.3",
+    "@types/dompurify": "^3.0.5",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^22",
+    "@types/picomatch": "^3.0.1",
+    "@types/react": "^19.3.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "vitest": "^4.1.0"
+  }
+}

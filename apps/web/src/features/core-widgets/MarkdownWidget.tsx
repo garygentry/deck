@@ -2,7 +2,7 @@ import { Prose } from "@/ui";
 
 import type { WidgetProps } from "../../registry/registry.js";
 // The docs view's pipeline, so a widget's markdown is sanitised by the same DOMPurify boundary.
-import { renderMarkdown } from "../sources-docs-and-configs/markdown.js";
+import { renderMarkdown } from "../../../../../modules/sources/web/markdown.js";
 import { UnexpectedValue } from "./UnexpectedValue.js";
 
 /**

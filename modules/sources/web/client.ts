@@ -18,7 +18,7 @@
 
 import type { ProviderEnvelope } from "@deck/contract";
 import type { DeckConfig } from "@deck/server";
-import type { FileReadResult, SourceManifest, SourceSearchResult } from "@deck/server/sources";
+import type { FileReadResult, SourceManifest, SourceSearchResult } from "../server/types.js";
 
 import { setFile, setManifest, setSearch } from "./sources-store.js";
 

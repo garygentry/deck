@@ -11,7 +11,7 @@ import {
   MAX_SNIPPET_CHARS,
   type BuildManifestOptions,
   type SourceSearchMatch,
-} from "../src/sources/tree.js";
+} from "../../server/tree.js";
 
 const OPTS: BuildManifestOptions = { sourceId: "docs", kind: "markdown-tree", title: "Docs" };
 

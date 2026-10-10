@@ -19,7 +19,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import type { DeckConfig } from "@deck/server";
-import type { SourceTreeNode } from "@deck/server/sources";
+import type { SourceTreeNode } from "../server/types.js";
 import { useConfig } from "@/data";
 import { useLocation } from "@/shell/router";
 import {

@@ -10,7 +10,7 @@ import {
   isSourceClientError,
   rawAssetUrl,
   type SourceClientError,
-} from "../src/features/sources-docs-and-configs/client.js";
+} from "../../web/client.js";
 
 /** Stub global fetch with a single canned response (or a rejection). */
 function stubFetch(impl: () => Promise<Response>): void {

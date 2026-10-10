@@ -2,8 +2,8 @@ import { SOURCES_UI } from "@deck/contract/modules/sources";
 import { defineWebModule } from "@deck/module-sdk";
 import type { ComponentType } from "react";
 
-import type { EntityFragmentRegistration } from "../../registry/registry.js";
-import { registerWebModule } from "../../registry/web-module.js";
+import type { EntityFragmentRegistration } from "@/registry/registry.js";
+import { registerWebModule } from "@/registry/web-module.js";
 import { ConfigsPage, DocsPage, OwnedConfigsFragment } from "./pages.js";
 
 // The Docs and Configs pages and the owned-configs section on the host and service detail

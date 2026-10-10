@@ -9,16 +9,16 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderEnvelope } from "@deck/contract";
 import type { DeckConfig } from "@deck/server";
-import type { SourceManifest, SourceTreeNode } from "@deck/server/sources";
-import type { EntityRef } from "../src/registry/registry.js";
+import type { SourceManifest, SourceTreeNode } from "../../server/types.js";
+import type { EntityRef } from "@/registry/registry.js";
 
 import {
   OwnedConfigsFragment,
   collectFilePaths,
   ownedFileTreeSources,
-} from "../src/features/sources-docs-and-configs/OwnedConfigsFragment.js";
-import type { Source } from "../src/features/sources-docs-and-configs/client.js";
-import { configsHref } from "../src/features/sources-docs-and-configs/links.js";
+} from "../../web/OwnedConfigsFragment.js";
+import type { Source } from "../../web/client.js";
+import { configsHref } from "../../web/links.js";
 
 // --- fixtures -------------------------------------------------------------
 

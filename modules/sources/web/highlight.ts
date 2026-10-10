@@ -77,7 +77,7 @@ const LANGUAGE_BY_NAME: Readonly<Record<string, string>> = Object.freeze({
 });
 
 /** highlight.js language tokens chosen by (lowercased) extension. Mirrors the server hint
- *  table (`apps/server/src/sources/tree.ts` `languageForPath`) so both surfaces agree. */
+ *  table (`modules/sources/server/tree.ts` `languageForPath`) so both surfaces agree. */
 const LANGUAGE_BY_EXT: Readonly<Record<string, string>> = Object.freeze({
   ts: "typescript",
   tsx: "typescript",

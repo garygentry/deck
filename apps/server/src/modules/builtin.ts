@@ -9,17 +9,17 @@ import { metricsModule } from "../../../../modules/metrics/server/module.js";
 import { monitoringModule } from "../../../../modules/monitoring/server/module.js";
 import { alertmanagerModule } from "../../../../modules/alertmanager/server/module.js";
 import { dockerModule } from "../../../../modules/docker/server/module.js";
-import { fileTreeModule } from "../providers/file-tree/module.js";
+import { fileTreeModule } from "../../../../modules/file-tree/server/module.js";
 import { gatusModule } from "../../../../modules/gatus/server/module.js";
 import { httpHealthModule } from "../../../../modules/http-health/server/module.js";
 import { httpJsonModule } from "../providers/http-json/module.js";
 import { linkModule } from "../../../../modules/link/server/module.js";
-import { markdownTreeModule } from "../providers/markdown-tree/module.js";
+import { markdownTreeModule } from "../../../../modules/markdown-tree/server/module.js";
 import { prometheusModule } from "../../../../modules/prometheus/server/module.js";
 import { remoteModule } from "../providers/remote/module.js";
 import { snapshotModule } from "../../../../modules/snapshot/server/module.js";
 import { portalModule } from "../../../../modules/portal/server/module.js";
-import { sourcesModule } from "../sources/module.js";
+import { sourcesModule } from "../../../../modules/sources/server/module.js";
 import { kindRuntimes, planModules, type KindRuntime } from "./host.js";
 
 /**

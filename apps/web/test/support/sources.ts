@@ -7,7 +7,7 @@
  */
 import type { FreshnessState, ProviderEnvelope } from "@deck/contract";
 import type { DeckConfig } from "@deck/server";
-import type { SourceKind, SourceManifest, SourceTreeNode } from "@deck/server/sources";
+import type { SourceKind, SourceManifest, SourceTreeNode } from "../../../../modules/sources/server/types.js";
 
 export function fileNode(path: string, binary = false): SourceTreeNode {
   return { path, name: path.split("/").pop() ?? path, type: "file", size: 16, binary };

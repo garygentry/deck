@@ -23,7 +23,7 @@ import {
   BINARY_SNIFF_BYTES,
   type BuildManifestOptions,
   type SourceTreeNode,
-} from "../src/sources/tree.js";
+} from "../../server/tree.js";
 
 const OPTS: BuildManifestOptions = { sourceId: "docs", kind: "markdown-tree", title: "Docs" };
 

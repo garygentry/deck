@@ -3,9 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProviderFetchContext } from "../src/contract/index.js";
 import { kindRuntimes, planModules } from "../src/modules/host.js";
-import { FileTreeProvider } from "../src/providers/file-tree/index.js";
+import { FileTreeProvider } from "../../../modules/file-tree/server/index.js";
 import { registerAllProviders } from "../src/providers/index.js";
-import { MarkdownTreeProvider } from "../src/providers/markdown-tree/index.js";
+import { MarkdownTreeProvider } from "../../../modules/markdown-tree/server/index.js";
 import {
   providerCount,
   read,
@@ -13,12 +13,12 @@ import {
   startScheduler,
   stopScheduler,
 } from "../src/providers/registry.js";
-import { SourceFailure } from "../src/sources/errors.js";
-import { createSourceStore, type SourceStore } from "../src/sources/store.js";
-import type { SourceKind, SourceManifest } from "../src/sources/tree.js";
+import { SourceFailure } from "../../../modules/sources/server/errors.js";
+import { createSourceStore, type SourceStore } from "../../../modules/sources/server/store.js";
+import type { SourceKind, SourceManifest } from "../../../modules/sources/server/tree.js";
 
-import { createFakeGitSpawner } from "./util/fake-git-spawner.js";
-import { makeCacheDir } from "./util/make-cache-dir.js";
+import { createFakeGitSpawner } from "../../../modules/sources/test/server/util/fake-git-spawner.js";
+import { makeCacheDir } from "../../../modules/sources/test/server/util/make-cache-dir.js";
 import { sourceModules } from "./util/sources-module.js";
 
 /** A git-repo source of the given kind; the fake spawner stages the tree, so no real git runs. */

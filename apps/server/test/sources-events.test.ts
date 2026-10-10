@@ -16,11 +16,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Source } from "@deck/schema";
 
-import { acquireSource, type AcquireContext } from "../src/sources/acquire.js";
-import { SourceFailure } from "../src/sources/errors.js";
+import { acquireSource, type AcquireContext } from "../../../modules/sources/server/acquire.js";
+import { SourceFailure } from "../../../modules/sources/server/errors.js";
 import { logger } from "../src/log/logger.js";
-import { createFakeGitSpawner, type FakeGitSpawner } from "./util/fake-git-spawner.js";
-import { makeCacheDir } from "./util/make-cache-dir.js";
+import { createFakeGitSpawner, type FakeGitSpawner } from "../../../modules/sources/test/server/util/fake-git-spawner.js";
+import { makeCacheDir } from "../../../modules/sources/test/server/util/make-cache-dir.js";
 
 // --- Fixtures & helpers ---------------------------------------------------------------
 

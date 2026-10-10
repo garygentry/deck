@@ -15,18 +15,18 @@ import { METRICS_MANIFEST } from "../../../../modules/metrics/server/module.js";
 import { MONITORING_MANIFEST } from "../../../../modules/monitoring/server/module.js";
 import { ALERTMANAGER_MANIFEST } from "../../../../modules/alertmanager/server/module.js";
 import { DOCKER_MANIFEST } from "../../../../modules/docker/server/module.js";
-import { FILE_TREE_MANIFEST } from "../../src/providers/file-tree/module.js";
+import { FILE_TREE_MANIFEST } from "../../../../modules/file-tree/server/module.js";
 import { GATUS_MANIFEST } from "../../../../modules/gatus/server/module.js";
 import { HTTP_HEALTH_MANIFEST } from "../../../../modules/http-health/server/module.js";
 import { HTTP_JSON_MANIFEST } from "../../src/providers/http-json/module.js";
 import { LINK_MANIFEST } from "../../../../modules/link/server/module.js";
-import { MARKDOWN_TREE_MANIFEST } from "../../src/providers/markdown-tree/module.js";
+import { MARKDOWN_TREE_MANIFEST } from "../../../../modules/markdown-tree/server/module.js";
 import { PROMETHEUS_MANIFEST } from "../../../../modules/prometheus/server/module.js";
 import { REMOTE_MANIFEST } from "../../src/providers/remote/module.js";
 import { SNAPSHOT_MANIFEST } from "../../../../modules/snapshot/server/module.js";
 import { createModuleHost, type ModuleHostOptions } from "../../src/modules/host.js";
 import { PORTAL_MANIFEST } from "../../../../modules/portal/server/module.js";
-import { SOURCES_MANIFEST } from "../../src/sources/module.js";
+import { SOURCES_MANIFEST } from "../../../../modules/sources/server/module.js";
 
 /** A test module: `deckApi: "^0.1"`, always on unless the manifest says otherwise. */
 export function testModule(

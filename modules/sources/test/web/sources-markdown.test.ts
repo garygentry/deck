@@ -10,12 +10,12 @@ import { describe, expect, it, vi } from "vitest";
 import {
   renderMarkdown,
   resolveRelative,
-} from "../src/features/sources-docs-and-configs/markdown.js";
+} from "../../web/markdown.js";
 import {
   highlightCode,
   highlightFile,
   languageForName,
-} from "../src/features/sources-docs-and-configs/highlight.js";
+} from "../../web/highlight.js";
 
 const SOURCE_ID = "docs";
 const ctx = (docPath: string): { sourceId: string; docPath: string } => ({

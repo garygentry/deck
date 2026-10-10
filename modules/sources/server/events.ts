@@ -8,7 +8,7 @@
  */
 
 import type { SourceFailureCode } from "./errors.js";
-import { logger, type Logger } from "../log/logger.js";
+import { logger, type Logger } from "../../../apps/server/src/log/logger.js";
 
 /** The redaction-safe payload logged for any source failure (REQ-OBS-02, SC-13). */
 export interface SourceLogEvent {

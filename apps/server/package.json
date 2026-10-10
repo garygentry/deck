@@ -8,8 +8,7 @@
     "deck": "./src/cli/deck.ts"
   },
   "exports": {
-    ".": "./src/contract/index.ts",
-    "./sources": "./src/sources/types.ts"
+    ".": "./src/contract/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

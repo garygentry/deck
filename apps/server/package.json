@@ -9,7 +9,6 @@
   },
   "exports": {
     ".": "./src/contract/index.ts",
-    "./actions": "./src/actions/types.ts",
     "./sources": "./src/sources/types.ts"
   },
   "scripts": {

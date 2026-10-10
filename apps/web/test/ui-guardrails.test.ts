@@ -14,6 +14,7 @@ import {
   patternsWithoutDataSlot,
   type Offence,
 } from "@deck/sdk/lint";
+import { Scanner } from "@tailwindcss/oxide";
 import { describe, expect, it } from "vitest";
 
 import { moduleWebDirs, REPO_ROOT, sourceRel, walkFiles, webSourceFiles } from "./support/source-roots.js";
@@ -43,6 +44,19 @@ const inLibrary = (rel: string): boolean => rel.startsWith("src/ui/");
 
 const shown = (offences: readonly Offence[]) => offences.map(formatOffence);
 
+/**
+ * The files under `modules/` that Tailwind's own scanner reads for the `@source` lines of an
+ * app.css `text` (resolved, as the build resolves them, from app.css's directory). Module web
+ * halves live outside apps/web, so these lines are the only way their classes reach the CSS.
+ */
+function tailwindSourceFiles(text: string): string[] {
+  const base = join(REPO_ROOT, "apps/web/src/styles");
+  const sources = [...text.matchAll(/^@source\s+"([^"]+)";/gm)].map(([, pattern]) => ({ base, pattern: pattern!, negated: false }));
+  const scanner = new Scanner({ sources });
+  scanner.scan();
+  return scanner.files.filter((path) => path.startsWith(join(REPO_ROOT, "modules") + "/"));
+}
+
 describe("scope", () => {
   it("covers every built-in module's web half", () => {
     const dirs = moduleWebDirs();
@@ -51,6 +65,17 @@ describe("scope", () => {
       const rel = relative(REPO_ROOT, dir);
       expect(files.some((file) => file.rel.startsWith(`${rel}/`)), rel).toBe(true);
     }
+  });
+
+  it("has Tailwind scan every file of every built-in module's web half (subdirectories too)", () => {
+    const scanned = new Set(tailwindSourceFiles(appCss.text));
+    const missed = moduleWebDirs().flatMap(walkFiles).filter((path) => /\.tsx?$/.test(path) && !scanned.has(path));
+    expect(missed.map((path) => relative(REPO_ROOT, path))).toEqual([]);
+    expect(scanned.size).toBeGreaterThan(0);
+  });
+
+  it("would catch an @source that stops at the module web directories (it scans no file)", () => {
+    expect(tailwindSourceFiles('@source "../../../../modules/*/web";\n')).toEqual([]);
   });
 
   it("refuses an offending TSX or CSS line in a module's web half", () => {

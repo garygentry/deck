@@ -8,7 +8,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..")
 
 /** Built-in modules (repo-relative paths) whose `modules.<id>` section type is generated from the module's own schema. */
 const MODULE_SCHEMAS = [
-  { schema: "apps/server/src/actions/schema.json", output: "apps/server/src/actions/config.generated.ts" },
+  { schema: "modules/actions/schema.json", output: "modules/actions/server/config.generated.ts" },
   { schema: "modules/llm-usage/schema.json", output: "modules/llm-usage/server/config.generated.ts" },
   { schema: "modules/portal/schema.json", output: "modules/portal/server/config.generated.ts" },
 ] as const;

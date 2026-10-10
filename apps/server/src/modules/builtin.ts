@@ -1,6 +1,6 @@
 import type { ServerModule } from "@deck/module-sdk";
 
-import { actionsModule } from "../actions/module.js";
+import { actionsModule } from "../../../../modules/actions/server/module.js";
 import type { DeckConfig } from "../contract/index.js";
 import { driftModule } from "../drift/module.js";
 import { inventoryModule } from "../inventory/module.js";

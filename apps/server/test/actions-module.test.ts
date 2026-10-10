@@ -14,12 +14,12 @@ import { composeDefault } from "@deck/schema";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import * as actionsModuleExports from "../src/actions/module.js";
-import { ACTIONS_MANIFEST, actionsModule, createActionsModule } from "../src/actions/module.js";
+import * as actionsModuleExports from "../../../modules/actions/server/module.js";
+import { ACTIONS_MANIFEST, actionsModule, createActionsModule } from "../../../modules/actions/server/module.js";
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { ModuleInitError } from "../src/modules/host.js";
 import { ACTIONS_FIXTURES_DIR, actionsApp } from "./util/actions-module.js";
-import { createFakeSpawner, type FakeSpawner } from "./util/fake-spawner.js";
+import { createFakeSpawner, type FakeSpawner } from "../../../modules/actions/test/server/util/fake-spawner.js";
 import { testHost } from "./util/modules.js";
 import { serverOnlyFields } from "./util/shared-ui.js";
 import { makeDataDir } from "./util/tmp-data.js";

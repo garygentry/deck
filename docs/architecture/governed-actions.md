@@ -7,7 +7,7 @@ boots unchanged until an operator explicitly opts in and provisions a runner all
 
 ## Runtime flow
 
-1. The capability is the built-in `actions` module (`apps/server/src/actions/module.ts`).
+1. The capability is the built-in `actions` module (`modules/actions/server/module.ts`).
    The module host runs it only when `DECK_ACTIONS_ENABLED` is on. When it is off, no
    module code runs and no manifest is read: the module's prefixes answer fixed,
    declared responses instead, so the capability probe reports `{"enabled": false}` and
@@ -185,7 +185,7 @@ A two-tier, append-only store rooted at `DECK_DATA_DIR/actions/`:
 
 ## Web UI
 
-The Actions page (`apps/web/src/features/governed-actions/`) is a standalone SPA
+The Actions page (`modules/actions/web/`) is a standalone SPA
 route at `/actions` — no dashboard cards, no entity-detail fragments, no shell edits.
 It composes five presentational components around one singleton run store.
 

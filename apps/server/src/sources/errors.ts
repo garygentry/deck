@@ -2,7 +2,7 @@
  * Typed error hierarchy for the sources capability.
  *
  * Mirrors `SnapshotReadFailure` (`providers/snapshot/errors.ts`) and `ActionRunFailure`
- * (`actions/errors.ts`): a closed-union `code`, a safe canonical message table, non-public
+ * (`modules/actions/server/errors.ts`): a closed-union `code`, a safe canonical message table, non-public
  * `details`, and a `.toPublic()` that strips internals before the wire/log. **No credential
  * value or attempted absolute path is ever carried publicly** (REQ-SEC-03, REQ-OBS-02,
  * REQ-SEC-02).

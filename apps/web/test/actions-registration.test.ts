@@ -7,10 +7,10 @@ import { resolveComponent } from "./support/lazy.js";
 // with no shell edit; importing the entrypoint runs its one registration side effect.
 async function loadFreshFeature() {
   vi.resetModules();
-  const feature = await import("../src/features/governed-actions/index.js");
+  const feature = await import("../../../modules/actions/web/index.js");
   const registry = await import("../src/registry/registry.js");
   const { ACTIONS_UI } = await import("@deck/contract/modules/actions");
-  const { ActionsPage } = await import("../src/features/governed-actions/ActionsPage.js");
+  const { ActionsPage } = await import("../../../modules/actions/web/ActionsPage.js");
   return { feature, registry, ACTIONS_UI, ActionsPage };
 }
 
@@ -54,7 +54,7 @@ describe("the governed-actions web half", () => {
     vi.resetModules();
     const registry = await import("../src/registry/registry.js");
     registry.registerPage({ id: "page:actions/overview", path: "/actions-taken", label: "Taken", component: () => null, nav: false });
-    await expect(import("../src/features/governed-actions/index.js")).rejects.toThrowError(
+    await expect(import("../../../modules/actions/web/index.js")).rejects.toThrowError(
       expect.objectContaining({ code: "DUPLICATE_ID", message: expect.stringContaining("registerWebModule(actions)") }),
     );
     expect(registry.getPages().filter(({ id }) => id === "page:actions/overview").map(({ path }) => path)).toEqual(["/actions-taken"]);

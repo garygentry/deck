@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { DeckConfig } from "@deck/server";
-import type { Action } from "@deck/server/actions";
+import type { Action } from "../../../modules/actions/server/types.js";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { JSX } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,9 +19,9 @@ vi.mock("../src/data/hooks.js", async (importOriginal) => ({
 import {
   ActionsPage,
   ActionsPageBoundary,
-} from "../src/features/governed-actions/ActionsPage.js";
+} from "../../../modules/actions/web/ActionsPage.js";
 // eslint-disable-next-line import/first
-import { beginRun, failRun, resetRun } from "../src/features/governed-actions/run-store.js";
+import { beginRun, failRun, resetRun } from "../../../modules/actions/web/run-store.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures. The run store is a real module singleton; cases that need a

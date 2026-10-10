@@ -15,7 +15,7 @@ not ship. It is drafted as two releases:
   to the merge of #44.
 - **0.5.0**: the external extension tiers (sidecars, runtime modules, the module template), the
   browser security pass, and the move of the built-in modules into `modules/<id>/` (#39,
-  #45–#49, #55–#69).
+  #45–#49, #55–#73).
 
 Whether these ship as two tags or as one release is the maintainer's call. For one release,
 merge the two sections, including both Migration sections: the framing changes in 0.5.0's
@@ -211,8 +211,9 @@ Migration below).
 - A built-in module whose manifest or schema is unusable now stops boot
   (`MODULE_MANIFEST_INVALID`) instead of being switched off silently (#48).
 - A `remote` sidecar can no longer redirect deck to another origin (#48).
-- The built-in modules move into `modules/<id>/` workspace packages, each with its schema,
-  server half, web half and tests. Behaviour is unchanged (#55, #57–#59, #63–#66, #68, #69).
+- Every built-in module now lives in its own `modules/<id>/` workspace package, with its schema,
+  server half, web half and tests. Behaviour is unchanged (#55, #57, #58, #59, #63, #64, #65,
+  #66, #68, #69, #71, #73).
 
 #### Migration
 

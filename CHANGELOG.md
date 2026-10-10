@@ -15,7 +15,7 @@ not ship. It is drafted as two releases:
   to the merge of #44.
 - **0.5.0**: the external extension tiers (sidecars, runtime modules, the module template), the
   browser security pass, and the move of the built-in modules into `modules/<id>/` (#39,
-  #45–#49, #55–#73).
+  #45–#49, #55–#73, #76).
 
 Whether these ship as two tags or as one release is the maintainer's call. For one release,
 merge the two sections, including both Migration sections: the framing changes in 0.5.0's
@@ -211,6 +211,16 @@ Migration below).
 - A built-in module whose manifest or schema is unusable now stops boot
   (`MODULE_MANIFEST_INVALID`) instead of being switched off silently (#48).
 - A `remote` sidecar can no longer redirect deck to another origin (#48).
+- **Sources are stricter about what they serve** (#76):
+  - `include` and `exclude` now apply to every read (file, raw, search and the tree), not only
+    the tree listing. An excluded path answers 404 `PATH_NOT_FOUND`, like a missing file.
+  - They match a symlink's real target as well as its own path, so a symlink to a file that is
+    not included, or is excluded, is neither listed nor served.
+  - `exclude` matches regardless of case: `build/**` also hides `Build/`.
+  - `/api/sources/<id>/raw` serves only files in the tree, or images under an `include` glob's
+    base. The file name, the real path and the file's bytes must agree on the image type. Raw
+    responses carry `Content-Security-Policy: sandbox; default-src 'none'` (plus inline styles)
+    and `nosniff`, so a script in an SVG opened by its raw URL does not run.
 - Every built-in module now lives in its own `modules/<id>/` workspace package, with its schema,
   server half, web half and tests. Behaviour is unchanged (#55, #57, #58, #59, #63, #64, #65,
   #66, #68, #69, #71, #73).
@@ -246,6 +256,11 @@ Migration below).
    Content-Security-Policy cannot name (an IPv6 literal, or a hostname with `_`) is
    `UI_EMBED_NOT_FRAMEABLE` (warning), and the widget says it can't be embedded. `frameSources`
    does not help: give the service a DNS-style hostname, or link to it instead.
+5. **Sources: symlinks and excludes.** A repository that symlinks a file from outside its
+   `include` globs into an included directory, or that relied on `exclude` being case-sensitive,
+   loses those files: the symlinked ones are no longer listed or served, and a differently-cased
+   path that an `exclude` matches is now hidden. Copy the file into an included path, widen
+   `include`, or narrow the `exclude` glob.
 
 ## [0.3.2] - 2026-09-25
 

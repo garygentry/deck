@@ -218,6 +218,12 @@ kinds are `link` and `http-health` (each binding becomes a provider), `docker` a
 `PROVIDER_BINDING_UNSUPPORTED`. The source kinds `markdown-tree` and `file-tree` are not bindable
 either: a source names its host or service in its own `owner`.
 
+A kind's module may check its bindings beyond their shape. `deck validate` reports a `link`
+binding whose `href` is not an `http(s)://` URL or an absolute path in deck (`javascript:`,
+`data:`, a relative path) as `LINK_HREF_UNSAFE`, and an `http-health` binding `timing` field that
+is not a positive, finite number of milliseconds as `HTTP_HEALTH_TIMING_INVALID`, both errors. See
+the [provider kinds reference](provider-kinds.md).
+
 `SecretRef` is a string holding an opaque secret reference id, never a secret value.
 It matches `^[a-z0-9]+(?:[.-][a-z0-9]+)*$` and is at most 64 characters.
 

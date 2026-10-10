@@ -2,8 +2,8 @@ import { Prose } from "@/ui";
 
 import type { WidgetProps } from "../../registry/registry.js";
 // The docs view's pipeline, so a widget's markdown is sanitised by the same DOMPurify boundary.
-// Known kernel → module import (the renderer lives in the sources module), pending its lift into the kernel.
-import { renderMarkdown } from "../../../../../modules/sources/web/markdown.js";
+// ui-deep-import: the markdown pipeline is not in the barrel, so it stays out of the main bundle.
+import { renderMarkdown } from "@/ui/lib/markdown.js";
 import { UnexpectedValue } from "./UnexpectedValue.js";
 
 /**

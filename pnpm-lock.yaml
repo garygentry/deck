@@ -96,9 +96,21 @@ importers:
       cmdk:
         specifier: ^1.1.1
         version: 1.1.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      dompurify:
+        specifier: ^3.2.4
+        version: 3.4.15
+      highlight.js:
+        specifier: ^11.10.0
+        version: 11.12.0
       lucide-react:
         specifier: ^1.47.0
         version: 1.47.0(react@19.3.0)
+      markdown-it:
+        specifier: ^14.1.0
+        version: 14.3.2
+      markdown-it-task-lists:
+        specifier: ^2.1.1
+        version: 2.1.1
       radix-ui:
         specifier: ^1.6.7
         version: 1.6.7(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -145,6 +157,12 @@ importers:
       '@types/culori':
         specifier: ^4.0.1
         version: 4.0.1
+      '@types/dompurify':
+        specifier: ^3.0.5
+        version: 3.2.0
+      '@types/markdown-it':
+        specifier: ^14.1.2
+        version: 14.2.0
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
@@ -522,21 +540,9 @@ importers:
       '@deck/server':
         specifier: workspace:*
         version: link:../../apps/server
-      dompurify:
-        specifier: ^3.2.4
-        version: 3.4.15
-      highlight.js:
-        specifier: ^11.10.0
-        version: 11.12.0
       hono:
         specifier: ^4.6.0
         version: 4.13.5
-      markdown-it:
-        specifier: ^14.1.0
-        version: 14.3.2
-      markdown-it-task-lists:
-        specifier: ^2.1.1
-        version: 2.1.1
       picomatch:
         specifier: ^4.0.2
         version: 4.0.7
@@ -544,12 +550,6 @@ importers:
       '@testing-library/react':
         specifier: ^16.3.3
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@types/dompurify':
-        specifier: ^3.0.5
-        version: 3.2.0
-      '@types/markdown-it':
-        specifier: ^14.1.2
-        version: 14.2.0
       '@types/node':
         specifier: ^22
         version: 22.20.1

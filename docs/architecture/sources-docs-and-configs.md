@@ -50,7 +50,7 @@ The sources module's manifest declares the UI as data, in `@deck/contract/module
 
 The web half (`modules/sources/web/index.ts`) supplies only the components the manifest names (`DocsPage`, `ConfigsPage`, `OwnedConfigsFragment`) and registers them with `registerWebModule`; where each one renders comes from the manifest, and the UI manifest (`GET /api/ui`) decides at runtime.
 
-Markdown is rendered with `markdown-it`, sanitized with DOMPurify, and highlighted with highlight.js — all in the browser. Oversized files show a "too large" notice (reporting the size in MiB); binary files show a placeholder instead of bytes.
+Markdown is rendered with `markdown-it`, sanitized with DOMPurify, and highlighted with highlight.js — all in the browser, by the kernel's markdown pipeline (`apps/web/src/ui/lib/markdown.ts`), which the dashboard markdown widget shares; the module supplies only the Docs view's link and image rewrites (`web/markdown-context.ts`). Oversized files show a "too large" notice (reporting the size in MiB); binary files show a placeholder instead of bytes.
 
 ## Configuration
 

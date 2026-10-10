@@ -16,7 +16,8 @@ apps/web/src/
     primitives/   vendored shadcn/ui source (Radix-based): Button, Table, Sidebar, Tooltip, …
     patterns/     deck composites: StatusBadge, DataTable, FilterBar, TreeView, PageHeader, …
     hooks/        useListNavigation, useFacetFilters, useScrollToHash, useDocumentTitle, …
-    lib/          cn(), icons.ts (curated Lucide set), status.ts (tones), format.ts, filters.ts
+    lib/          cn(), icons.ts (curated Lucide set), status.ts (tones), format.ts, filters.ts,
+                  markdown.ts + highlight.ts (the markdown pipeline; deep-imported, not in the barrel)
     index.ts      the public barrel: feature code imports from "@/ui"
   data/           the shared TanStack Query client and hooks (`@/data`): config, UI manifest, providers
   registry/       the page and extension registry, `registerWebModule`, and web-half discovery
@@ -389,8 +390,10 @@ bundle needs no runtime import) and the schema library's, which config validatio
 `HealthPill`s) that reads `field` paths of its value (never a query), formats values
 (`features/core-widgets/values.ts`) and links only `http(s)` URLs (in a new tab) or absolute
 in-app paths. Given a value it cannot show, it says so with a compact `ErrorState`. The
-`markdown` widget renders through the docs view's pipeline, so DOMPurify is its XSS boundary
-too. The `embed` widget (`EmbedWidget.tsx`) is the one that is not a pattern renderer: it frames
+`markdown` widget renders through the kernel's markdown pipeline (`ui/lib/markdown.ts`), the one
+the docs view uses, so DOMPurify is its XSS boundary too. The pipeline stays out of the barrel so
+it loads only with the surfaces that render markdown: its importers deep-import it with a
+`// ui-deep-import:` note. The `embed` widget (`EmbedWidget.tsx`) is the one that is not a pattern renderer: it frames
 another origin's page in an `iframe` whose `sandbox` it always sets (default `allow-scripts
 allow-same-origin`, never a token outside its schema's list), only when the UI manifest has
 `allowUnsafeEmbeds: true`. It waits for the manifest, shows "Embeds are off" when the manifest

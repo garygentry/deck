@@ -16,8 +16,9 @@
 import type { JSX } from "react";
 import type { SourceTreeNode } from "../../server/types.js";
 import { CodeBlock, EmptyState, ErrorState, LoadingState } from "@/ui";
+// ui-deep-import: highlight.js is not in the barrel, so it stays out of the main bundle.
+import { highlightCode, languageForName } from "@/ui/lib/highlight.js";
 import type { FileState } from "../client.js";
-import { highlightCode, languageForName } from "../highlight.js";
 import { TruncatedNotice } from "./TruncatedNotice.js";
 import { BinaryPlaceholder } from "./BinaryPlaceholder.js";
 

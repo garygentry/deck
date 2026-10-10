@@ -41,8 +41,11 @@ describe("kernel-touch", () => {
     expect(isKernelPath("apps/web/test/ui-guardrails.test.ts")).toBe(true);
 
     expect(isKernelPath("modules/llm-usage/server/collector.ts")).toBe(false);
-    expect(isKernelPath("apps/server/src/providers/prometheus/index.ts")).toBe(false);
+    // A per-kind provider directory beside the registry is a data-source module, not kernel. The
+    // path is synthetic so the case outlives the built-ins moving out to modules/.
+    expect(isKernelPath("apps/server/src/providers/example-kind/index.ts")).toBe(false);
     expect(isKernelPath("modules/docker/server/index.ts")).toBe(false);
+    expect(isKernelPath("modules/prometheus/server/index.ts")).toBe(false);
     expect(isKernelPath("modules/llm-usage/web/LlmUsagePage.tsx")).toBe(false);
     expect(isKernelPath("apps/server/test/boot.test.ts")).toBe(false);
     expect(isKernelPath("packages/schema/src/fixtures/primary/00-base.yaml")).toBe(false);

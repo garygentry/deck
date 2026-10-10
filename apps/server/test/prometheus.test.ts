@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModuleLogger } from "@deck/module-sdk";
 
 import { scopedLogger } from "../src/modules/context.js";
-import { PrometheusProvider } from "../src/providers/prometheus/index.js";
-import { parseSummaryCard, type SummaryQuery } from "../src/providers/prometheus/parse-card.js";
+import { PrometheusProvider } from "../../../modules/prometheus/server/index.js";
+import { parseSummaryCard, type SummaryQuery } from "../../../modules/prometheus/server/parse-card.js";
 import { providerCount, read, stopScheduler } from "../src/providers/registry.js";
 import { captureLogger } from "./util/modules.js";
 import { processEnv, registerPrometheus } from "./util/register-kinds.js";

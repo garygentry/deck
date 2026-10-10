@@ -7,7 +7,7 @@ import { inventoryModule } from "../../../../modules/inventory/server/module.js"
 import { llmUsageModule } from "../../../../modules/llm-usage/server/module.js";
 import { metricsModule } from "../metrics/module.js";
 import { monitoringModule } from "../../../../modules/monitoring/server/module.js";
-import { alertmanagerModule } from "../providers/alertmanager/module.js";
+import { alertmanagerModule } from "../../../../modules/alertmanager/server/module.js";
 import { dockerModule } from "../../../../modules/docker/server/module.js";
 import { fileTreeModule } from "../providers/file-tree/module.js";
 import { gatusModule } from "../../../../modules/gatus/server/module.js";
@@ -15,7 +15,7 @@ import { httpHealthModule } from "../../../../modules/http-health/server/module.
 import { httpJsonModule } from "../providers/http-json/module.js";
 import { linkModule } from "../../../../modules/link/server/module.js";
 import { markdownTreeModule } from "../providers/markdown-tree/module.js";
-import { prometheusModule } from "../providers/prometheus/module.js";
+import { prometheusModule } from "../../../../modules/prometheus/server/module.js";
 import { remoteModule } from "../providers/remote/module.js";
 import { snapshotModule } from "../providers/snapshot/module.js";
 import { portalModule } from "../../../../modules/portal/server/module.js";

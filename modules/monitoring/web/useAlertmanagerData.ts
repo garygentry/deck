@@ -4,7 +4,7 @@ import { useProvider } from "@/data/index.js";
 
 /**
  * One active alert, normalized from Alertmanager v2. Web-side mirror of the canonical server-side
- * declaration in `apps/server/src/providers/alertmanager/index.ts` — kept structurally identical.
+ * declaration in `modules/alertmanager/server/index.ts` — kept structurally identical.
  * Mirrored (not barrel-imported) per the web-side-mirror decision; same pattern as
  * `modules/portal/web/card-status.ts`.
  */

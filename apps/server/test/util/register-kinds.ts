@@ -1,12 +1,12 @@
 import type { EnvReader } from "@deck/module-sdk";
 
-import { AlertmanagerProvider, type AlertmanagerConfig } from "../../src/providers/alertmanager/index.js";
+import { AlertmanagerProvider, type AlertmanagerConfig } from "../../../../modules/alertmanager/server/index.js";
 import { DockerProvider, type DockerConfig } from "../../../../modules/docker/server/index.js";
 import { GatusProvider, type GatusConfig } from "../../../../modules/gatus/server/index.js";
 import { HttpHealthProvider, type HttpHealthConfig } from "../../../../modules/http-health/server/index.js";
 import { LinkProvider, type LinkDescriptor } from "../../../../modules/link/server/index.js";
 import { LINK_MANIFEST } from "../../../../modules/link/server/module.js";
-import { PrometheusProvider, type PrometheusConfig } from "../../src/providers/prometheus/index.js";
+import { PrometheusProvider, type PrometheusConfig } from "../../../../modules/prometheus/server/index.js";
 import { register } from "../../src/providers/registry.js";
 
 /**

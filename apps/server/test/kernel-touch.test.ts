@@ -41,7 +41,8 @@ describe("kernel-touch", () => {
     expect(isKernelPath("apps/web/test/ui-guardrails.test.ts")).toBe(true);
 
     expect(isKernelPath("modules/llm-usage/server/collector.ts")).toBe(false);
-    expect(isKernelPath("apps/server/src/providers/docker/index.ts")).toBe(false);
+    expect(isKernelPath("apps/server/src/providers/prometheus/index.ts")).toBe(false);
+    expect(isKernelPath("modules/docker/server/index.ts")).toBe(false);
     expect(isKernelPath("modules/llm-usage/web/LlmUsagePage.tsx")).toBe(false);
     expect(isKernelPath("apps/server/test/boot.test.ts")).toBe(false);
     expect(isKernelPath("packages/schema/src/fixtures/primary/00-base.yaml")).toBe(false);

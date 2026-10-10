@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Provider } from "../src/contract/index.js";
 import { logger } from "../src/log/logger.js";
-import { DockerProvider } from "../src/providers/docker/index.js";
+import { DockerProvider } from "../../../modules/docker/server/index.js";
 import { read, register, startScheduler, stopScheduler } from "../src/providers/registry.js";
 import { processEnv, registerDocker } from "./util/register-kinds.js";
 

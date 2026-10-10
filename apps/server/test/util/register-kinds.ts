@@ -1,8 +1,8 @@
 import type { EnvReader } from "@deck/module-sdk";
 
 import { AlertmanagerProvider, type AlertmanagerConfig } from "../../src/providers/alertmanager/index.js";
-import { DockerProvider, type DockerConfig } from "../../src/providers/docker/index.js";
-import { GatusProvider, type GatusConfig } from "../../src/providers/gatus/index.js";
+import { DockerProvider, type DockerConfig } from "../../../../modules/docker/server/index.js";
+import { GatusProvider, type GatusConfig } from "../../../../modules/gatus/server/index.js";
 import { HttpHealthProvider, type HttpHealthConfig } from "../../../../modules/http-health/server/index.js";
 import { LinkProvider, type LinkDescriptor } from "../../../../modules/link/server/index.js";
 import { LINK_MANIFEST } from "../../../../modules/link/server/module.js";

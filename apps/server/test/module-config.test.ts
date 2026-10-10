@@ -6,7 +6,7 @@ import { load } from "../src/config/load.js";
 import { planningRouteTable, RESERVED_ROOT_PATHS } from "../src/server/app.js";
 import { builtinComposition, composeModules, moduleContribution } from "../src/modules/config.js";
 import { ModuleManifestError } from "../src/modules/host.js";
-import { dockerModule } from "../src/providers/docker/module.js";
+import { dockerModule } from "../../../modules/docker/server/module.js";
 import { prometheusModule } from "../src/providers/prometheus/module.js";
 import { snapshotModule } from "../src/providers/snapshot/module.js";
 import { portalModule } from "../../../modules/portal/server/module.js";

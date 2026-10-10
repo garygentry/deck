@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GatusProvider } from "../src/providers/gatus/index.js";
+import { GatusProvider } from "../../../modules/gatus/server/index.js";
 import { read, startScheduler, stopScheduler } from "../src/providers/registry.js";
 import { processEnv, registerGatus } from "./util/register-kinds.js";
 

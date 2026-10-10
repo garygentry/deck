@@ -3,12 +3,12 @@ import { describe, expect, it } from "vitest";
 import type { DeckConfigDocument, ObservedHost, SnapshotDocument } from "@deck/schema";
 
 import type { HostState } from "@deck/contract";
-import { SnapshotReadFailure } from "../src/providers/snapshot/errors.js";
+import { SnapshotReadFailure } from "../../server/errors.js";
 import {
   DEFAULT_SNAPSHOT_STALE_AFTER,
   deriveHostStates,
   parseStaleAfterMs,
-} from "../src/providers/snapshot/freshness.js";
+} from "../../server/freshness.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;

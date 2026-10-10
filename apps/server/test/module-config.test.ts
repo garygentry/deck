@@ -8,7 +8,7 @@ import { builtinComposition, composeModules, moduleContribution } from "../src/m
 import { ModuleManifestError } from "../src/modules/host.js";
 import { dockerModule } from "../../../modules/docker/server/module.js";
 import { prometheusModule } from "../../../modules/prometheus/server/module.js";
-import { snapshotModule } from "../src/providers/snapshot/module.js";
+import { snapshotModule } from "../../../modules/snapshot/server/module.js";
 import { portalModule } from "../../../modules/portal/server/module.js";
 import { testHost, testModule } from "./util/modules.js";
 import { makeConfigDir } from "./util/tmp-config.js";

@@ -12,9 +12,9 @@ import { load } from "../src/config/load.js";
 import { builtinKindHandlers } from "../src/modules/builtin.js";
 import { registerAllProviders as registerWithKinds } from "../src/providers/index.js";
 import { listEnvelopes, listHealth, listProviders, providerCount, read, setProjections, startScheduler, stopScheduler } from "../src/providers/registry.js";
-import { SnapshotReadFailure } from "../src/providers/snapshot/errors.js";
-import { SnapshotProvider } from "../src/providers/snapshot/index.js";
-import { createSnapshotSource } from "../src/providers/snapshot/source.js";
+import { SnapshotReadFailure } from "../../../modules/snapshot/server/errors.js";
+import { SnapshotProvider } from "../../../modules/snapshot/server/index.js";
+import { createSnapshotSource } from "../../../modules/snapshot/server/source.js";
 import { createApp } from "../src/server/app.js";
 
 /** A minimal config with no integrations, so only the snapshot provider polls. */

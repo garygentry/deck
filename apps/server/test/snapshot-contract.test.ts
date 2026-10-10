@@ -14,7 +14,7 @@ import {
   SnapshotReadFailure,
   normalizeSnapshotFailure,
   type SnapshotReadErrorCode,
-} from "../src/providers/snapshot/errors.js";
+} from "../../../modules/snapshot/server/errors.js";
 
 describe("snapshot wire contract", () => {
   it("HostState covers exactly the five collection states", () => {

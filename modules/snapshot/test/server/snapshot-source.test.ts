@@ -31,13 +31,13 @@ vi.mock("node:path", async (importOriginal) => {
 import {
   SNAPSHOT_READ_MESSAGES,
   SnapshotReadFailure,
-} from "../src/providers/snapshot/errors.js";
+} from "../../server/errors.js";
 import {
   MAX_SNAPSHOT_BYTES,
   createSnapshotSource,
   type SnapshotRevision,
   type SnapshotSourceResult,
-} from "../src/providers/snapshot/source.js";
+} from "../../server/source.js";
 
 const TORN_FILE_MESSAGE = "Snapshot file changed while being read.";
 

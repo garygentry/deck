@@ -238,6 +238,21 @@ describe("the remote provider: data", () => {
     expect(sidecar.seen).toEqual([]);
   });
 
+  it.each(["/deck/v1/data", "/deck/v1/describe"])("refuses a cross-origin redirect of %s even when its request settings carry the http-json opt-in", async (path) => {
+    other.routes.set("/deck/v1/data", (_req, res) => res.writeHead(302, { location: `${sidecar.url}/deck/v1/data` }).end());
+    other.routes.set("/deck/v1/describe", (_req, res) => res.writeHead(302, { location: `${sidecar.url}/deck/v1/describe` }).end());
+    // Not settable through config (the remote schema lacks it): a request object that has it anyway.
+    const request = { env: env({}), followCrossOriginRedirects: true } as ProviderConfig["request"];
+    const { directory, provider: remote } = provider(other.url, { request });
+    if (path === "/deck/v1/data") {
+      await expect(remote.fetch()).rejects.toThrow("cross-origin redirect refused");
+    } else {
+      await remote.describe();
+      expect(directory.snapshot()[0]?.problem?.message).toBe("cross-origin redirect refused");
+    }
+    expect(sidecar.seen).toEqual([]);
+  });
+
   it("follows a redirect within the sidecar's own origin", async () => {
     other.routes.set("/deck/v1/data", (_req, res) => res.writeHead(302, { location: "/v2/data" }).end());
     other.routes.set("/v2/data", json(DATA));

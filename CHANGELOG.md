@@ -243,6 +243,25 @@ Migration below).
 - Every built-in module now lives in its own `modules/<id>/` workspace package, with its schema,
   server half, web half and tests. Behaviour is unchanged (#55, #57, #58, #59, #63, #64, #65,
   #66, #68, #69, #71, #73).
+- **Behaviour change: an `http-json` poll no longer follows a redirect to another origin** by
+  default, credential or not, so an endpoint cannot steer deck's poll to another host on its
+  network (see Migration). An unauthenticated instance can opt back in with
+  `followCrossOriginRedirects: true`. Even with the opt-in, a redirect to `localhost` or a literal
+  loopback, link-local or unspecified address is refused; hostnames are not resolved, so trust
+  the upstream you opt in for. An authenticated poll never follows such a redirect, and
+  `deck validate` warns when the two are combined (`HTTP_JSON_REDIRECT_OPT_IN_IGNORED`) (#50).
+
+#### Fixed
+
+- **`prometheus`:** a query error shows as that summary in error, with the provider still
+  healthy, instead of reporting the endpoint as unreachable. A query error is a 400 (PromQL that
+  does not parse), a 422 (a query that cannot execute), or a 4xx carrying Prometheus's error
+  document. A typo in one query is therefore no longer reported as an outage. A connection
+  failure, a 5xx, or a refusal of the endpoint itself (401, 403, 404, 407, 429) still makes the
+  query unreachable. When every query fails that way, the provider's health now names the
+  refusal (`Prometheus authentication refused (401)`, say) (#70).
+- **`alertmanager`:** when the alerts or the silences request fails, the other request is
+  cancelled and its response body released, instead of being left open (#70).
 
 #### Migration
 
@@ -283,6 +302,11 @@ Migration below).
    that is outside the tree and not an image under an `include` glob's base, nor an image whose
    name and bytes disagree on its type (a `.png` that is really a JPEG, say): rename or re-save
    it.
+8. **`http-json` integrations whose URL redirects to another origin.** Such a poll now fails
+   with `cross-origin redirect refused`. That includes an `http://` URL upgraded to `https://`,
+   since the scheme is part of the origin. Set `url` to the address the API finally answers on.
+   For an unauthenticated API that really is served from elsewhere (a CDN or an object store),
+   set `followCrossOriginRedirects: true` on the integration instead.
 
 ## [0.3.2] - 2026-09-25
 

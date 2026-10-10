@@ -38,8 +38,14 @@ can't escalate:
   `http-json` integration's URL must be `http(s)` without `user:password@`. Literal headers,
   URL query parameters and body keys may not take credential-like names, so the only credential
   is the `credentialEnv` variable, sent as a header or (`auth.scheme: query`) a query parameter
-  filled in at request time; it must hold at least 8 characters. An authenticated request never follows a redirect off the
-  configured origin. A response that contains the credential, nests deeper than 64 levels or
+  filled in at request time; it must hold at least 8 characters. A poll follows redirects only
+  within the configured origin, credential or not, so an endpoint cannot steer deck's request to
+  another host on its network. An unauthenticated instance may opt in to cross-origin redirects
+  (`followCrossOriginRedirects: true`); an authenticated one never follows them. Even with the
+  opt-in, a redirect to `localhost` or to a literal loopback, link-local or unspecified address
+  (127.0.0.0/8, 0.0.0.0/8, 169.254.0.0/16, `::1`, `::`, fe80::/10) is refused. No DNS lookup is
+  made, so with the opt-in a redirect to a hostname that resolves to an internal address,
+  deck's own included, is still followed: opt in only for an upstream you trust. A response that contains the credential, nests deeper than 64 levels or
   exceeds the size cap (1 MiB by default) is refused, not published, and poll errors name the
   failure class only, never the credential, body or runtime error text. The URL is reached from the deck server, so whoever edits the estate
   config chooses what deck fetches on its network. A `remote` integration's requests to its sidecar go through the same
@@ -101,7 +107,7 @@ choose a tier.
 | Built-in modules | Anything: they are deck. | Reviewed with deck. A built-in whose manifest or config schema is unusable stops boot rather than switching itself off. | Which ones you enable, and their settings. |
 | Config-driven UI (`ui`: brand, nav, pages, widgets, `select`) | Arrange and relabel deck's own UI, and show provider data through deck's widgets. No code runs. | The `ui` schema; widget options checked against each type's schema; `select` evaluated on the server with step, size and depth budgets; links pass deck's link check; markdown sanitized. | Whoever edits the config chooses what appears and what deck fetches. |
 | `core/embed` | Show another site's page in a sandboxed frame. | Off unless `ui.allowUnsafeEmbeds: true`; `http(s)` only, never deck's own origin; a sandbox from a fixed list; no referrer; the page may frame only those origins (CSP `frame-src`), so a redirect into deck is refused. | Embed only sites you trust: the page runs in each viewer's browser with that browser's cookies for its site. |
-| `http-json` | Poll a URL you name and publish its JSON. | The credential only from `credentialEnv`, never off its origin; size, depth and timeout caps; responses that echo the credential refused. | The URL is reached from deck's network: the config author chooses what deck fetches. |
+| `http-json` | Poll a URL you name and publish its JSON. | The credential only from `credentialEnv`, never off its origin; redirects only within the URL's origin unless the instance sets `followCrossOriginRedirects` (never with a credential, never to a literal local address; internal hostnames are not checked); size, depth and timeout caps; responses that echo the credential refused. | The URL is reached from deck's network: the config author chooses what deck fetches. |
 | `remote` sidecars | Contribute data, and declarative widgets, links and nav. | Its describe document is **untrusted input**: schema-checked, deck's declarative widget types only (never `core/embed`), bounded strings, `select` limits, link checks, external-only links in its markdown; its widgets read only its own integration; its page path and nav placement come from config; no redirect off its origin. | Run sidecars you trust with the data you give them. |
 | Runtime modules (`DECK_MODULES_DIR`) | Anything deck can: the server half runs in the deck process, and `web.js` runs in deck's page as deck. | Off unless `DECK_MODULES_ENABLED`; a `deckApi` check; an optional `moduleIntegrity` pin checked just before each import; load failures shown as fixed categories, never the module's error text; `web.js` served same-origin and loaded under deck's CSP (no `eval`, requests to deck only). | Full trust: install only modules you have reviewed, mount the directory read-only and pin each one. A pin protects the files at rest only: it does not stop someone who can write the directory while deck starts. |
 | Contributed icons | SVG markup in a module's manifest. | Rebuilt through an element and attribute allowlist: no scripts, no `style`, no external references. | — |

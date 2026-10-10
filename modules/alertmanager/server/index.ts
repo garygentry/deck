@@ -1,4 +1,4 @@
-import type { EnvReader, ProviderFetchContext, ProviderHealth, ProviderSpec, ProviderTiming } from "@deck/module-sdk";
+import type { EnvReader, ProviderFetchContext, ProviderHealth, ProviderSpec } from "@deck/module-sdk";
 
 /** One active alert, normalized from the Alertmanager v2 GET /api/v2/alerts shape. */
 export interface ActiveAlert {
@@ -36,7 +36,6 @@ export type AlertmanagerCredential =
 /** Wiring for the single alertmanager provider (needs no query config). */
 export type AlertmanagerConfig = {
   baseUrl: string;
-  timing?: ProviderTiming;
 } & AlertmanagerCredential;
 
 /** v2 alert status block; `state: "suppressed"` covers silenced OR inhibited alerts. */
@@ -89,28 +88,21 @@ export class AlertmanagerProvider implements ProviderSpec<AlertmanagerResult> {
   }
 
   async fetch(context?: ProviderFetchContext): Promise<AlertmanagerResult> {
+    // One controller for both requests: when either fails, the other is aborted (its request or
+    // its body read), so a failed poll leaves nothing in flight. The poll's own signal feeds it.
+    const controller = new AbortController();
     const signal = context?.signal;
+    const onAbort = () => controller.abort(signal?.reason);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) controller.abort(signal.reason);
     try {
-      const [alertsRes, silencesRes] = await Promise.all([
-        globalThis.fetch(joinUrl(this.cfg.baseUrl, "/api/v2/alerts?active=true&silenced=true"), {
-          method: "GET",
-          headers: authHeaders(this.cfg),
-          ...(signal ? { signal } : {}),
-        }),
-        globalThis.fetch(joinUrl(this.cfg.baseUrl, "/api/v2/silences"), {
-          method: "GET",
-          headers: authHeaders(this.cfg),
-          ...(signal ? { signal } : {}),
-        }),
-      ]);
-
-      // Divergence from gatus: a non-2xx from either endpoint is NOT an empty success — reject,
-      // so an unreachable Alertmanager can never masquerade as "all clear".
-      if (!alertsRes.ok) throw new Error(`Alertmanager /api/v2/alerts responded ${alertsRes.status}`);
-      if (!silencesRes.ok) throw new Error(`Alertmanager /api/v2/silences responded ${silencesRes.status}`);
-
-      const rawAlerts = (await alertsRes.json()) as RawGettableAlert[];
-      const rawSilences = (await silencesRes.json()) as RawGettableSilence[];
+      const [rawAlerts, rawSilences] = await Promise.all([
+        this.getJson<RawGettableAlert[]>("/api/v2/alerts", "?active=true&silenced=true", controller.signal),
+        this.getJson<RawGettableSilence[]>("/api/v2/silences", "", controller.signal),
+      ]).catch((error: unknown) => {
+        controller.abort();
+        throw error;
+      });
 
       const result = normalize(rawAlerts, rawSilences);
       this.latestHealth = {
@@ -122,7 +114,25 @@ export class AlertmanagerProvider implements ProviderSpec<AlertmanagerResult> {
       // detail carries the error message ONLY (no payload, no credential).
       this.latestHealth = { ok: false, detail: error instanceof Error ? error.message : String(error) };
       throw error;
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
     }
+  }
+
+  /** GET one endpoint and parse its body; a non-2xx body is drained, never left open. */
+  private async getJson<T>(path: string, query: string, signal: AbortSignal): Promise<T> {
+    const response = await globalThis.fetch(joinUrl(this.cfg.baseUrl, `${path}${query}`), {
+      method: "GET",
+      headers: authHeaders(this.cfg),
+      signal,
+    });
+    // Divergence from gatus: a non-2xx from either endpoint is NOT an empty success — reject,
+    // so an unreachable Alertmanager can never masquerade as "all clear".
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => {});
+      throw new Error(`Alertmanager ${path} responded ${response.status}`);
+    }
+    return (await response.json()) as T;
   }
 }
 
@@ -152,10 +162,8 @@ function normalize(
   rawSilences: readonly RawGettableSilence[],
 ): AlertmanagerResult {
   const silences: ActiveSilence[] = [];
-  const activeSilenceIds = new Set<string>();
   for (const raw of rawSilences ?? []) {
     if (raw?.status?.state !== "active" || typeof raw.id !== "string") continue;
-    activeSilenceIds.add(raw.id);
     silences.push({
       id: raw.id,
       endsAt: raw.endsAt ?? "",
@@ -172,7 +180,7 @@ function normalize(
       name: raw.labels?.alertname || raw.annotations?.summary || "Unnamed alert",
       severity: raw.labels?.severity ?? "",
       startsAt: raw.startsAt ?? "",
-      suppressed: isSuppressed(raw.status, activeSilenceIds),
+      suppressed: isSuppressed(raw.status),
       sourceUrl: raw.generatorURL || null,
     });
   }
@@ -180,13 +188,11 @@ function normalize(
   return { alerts, silences, firingCount: alerts.filter((a) => !a.suppressed).length };
 }
 
-/** An alert is suppressed by AM state, a non-empty silencedBy, or a match to an active silence. */
-function isSuppressed(status: RawAlertStatus | undefined, activeSilenceIds: ReadonlySet<string>): boolean {
+/** An alert is suppressed by AM state or a non-empty silencedBy. */
+function isSuppressed(status: RawAlertStatus | undefined): boolean {
   if (status?.state === "suppressed") return true;
   const silencedBy = status?.silencedBy;
-  if (!Array.isArray(silencedBy)) return false;
-  // Non-empty silencedBy suppresses; the active-silence cross-check is a defensive redundancy.
-  return silencedBy.length > 0 || silencedBy.some((id) => typeof id === "string" && activeSilenceIds.has(id));
+  return Array.isArray(silencedBy) && silencedBy.length > 0;
 }
 
 /** Render matchers as a compact, read-only `name<op>"value"` join. */

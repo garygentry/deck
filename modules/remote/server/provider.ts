@@ -157,9 +157,12 @@ export class RemoteProvider implements ProviderSpec<unknown> {
     this.directory.refuse(this.id, { code, message });
   }
 
-  /** A request to the sidecar, which may redirect within its own origin only (see `sameOriginRedirects`). */
+  /**
+   * A request to the sidecar, which may redirect within its own origin only: pinned last, so no
+   * request setting can opt it in to cross-origin redirects.
+   */
   private request(path: string, maxBytes?: number): HttpJsonConfig {
-    return { url: endpoint(this.cfg.url, path), ...this.cfg.request, ...(maxBytes === undefined ? {} : { maxBytes }), sameOriginRedirects: true };
+    return { url: endpoint(this.cfg.url, path), ...this.cfg.request, ...(maxBytes === undefined ? {} : { maxBytes }), followCrossOriginRedirects: false };
   }
 }
 

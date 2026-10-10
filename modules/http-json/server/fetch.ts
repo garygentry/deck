@@ -1,8 +1,10 @@
 /**
  * One hardened JSON request, shared by every kind that polls an HTTP JSON endpoint (`http-json`,
  * `remote`). The only credential is the one `credentialEnv` names, read at request time.
- * Redirects are followed by hand: an authenticated request follows only same-origin ones, so
- * the credential never leaves the configured origin. A body over `maxBytes`, nested past
+ * Redirects are followed by hand, within the configured origin only: an upstream could otherwise
+ * point deck's request at any URL on deck's network, its own loopback API included, and have
+ * the answer published. An unauthenticated request may opt in to cross-origin redirects; an
+ * authenticated one never follows them, so the credential never leaves the origin. A body over `maxBytes`, nested past
  * {@link HTTP_JSON_MAX_DEPTH}, or echoing the credential is refused, never returned.
  */
 import type { EnvReader, ProviderFetchContext } from "@deck/module-sdk";
@@ -33,11 +35,11 @@ export interface HttpJsonConfig {
   /** The largest response body accepted, in bytes. */
   maxBytes?: number;
   /**
-   * Follow redirects within the configured origin only, credential or not: for an upstream
-   * deck does not trust (a sidecar), which could otherwise point deck's request at any URL on
-   * deck's network, its own loopback API included, and have the answer published.
+   * Follow a redirect to another origin. Off by default; ignored when a credential is sent,
+   * which never leaves the configured origin. A hop to a local address is refused regardless
+   * (see {@link isLocalHost}).
    */
-  sameOriginRedirects?: boolean;
+  followCrossOriginRedirects?: boolean;
 }
 
 /** Why a poll failed. Every message names the failure, never a credential, URL or body. */
@@ -159,8 +161,13 @@ async function requestJson(cfg: HttpJsonConfig, signal: AbortSignal): Promise<{ 
     if (credential !== null && next.origin !== origin) {
       throw new HttpJsonError("redirect", "cross-origin redirect refused for an authenticated request");
     }
-    if (cfg.sameOriginRedirects === true && next.origin !== origin) {
-      throw new HttpJsonError("redirect", "cross-origin redirect refused");
+    if (next.origin !== origin) {
+      if (cfg.followCrossOriginRedirects !== true) throw new HttpJsonError("redirect", "cross-origin redirect refused");
+      // Even when opted in, never onto this host: deck's own API listens on loopback. A name
+      // that resolves there is not caught (no DNS lookup is made); a literal address is.
+      if (isLocalHost(next.hostname)) {
+        throw new HttpJsonError("redirect", "redirect to a loopback, link-local or unspecified address refused");
+      }
     }
     if (response.status === 303 || ((response.status === 301 || response.status === 302) && method === "POST")) {
       method = "GET";
@@ -168,6 +175,45 @@ async function requestJson(cfg: HttpJsonConfig, signal: AbortSignal): Promise<{ 
     }
     url = next.href;
   }
+}
+
+/**
+ * Whether a URL hostname (as the WHATWG parser serialises it, so a numeric IPv4 in any notation
+ * is dotted decimal and IPv6 is bracketed) is `localhost` or a literal loopback, link-local or
+ * unspecified address: 127/8, 0/8, 169.254/16, ::1, ::, fe80::/10, or an IPv4-mapped one of them.
+ */
+export function isLocalHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, "");
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host.startsWith("[") && host.endsWith("]")) {
+    const groups = ipv6Groups(host.slice(1, -1));
+    if (groups === null) return false;
+    if (groups.slice(0, 7).every((group) => group === 0) && groups[7]! <= 1) return true; // :: and ::1
+    if ((groups[0]! & 0xffc0) === 0xfe80) return true;
+    if (groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff) {
+      return isLocalIpv4([groups[6]! >> 8, groups[6]! & 0xff, groups[7]! >> 8, groups[7]! & 0xff]);
+    }
+    return false;
+  }
+  const octets = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  return octets !== null && isLocalIpv4(octets.slice(1).map(Number));
+}
+
+function isLocalIpv4([first, second]: readonly number[]): boolean {
+  return first === 127 || first === 0 || (first === 169 && second === 254);
+}
+
+/** The eight 16-bit groups of a serialised IPv6 address (hex groups, at most one `::`), or null. */
+function ipv6Groups(address: string): number[] | null {
+  const [head, tail, ...rest] = address.split("::");
+  if (rest.length > 0) return null;
+  const parse = (part: string | undefined) => (part === undefined || part === "" ? [] : part.split(":").map((group) => Number.parseInt(group, 16)));
+  const front = parse(head);
+  const back = parse(tail);
+  const missing = 8 - front.length - back.length;
+  if ((tail === undefined && missing !== 0) || missing < 0) return null;
+  const groups = [...front, ...new Array<number>(missing).fill(0), ...back];
+  return groups.every((group) => Number.isInteger(group) && group >= 0 && group <= 0xffff) ? groups : null;
 }
 
 /**

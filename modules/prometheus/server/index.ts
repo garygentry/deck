@@ -1,4 +1,4 @@
-import type { EnvReader, ProviderFetchContext, ProviderHealth, ProviderSpec, ProviderTiming } from "@deck/module-sdk";
+import type { EnvReader, ProviderFetchContext, ProviderHealth, ProviderSpec } from "@deck/module-sdk";
 
 import type { SummaryQuery } from "./parse-card.js";
 
@@ -28,13 +28,30 @@ export type PrometheusCredential =
 export type PrometheusConfig = {
   baseUrl: string;
   summaries: SummaryQuery[];
-  timing?: ProviderTiming;
 } & PrometheusCredential;
 
 interface QueryOutcome {
+  /** Whether Prometheus answered the query itself: a 2xx, or a query error (bad PromQL, say). */
   reachable: boolean;
   value: SummaryValue;
+  /** For an unreachable query that got an answer: why the endpoint refused it. */
+  refusal?: string;
 }
+
+/**
+ * The 4xx answers that are about the endpoint, not the query: whoever sends them (Prometheus or
+ * a proxy in front of it), the query never ran, so every query fails the same way.
+ */
+const ENDPOINT_REFUSALS: Readonly<Record<number, string>> = {
+  401: "authentication refused (401)",
+  403: "authentication refused (403)",
+  404: "not a Prometheus endpoint (404)",
+  407: "proxy authentication refused (407)",
+  429: "rate limited (429)",
+};
+
+/** The largest error body read to recognise a Prometheus query error. */
+const ERROR_BODY_MAX_BYTES = 64 * 1024;
 
 export class PrometheusProvider implements ProviderSpec<PrometheusResult> {
   readonly kind = "prometheus";
@@ -59,7 +76,8 @@ export class PrometheusProvider implements ProviderSpec<PrometheusResult> {
       this.cfg.summaries.map((query) => this.runQuery(query, context?.signal)),
     );
     if (!outcomes.some((outcome) => outcome.reachable)) {
-      const detail = "Prometheus endpoint unreachable";
+      const refusal = outcomes.find((outcome) => outcome.refusal !== undefined)?.refusal;
+      const detail = refusal === undefined ? "Prometheus endpoint unreachable" : `Prometheus ${refusal}`;
       this.latestHealth = { ok: false, detail };
       throw new Error(detail);
     }
@@ -93,7 +111,22 @@ export class PrometheusProvider implements ProviderSpec<PrometheusResult> {
     } catch {
       return { reachable: false, value: errored };
     }
-    if (!response.ok) return { reachable: false, value: errored };
+    if (!response.ok) {
+      const { status } = response;
+      const endpointRefusal = ENDPOINT_REFUSALS[status];
+      // A query error is Prometheus answering: the query is in error, the endpoint is up. That is
+      // a 400 (bad PromQL) or 422 (not executable), or another 4xx carrying Prometheus's own
+      // error body. Anything else (a 5xx, a proxy's 502, an auth or rate-limit refusal) is not.
+      const queryError = status === 400 || status === 422
+        || (status >= 400 && status < 500 && endpointRefusal === undefined && isPrometheusError(await smallJson(response)));
+      await response.body?.cancel().catch(() => {});
+      if (queryError) return { reachable: true, value: errored };
+      return {
+        reachable: false,
+        value: errored,
+        ...(status < 500 ? { refusal: endpointRefusal ?? `answered HTTP ${status}` } : {}),
+      };
+    }
 
     try {
       const scalar = extractScalar(await response.json());
@@ -104,6 +137,35 @@ export class PrometheusProvider implements ProviderSpec<PrometheusResult> {
       return { reachable: true, value: errored };
     }
   }
+}
+
+/** A short body parsed as JSON, or null when it is longer, unreadable or not JSON. */
+async function smallJson(response: Response): Promise<unknown> {
+  if (response.body === null) return null;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > ERROR_BODY_MAX_BYTES) return null;
+      chunks.push(value);
+    }
+    return JSON.parse(new TextDecoder().decode(Buffer.concat(chunks)));
+  } catch {
+    return null;
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+}
+
+/** Whether a body is Prometheus's API error envelope, `{ status: "error", errorType, ... }`. */
+function isPrometheusError(body: unknown): boolean {
+  if (body === null || typeof body !== "object") return false;
+  const { status, errorType } = body as { status?: unknown; errorType?: unknown };
+  return status === "error" && typeof errorType === "string";
 }
 
 function queryUrl(baseUrl: string, query: string): string {

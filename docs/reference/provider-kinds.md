@@ -64,7 +64,8 @@ Backed by an integration.
 | `credentialEnv` | no | Environment-variable name whose value is sent as the `Authorization` header. |
 
 A non-2xx from either endpoint is treated as a failure (not "all clear"), so an
-unreachable Alertmanager reports as degraded.
+unreachable Alertmanager reports as degraded. When either request fails, the other is
+cancelled, so a failed poll leaves no request open.
 
 ## docker
 
@@ -148,6 +149,7 @@ Backed by an integration; each instance is its own provider, registered under it
 | `ttlMs` | no | Milliseconds the data stays fresh; default the poll interval. |
 | `timeoutMs` | no | Milliseconds a whole poll may take (redirects and body included), 100–60000; default 5000. |
 | `maxBytes` | no | The largest response body accepted, up to 16 MiB; default 1 MiB. |
+| `followCrossOriginRedirects` | no | `true` follows a redirect to another origin; default `false`. Ignored with `credentialEnv`. See below. |
 | `deepLink` | no | A link to the API's own UI, used by the integration's tile. |
 
 `auth.scheme` is one of:
@@ -167,11 +169,21 @@ padding, and a shorter value could not be told apart in the echo check above. So
 header cannot carry (a line break, a control character, a character outside Latin-1) under the
 `bearer`, `header` or default scheme; `basic` and `query` encode any value.
 
-Redirects (301, 302, 303, 307, 308) are followed up to five times. An authenticated request
-follows only redirects within the configured URL's origin (scheme, host and port), and sends the
-credential on each hop; a redirect elsewhere is refused, since its `Location` could itself carry
-the credential. A request without a credential follows redirects to any http(s) origin. A
-redirect to a non-http(s) URL or to a URL with `user:password@` is refused. A 303, or a 301 or
+Redirects (301, 302, 303, 307, 308) are followed up to five times, within the configured URL's
+origin (scheme, host and port) only: a redirect elsewhere, `http://` to `https://` included,
+is refused (`cross-origin redirect refused`), so an endpoint cannot steer deck's poll to another
+host on its network, deck's own loopback API included. An authenticated request sends the
+credential on each hop. An unauthenticated instance may set `followCrossOriginRedirects: true`
+to follow redirects to any http(s) origin, for an API that answers from elsewhere (a CDN or an
+object store, say). An authenticated request never does, since the `Location` could itself
+carry the credential: the setting is ignored with `credentialEnv`
+(`HTTP_JSON_REDIRECT_OPT_IN_IGNORED`, a warning). Even with the opt-in, a redirect to
+`localhost` or to a literal loopback, link-local or unspecified address (127.0.0.0/8,
+0.0.0.0/8, 169.254.0.0/16, `::1`, `::`, fe80::/10, or one of these IPv4-mapped) is refused
+(`redirect to a loopback, link-local or unspecified address refused`). That check reads the
+address as written and makes no DNS lookup, so a hostname that resolves to an internal address
+(deck's own host included) is still followed: opt in only for an upstream you trust. A redirect to a non-http(s) URL or to a URL
+with `user:password@` is refused. A 303, or a 301 or
 302 answering a `POST`, is followed with a `GET` and no body.
 
 A response is refused, never published, when it nests arrays and objects more than 64 levels
@@ -194,7 +206,7 @@ the credential, the response body or the runtime's own error text:
 | Body nested past 64 levels | `upstream response nests deeper than 64 levels` |
 | Body not JSON | `upstream response is not JSON` |
 | Body contains the credential | `upstream response contains the credential; not published` |
-| Redirect refused | `cross-origin redirect refused for an authenticated request`, `redirect to a non-http(s) URL refused`, `more than 5 redirects`, … |
+| Redirect refused | `cross-origin redirect refused`, `cross-origin redirect refused for an authenticated request`, `redirect to a loopback, link-local or unspecified address refused`, `redirect to a non-http(s) URL refused`, `more than 5 redirects`, … |
 
 ```yaml
 integrations:
@@ -267,8 +279,16 @@ Each `card.summaries` entry:
 | `direction` | no | `above` or `below`; required when a threshold is set. |
 
 A summary with no threshold is classified `neutral`.
-Invalid summary entries are dropped at load without failing boot; the provider is
-unhealthy only when every query is unreachable.
+Invalid summary entries are dropped at load without failing boot. A query error shows as that
+summary in error, with the provider still healthy: Prometheus answered, so it is a problem with
+the query, not an outage. A query error is a 400 (PromQL that does not parse), a 422 (a query it
+cannot execute), or another 4xx whose body is Prometheus's own error document
+(`{"status": "error", "errorType": …}`). Any other answer means the query never ran, and leaves
+it unreachable: a connection failure, a 5xx, or a refusal of the endpoint itself (401 or 403,
+404, 407, 429). The provider is unhealthy only when every query is unreachable. Its health then
+names a refusal when one was seen (`Prometheus authentication refused (401)`, `Prometheus not a
+Prometheus endpoint (404)`, `Prometheus rate limited (429)`, `Prometheus answered HTTP <status>`),
+and otherwise reads `Prometheus endpoint unreachable`.
 
 ## remote
 

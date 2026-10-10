@@ -36,9 +36,9 @@ export function registerGatus(id: string, config: GatusConfig): void {
 }
 
 export function registerPrometheus(id: string, config: PrometheusConfig): void {
-  register(new PrometheusProvider(id, { ...config, env: config.env ?? processEnv }), config.timing);
+  register(new PrometheusProvider(id, { ...config, env: config.env ?? processEnv }));
 }
 
 export function registerAlertmanager(id: string, config: AlertmanagerConfig): void {
-  register(new AlertmanagerProvider(id, { ...config, env: config.env ?? processEnv }), config.timing);
+  register(new AlertmanagerProvider(id, { ...config, env: config.env ?? processEnv }));
 }

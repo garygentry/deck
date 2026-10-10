@@ -8,11 +8,11 @@ import { Icon } from "@/ui";
 import type {
   AlertmanagerData,
   AlertmanagerResult,
-} from "../src/features/alerts-and-health/useAlertmanagerData.js";
+} from "../../../modules/monitoring/web/useAlertmanagerData.js";
 import type {
   PrometheusData,
   PrometheusResult,
-} from "../src/features/alerts-and-health/usePrometheusData.js";
+} from "../../../modules/monitoring/web/usePrometheusData.js";
 import type { HealthSummary } from "../src/shell/health-header/health-summary.js";
 
 // ---------------------------------------------------------------------------
@@ -22,19 +22,19 @@ import type { HealthSummary } from "../src/shell/health-header/health-summary.js
 // ---------------------------------------------------------------------------
 
 let alertView: AlertmanagerData;
-vi.mock("../src/features/alerts-and-health/useAlertmanagerData.js", () => ({
+vi.mock("../../../modules/monitoring/web/useAlertmanagerData.js", () => ({
   useAlertmanagerData: () => alertView,
 }));
 
 let promView: PrometheusData;
-vi.mock("../src/features/alerts-and-health/usePrometheusData.js", () => ({
+vi.mock("../../../modules/monitoring/web/usePrometheusData.js", () => ({
   usePrometheusData: () => promView,
 }));
 
-import { AlertsSummary } from "../src/features/alerts-and-health/AlertsSummary.js";
-import { MetricsSummary } from "../src/features/alerts-and-health/MetricsSummary.js";
-import { SummaryPresentationBoundary } from "../src/features/alerts-and-health/SummaryPresentationBoundary.js";
-import { HEADER_STATUS_PRESENTATION } from "../src/features/alerts-and-health/status.js";
+import { AlertsSummary } from "../../../modules/monitoring/web/AlertsSummary.js";
+import { MetricsSummary } from "../../../modules/monitoring/web/MetricsSummary.js";
+import { SummaryPresentationBoundary } from "../../../modules/monitoring/web/SummaryPresentationBoundary.js";
+import { HEADER_STATUS_PRESENTATION } from "../../../modules/monitoring/web/status.js";
 
 afterEach(() => {
   cleanup();

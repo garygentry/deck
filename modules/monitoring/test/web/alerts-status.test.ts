@@ -9,12 +9,12 @@ import {
   deriveAlertStatus,
   envelopeSectionState,
   rollupMetrics,
-} from "../src/features/alerts-and-health/status.js";
+} from "../../web/status.js";
 import type {
   ActiveAlert,
   AlertmanagerResult,
-} from "../src/features/alerts-and-health/useAlertmanagerData.js";
-import type { SummaryValue } from "../src/features/alerts-and-health/usePrometheusData.js";
+} from "../../web/useAlertmanagerData.js";
+import type { SummaryValue } from "../../web/usePrometheusData.js";
 
 function summary(status: SummaryValue["status"], value: number | null = 1): SummaryValue {
   return { id: `s-${status}-${String(value)}`, label: status, value, status };

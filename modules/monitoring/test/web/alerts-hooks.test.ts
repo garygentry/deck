@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { POLL_DEFAULTS } from "@deck/contract";
-import { UI_MANIFEST_REFRESH_MS } from "../src/data/index.js";
+import { UI_MANIFEST_REFRESH_MS } from "@/data/index.js";
 import type { FreshnessStamp, ProviderEnvelope } from "@deck/contract";
 import { createElement as h } from "react";
-import { mount as render } from "./support/render.js";
-import { act } from "./support/render.js";
+import { mount as render } from "@web-test/support/render.js";
+import { act } from "@web-test/support/render.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   deferred,
@@ -13,17 +13,17 @@ import {
   jsonResponse,
   resetInventoryTestEnv,
   type Env,
-} from "./inventory-harness.js";
+} from "@web-test/inventory-harness.js";
 import {
   usePrometheusData,
   type PrometheusData,
   type PrometheusResult,
-} from "../src/features/alerts-and-health/usePrometheusData.js";
+} from "../../web/usePrometheusData.js";
 import {
   useAlertmanagerData,
   type AlertmanagerData,
   type AlertmanagerResult,
-} from "../src/features/alerts-and-health/useAlertmanagerData.js";
+} from "../../web/useAlertmanagerData.js";
 
 const fresh: FreshnessStamp = {
   state: "fresh",

@@ -6,7 +6,7 @@ import { driftModule } from "../../../../modules/drift/server/module.js";
 import { inventoryModule } from "../inventory/module.js";
 import { llmUsageModule } from "../../../../modules/llm-usage/server/module.js";
 import { metricsModule } from "../metrics/module.js";
-import { monitoringModule } from "../monitoring/module.js";
+import { monitoringModule } from "../../../../modules/monitoring/server/module.js";
 import { alertmanagerModule } from "../providers/alertmanager/module.js";
 import { dockerModule } from "../providers/docker/module.js";
 import { fileTreeModule } from "../providers/file-tree/module.js";

@@ -2,8 +2,8 @@ import { MONITORING_UI } from "@deck/contract/modules/monitoring";
 import { defineWebModule } from "@deck/module-sdk";
 import type { ComponentType } from "react";
 
-import { registerWebModule } from "../../registry/web-module.js";
-import type { HealthSummary } from "../../shell/health-header/health-summary.js";
+import { registerWebModule } from "@/registry/web-module.js";
+import type { HealthSummary } from "@/shell/health-header/health-summary.js";
 import { AlertsSummary } from "./AlertsSummary.js";
 import { MetricsSummary } from "./MetricsSummary.js";
 import { MonitoringPage } from "./pages.js";

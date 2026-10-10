@@ -5,8 +5,8 @@ import {
   ALERT_BADGE_PRESENTATION,
   HEADER_STATUS_PRESENTATION,
   STATUS_PRESENTATION,
-} from "../src/features/alerts-and-health/status.js";
-import { AA_TEXT_TOKENS, THEME_TOKENS } from "./support/tokens.js";
+} from "../../web/status.js";
+import { AA_TEXT_TOKENS, THEME_TOKENS } from "@web-test/support/tokens.js";
 
 // ---------------------------------------------------------------------------
 // Alerts-and-health status-tone wiring.

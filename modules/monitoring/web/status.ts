@@ -1,6 +1,6 @@
 import { defineStatusMap, type IconName, type StatusMap } from "@/ui";
 
-import type { HealthStatus } from "../../shell/health-header/health-summary.js";
+import type { HealthStatus } from "@/shell/health-header/health-summary.js";
 import type { AlertmanagerResult } from "./useAlertmanagerData.js";
 import type { SummaryValue } from "./usePrometheusData.js";
 

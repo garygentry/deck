@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { MONITORING_IMPLEMENTATION_IMPORT } from "./support/monitoring-imports.js";
 import {
   emitDriftDiagnostic,
   setDriftDiagnosticSink,
@@ -290,7 +291,7 @@ describe("5. server drift source imports no server-only runtime", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 6. No drift/secret/auth endpoint, schema-deep import, or alerts-and-health dep.
+// 6. No drift/secret/auth endpoint, schema-deep import, or monitoring-module dep.
 // ---------------------------------------------------------------------------
 
 describe("6. no forbidden endpoint, schema-deep import, or sibling dependency", () => {
@@ -316,13 +317,26 @@ describe("6. no forbidden endpoint, schema-deep import, or sibling dependency", 
     }
   });
 
-  it("imports nothing from alerts-and-health", () => {
+  it("imports nothing from the monitoring module's implementation", () => {
     // Match an actual import specifier, not the phrase in a doc-comment.
     for (const [index, code] of ALL_FEATURE_CODE.entries()) {
-      expect(code, ALL_FEATURE_FILES[index]).not.toMatch(
-        /from\s+["'][^"']*alerts-and-health/,
-      );
+      expect(code, ALL_FEATURE_FILES[index]).not.toMatch(MONITORING_IMPLEMENTATION_IMPORT);
     }
+  });
+
+  it("the monitoring guard catches the module's halves and allows its contract", () => {
+    for (const caught of [
+      'import { x } from "../../monitoring/web/x.js";',
+      'import { x } from "../../../../modules/monitoring/server/module.js";',
+      'import { x } from "../alerts-and-health/status.js";',
+      'import { x } from "@deck/module-monitoring";',
+      'const m = await import("../../monitoring/web/x.js");',
+    ]) {
+      expect(caught).toMatch(MONITORING_IMPLEMENTATION_IMPORT);
+    }
+    expect('import { MONITORING_UI } from "@deck/contract/modules/monitoring";').not.toMatch(
+      MONITORING_IMPLEMENTATION_IMPORT,
+    );
   });
 });
 

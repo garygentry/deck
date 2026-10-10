@@ -1,8 +1,8 @@
 import type { FreshnessStamp } from "@deck/contract";
 import type { JSX } from "react";
 
-import type { HealthSummary } from "../../shell/health-header/health-summary.js";
-import { HealthSummaryPill } from "../../shell/health-header/HealthSummaryPill.js";
+import type { HealthSummary } from "@/shell/health-header/health-summary.js";
+import { HealthSummaryPill } from "@/shell/health-header/HealthSummaryPill.js";
 import { HEADER_STATUS_PRESENTATION } from "./status.js";
 
 // ---------------------------------------------------------------------------

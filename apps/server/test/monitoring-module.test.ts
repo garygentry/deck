@@ -2,7 +2,7 @@ import { MONITORING_UI } from "@deck/contract/modules/monitoring";
 import { describe, expect, it } from "vitest";
 
 import { METRICS_MANIFEST } from "../src/metrics/module.js";
-import { MONITORING_MANIFEST } from "../src/monitoring/module.js";
+import { MONITORING_MANIFEST } from "../../../modules/monitoring/server/module.js";
 import { serverOnlyFields } from "./util/shared-ui.js";
 
 describe("monitoring module", () => {

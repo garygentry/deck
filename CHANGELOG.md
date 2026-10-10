@@ -215,7 +215,10 @@ Migration below).
   ADR-007 (extension tiers and trust), the explanation "Kernel and modules", and references for
   the module manifest and widget types (#56).
 - **`validateBinding`** on a module's provider-kind handler: a config check over each host or
-  service binding of a bindable kind, as `validate` is for integration instances (#60, #61).
+  service binding of a bindable kind, as `validate` is for integration instances. A kind rule's
+  findings are now read inside its guard, so a malformed one disables only that module (#78).
+- **A shared provider timing rule** in `@deck/module-sdk` (`timingProblem`, `clampTiming`): whole
+  milliseconds up to 2147483647, a poll interval of at least 1000 ms (#78).
 
 #### Changed
 
@@ -264,16 +267,26 @@ Migration below).
   refusal (`Prometheus authentication refused (401)`, say) (#70).
 - **`alertmanager`:** when the alerts or the silences request fails, the other request is
   cancelled and its response body released, instead of being left open (#70).
-- **`link` bindings refuse unsafe hrefs** (#61): an `href` that is not an `http(s)://` URL or an
-  absolute path in deck (`javascript:`, `data:`, `mailto:`, a relative path) is
-  `LINK_HREF_UNSAFE` (error) in `deck validate`, and the binding registers no provider, so the
-  href is never served. **Behaviour change:** see Migration.
-- **`http-health` probes** (#60): a probe is aborted when its poll times out, and its late answer
-  is discarded; the response body is cancelled unread, so connections are released. **Behaviour
-  changes:** redirects are no longer followed, so a 3xx answer counts as up (as documented: 200–399
-  is up); and a `timing` field that is 0, negative, `.nan`, `.inf` or not a number is
-  `HTTP_HEALTH_TIMING_INVALID` (error) instead of being passed to the scheduler (a
-  `pollIntervalMs: 0` polled continuously). See Migration.
+- **Unsafe link targets are refused** (#78, fixes issue #61). A link `href` that is not an
+  `http(s)://` URL or an absolute path in deck (`javascript:`, `data:`, `//host`, a relative path)
+  fails `deck validate` and boot, and is never rendered as a link:
+  - a `link` binding's: `LINK_HREF_UNSAFE`, or `LINK_HREF_MISSING` without one; the binding
+    registers no provider;
+  - a host's or service's `links[]`: `ENTITY_LINK_HREF_UNSAFE`; inventory shows its title as text;
+  - a portal link item's: `PORTAL_LINK_HREF_UNSAFE`; the portal card (also a service card's first
+    link) is a plain tile.
+
+  **Behaviour change:** see Migration.
+- **`http-health` probes** (#78, fixes issue #60): a probe is aborted when its poll times out,
+  and a superseded probe never writes health; the response body is cancelled unread, so
+  connections are released. **Behaviour changes:** redirects are no longer followed, so a 3xx
+  answer counts as up (as documented: 200–399 is up); and a `timing` that is not an object of
+  timing fields in range (0, negative, a fraction, `.nan`, `.inf`, 3e9, an unknown key) is
+  `HTTP_HEALTH_TIMING_INVALID` (error) instead of reaching the scheduler (a `pollIntervalMs: 0`
+  polled continuously). See Migration.
+- **Provider timing is bounded for every kind** (#78): the scheduler rounds and clamps a poll
+  interval into 1000–2147483647 ms and the other timing fields into 1–2147483647 ms, logging a
+  `provider.timing-adjusted` warning. A value past 2147483647 used to fire every millisecond.
 
 #### Migration
 
@@ -314,10 +327,13 @@ Migration below).
    that is outside the tree and not an image under an `include` glob's base, nor an image whose
    name and bytes disagree on its type (a `.png` that is really a JPEG, say): rename or re-save
    it.
-6. **`link` and `http-health` bindings are checked.** A `link` binding whose `href` is not an
-   `http(s)://` URL or a path starting with a single `/` now fails `deck validate` and boot
-   (`LINK_HREF_UNSAFE`): use a full URL. An `http-health` `timing` field that is not a positive
-   number of milliseconds fails the same way (`HTTP_HEALTH_TIMING_INVALID`): fix or remove it.
+6. **Link hrefs and `http-health` timing are checked.** A link whose `href` is not an
+   `http(s)://` URL or a path starting with a single `/` now fails `deck validate` and boot: in a
+   `link` binding (`LINK_HREF_UNSAFE`), a host's or service's `links` (`ENTITY_LINK_HREF_UNSAFE`)
+   or a portal link item (`PORTAL_LINK_HREF_UNSAFE`). A `mailto:` or relative link must become a
+   full URL. An `http-health` `timing` value that is not a whole number of milliseconds in range
+   (a poll interval under 1000, say) fails the same way (`HTTP_HEALTH_TIMING_INVALID`): fix or
+   remove it.
 7. **`http-health` no longer follows redirects.** A URL that answers 3xx now counts as up, even
    when the redirect's target would answer 5xx. To probe the target, point `url` at it.
 8. **`http-json` integrations whose URL redirects to another origin.** Such a poll now fails

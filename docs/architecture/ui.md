@@ -23,7 +23,7 @@ apps/web/src/
   runtime/        loading runtime modules' web halves, and their loading and failure stand-ins
   sdk/            `@deck/sdk` as the page serves it to runtime modules, and the import map
   shell/          AppShell, AppSidebar, Topbar, ThemeMenu, NotFoundPage, the health header
-  features/*/     one directory per feature not yet co-located; `index.ts` registers its web half
+  features/*/     the kernel's own web features (`core-widgets`, the `_ui` workbench); `index.ts` registers each
   styles/         app.css (Tailwind entry + base rules), theme.css (tokens), hljs.css; the token
                   utilities (`@theme inline`) are packages/sdk/tailwind/theme.css, shared with
                   runtime modules' styles

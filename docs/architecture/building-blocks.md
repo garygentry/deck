@@ -198,9 +198,9 @@ typecheck or test script of its own, because both halves compile inside their ho
 half may import the app's `@/` modules, which runtime modules reach through `@deck/sdk` instead).
 The host apps' source guards (the UI guardrails, server-type imports, the select-engine graph, the
 icon scan, the DECK_* env scan) cover module halves too. Tests that drive the module through the
-kernel (the module host, the app, the config pipeline) stay in the host app's `test/`. Built-ins
-not yet co-located still live in `apps/server/src/<id>` (or `providers/<kind>`) and
-`apps/web/src/features/<feature>`.
+kernel (the module host, the app, the config pipeline) stay in the host app's `test/`. Every
+built-in is co-located; `apps/server/src/providers` holds only the registry and the provider
+wiring.
 
 ![Building-block view: the config loader feeds boot wiring, which registers providers and starts the poll scheduler feeding drift projection; the sources and actions runtimes are capability-gated, all exposed through the Hono app.](./diagrams/building-blocks.svg)
 

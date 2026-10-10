@@ -83,6 +83,17 @@ export interface ProviderPollEvent {
   to: FreshnessState;
 }
 
+/** A provider's timing field was outside its range (or not a number) and was adjusted. */
+export interface ProviderTimingAdjustedEvent {
+  event: "provider.timing-adjusted";
+  id: string;
+  kind: string;
+  field: string;
+  /** The configured value, as text (it may be NaN or Infinity). */
+  given: string;
+  used: number;
+}
+
 export interface SnapshotReadEvent {
   /** Stable structured-event discriminator. */
   event: "snapshot.read";

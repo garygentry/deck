@@ -1,4 +1,4 @@
-import type { EnvReader, JsonObject, ProviderTiming } from "@deck/module-sdk";
+import { timingProblem, type EnvReader, type JsonObject, type ProviderTiming, type TimingField } from "@deck/module-sdk";
 
 import type { HttpJsonAuth, HttpJsonConfig } from "./fetch.js";
 import instanceSchema from "./instance.schema.json" with { type: "json" };
@@ -40,11 +40,15 @@ function auth(value: unknown): HttpJsonAuth | undefined {
 export const integer = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 
+/** A timing setting deck's shared timing rule accepts (`timingProblem`), or undefined. */
+const duration = (field: TimingField, value: unknown): number | undefined =>
+  timingProblem(field, value) === null ? (value as number) : undefined;
+
 /** The provider timing an instance sets. Freshness defaults to its poll interval, not deck's. */
 function timing(instance: JsonObject): ProviderTiming | undefined {
-  const pollIntervalMs = integer(instance.pollIntervalMs);
-  const timeoutMs = integer(instance.timeoutMs);
-  const ttlMs = integer(instance.ttlMs) ?? pollIntervalMs;
+  const pollIntervalMs = duration("pollIntervalMs", instance.pollIntervalMs);
+  const timeoutMs = duration("timeoutMs", instance.timeoutMs);
+  const ttlMs = duration("ttlMs", instance.ttlMs) ?? pollIntervalMs;
   const resolved: ProviderTiming = {
     ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),

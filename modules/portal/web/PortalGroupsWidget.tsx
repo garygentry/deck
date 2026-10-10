@@ -1,3 +1,4 @@
+import { isSafeHref } from "@deck/module-sdk";
 import type { Host, Link, Service } from "@deck/schema";
 import type { FreshnessStamp } from "@deck/contract";
 import type { DeckConfig } from "@deck/server";
@@ -108,13 +109,16 @@ export function isHiddenServiceItem(item: ServiceItem, hidden: HiddenSets): bool
   return hidden.hosts.has(item.host) || hidden.services.has(`${item.host}/${item.name}`);
 }
 
+/**
+ * A card's link target: a link item's href, or a service's first link. Only an href
+ * `isSafeHref` accepts is a target (config validation refuses the rest); any other leaves the
+ * card a plain tile, never a `javascript:`, `data:` or `//host` link.
+ */
 export function resolveTarget(item: GroupItem, resolvedService?: Service): string | undefined {
-  if (item.type === "link") return item.href;
-  if (item.type === "service") {
-    const links = (resolvedService?.links ?? []) as Link[];
-    return links[0]?.href;
-  }
-  return undefined;
+  let href: string | undefined;
+  if (item.type === "link") href = item.href;
+  else if (item.type === "service") href = ((resolvedService?.links ?? []) as Link[])[0]?.href;
+  return typeof href === "string" && isSafeHref(href) ? href : undefined;
 }
 
 function cardFreshness(

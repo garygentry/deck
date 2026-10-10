@@ -475,6 +475,86 @@ describe("a kind handler's validate rule", () => {
   });
 });
 
+describe("a kind handler's validateBinding rule", () => {
+  const feedKind = (validateBinding: ProviderKindHandler["validateBinding"], bindable = true) =>
+    kindModule(
+      {
+        id: "feeds",
+        providerKinds: [{ kind: "feed", bindable, findings: [{ code: "FEED_BAD", severity: "error", summary: "bad feed", fix: "fix it" }] }],
+      },
+      { feed: { binding: () => [], validateBinding } },
+    );
+  const loadWith = (module: ServerModule) => {
+    const estateDir = makeConfigDir({
+      "00-base.yaml": {
+        schemaVersion: 2,
+        estate: { name: "rules" },
+        hosts: [{ name: "alpha", kind: "vm", purpose: "p" }],
+        services: [{ host: "alpha", name: "web", kind: "container", purpose: "p" }],
+      },
+      "10-overlay.yaml": {
+        schemaVersion: 2,
+        hosts: [{ name: "alpha", bindings: { feed: { channel: "a" }, link: { href: "https://a.invalid/" } } }],
+        services: [{ host: "alpha", name: "web", bindings: { feed: { channel: "b" } } }],
+      },
+    });
+    try {
+      return load({ arg: estateDir.dir, modules: [...BUILTIN_MODULES, module], env: {} });
+    } finally {
+      estateDir.cleanup();
+    }
+  };
+
+  it("runs once per binding of its kind in the merged document (hosts, then services), paths relative to the binding", () => {
+    const seen: unknown[] = [];
+    const result = loadWith(feedKind((binding, context) => {
+      seen.push({ channel: binding.channel, layer: context.layer });
+      return [{ code: "FEED_BAD", path: "/channel", message: `bad ${String(binding.channel)}` }];
+    }));
+    expect(seen).toEqual([{ channel: "a", layer: "merged" }, { channel: "b", layer: "merged" }]);
+    expect(result.findings.filter((finding) => finding.code === "FEED_BAD")).toEqual([
+      { code: "FEED_BAD", severity: "error", path: "/hosts/0/bindings/feed/channel", message: "bad a" },
+      { code: "FEED_BAD", severity: "error", path: "/services/0/bindings/feed/channel", message: "bad b" },
+    ]);
+    expect(result.exitClass).not.toBe(0);
+  });
+
+  it.each([
+    ["throws", () => {
+      throw new Error("boom");
+    }, "boom"],
+    ["reports an undeclared code", () => [{ code: "NOT_DECLARED", path: "", message: "x" }], "NOT_DECLARED"],
+  ])("is MODULE_RULE_FAILED at the binding, and disables its module, when it %s", (_name, rule, detail) => {
+    const module = feedKind(rule as ProviderKindHandler["validateBinding"]);
+    const result = loadWith(module);
+    expect(result.exitClass).toBe(0);
+    if (result.exitClass !== 0) return;
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: "MODULE_RULE_FAILED", path: "/hosts/0/bindings/feed", module: "feeds", message: expect.stringContaining(detail) }));
+    expect([...result.moduleProblems.keys()]).toEqual(["feeds"]);
+  });
+
+  it.each([
+    ["a null entry", () => [null]],
+    ["a finding whose getter throws", () => [{ get code(): string { throw new Error("getter boom"); }, path: "", message: "x" }]],
+    ["a finding of the wrong shape", () => [{ code: "FEED_BAD", path: 7, message: "x" }]],
+  ])("isolates %s: MODULE_RULE_FAILED for that module only, and loading succeeds", (_name, rule) => {
+    const module = feedKind(rule as unknown as ProviderKindHandler["validateBinding"]);
+    const result = loadWith(module);
+    expect(result.exitClass).toBe(0);
+    if (result.exitClass !== 0) return;
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: "MODULE_RULE_FAILED", path: "/hosts/0/bindings/feed", module: "feeds" }));
+    expect([...result.moduleProblems.keys()]).toEqual(["feeds"]);
+    expect(result.findings.filter((finding) => finding.code === "FEED_BAD")).toEqual([]);
+  });
+
+  it("must be a function, on a bindable kind", () => {
+    const notFunction = testHost([feedKind("no" as never)]).host;
+    expect(notFunction.findings).toEqual([expect.objectContaining({ code: "MODULE_MANIFEST_INVALID", message: expect.stringContaining('the validateBinding handler for "feed" must be a function') })]);
+    const notBindable = testHost([kindModule({ id: "feeds", providerKinds: [{ kind: "feed" }] }, { feed: { instances: () => [], validateBinding: () => [] } })]).host;
+    expect(notBindable.findings).toEqual([expect.objectContaining({ code: "MODULE_MANIFEST_INVALID", message: expect.stringContaining('provider kind "feed" is not bindable, so it cannot validate bindings') })]);
+  });
+});
+
 describe("a binding of a kind that is not bindable (formerly ignored silently)", () => {
   it("is reported as PROVIDER_BINDING_UNSUPPORTED, and registers nothing", () => {
     const feeds = kindModule({ id: "feeds", providerKinds: [{ kind: "feed" }] }, { feed: { instances: () => [] } });

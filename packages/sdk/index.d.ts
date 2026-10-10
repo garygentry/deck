@@ -174,7 +174,7 @@ interface ProviderKindDecl {
      * feature code. Only such a kind may declare it.
      */
     status?: ProviderStatusDecl;
-    /** Finding codes the kind handler's `validate` rule may report. */
+    /** Finding codes the kind handler's `validate` and `validateBinding` rules may report. */
     findings?: FindingCodeDecl[];
     /**
      * The fixed, public provider id the kind's `instances` handler registers under (offered with

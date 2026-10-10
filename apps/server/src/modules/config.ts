@@ -11,7 +11,7 @@ import {
   MODULE_HOST_FINDING_CATALOG,
 } from "@deck/schema";
 import { composeChecked } from "@deck/schema/select";
-import { MODULE_ID_PATTERN, type ModuleManifest, type ServerModule, type WidgetTypeDecl } from "@deck/module-sdk";
+import { isSafeHref, MODULE_ID_PATTERN, type ModuleManifest, type ServerModule, type WidgetTypeDecl } from "@deck/module-sdk";
 
 import { BUILTIN_MODULES } from "./builtin.js";
 import { credentialEnvRefusal, declaredCredentialEnv } from "./context.js";
@@ -110,6 +110,7 @@ export function moduleContribution(module: ServerModule<any>): ConfigContributio
       : {
           providerKinds: manifest.providerKinds.map(({ kind, instanceSchema, instanceList, bindable, findings, fixedId, fixedIdEnv }) => {
             const validate = module.kinds?.[kind]?.validate;
+            const validateBinding = module.kinds?.[kind]?.validateBinding;
             return {
               kind,
               ...(instanceSchema === undefined ? {} : { instanceSchema: instanceSchema as JsonObject }),
@@ -117,6 +118,7 @@ export function moduleContribution(module: ServerModule<any>): ConfigContributio
               ...(bindable === undefined ? {} : { bindable }),
               ...(findings === undefined ? {} : { findings }),
               ...(validate === undefined ? {} : { validate }),
+              ...(validateBinding === undefined ? {} : { validateBinding }),
               // A fixed provider id is a built-in-only privilege.
               ...(fixedId === undefined || !BUILTIN_SET.has(module) ? {} : { fixedId, ...(fixedIdEnv === undefined ? {} : { fixedIdEnv }) }),
             };
@@ -174,8 +176,8 @@ export function composeModules(
   const key = JSON.stringify(contributions.map(({ id, disabled, strictSection }) => [id, disabled ?? null, strictSection ?? false]));
   let composed = cache?.get(key);
   if (composed === undefined) {
-    // Always with the select check: every server validation goes through this composition.
-    composed = composeChecked([...BUILTIN_CONTRIBUTIONS, ...contributions]);
+    // Always with the select and link checks: every server validation goes through this composition.
+    composed = composeChecked([...BUILTIN_CONTRIBUTIONS, ...contributions], { isSafeHref });
     cache?.set(key, composed);
   }
   return { composed, invalid, credentials };

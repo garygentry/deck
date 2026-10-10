@@ -9,10 +9,10 @@ import {
   type ProviderHealthEntry,
   type ProviderProjection,
 } from "../contract/index.js";
-import type { Cadence, ProviderStats, TaskHandle } from "@deck/module-sdk";
+import { clampTiming, TIMING_FIELDS, type Cadence, type ProviderStats, type TaskHandle, type TimingField } from "@deck/module-sdk";
 import { evaluateSelect, type CompiledSelect } from "@deck/schema/select";
 
-import { logger, type ProviderPollEvent } from "../log/logger.js";
+import { logger, type ProviderPollEvent, type ProviderTimingAdjustedEvent } from "../log/logger.js";
 import { createAdaptiveTask, isWithinRun, withinRun, type AdaptiveTask } from "../modules/scheduler.js";
 
 export interface ResolvedTiming {
@@ -111,14 +111,31 @@ export function deriveState(input: DeriveInput): FreshnessState {
   return "fresh";
 }
 
-/** Resolve provider timing defaults, including the TTL-derived unreachable threshold. */
-export function resolveTiming(opts?: ProviderConfig): ResolvedTiming {
-  const ttlMs = opts?.ttlMs ?? POLL_DEFAULTS.ttlMs;
+/**
+ * Resolve provider timing defaults, including the TTL-derived unreachable threshold. A field
+ * outside its range (`TIMING_LIMITS`: a timer cannot wait past 2^31-1 ms, and a poll interval is
+ * at least a second) is rounded and clamped into it, and one that is not a finite number takes
+ * its default, so no kind's timing can make the scheduler spin. Each change is passed to
+ * `onAdjust`.
+ */
+export function resolveTiming(
+  opts?: ProviderConfig,
+  onAdjust?: (field: TimingField, given: unknown, used: number) => void,
+): ResolvedTiming {
+  const given: Partial<Record<TimingField, number>> = {};
+  for (const field of TIMING_FIELDS) {
+    const value: unknown = opts?.[field];
+    if (value === undefined) continue;
+    const used = clampTiming(field, value);
+    if (used !== undefined) given[field] = used;
+    if (used !== value) onAdjust?.(field, value, used ?? (field === "unreachableAfterMs" ? 3 * (given.ttlMs ?? POLL_DEFAULTS.ttlMs) : POLL_DEFAULTS[field]));
+  }
+  const ttlMs = given.ttlMs ?? POLL_DEFAULTS.ttlMs;
   return {
-    pollIntervalMs: opts?.pollIntervalMs ?? POLL_DEFAULTS.pollIntervalMs,
+    pollIntervalMs: given.pollIntervalMs ?? POLL_DEFAULTS.pollIntervalMs,
     ttlMs,
-    unreachableAfterMs: opts?.unreachableAfterMs ?? 3 * ttlMs,
-    timeoutMs: opts?.timeoutMs ?? POLL_DEFAULTS.timeoutMs,
+    unreachableAfterMs: given.unreachableAfterMs ?? 3 * ttlMs,
+    timeoutMs: given.timeoutMs ?? POLL_DEFAULTS.timeoutMs,
     failureFreshness: opts?.failureFreshness ?? "immediate-unreachable",
   };
 }
@@ -152,7 +169,10 @@ export function register<T>(
 
   const slot = {
     provider,
-    timing: resolveTiming(opts),
+    timing: resolveTiming(opts, (field, given, used) => {
+      const event = { event: "provider.timing-adjusted", id: provider.id, kind: provider.kind, field, given: String(given), used } satisfies ProviderTimingAdjustedEvent;
+      logger.warn(event, "provider timing out of range; adjusted");
+    }),
     isStatic,
     lastSuccessAt: null,
     observedAt: null,

@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import type { Cadence, CadenceState, TaskHandle } from "@deck/module-sdk";
+import { MAX_TIMER_MS, type Cadence, type CadenceState, type TaskHandle } from "@deck/module-sdk";
 
 /**
  * Marks the async context of a run, so a `stop()` issued from inside that same run (a task
@@ -19,7 +19,7 @@ export function isWithinRun(owner: object): boolean {
 }
 
 /** The largest `setTimeout` delay; anything longer overflows and fires immediately. */
-export const MAX_TIMER_MS = 2 ** 31 - 1;
+export { MAX_TIMER_MS };
 
 export interface AdaptiveTaskOptions {
   run(): Promise<void>;

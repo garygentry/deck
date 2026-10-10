@@ -10,6 +10,7 @@ import { buildContext } from "./context.js";
 import { build, toolError } from "./result.js";
 import { identity, providerIdSharing } from "./rules/identity.js";
 import { layers } from "./rules/layers.js";
+import { entityLinks } from "./rules/links.js";
 import { providerKinds } from "./rules/provider-kinds.js";
 import { references } from "./rules/references.js";
 import { secrets } from "./rules/secrets.js";
@@ -74,6 +75,7 @@ export function validate(
       ...layers(doc, composed, layer, options?.base, strict),
       ...providerKinds(doc, composed, strict),
       ...uiWidgets(doc, composed, strict, layer),
+      ...entityLinks(doc, composed, layer),
       ...secrets(doc, context),
       // Module array identities: a duplicate the kernel rules already report is not repeated.
       ...composed.runChecks(document as JsonObject, layer, { disabledSections: strict ? "strict" : "advisory", ...(options?.env === undefined ? {} : { env: options.env }) }).filter(

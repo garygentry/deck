@@ -1,6 +1,6 @@
 import { POLL_DEFAULTS } from "@deck/contract";
 import type { FreshnessStamp } from "@deck/contract";
-import { useProvider } from "../../data/index.js";
+import { useProvider } from "@/data/index.js";
 
 /**
  * One active alert, normalized from Alertmanager v2. Web-side mirror of the canonical server-side

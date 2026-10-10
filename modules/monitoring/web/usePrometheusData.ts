@@ -1,6 +1,6 @@
 import { POLL_DEFAULTS } from "@deck/contract";
 import type { FreshnessStamp } from "@deck/contract";
-import { useProvider } from "../../data/index.js";
+import { useProvider } from "@/data/index.js";
 
 /**
  * Threshold-derived status for one rendered summary. Web-side mirror of the canonical server-side

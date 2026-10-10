@@ -921,7 +921,7 @@ describe("DriftHealthSummary — placeholder props are ignored", () => {
       ),
       "utf8",
     );
-    expect(source).not.toMatch(/from\s+["'][^"']*alerts-and-health/);
+    expect(source).not.toMatch(/from\s+["'][^"']*(alerts-and-health|modules\/monitoring)/);
     // Rendered as the only summary contribution, it still produces complete text.
     driftState = availableGenState({ ...coverageOnly("fresh") });
     expect(renderSummary().link).toHaveTextContent("hosts need coverage attention");

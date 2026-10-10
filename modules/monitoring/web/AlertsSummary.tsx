@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 
-import type { HealthSummary } from "../../shell/health-header/health-summary.js";
+import type { HealthSummary } from "@/shell/health-header/health-summary.js";
 import { SummaryPresentationBoundary } from "./SummaryPresentationBoundary.js";
 import { deriveAlertStatus } from "./status.js";
 import { renderPending, renderSegment } from "./summary-render.js";

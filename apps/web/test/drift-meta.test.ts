@@ -320,7 +320,7 @@ describe("6. no forbidden endpoint, schema-deep import, or sibling dependency", 
     // Match an actual import specifier, not the phrase in a doc-comment.
     for (const [index, code] of ALL_FEATURE_CODE.entries()) {
       expect(code, ALL_FEATURE_FILES[index]).not.toMatch(
-        /from\s+["'][^"']*alerts-and-health/,
+        /from\s+["'][^"']*(alerts-and-health|modules\/monitoring)/,
       );
     }
   });

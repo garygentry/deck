@@ -4,10 +4,10 @@ import type { FreshnessStamp } from "@deck/contract";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { IntegrationsSection } from "../src/features/alerts-and-health/IntegrationsSection.js";
-import { IntegrationCard } from "../src/features/alerts-and-health/IntegrationCard.js";
-import type { AlertmanagerData } from "../src/features/alerts-and-health/useAlertmanagerData.js";
-import type { PrometheusData } from "../src/features/alerts-and-health/usePrometheusData.js";
+import { IntegrationsSection } from "../../web/IntegrationsSection.js";
+import { IntegrationCard } from "../../web/IntegrationCard.js";
+import type { AlertmanagerData } from "../../web/useAlertmanagerData.js";
+import type { PrometheusData } from "../../web/usePrometheusData.js";
 
 afterEach(cleanup);
 

@@ -8,31 +8,31 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AlertsSection,
   groupBySeverity,
-} from "../src/features/alerts-and-health/AlertsSection.js";
+} from "../../../modules/monitoring/web/AlertsSection.js";
 import {
   MetricsSection,
   summaryPageStatus,
-} from "../src/features/alerts-and-health/MetricsSection.js";
+} from "../../../modules/monitoring/web/MetricsSection.js";
 import type {
   ActiveAlert,
   ActiveSilence,
   AlertmanagerData,
-} from "../src/features/alerts-and-health/useAlertmanagerData.js";
+} from "../../../modules/monitoring/web/useAlertmanagerData.js";
 import type {
   PrometheusData,
   SummaryValue,
-} from "../src/features/alerts-and-health/usePrometheusData.js";
+} from "../../../modules/monitoring/web/usePrometheusData.js";
 import type { ConfigState } from "../src/data/hooks.js";
 
 // The page sources its data through three hooks. Mocking them yields deterministic flattened views with
 // no poll/timer lifecycle. The prop-driven section tests below never call the hooks, so the mocks are
 // inert there; only the MonitoringPage tests exercise them.
 let alertView: AlertmanagerData;
-vi.mock("../src/features/alerts-and-health/useAlertmanagerData.js", () => ({
+vi.mock("../../../modules/monitoring/web/useAlertmanagerData.js", () => ({
   useAlertmanagerData: () => alertView,
 }));
 let promView: PrometheusData;
-vi.mock("../src/features/alerts-and-health/usePrometheusData.js", () => ({
+vi.mock("../../../modules/monitoring/web/usePrometheusData.js", () => ({
   usePrometheusData: () => promView,
 }));
 let configState: ConfigState;
@@ -42,7 +42,7 @@ vi.mock("../src/data/hooks.js", async (importOriginal) => ({
 }));
 
 // eslint-disable-next-line import/first
-import { MonitoringPage } from "../src/features/alerts-and-health/MonitoringPage.js";
+import { MonitoringPage } from "../../../modules/monitoring/web/MonitoringPage.js";
 
 afterEach(() => {
   cleanup();

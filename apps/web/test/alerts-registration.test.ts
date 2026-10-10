@@ -7,13 +7,13 @@ import { resolveComponent } from "./support/lazy.js";
 // feature imports nothing from the shell.
 async function loadFreshFeature() {
   vi.resetModules();
-  await import("../src/features/alerts-and-health/index.js");
+  await import("../../../modules/monitoring/web/index.js");
   const registry = await import("../src/registry/registry.js");
   const { HealthHeaderSlot } = await import("../src/shell/health-header/slot.js");
   const { MONITORING_UI } = await import("@deck/contract/modules/monitoring");
-  const { MonitoringPage } = await import("../src/features/alerts-and-health/MonitoringPage.js");
-  const { AlertsSummary } = await import("../src/features/alerts-and-health/AlertsSummary.js");
-  const { MetricsSummary } = await import("../src/features/alerts-and-health/MetricsSummary.js");
+  const { MonitoringPage } = await import("../../../modules/monitoring/web/MonitoringPage.js");
+  const { AlertsSummary } = await import("../../../modules/monitoring/web/AlertsSummary.js");
+  const { MetricsSummary } = await import("../../../modules/monitoring/web/MetricsSummary.js");
   return { registry, HealthHeaderSlot, MONITORING_UI, MonitoringPage, AlertsSummary, MetricsSummary };
 }
 

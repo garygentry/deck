@@ -533,6 +533,20 @@ describe("a kind handler's validateBinding rule", () => {
     expect([...result.moduleProblems.keys()]).toEqual(["feeds"]);
   });
 
+  it.each([
+    ["a null entry", () => [null]],
+    ["a finding whose getter throws", () => [{ get code(): string { throw new Error("getter boom"); }, path: "", message: "x" }]],
+    ["a finding of the wrong shape", () => [{ code: "FEED_BAD", path: 7, message: "x" }]],
+  ])("isolates %s: MODULE_RULE_FAILED for that module only, and loading succeeds", (_name, rule) => {
+    const module = feedKind(rule as unknown as ProviderKindHandler["validateBinding"]);
+    const result = loadWith(module);
+    expect(result.exitClass).toBe(0);
+    if (result.exitClass !== 0) return;
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: "MODULE_RULE_FAILED", path: "/hosts/0/bindings/feed", module: "feeds" }));
+    expect([...result.moduleProblems.keys()]).toEqual(["feeds"]);
+    expect(result.findings.filter((finding) => finding.code === "FEED_BAD")).toEqual([]);
+  });
+
   it("must be a function, on a bindable kind", () => {
     const notFunction = testHost([feedKind("no" as never)]).host;
     expect(notFunction.findings).toEqual([expect.objectContaining({ code: "MODULE_MANIFEST_INVALID", message: expect.stringContaining('the validateBinding handler for "feed" must be a function') })]);

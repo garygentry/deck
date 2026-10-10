@@ -3,7 +3,7 @@
 // included) loads it. The engine is the vendored reference implementation
 // (`select/jmespath.js`), whose field lookups read own properties only.
 import { BUILTIN_CONTRIBUTIONS } from "./compose/builtin.js";
-import { composeConfig, type ComposedConfig, type ConfigContribution } from "./compose/compose.js";
+import { composeConfig, type ComposedConfig, type ComposeOptions, type ConfigContribution } from "./compose/compose.js";
 import { compile, Runtime, TreeInterpreter, type JmesNode } from "./select/jmespath.js";
 
 import type { JsonValue } from "./types.js";
@@ -101,11 +101,12 @@ export function selectProblem(expression: string): string | null {
 
 /**
  * The server's composition: {@link composeConfig} with the `select` check always wired, so a
- * document validated against it reports UI_WIDGET_SELECT_INVALID. Deck composes only through
+ * document validated against it reports UI_WIDGET_SELECT_INVALID. `options` adds the other hooks
+ * (deck passes `isSafeHref`). Deck composes only through
  * this (boot, `deck validate`, `ui` hot reload).
  */
-export function composeChecked(contributions: readonly ConfigContribution[]): ComposedConfig {
-  return composeConfig(contributions, { selectProblem });
+export function composeChecked(contributions: readonly ConfigContribution[], options: Omit<ComposeOptions, "selectProblem"> = {}): ComposedConfig {
+  return composeConfig(contributions, { ...options, selectProblem });
 }
 
 let checkedDefault: ComposedConfig | undefined;

@@ -84,6 +84,12 @@ export interface ComposeOptions {
    * entry never loads it; without this hook, `select` is not checked.
    */
   selectProblem?: (expression: string) => string | null;
+  /**
+   * Whether a link is safe to render (ENTITY_LINK_HREF_UNSAFE otherwise): deck passes
+   * `@deck/module-sdk`'s `isSafeHref`, the rule its web applies. Without this hook, host and
+   * service links are not checked.
+   */
+  isSafeHref?: (href: string) => boolean;
 }
 
 /**
@@ -191,6 +197,8 @@ export interface ComposedConfig {
   readonly disabledWidgetTypes: ReadonlyMap<string, string>;
   /** The `select` check composition was given ({@link ComposeOptions.selectProblem}). */
   readonly selectProblem?: (expression: string) => string | null;
+  /** The link check composition was given ({@link ComposeOptions.isSafeHref}). */
+  readonly isSafeHref?: (href: string) => boolean;
   /** Ids of enabled modules with a `modules.<id>` section, sorted. */
   readonly moduleIds: readonly string[];
   /** Every id that may have a `modules.<id>` section (enabled or disabled), sorted. */
@@ -530,6 +538,7 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
     widgetTypes: new Set(widgetOwners.keys()),
     disabledWidgetTypes: new Map([...disabledWidgetTypes].filter(([type]) => !widgetOwners.has(type))),
     ...(options.selectProblem === undefined ? {} : { selectProblem: options.selectProblem }),
+    ...(options.isSafeHref === undefined ? {} : { isSafeHref: options.isSafeHref }),
     moduleIds: Object.freeze([...moduleIds].sort()),
     knownModuleIds: Object.freeze([...moduleIds, ...disabled.keys()].sort()),
     disabledModuleIds: new Set(disabled.keys()),
@@ -548,12 +557,13 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
       }
       for (const { id, codes, rule } of rules) {
         if (!Object.prototype.hasOwnProperty.call(sections, id)) continue;
-        let reported: readonly ContributedFinding[];
+        let reported: ContributedFinding[];
         try {
-          reported = rule(sections[id], { layer });
-          if (!Array.isArray(reported)) throw new Error("did not return a list of findings");
+          const returned: unknown = rule(sections[id], { layer });
+          if (!Array.isArray(returned)) throw new Error("did not return a list of findings");
+          reported = returned.map((entry: unknown, index) => normalisedFinding(entry, index));
         } catch (error) {
-          findings.push(moduleFinding("MODULE_RULE_FAILED", id, `A config rule of module "${id}" failed: ${(error as Error)?.message ?? String(error)}`));
+          findings.push(moduleFinding("MODULE_RULE_FAILED", id, `A config rule of module "${id}" failed: ${errorText(error)}`));
           continue;
         }
         for (const item of reported) {
@@ -599,7 +609,9 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
           findings.push(...unresolvedReferences(document, section.references).map(wouldFail));
           for (const rule of section.rules) {
             try {
-              for (const item of rule(sections[id], { layer })) {
+              const returned: unknown = rule(sections[id], { layer });
+              if (!Array.isArray(returned)) throw new Error("did not return a list of findings");
+              for (const item of returned.map((entry: unknown, index) => normalisedFinding(entry, index))) {
                 const known = section.codes.has(item.code);
                 const code = known ? item.code : "MODULE_RULE_FAILED";
                 findings.push(wouldFail({
@@ -611,7 +623,7 @@ function compose(contributions: readonly ConfigContribution[], options: ComposeO
                 }));
               }
             } catch (error) {
-              findings.push(wouldFail({ code: "MODULE_RULE_FAILED", severity: catalogued.MODULE_RULE_FAILED!.severity, path: prefix, message: `a config rule threw: ${(error as Error)?.message ?? String(error)}` }));
+              findings.push(wouldFail({ code: "MODULE_RULE_FAILED", severity: catalogued.MODULE_RULE_FAILED!.severity, path: prefix, message: `a config rule threw: ${errorText(error)}` }));
             }
           }
         }
@@ -732,13 +744,16 @@ function kindRuleFindings(
   catalogued: Readonly<Record<string, FindingCodeEntry>>,
   moduleFinding: (code: "MODULE_RULE_FAILED", id: string, message: string) => Finding,
 ): Finding[] {
-  let reported: readonly ContributedFinding[];
+  let reported: ContributedFinding[];
   try {
-    reported = rule(target, context);
-    if (!Array.isArray(reported)) throw new Error("did not return a list of findings");
+    const returned: unknown = rule(target, context);
+    if (!Array.isArray(returned)) throw new Error("did not return a list of findings");
+    // Read every entry once, here, so a null entry, a throwing getter or a field of the wrong
+    // type is this rule's failure, never the caller's.
+    reported = returned.map((entry: unknown, index) => normalisedFinding(entry, index));
   } catch (error) {
     // The path names the instance or binding, not the module, so the module is carried explicitly.
-    return [{ ...moduleFinding("MODULE_RULE_FAILED", id, `A config rule of module "${id}" for kind "${kind}" failed: ${(error as Error)?.message ?? String(error)}`), path: prefix, module: id }];
+    return [{ ...moduleFinding("MODULE_RULE_FAILED", id, `A config rule of module "${id}" for kind "${kind}" failed: ${errorText(error)}`), path: prefix, module: id }];
   }
   const findings: Finding[] = [];
   for (const item of reported) {
@@ -755,6 +770,26 @@ function kindRuleFindings(
     });
   }
   return findings;
+}
+
+/** A rule's finding entry as plain data: `{ code, path, message, hint? }`, all strings; else it throws. */
+function normalisedFinding(entry: unknown, index: number): ContributedFinding {
+  if (!isObject(entry)) throw new Error(`finding ${index} is not an object`);
+  const { code, path, message, hint } = entry;
+  if (typeof code !== "string" || typeof path !== "string" || typeof message !== "string" || (hint !== undefined && typeof hint !== "string")) {
+    throw new Error(`finding ${index} needs a string code, path and message (and hint, if any)`);
+  }
+  if (path !== "" && !path.startsWith("/")) throw new Error(`finding ${index} path is not a JSON Pointer`);
+  return { code, path, message, ...(hint === undefined ? {} : { hint }) };
+}
+
+/** An error's message, even from a thrown value whose `message` getter itself throws. */
+function errorText(error: unknown): string {
+  try {
+    return error instanceof Error ? error.message : String(error);
+  } catch {
+    return "an unreadable error";
+  }
 }
 
 /** A disabled module's section: why it is off, and what it would be checked against if on. */

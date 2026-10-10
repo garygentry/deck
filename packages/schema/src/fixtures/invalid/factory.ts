@@ -77,6 +77,8 @@ export function fixtureFor(expect: FindingCode): InvalidFixture {
       contributions: [{ id: "fixture-feed", widgetTypes: [{ type: "fixture-feed/gauge" }] }],
       document: config(dashboard({ type: "fixture-feed/gauge", source: "feed", select: "load[" })),
     };
+    // Validated with a link check wired in (`contributions` composes one; see fixtureSafeHref).
+    case "ENTITY_LINK_HREF_UNSAFE": return { ...common, layer: "merged", contributions: [], document: config({ hosts: [{ ...host("echo"), links: [{ title: "Run", href: "javascript:alert(1)" }] }] }) };
     case "SECRET_VALUE_SUSPECTED": return { ...common, layer: "merged", document: config({ estate: { name: "invalid-fixture", domains: { password: "not a reference value" } } }) };
     case "SNAPSHOT_HOST_DUPLICATE": return { ...common, layer: "snapshot", document: snapshot({ hosts: [observedHost("echo"), observedHost("echo")] }) };
     case "SNAPSHOT_SERVICE_DUPLICATE": return { ...common, layer: "snapshot", document: snapshot({ services: [observedService("echo", "pulse"), observedService("echo", "pulse")] }) };

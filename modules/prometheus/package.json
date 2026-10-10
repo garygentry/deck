@@ -1,0 +1,10 @@
+{
+  "name": "@deck/module-prometheus",
+  "version": "0.3.2",
+  "private": true,
+  "description": "deck's built-in prometheus module: the `prometheus` data source that runs the summary queries an integration's card declares.",
+  "type": "module",
+  "dependencies": {
+    "@deck/module-sdk": "workspace:*"
+  }
+}

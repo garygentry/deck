@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AlertmanagerProvider } from "../src/providers/alertmanager/index.js";
+import { AlertmanagerProvider } from "../../../modules/alertmanager/server/index.js";
 import { providerCount, read, stopScheduler } from "../src/providers/registry.js";
 import { processEnv, registerAlertmanager } from "./util/register-kinds.js";
 

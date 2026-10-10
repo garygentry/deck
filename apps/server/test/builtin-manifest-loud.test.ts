@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { load } from "../src/config/load.js";
 import { ModuleManifestError, planModules } from "../src/modules/host.js";
-import { prometheusModule } from "../src/providers/prometheus/module.js";
+import { prometheusModule } from "../../../modules/prometheus/server/module.js";
 import { makeConfigDir } from "./util/tmp-config.js";
 
 /**

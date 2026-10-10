@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { AlertmanagerProvider, type AlertmanagerConfig } from "../src/providers/alertmanager/index.js";
-import { PrometheusProvider, type PrometheusConfig } from "../src/providers/prometheus/index.js";
+import { AlertmanagerProvider, type AlertmanagerConfig } from "../../../modules/alertmanager/server/index.js";
+import { PrometheusProvider, type PrometheusConfig } from "../../../modules/prometheus/server/index.js";
 import { processEnv } from "./util/register-kinds.js";
 
 /**

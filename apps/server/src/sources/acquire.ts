@@ -228,7 +228,7 @@ function buildCloneArgv(remoteUrl: string, ref: string | undefined, dest: string
  * repo config, and it stays out of the process arg list too (REQ-SEC-03). The token is never logged
  * (git output is drained/discarded; `events.ts` logs id + kind only).
  *
- * Mirrors the `providers/prometheus` `authHeaders(credentialEnv)` convention: config carries the
+ * Mirrors the `modules/prometheus` `authHeaders(credentialEnv)` convention: config carries the
  * environment-variable NAME, deck reads the VALUE at acquisition time and never persists it.
  *
  * @param src  The source; `credentialEnv` names the env var holding the token (never its value).

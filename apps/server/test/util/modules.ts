@@ -13,7 +13,7 @@ import { INVENTORY_MANIFEST } from "../../../../modules/inventory/server/module.
 import { LLM_USAGE_MANIFEST } from "../../../../modules/llm-usage/server/module.js";
 import { METRICS_MANIFEST } from "../../src/metrics/module.js";
 import { MONITORING_MANIFEST } from "../../../../modules/monitoring/server/module.js";
-import { ALERTMANAGER_MANIFEST } from "../../src/providers/alertmanager/module.js";
+import { ALERTMANAGER_MANIFEST } from "../../../../modules/alertmanager/server/module.js";
 import { DOCKER_MANIFEST } from "../../../../modules/docker/server/module.js";
 import { FILE_TREE_MANIFEST } from "../../src/providers/file-tree/module.js";
 import { GATUS_MANIFEST } from "../../../../modules/gatus/server/module.js";
@@ -21,7 +21,7 @@ import { HTTP_HEALTH_MANIFEST } from "../../../../modules/http-health/server/mod
 import { HTTP_JSON_MANIFEST } from "../../src/providers/http-json/module.js";
 import { LINK_MANIFEST } from "../../../../modules/link/server/module.js";
 import { MARKDOWN_TREE_MANIFEST } from "../../src/providers/markdown-tree/module.js";
-import { PROMETHEUS_MANIFEST } from "../../src/providers/prometheus/module.js";
+import { PROMETHEUS_MANIFEST } from "../../../../modules/prometheus/server/module.js";
 import { REMOTE_MANIFEST } from "../../src/providers/remote/module.js";
 import { SNAPSHOT_MANIFEST } from "../../src/providers/snapshot/module.js";
 import { createModuleHost, type ModuleHostOptions } from "../../src/modules/host.js";

@@ -72,9 +72,11 @@ answer a missing file gets. `exclude` globs match regardless of letter case; `in
 match it exactly.
 Images get one allowance, so documents keep their pictures: an image file (png, jpg/jpeg, gif,
 webp, bmp, ico or svg) that `include` leaves out of the tree is still served when it is not
-excluded and sits under the fixed leading directory of an `include` glob. With
-`include: ["**/*.md"]` that is anywhere in the source; with `include: ["docs/**/*.md"]` it is
-only under `docs/`. An `exclude` always hides images too.
+excluded and sits under the fixed leading directory of an `include` glob (each `{a,b}`
+alternative counts; a plain file name counts its own directory). With
+`include: ["**/*.md"]`, `["*.md"]` or `["README.md"]` that is anywhere in the source; with
+`include: ["docs/**/*.md"]` it is only under `docs/`, and with `["{docs,guides}/**/*.md"]`
+only under `docs/` and `guides/`. An `exclude` always hides images too.
 Dotfiles are matched verbatim and are not hidden by default — curating what a source exposes
 is your job, so exclude anything sensitive.
 

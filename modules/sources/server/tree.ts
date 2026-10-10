@@ -157,9 +157,8 @@ interface Matchers {
   /** True ⇒ the POSIX rel path is excluded (always false when no excludes). */
   readonly excluded: (posixRel: string) => boolean;
   /**
-   * True ⇒ the POSIX rel path lies under the literal base of some include glob (`docs` for a
-   * glob that starts `docs/`, the whole root for one that starts with a wildcard); always true
-   * when no includes.
+   * True ⇒ the POSIX rel path lies under a directory some include glob reaches (see
+   * `includeBases`); always true when no includes.
    */
   readonly underIncludeBase: (posixRel: string) => boolean;
 }
@@ -176,16 +175,95 @@ interface Matchers {
 function compileMatchers(include?: readonly string[], exclude?: readonly string[]): Matchers {
   const inc = include && include.length > 0 ? picomatch([...include], { dot: true }) : null;
   const exc = exclude && exclude.length > 0 ? picomatch([...exclude], { dot: true, nocase: true }) : null;
-  const bases = (include ?? [])
-    .map((glob) => picomatch.scan(glob))
-    .filter((scanned) => !scanned.negated)
-    .map((scanned) => scanned.base.replace(/^\.\//, "").replace(/\/+$/, ""));
+  const bases = (include ?? []).flatMap(includeBases);
   return {
     included: (rel) => (inc ? inc(rel) : true),
     excluded: (rel) => (exc ? exc(rel) : false),
     underIncludeBase: (rel) =>
       inc === null || bases.some((base) => base === "" || base === "." || rel === base || rel.startsWith(`${base}/`)),
   };
+}
+
+/** The most alternatives one include glob's braces may expand to before it grants no base. */
+const MAX_BRACE_ALTERNATIVES = 256;
+
+/**
+ * The literal directories an include glob reaches, one per brace alternative: the directory
+ * part before its first wildcard (`docs` for a glob that starts `docs/` and then a wildcard),
+ * or for a glob with no wildcard (`README.md`) the directory that holds it. "" is the source
+ * root, so a glob that starts with a wildcard, or names a root-level file (`*.md`,
+ * `README.md`), reaches the whole source. A negated glob reaches nothing, and so does one
+ * whose braces cannot be expanded (a `{1..3}` range, or too many alternatives): such an include
+ * serves no image outside the tree.
+ */
+function includeBases(glob: string): string[] {
+  if (glob.startsWith("!")) return [];
+  const alternatives = expandBraces(glob);
+  if (alternatives === undefined) return [];
+  return alternatives.flatMap((alternative) => {
+    const scanned = picomatch.scan(alternative);
+    if (scanned.negated || /[{}]/.test(scanned.base)) return [];
+    const base = scanned.isGlob ? scanned.base : path.posix.dirname(scanned.base);
+    return [base.replace(/^\.(?:\/|$)/, "").replace(/\/+$/, "")];
+  });
+}
+
+/**
+ * Expand a glob's comma-list braces (`{docs,guides}/x`, nested too) into the globs they stand
+ * for, or undefined when a brace group has no comma (a range such as `{1..3}`) or the expansion
+ * passes {@link MAX_BRACE_ALTERNATIVES}. A backslash-escaped brace is literal.
+ */
+export function expandBraces(glob: string): string[] | undefined {
+  let pending = [glob];
+  const done: string[] = [];
+  while (pending.length > 0) {
+    const next: string[] = [];
+    for (const current of pending) {
+      const group = firstBraceGroup(current);
+      if (group === null) {
+        done.push(current);
+      } else if (group.parts.length < 2) {
+        return undefined;
+      } else {
+        for (const part of group.parts) next.push(current.slice(0, group.start) + part + current.slice(group.end + 1));
+      }
+      if (done.length + next.length > MAX_BRACE_ALTERNATIVES) return undefined;
+    }
+    pending = next;
+  }
+  return done;
+}
+
+/** The first unescaped top-level `{…}` group: its bounds and its top-level comma parts. */
+function firstBraceGroup(glob: string): { start: number; end: number; parts: string[] } | null {
+  let start = -1;
+  let depth = 0;
+  let partStart = 0;
+  const parts: string[] = [];
+  for (let i = 0; i < glob.length; i++) {
+    const ch = glob[i];
+    if (ch === "\\") {
+      i++;
+      continue;
+    }
+    if (ch === "{") {
+      if (depth === 0) {
+        start = i;
+        partStart = i + 1;
+      }
+      depth++;
+    } else if (ch === "}" && depth > 0) {
+      depth--;
+      if (depth === 0) {
+        parts.push(glob.slice(partStart, i));
+        return { start, end: i, parts };
+      }
+    } else if (ch === "," && depth === 1) {
+      parts.push(glob.slice(partStart, i));
+      partStart = i + 1;
+    }
+  }
+  return null;
 }
 
 /** A file is renderable iff it passes include AND is not excluded. */

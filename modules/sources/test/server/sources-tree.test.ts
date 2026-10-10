@@ -19,6 +19,7 @@ import {
   buildManifest,
   readFile,
   languageForPath,
+  expandBraces,
   MAX_FILE_BYTES,
   BINARY_SNIFF_BYTES,
   type BuildManifestOptions,
@@ -315,5 +316,20 @@ describe("tree — in-root symlink cycle guard", () => {
     // skipped, so neither appears as a child node in the manifest tree.
     expect(findNode(manifest.tree, "self")).toBeUndefined();
     expect(findNode(manifest.tree, "sub/back")).toBeUndefined();
+  });
+});
+
+describe("expandBraces — the alternatives an include glob stands for", () => {
+  it("expands comma lists, nested ones too, and leaves a glob without braces as it is", () => {
+    expect(expandBraces("{docs,guides}/**/*.md")).toEqual(["docs/**/*.md", "guides/**/*.md"]);
+    expect(expandBraces("a/{b,c/{d,e}}/x")).toEqual(["a/b/x", "a/c/d/x", "a/c/e/x"]);
+    expect(expandBraces("docs/*.{md,mdx}")).toEqual(["docs/*.md", "docs/*.mdx"]);
+    expect(expandBraces("plain/**")).toEqual(["plain/**"]);
+    expect(expandBraces("x\\{a,b\\}")).toEqual(["x\\{a,b\\}"]);
+  });
+
+  it("gives up (undefined) on a range or an expansion past its cap", () => {
+    expect(expandBraces("{1..3}/x")).toBeUndefined();
+    expect(expandBraces("{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b}")).toBeUndefined();
   });
 });

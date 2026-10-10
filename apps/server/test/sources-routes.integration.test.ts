@@ -153,8 +153,11 @@ describe("source routes — reads honour include/exclude", () => {
   it("lists only the files include/exclude keep, by listed and real path, whatever the exclude's case", async () => {
     const { app } = await buildApp(true);
     const manifest = (await (await app.request("/api/sources/curated/tree")).json()) as { fileCount: number; tree: unknown };
-    expect(manifest.fileCount).toBe(1); // index.md: not alias.md, pub/secret.md, Private/upper.md
-    expect(JSON.stringify(manifest.tree)).not.toMatch(/alias|pub|secret|Private/);
+    // index.md only: not alias.md or pub/secret.md (aliases of excluded files), notes-link.md (a
+    // markdown name for a non-included file), Private/upper.md or Build/out.md (excluded by
+    // `private/**` and `build/**` whatever the case).
+    expect(manifest.fileCount).toBe(1);
+    expect(JSON.stringify(manifest.tree)).not.toMatch(/alias|pub|secret|notes|Private|Build/);
   });
 
   it("a file in the tree reads; one left out by include or exclude is 404 PATH_NOT_FOUND", async () => {
@@ -162,7 +165,7 @@ describe("source routes — reads honour include/exclude", () => {
     expect((await atBoth(app, "/curated/file?path=index.md")).status).toBe(200);
     const missing = await (await app.request("/api/sources/curated/file?path=missing.md")).json();
     // Spelled any way, an excluded or not-included path reads like a missing file.
-    for (const path of ["private/secret.md", "./private/secret.md", "private//secret.md", "Private/upper.md", "notes.txt", "img/logo.png"]) {
+    for (const path of ["private/secret.md", "./private/secret.md", "private//secret.md", "Private/upper.md", "Build/out.md", "notes.txt", "notes-link.md", "img/logo.png"]) {
       expect(await atBoth(app, `/curated/file?path=${q(path)}`), path).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
       expect(await (await app.request(`/api/sources/curated/file?path=${q(path)}`)).json()).toEqual(missing);
     }
@@ -189,6 +192,18 @@ describe("source routes — reads honour include/exclude", () => {
     // include ["docs/**/*.md"]: the image a doc embeds is served; one outside docs/ is not.
     expect((await atBoth(app, "/scoped/raw?path=docs/img/x.png")).status).toBe(200);
     expect(await atBoth(app, "/scoped/raw?path=other/y.png")).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
+  });
+
+  it("an include reaches the directories of its brace alternatives and of its literal files", async () => {
+    const { app } = await buildApp(true);
+    // ["README.md", "docs/**/*.md"]: README.md reaches its own directory, the root.
+    expect((await atBoth(app, "/readme/raw?path=assets/logo.png")).status).toBe(200);
+    // ["{docs,guides}/**/*.md"]: docs/ and guides/, nothing else.
+    expect((await atBoth(app, "/braced/raw?path=docs/x.png")).status).toBe(200);
+    expect((await atBoth(app, "/braced/raw?path=guides/y.png")).status).toBe(200);
+    expect(await atBoth(app, "/braced/raw?path=personal/scan.png")).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
+    // ["*.md"]: root-level files, so the root, so the whole source.
+    expect((await atBoth(app, "/rootmd/raw?path=img/z.png")).status).toBe(200);
   });
 
   it("raw refuses bytes that are not the image their name promises", async () => {

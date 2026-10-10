@@ -11,6 +11,8 @@
  *  - `curated` — a markdown-tree source whose include/exclude leave files out of its tree, with
  *                symlinks that alias its excluded files
  *  - `scoped`  — a markdown-tree source whose include reaches only under `docs/`
+ *  - `readme`, `braced`, `rootmd` — markdown-tree sources whose includes name a literal file,
+ *                braces, and root-level markdown, for the images each reaches
  *  - `future`  — an unsupported-kind source (dropped by resolveSourcesRuntime ⇒ no store)
  *
  * `cleanup()` removes the whole temp tree; call it in an afterEach.
@@ -26,7 +28,7 @@ import type { DeckConfig } from "../../../src/contract/index.js";
 
 /** The materialized estate: the config, its cache root, the tree root, and a cleanup. */
 export interface MaterializedFixture {
-  /** The merged DeckConfig declaring the seven sources over the temp tree. */
+  /** The merged DeckConfig declaring the ten sources over the temp tree. */
   config: DeckConfig;
   /** A fresh, empty cache dir to pass as DECK_SOURCES_CACHE_DIR. */
   cacheDir: string;
@@ -61,6 +63,9 @@ export function materializeFixture(): MaterializedFixture {
   const futureDir = join(root, "future");
   const curatedDir = join(root, "curated");
   const scopedDir = join(root, "scoped");
+  const readmeDir = join(root, "readme");
+  const bracedDir = join(root, "braced");
+  const rootmdDir = join(root, "rootmd");
 
   // markdown-tree docs source: an index linking a sibling doc, a guide, and a relative image.
   mkdirSync(join(docsDir, "img"), { recursive: true });
@@ -109,6 +114,10 @@ export function materializeFixture(): MaterializedFixture {
   // Aliases of the excluded files: a file symlink, and a directory symlink.
   symlinkSync(join("private", "secret.md"), join(curatedDir, "alias.md"));
   symlinkSync("private", join(curatedDir, "pub"));
+  // A markdown name for a file the include leaves out, and a differently-cased excluded dir.
+  symlinkSync("notes.txt", join(curatedDir, "notes-link.md"));
+  mkdirSync(join(curatedDir, "Build"), { recursive: true });
+  writeFileSync(join(curatedDir, "Build", "out.md"), "# Build output\n");
 
   // scoped source: include reaches only markdown under docs/, so only docs/ images are served.
   mkdirSync(join(scopedDir, "docs", "img"), { recursive: true });
@@ -116,6 +125,26 @@ export function materializeFixture(): MaterializedFixture {
   writeFileSync(join(scopedDir, "docs", "index.md"), "# Scoped\n\n![x](img/x.png)\n");
   writeFileSync(join(scopedDir, "docs", "img", "x.png"), PNG_BYTES);
   writeFileSync(join(scopedDir, "other", "y.png"), PNG_BYTES);
+
+  // readme: a literal include reaches its own directory (the root), so README's assets load.
+  mkdirSync(join(readmeDir, "assets"), { recursive: true });
+  mkdirSync(join(readmeDir, "docs"), { recursive: true });
+  writeFileSync(join(readmeDir, "README.md"), "# Readme\n\n![logo](assets/logo.png)\n");
+  writeFileSync(join(readmeDir, "assets", "logo.png"), PNG_BYTES);
+  writeFileSync(join(readmeDir, "docs", "a.md"), "# A\n");
+
+  // braced: {docs,guides} reaches docs/ and guides/, not personal/.
+  for (const dir of ["docs", "guides", "personal"]) mkdirSync(join(bracedDir, dir), { recursive: true });
+  writeFileSync(join(bracedDir, "docs", "a.md"), "# A\n");
+  writeFileSync(join(bracedDir, "docs", "x.png"), PNG_BYTES);
+  writeFileSync(join(bracedDir, "guides", "b.md"), "# B\n");
+  writeFileSync(join(bracedDir, "guides", "y.png"), PNG_BYTES);
+  writeFileSync(join(bracedDir, "personal", "scan.png"), PNG_BYTES);
+
+  // rootmd: `*.md` names root-level files, so it reaches the whole source.
+  mkdirSync(join(rootmdDir, "img"), { recursive: true });
+  writeFileSync(join(rootmdDir, "index.md"), "# Root\n\n![z](img/z.png)\n");
+  writeFileSync(join(rootmdDir, "img", "z.png"), PNG_BYTES);
 
   // unsupported-kind source: resolveSourcesRuntime drops it (no store, id 404s).
   mkdirSync(futureDir, { recursive: true });
@@ -144,7 +173,7 @@ export function materializeFixture(): MaterializedFixture {
       title: "Curated",
       location: { path: curatedDir },
       include: ["**/*.md"],
-      exclude: ["private/**"],
+      exclude: ["private/**", "build/**"],
     },
     {
       id: "scoped",
@@ -153,6 +182,9 @@ export function materializeFixture(): MaterializedFixture {
       location: { path: scopedDir },
       include: ["docs/**/*.md"],
     },
+    { id: "readme", kind: "markdown-tree", title: "Readme", location: { path: readmeDir }, include: ["README.md", "docs/**/*.md"] },
+    { id: "braced", kind: "markdown-tree", title: "Braced", location: { path: bracedDir }, include: ["{docs,guides}/**/*.md"] },
+    { id: "rootmd", kind: "markdown-tree", title: "Root markdown", location: { path: rootmdDir }, include: ["*.md"] },
     { id: "future", kind: "diagram-tree", title: "Future", location: { path: futureDir } },
   ];
 

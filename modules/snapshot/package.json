@@ -1,0 +1,20 @@
+{
+  "name": "@deck/module-snapshot",
+  "version": "0.3.2",
+  "private": true,
+  "description": "deck's built-in snapshot module: the `snapshot` data source that reads the observed-reality snapshot named by DECK_SNAPSHOT_SOURCE and offers its content age as the `snapshot/content` service.",
+  "type": "module",
+  "dependencies": {
+    "@deck/contract": "workspace:*",
+    "@deck/module-sdk": "workspace:*",
+    "@deck/schema": "workspace:*",
+    "iso8601-duration": "^2"
+  },
+  "peerDependencies": {
+    "vitest": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "vitest": "^4.1.0"
+  }
+}

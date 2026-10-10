@@ -15,7 +15,7 @@ import { BUILTIN_MODULES } from "../src/modules/builtin.js";
 import { KERNEL_ENV_NAMES } from "../src/modules/context.js";
 import { registerAllProviders } from "../src/providers/index.js";
 import { listProviders, stopScheduler } from "../src/providers/registry.js";
-import { SNAPSHOT_MANIFEST, snapshotModule } from "../src/providers/snapshot/module.js";
+import { SNAPSHOT_MANIFEST, snapshotModule } from "../../../modules/snapshot/server/module.js";
 import { testHost } from "./util/modules.js";
 
 afterEach(() => stopScheduler());

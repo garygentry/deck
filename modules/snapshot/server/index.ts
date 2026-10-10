@@ -14,9 +14,9 @@ import {
   type Provider,
   type ProviderFetchContext,
   type ProviderHealth,
-} from "../../contract/index.js";
+} from "../../../apps/server/src/contract/index.js";
 import type { HostState, SnapshotProviderResult } from "@deck/contract";
-import { logger, type SnapshotReadEvent } from "../../log/logger.js";
+import { logger, type SnapshotReadEvent } from "../../../apps/server/src/log/logger.js";
 import { SNAPSHOT_READ_MESSAGES, SnapshotReadFailure, normalizeSnapshotFailure } from "./errors.js";
 import { deriveHostStates, parseStaleAfterMs } from "./freshness.js";
 import type { SnapshotSource } from "./source.js";

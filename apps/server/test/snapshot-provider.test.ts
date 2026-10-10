@@ -13,15 +13,15 @@ import { validateSnapshot, type DeckConfigDocument } from "@deck/schema";
 
 import { POLL_DEFAULTS, type ProviderFetchContext } from "../src/contract/index.js";
 import { logger, type SnapshotReadEvent } from "../src/log/logger.js";
-import { SNAPSHOT_READ_MESSAGES, SnapshotReadFailure } from "../src/providers/snapshot/errors.js";
-import { SNAPSHOT_CONTENT, type SnapshotContent } from "../src/providers/snapshot/content.js";
-import { SnapshotProvider } from "../src/providers/snapshot/index.js";
-import { snapshotModule } from "../src/providers/snapshot/module.js";
+import { SNAPSHOT_READ_MESSAGES, SnapshotReadFailure } from "../../../modules/snapshot/server/errors.js";
+import { SNAPSHOT_CONTENT, type SnapshotContent } from "../../../modules/snapshot/server/content.js";
+import { SnapshotProvider } from "../../../modules/snapshot/server/index.js";
+import { snapshotModule } from "../../../modules/snapshot/server/module.js";
 import type {
   SnapshotRevision,
   SnapshotSource,
   SnapshotSourceResult,
-} from "../src/providers/snapshot/source.js";
+} from "../../../modules/snapshot/server/source.js";
 
 /** A configured host declared in the estate. */
 const config = {
@@ -707,7 +707,7 @@ describe("SnapshotProvider.fetch — exhaustive refusal messages and safe output
     const provider = new SnapshotProvider("snapshot", { source, config });
 
     // The source maps the aborted signal to POLL_TIMEOUT; the canonical message
-    // itself is asserted where the source produces it (snapshot-source.test.ts).
+    // itself is asserted where the source produces it (modules/snapshot/test/server/snapshot-source.test.ts).
     await expectRefusal(provider.fetch({ signal: controller.signal }), "POLL_TIMEOUT");
     // An aborted read never accepts a revision.
     expect(source.accepted).toHaveLength(0);

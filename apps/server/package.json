@@ -24,7 +24,6 @@
     "@deck/module-sdk": "workspace:*",
     "@deck/schema": "workspace:*",
     "hono": "^4.6.0",
-    "iso8601-duration": "^2",
     "markdown-it": "^14.3.2",
     "picomatch": "^4.0.2",
     "pino": "^9.0.0",

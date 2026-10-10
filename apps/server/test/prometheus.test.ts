@@ -140,7 +140,7 @@ describe("PrometheusProvider", () => {
     await expect(provider(query("metric", "q")).fetch()).resolves.toMatchObject({ summaries: [{ value: null, status: "error" }] });
   });
 
-  it("isolates per-query failures but rejects only when no query gets a 2xx", async () => {
+  it("isolates per-query failures but rejects only when no query reaches Prometheus", async () => {
     const fetchStub = vi.fn()
       .mockRejectedValueOnce(new Error("secret transport detail"))
       .mockResolvedValueOnce(Response.json(scalar(3)));
@@ -155,6 +155,39 @@ describe("PrometheusProvider", () => {
     const unreachable = provider(query("metric", "secret query"));
     await expect(unreachable.fetch()).rejects.toThrowError("Prometheus endpoint unreachable");
     await expect(unreachable.health()).resolves.toEqual({ ok: false, detail: "Prometheus endpoint unreachable" });
+  });
+
+  it.each([400, 422, 401, 404])("shows a query Prometheus refuses with HTTP %i as an errored summary, not an outage", async (status) => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ status: "error", errorType: "bad_data", error: "parse error" }, { status })));
+    const refused = provider(query("metric", "rate(up[5m]"));
+    await expect(refused.fetch()).resolves.toEqual({ summaries: [{ id: "metric", label: "Metric", value: null, status: "error" }] });
+    await expect(refused.health()).resolves.toEqual({ ok: true, detail: "1 summaries, 1 errored" });
+  });
+
+  it("keeps a good query beside a refused one healthy", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request) =>
+      String(url).includes("broken") ? new Response("bad", { status: 400 }) : Response.json(scalar(7))));
+    const mixed = new PrometheusProvider("prometheus", { baseUrl: "http://prom", summaries: [query("bad", "broken("), query("good", "up")] });
+    await expect(mixed.fetch()).resolves.toMatchObject({ summaries: [{ id: "bad", status: "error" }, { id: "good", value: 7 }] });
+    await expect(mixed.health()).resolves.toEqual({ ok: true, detail: "2 summaries, 1 errored" });
+  });
+
+  it.each([
+    ["a refused connection", () => Promise.reject(new TypeError("fetch failed"))],
+    ["a 502 from a proxy", async () => new Response(null, { status: 502 })],
+  ])("still reports %s as unreachable", async (_name, answer) => {
+    vi.stubGlobal("fetch", vi.fn(answer));
+    const down = provider(query("metric", "up"));
+    await expect(down.fetch()).rejects.toThrowError("Prometheus endpoint unreachable");
+    await expect(down.health()).resolves.toEqual({ ok: false, detail: "Prometheus endpoint unreachable" });
+  });
+
+  it.each([400, 503])("drains the body of an HTTP %i answer", async (status) => {
+    const cancel = vi.fn();
+    const body = new ReadableStream({ pull: () => {}, cancel });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { status })));
+    await provider(query("metric", "up")).fetch().catch(() => {});
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 
   it("does no I/O for zero summaries and resolves credentials inline", async () => {

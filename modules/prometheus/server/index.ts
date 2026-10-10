@@ -1,4 +1,4 @@
-import type { EnvReader, ProviderFetchContext, ProviderHealth, ProviderSpec, ProviderTiming } from "@deck/module-sdk";
+import type { EnvReader, ProviderFetchContext, ProviderHealth, ProviderSpec } from "@deck/module-sdk";
 
 import type { SummaryQuery } from "./parse-card.js";
 
@@ -28,10 +28,10 @@ export type PrometheusCredential =
 export type PrometheusConfig = {
   baseUrl: string;
   summaries: SummaryQuery[];
-  timing?: ProviderTiming;
 } & PrometheusCredential;
 
 interface QueryOutcome {
+  /** Whether Prometheus answered the query itself: a 2xx, or a 4xx refusing it (bad PromQL, say). */
   reachable: boolean;
   value: SummaryValue;
 }
@@ -93,7 +93,12 @@ export class PrometheusProvider implements ProviderSpec<PrometheusResult> {
     } catch {
       return { reachable: false, value: errored };
     }
-    if (!response.ok) return { reachable: false, value: errored };
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => {});
+      // A 4xx is Prometheus refusing this query (400 bad PromQL, 422 not executable): the query
+      // is in error, the endpoint is up. A 5xx (or a proxy's 502) is the endpoint failing.
+      return { reachable: response.status >= 400 && response.status < 500, value: errored };
+    }
 
     try {
       const scalar = extractScalar(await response.json());

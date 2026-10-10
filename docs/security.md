@@ -60,14 +60,18 @@ can't escalate:
   resolved (symlink-collapsed) path lives inside the source root.
 - **Rendered markdown is sanitized.** Untrusted repository markdown passes through a single
   enforced DOMPurify boundary before it reaches the DOM — there is no un-sanitized render path.
-- **Source images are served inert.** The raw image route sends every image with a sandboxing
-  Content-Security-Policy and `nosniff`, so an SVG with script in a source repository, opened by
-  its URL, cannot run script as deck.
+- **Source images are served inert.** The raw image route serves a file only when its name, the
+  real path it opens and its bytes all agree on an image type, and sends every image with a
+  sandboxing Content-Security-Policy and `nosniff`, so an SVG with script in a source
+  repository, opened by its URL, cannot run script as deck.
 - **Config files render verbatim.** The Configs surface shows files **as-is** — Deck does not
   scan or redact them, and says so in-product. **The operator curates what is exposed** via
-  each source's `include` / `exclude` globs, which reads by path honour too: a file left out of
-  the tree is not readable by a direct URL. Don't point a source at a tree containing secrets
-  you don't want shown.
+  each source's `include` / `exclude` globs. Reads by path honour them too, on both the path
+  requested and the real path behind any symlink, so a file left out of the tree is not
+  readable by a direct URL or through an alias. The one allowance is the raw image route,
+  which serves an image file that is not excluded and lies under an `include` glob's leading
+  directory, so documents keep their pictures; `exclude` anything that must stay hidden.
+  Don't point a source at a tree containing secrets you don't want shown.
 - **LLM usage holds account credentials, and it's opt-in.** With a `modules.llm-usage` section, deck
   reads a Claude Code credentials file (read-only; never written, refreshed or returned by the
   API) and runs the host's own `codex app-server` binary (mounted; the image ships none)

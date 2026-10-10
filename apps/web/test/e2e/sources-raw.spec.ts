@@ -19,7 +19,7 @@ test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
   test.setTimeout(120_000);
-  api = await startSpecApi("sources-raw", { DECK_E2E_DOCS_FILES: JSON.stringify({ "active.svg": ACTIVE_SVG }) });
+  api = await startSpecApi("sources-raw", { DECK_E2E_DOCS_FILES: JSON.stringify({ "assets/active.svg": ACTIVE_SVG }) });
 });
 
 test.afterAll(async () => {
@@ -28,7 +28,7 @@ test.afterAll(async () => {
 
 test("an SVG with script, opened by its raw URL, runs no script", async ({ page, request }) => {
   const origin = `http://127.0.0.1:${api.port}`;
-  const rawUrl = `${origin}/api/sources/docs/raw?path=active.svg`;
+  const rawUrl = `${origin}/api/sources/docs/raw?path=assets%2Factive.svg`;
   // The provider's first poll primes the source; until then a read is unavailable.
   await expect.poll(async () => (await request.get(rawUrl)).status(), { timeout: 30_000 }).toBe(200);
 

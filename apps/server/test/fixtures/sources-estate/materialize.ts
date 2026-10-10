@@ -3,19 +3,20 @@
  * DeckConfig that declares it. Local-path sources acquire in place (no git, no network), so a
  * store built over this config reads real files on disk.
  *
- * The estate declares one of each shape the route tests (008) and the e2e/smoke item (016)
- * exercise:
+ * The estate declares one of each shape the route tests exercise:
  *  - `docs`    — a local-path markdown-tree source (docs + a relative image)
  *  - `configs` — a local-path file-tree source (highlightable .yaml/.json/Dockerfile)
  *  - `owned`   — an owner-bearing file-tree source (owner.host)
  *  - `empty`   — a matches-nothing source (include matches no file ⇒ fileCount 0)
- *  - `curated` — a markdown-tree source whose include/exclude leave files out of its tree
+ *  - `curated` — a markdown-tree source whose include/exclude leave files out of its tree, with
+ *                symlinks that alias its excluded files
+ *  - `scoped`  — a markdown-tree source whose include reaches only under `docs/`
  *  - `future`  — an unsupported-kind source (dropped by resolveSourcesRuntime ⇒ no store)
  *
  * `cleanup()` removes the whole temp tree; call it in an afterEach.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -25,7 +26,7 @@ import type { DeckConfig } from "../../../src/contract/index.js";
 
 /** The materialized estate: the config, its cache root, the tree root, and a cleanup. */
 export interface MaterializedFixture {
-  /** The merged DeckConfig declaring the six sources over the temp tree. */
+  /** The merged DeckConfig declaring the seven sources over the temp tree. */
   config: DeckConfig;
   /** A fresh, empty cache dir to pass as DECK_SOURCES_CACHE_DIR. */
   cacheDir: string;
@@ -59,6 +60,7 @@ export function materializeFixture(): MaterializedFixture {
   const emptyDir = join(root, "empty");
   const futureDir = join(root, "future");
   const curatedDir = join(root, "curated");
+  const scopedDir = join(root, "scoped");
 
   // markdown-tree docs source: an index linking a sibling doc, a guide, and a relative image.
   mkdirSync(join(docsDir, "img"), { recursive: true });
@@ -66,6 +68,17 @@ export function materializeFixture(): MaterializedFixture {
   writeFileSync(join(docsDir, "guide.md"), "# Guide\n\nSteps to restart nginx here.\n");
   writeFileSync(join(docsDir, "img", "logo.png"), PNG_BYTES);
   writeFileSync(join(docsDir, "img", "active.svg"), ACTIVE_SVG);
+  // Files that are not images but whose bytes look like SVG, and an image name aliasing an SVG.
+  writeFileSync(join(docsDir, "img", "widget.tsx"), ACTIVE_SVG);
+  writeFileSync(join(docsDir, "img", "page.html"), `<!doctype html><html><body>${ACTIVE_SVG}</body></html>`);
+  writeFileSync(join(docsDir, "img", "data.json"), JSON.stringify({ icon: ACTIVE_SVG }));
+  symlinkSync("active.svg", join(docsDir, "img", "alias.png"));
+  // An .svg whose root is HTML, and a real SVG behind a full prolog.
+  writeFileSync(join(docsDir, "img", "not-svg.svg"), `<html><body>${ACTIVE_SVG}</body></html>`);
+  writeFileSync(
+    join(docsDir, "img", "prolog.svg"),
+    `\ufeff<?xml version="1.0"?>\n<!-- drawn by hand -->\n<!DOCTYPE svg [ <!ENTITY a "b"> ]>\n${ACTIVE_SVG}`,
+  );
 
   // file-tree configs source: highlightable configs of a few languages.
   mkdirSync(configsDir, { recursive: true });
@@ -89,6 +102,20 @@ export function materializeFixture(): MaterializedFixture {
   writeFileSync(join(curatedDir, "img", "logo.png"), PNG_BYTES);
   writeFileSync(join(curatedDir, "private", "secret.md"), "# Secret\n");
   writeFileSync(join(curatedDir, "private", "photo.png"), PNG_BYTES);
+  mkdirSync(join(curatedDir, "deep", "art"), { recursive: true });
+  writeFileSync(join(curatedDir, "deep", "art", "pic.png"), PNG_BYTES);
+  mkdirSync(join(curatedDir, "Private"), { recursive: true });
+  writeFileSync(join(curatedDir, "Private", "upper.md"), "# Excluded whatever its case\n");
+  // Aliases of the excluded files: a file symlink, and a directory symlink.
+  symlinkSync(join("private", "secret.md"), join(curatedDir, "alias.md"));
+  symlinkSync("private", join(curatedDir, "pub"));
+
+  // scoped source: include reaches only markdown under docs/, so only docs/ images are served.
+  mkdirSync(join(scopedDir, "docs", "img"), { recursive: true });
+  mkdirSync(join(scopedDir, "other"), { recursive: true });
+  writeFileSync(join(scopedDir, "docs", "index.md"), "# Scoped\n\n![x](img/x.png)\n");
+  writeFileSync(join(scopedDir, "docs", "img", "x.png"), PNG_BYTES);
+  writeFileSync(join(scopedDir, "other", "y.png"), PNG_BYTES);
 
   // unsupported-kind source: resolveSourcesRuntime drops it (no store, id 404s).
   mkdirSync(futureDir, { recursive: true });
@@ -118,6 +145,13 @@ export function materializeFixture(): MaterializedFixture {
       location: { path: curatedDir },
       include: ["**/*.md"],
       exclude: ["private/**"],
+    },
+    {
+      id: "scoped",
+      kind: "markdown-tree",
+      title: "Scoped",
+      location: { path: scopedDir },
+      include: ["docs/**/*.md"],
     },
     { id: "future", kind: "diagram-tree", title: "Future", location: { path: futureDir } },
   ];

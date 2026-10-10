@@ -33,10 +33,13 @@ A git source may name an environment variable in `Source.credentialEnv`. The val
 
 - `GET /api/sources/:id/tree` — the `SourceManifest` (structure + per-file metadata; POSIX-relative paths only).
 - `GET /api/sources/:id/file?path=<rel>` — a `FileReadResult`. A file over the size cap returns `truncated: true` with no body; a binary file is flagged rather than returned as text.
-- `GET /api/sources/:id/raw?path=<rel>` — raw bytes for a Markdown-relative **image** only; non-image content types are refused. Served with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox; default-src 'none'; style-src 'unsafe-inline'`, so an SVG opened by its URL runs no script and fetches nothing on deck's origin.
-
-`file` and `raw` apply the source's `include`/`exclude` as the tree does: a path outside the tree answers `404` `PATH_NOT_FOUND`, like a missing file. `raw` applies `exclude` only, so the images a document embeds load under an `include` that lists only documents.
+- `GET /api/sources/:id/raw?path=<rel>` — raw bytes for a Markdown-relative **image** only. The path's extension must name an image type (png, jpg/jpeg, gif, webp, bmp, ico, svg), the real path it opens must name the same type, and the bytes must sniff as that type (an SVG's root element must be `<svg>`); anything else is refused `400`. Served with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox; default-src 'none'; style-src 'unsafe-inline'`, so an SVG opened by its URL runs no script and fetches nothing on deck's origin.
 - `GET /api/sources/:id/search?q=<q>` — a `SourceSearchResult` of name and content matches, scoped to the confined tree and capped.
+
+The tree, search, `file` and `raw` apply the source's `include`/`exclude` globs to both the path requested and the real path it opens after symlinks, so a symlink cannot alias an excluded file into view. `exclude` globs match regardless of case; `include` globs match case exactly. A path the globs leave out answers `404` `PATH_NOT_FOUND`, like a missing file:
+
+- `tree`, search and `file` expose a file only when it passes `include` and is not excluded.
+- `raw` also serves an image that `include` leaves out of the tree, when it is not excluded and lies under the literal base of an `include` glob (the root for `**/*.md`, `docs/` for `docs/**/*.md`). So an `include` that lists only Markdown still loads the images its documents embed, and nothing outside its reach.
 
 An unknown source id, or one of a kind no running module serves, yields `404` `SOURCE_NOT_FOUND`, as does every route while the `sources` module is not running; a confinement or missing-parameter failure yields `400`; neither leaks a filesystem path.
 

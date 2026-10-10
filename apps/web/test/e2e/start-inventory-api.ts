@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { boot, type BootHandle } from "../../../server/src/server/boot.js";
 import { writeRunnersManifest } from "../../../server/test/fixtures/actions-runners/index.js";
 import { materializeSourceFixture } from "../../../server/test/fixtures/materialize-source-fixture.js";
@@ -84,8 +84,15 @@ async function main(): Promise<void> {
   const configsFixture = materializeSourceFixture("file-tree");
   // A spec booting its own API may add files to the docs source (a JSON object of relative path
   // to content in DECK_E2E_DOCS_FILES), so the shared fixture and its baselines stay as they are.
+  // Each path must stay inside the source root; its directories are created.
   for (const [relPath, content] of Object.entries(JSON.parse(process.env.DECK_E2E_DOCS_FILES ?? "{}") as Record<string, string>)) {
-    await writeFile(join(docsFixture.root, relPath), content);
+    const target = resolve(docsFixture.root, relPath);
+    const inside = relative(docsFixture.root, target);
+    if (inside === "" || inside.startsWith("..") || isAbsolute(inside)) {
+      throw new Error(`DECK_E2E_DOCS_FILES: ${relPath} is not a path inside the docs source`);
+    }
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, content);
   }
   await writeFile(
     join(runtime.configDir, "zzz-sources.yaml"),

@@ -66,10 +66,15 @@ sources:
 ```
 
 With no `include`, every file is included; with no `exclude`, none is excluded.
-The same globs apply to reads by path: a file left out of the tree reads as `404`
-`PATH_NOT_FOUND`, the answer a missing file gets. An image a document embeds is the exception
-for `include` only, so an `include` that lists only Markdown still shows its images; an
-`exclude` hides images too.
+The same globs apply to reads by path, matched against both the path requested and the real
+path a symlink leads to: a file left out of the tree reads as `404` `PATH_NOT_FOUND`, the
+answer a missing file gets. `exclude` globs match regardless of letter case; `include` globs
+match it exactly.
+Images get one allowance, so documents keep their pictures: an image file (png, jpg/jpeg, gif,
+webp, bmp, ico or svg) that `include` leaves out of the tree is still served when it is not
+excluded and sits under the fixed leading directory of an `include` glob. With
+`include: ["**/*.md"]` that is anywhere in the source; with `include: ["docs/**/*.md"]` it is
+only under `docs/`. An `exclude` always hides images too.
 Dotfiles are matched verbatim and are not hidden by default — curating what a source exposes
 is your job, so exclude anything sensitive.
 

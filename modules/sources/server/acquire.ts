@@ -5,8 +5,8 @@
  *
  * Local-path sources are used in place (no clone, no copy). Git sources are shallow-cloned
  * through the injected `GitSpawner` seam into a bounded per-source cache and published
- * atomically via a symlink swap so a reader never observes a half-updated tree
- *. Writes ONLY under `deps.cacheDir`, never to the source.
+ * atomically via a symlink swap so a reader never observes a half-updated tree. Writes ONLY
+ * under `deps.cacheDir`, never to the source.
  *
  * Private-repo auth: when a git source declares `Source.credentialEnv`,
  * the token named by that env var is read (through `AcquireDeps.env`) at acquisition time and sent as an

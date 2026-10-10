@@ -20,6 +20,7 @@ import type { FILE_TREE_KIND } from "../../file-tree/server/index.js";
 import type { MARKDOWN_TREE_KIND } from "../../markdown-tree/server/index.js";
 import { confinePath } from "./confine.js";
 import { SourceFailure, normalizeSourceFailure } from "./errors.js";
+import { languageForPath } from "./language.js";
 
 /**
  * One node in a source's file tree. A `dir` node carries `children`; a `file` node
@@ -155,6 +156,12 @@ interface Matchers {
   readonly included: (posixRel: string) => boolean;
   /** True ⇒ the POSIX rel path is excluded (always false when no excludes). */
   readonly excluded: (posixRel: string) => boolean;
+  /**
+   * True ⇒ the POSIX rel path lies under the literal base of some include glob (`docs` for a
+   * glob that starts `docs/`, the whole root for one that starts with a wildcard); always true
+   * when no includes.
+   */
+  readonly underIncludeBase: (posixRel: string) => boolean;
 }
 
 /**
@@ -162,14 +169,22 @@ interface Matchers {
  * RELATIVE to the source root (e.g. `docs/setup.md`), matching operator intuition and the
  * paths stored on every `SourceTreeNode`. `dot: true` so patterns can address dotfiles —
  * deck matches verbatim and does not hide dotfiles by default (curation is the operator's
- * job).
+ * job). Exclude globs match regardless of case, so an exclusion also holds on a
+ * case-insensitive filesystem, where `Private/x` opens `private/x`; include globs match case
+ * exactly, so a differently-cased request there fails closed.
  */
 function compileMatchers(include?: readonly string[], exclude?: readonly string[]): Matchers {
   const inc = include && include.length > 0 ? picomatch([...include], { dot: true }) : null;
-  const exc = exclude && exclude.length > 0 ? picomatch([...exclude], { dot: true }) : null;
+  const exc = exclude && exclude.length > 0 ? picomatch([...exclude], { dot: true, nocase: true }) : null;
+  const bases = (include ?? [])
+    .map((glob) => picomatch.scan(glob))
+    .filter((scanned) => !scanned.negated)
+    .map((scanned) => scanned.base.replace(/^\.\//, "").replace(/\/+$/, ""));
   return {
     included: (rel) => (inc ? inc(rel) : true),
     excluded: (rel) => (exc ? exc(rel) : false),
+    underIncludeBase: (rel) =>
+      inc === null || bases.some((base) => base === "" || base === "." || rel === base || rel.startsWith(`${base}/`)),
   };
 }
 
@@ -178,28 +193,64 @@ function isRenderable(m: Matchers, posixRel: string): boolean {
   return m.included(posixRel) && !m.excluded(posixRel);
 }
 
+/** The image types the raw route serves, by (lowercased) file extension. */
+const IMAGE_TYPE_BY_EXT: Readonly<Record<string, string>> = Object.freeze({
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+  ico: "image/x-icon",
+  svg: "image/svg+xml",
+});
+
+/** The image content type a path's extension names, or undefined for any other extension. */
+export function imageTypeForPath(relPath: string): string | undefined {
+  const ext = path.posix.extname(relPath).slice(1).toLowerCase();
+  return Object.hasOwn(IMAGE_TYPE_BY_EXT, ext) ? IMAGE_TYPE_BY_EXT[ext] : undefined;
+}
+
 /** What a direct read of one path may return, by the source's include/exclude globs. */
 export interface ReadMatchers {
   /** True ⇒ the file is in the tree: it passes include and is not excluded. */
   readonly inTree: (relPath: string) => boolean;
-  /** True ⇒ the path matches an exclude glob. */
-  readonly excluded: (relPath: string) => boolean;
+  /**
+   * True ⇒ the raw route may serve the path: it is not excluded, and it is in the tree or is
+   * an image (by extension) under the base of an include glob. So an `include` that lists only
+   * markdown still serves the images beside it, and nothing outside the include's reach (an
+   * include of markdown under `docs/` serves images under `docs/` only).
+   */
+  readonly rawAllowed: (relPath: string) => boolean;
+}
+
+/** A request's path in the walk's own spelling: no empty or `.` segments. */
+function walkSpelling(relPath: string): string {
+  return relPath.split("/").filter((segment) => segment !== "" && segment !== ".").join("/");
 }
 
 /**
  * The include/exclude matchers the tree walk applies, for a read by path: a request names a
  * path as it likes (`./a.md`, `docs//a.md`), so it is first reduced to the walk's own spelling
- * (no empty or `.` segments) and only then matched, and a respelling cannot slip past a glob.
- * `..` is left in place: confinement rejects it.
+ * and only then matched, and a respelling cannot slip past a glob. `..` is left in place:
+ * confinement rejects it. A store applies each matcher to the requested path and to the real
+ * path it opens, so an alias (a symlink) cannot reach what the globs leave out.
  */
 export function compileReadMatchers(include?: readonly string[], exclude?: readonly string[]): ReadMatchers {
   const m = compileMatchers(include, exclude);
-  const walkSpelling = (relPath: string): string =>
-    relPath.split("/").filter((segment) => segment !== "" && segment !== ".").join("/");
   return {
     inTree: (relPath) => isRenderable(m, walkSpelling(relPath)),
-    excluded: (relPath) => m.excluded(walkSpelling(relPath)),
+    rawAllowed: (relPath) => {
+      const rel = walkSpelling(relPath);
+      if (m.excluded(rel)) return false;
+      return m.included(rel) || (imageTypeForPath(rel) !== undefined && m.underIncludeBase(rel));
+    },
   };
+}
+
+/** The POSIX path of `real` relative to `rootReal`, both canonical absolute paths. */
+export function realRelative(rootReal: string, real: string): string {
+  return path.relative(rootReal, real).split(path.sep).join("/");
 }
 
 // --- The confined walk --------------------------------------
@@ -216,23 +267,23 @@ function throwIfAborted(signal?: AbortSignal): void {
 }
 
 /**
- * The classification of one directory entry. `realDir` is set ONLY for a symlinked
- * directory — it carries the confined realpath the link resolves to, so the walk can
- * detect an in-root symlink cycle (a link whose target is an already-visited directory).
- * A non-symlink directory's realpath is derived from its parent's during the walk.
+ * The classification of one directory entry. `real` is set ONLY for a symlink — it carries
+ * the confined realpath the link resolves to, so the walk can detect an in-root symlink cycle
+ * (a link whose target is an already-visited directory) and match the globs on the path the
+ * link opens. A non-symlink entry's realpath is derived from its parent's during the walk.
  */
 interface EntryClass {
   readonly kind: "file" | "dir" | "skip";
-  /** Symlinked directory only: the confined realpath the link resolves to. */
-  readonly realDir?: string;
+  /** Symlink only: the confined realpath the link resolves to. */
+  readonly real?: string;
 }
 
 /**
  * Classify one directory entry as `"file"`, `"dir"`, or `"skip"`. Non-symlink entries are
  * classified from the dirent directly. A symlink is re-confined through `confinePath`; on
  * `PATH_NOT_CONFINED` (or a dangling link) it is `"skip"` (excluded),
- * otherwise its realpath target is `stat`-ed to decide file vs dir. A symlinked directory
- * additionally carries its resolved realpath (`realDir`) so the walk can guard cycles.
+ * otherwise its realpath target is `stat`-ed to decide file vs dir. A symlink also carries its
+ * resolved realpath (`real`), so the walk can guard cycles and match globs on the real path.
  * Special files (socket/fifo/device) are `"skip"`.
  */
 async function classifyEntry(
@@ -251,8 +302,8 @@ async function classifyEntry(
     }
     try {
       const st = await stat(target); // follows to the (in-root) real target
-      if (st.isDirectory()) return { kind: "dir", realDir: target };
-      return { kind: st.isFile() ? "file" : "skip" };
+      if (st.isDirectory()) return { kind: "dir", real: target };
+      return st.isFile() ? { kind: "file", real: target } : { kind: "skip" };
     } catch {
       return { kind: "skip" };
     }
@@ -262,6 +313,7 @@ async function classifyEntry(
 
 async function walkDir(
   root: string,
+  rootReal: string,
   dirAbs: string,
   dirPosixRel: string,
   dirReal: string,
@@ -296,7 +348,7 @@ async function walkDir(
     if (entry.kind === "dir") {
       // The child directory's realpath: a symlinked dir carries its resolved target; a real
       // subdirectory's realpath derives from its parent's (dirReal is always canonical).
-      const childReal = entry.realDir ?? path.join(dirReal, name);
+      const childReal = entry.real ?? path.join(dirReal, name);
       // Cycle guard: never descend into a directory realpath already on/along the
       // walk. An in-root symlink cycle (self→., latest→., sub/back→..) resolves to an
       // ancestor/already-visited realpath and is skipped rather than re-descended (no phantoms).
@@ -304,6 +356,7 @@ async function walkDir(
       visited.add(childReal);
       const children = await walkDir(
         root,
+        rootReal,
         childAbs,
         childPosix,
         childReal,
@@ -317,8 +370,10 @@ async function walkDir(
         nodes.push({ path: childPosix, name, type: "dir", children });
       }
     } else {
-      // kind === "file": include only when renderable after include/exclude.
-      if (!isRenderable(m, childPosix)) continue;
+      // kind === "file": include only when renderable after include/exclude, by the path it
+      // is listed at AND the real path it opens (a symlink cannot alias an excluded file in).
+      const fileReal = entry.real ?? path.join(dirReal, name);
+      if (!isRenderable(m, childPosix) || !isRenderable(m, realRelative(rootReal, fileReal))) continue;
       const meta = await fileMeta(childAbs); // bounded: stat + ≤8 KiB sniff
       nodes.push({ path: childPosix, name, type: "file", size: meta.size, binary: meta.binary });
     }
@@ -381,7 +436,7 @@ export async function sniffBinary(absPath: string): Promise<boolean> {
  * filtering are pruned, so an empty result surfaces as `fileCount: 0`, never a
  * throw. Symlinked entries that escape the root are excluded during the walk.
  *
- * @param root Absolute path to the confined on-disk tree root (from acquisition, 02).
+ * @param root Absolute path to the confined on-disk tree root (from acquisition).
  * @param opts Source identity + include/exclude.
  * @param signal Optional abort signal, honored between directory reads.
  * @returns The manifest; `fileCount === 0` for an acquired-but-empty tree.
@@ -399,7 +454,7 @@ export async function buildManifest(
     // visited-realpath set with the root so a self-link (self→.) is caught on the first hop.
     const rootAbs = await confinePath(root, "");
     const visited = new Set<string>([rootAbs]);
-    children = await walkDir(root, rootAbs, "", rootAbs, matchers, visited, 0, signal);
+    children = await walkDir(root, rootAbs, rootAbs, "", rootAbs, matchers, visited, 0, signal);
   } catch (cause) {
     if (cause instanceof SourceFailure) throw cause;
     throw normalizeSourceFailure(cause, { sourceId: opts.sourceId, failureKind: "walk" });
@@ -639,51 +694,4 @@ function makeSnippet(line: string): string {
 
 // --- Language hint by extension ------------------------------------------
 
-/**
- * Map a file path to a highlight.js language token by extension/basename, or `undefined`
- * for an unknown type (⇒ plaintext). Lowercased; matches common config/doc
- * types. This is a hint only — the web may fall back to plaintext if the language is not
- * registered in its highlight.js bundle.
- */
-export function languageForPath(relPath: string): string | undefined {
-  const base = path.posix.basename(relPath).toLowerCase();
-  const ext = path.posix.extname(base).replace(/^\./, "");
-  const byName: Record<string, string> = {
-    dockerfile: "dockerfile",
-    makefile: "makefile",
-    ".gitignore": "plaintext",
-  };
-  if (byName[base]) return byName[base];
-  const byExt: Record<string, string> = {
-    ts: "typescript",
-    tsx: "typescript",
-    js: "javascript",
-    jsx: "javascript",
-    json: "json",
-    jsonc: "json",
-    yaml: "yaml",
-    yml: "yaml",
-    toml: "ini",
-    ini: "ini",
-    conf: "ini",
-    env: "bash",
-    sh: "bash",
-    bash: "bash",
-    zsh: "bash",
-    md: "markdown",
-    markdown: "markdown",
-    xml: "xml",
-    html: "xml",
-    sql: "sql",
-    py: "python",
-    rb: "ruby",
-    go: "go",
-    rs: "rust",
-    nginx: "nginx",
-    service: "ini",
-    properties: "properties",
-    hcl: "hcl",
-    tf: "hcl",
-  };
-  return byExt[ext];
-}
+export { languageForPath };

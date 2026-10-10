@@ -134,42 +134,83 @@ describe("source routes — raw assets are served inert", () => {
   });
 });
 
+/** GET `path` at both route prefixes; they must agree, and the legacy answer is returned. */
+async function atBoth(app: Hono, path: string): Promise<{ status: number; code?: string }> {
+  const answers = await Promise.all(
+    ["/api/sources", "/api/m/sources"].map(async (prefix) => {
+      const res = await app.request(`${prefix}${path}`);
+      const code = res.ok ? undefined : ((await res.json()) as { code: string }).code;
+      return { status: res.status, ...(code === undefined ? {} : { code }) };
+    }),
+  );
+  expect(answers[1], path).toEqual(answers[0]);
+  return answers[0];
+}
+
+const q = (path: string): string => encodeURIComponent(path);
+
 describe("source routes — reads honour include/exclude", () => {
-  it("lists only the files include/exclude keep", async () => {
+  it("lists only the files include/exclude keep, by listed and real path, whatever the exclude's case", async () => {
     const { app } = await buildApp(true);
-    const manifest = (await (await app.request("/api/sources/curated/tree")).json()) as { fileCount: number };
-    expect(manifest.fileCount).toBe(1); // index.md
+    const manifest = (await (await app.request("/api/sources/curated/tree")).json()) as { fileCount: number; tree: unknown };
+    expect(manifest.fileCount).toBe(1); // index.md: not alias.md, pub/secret.md, Private/upper.md
+    expect(JSON.stringify(manifest.tree)).not.toMatch(/alias|pub|secret|Private/);
   });
 
   it("a file in the tree reads; one left out by include or exclude is 404 PATH_NOT_FOUND", async () => {
     const { app } = await buildApp(true);
-    expect((await app.request("/api/sources/curated/file?path=index.md")).status).toBe(200);
+    expect((await atBoth(app, "/curated/file?path=index.md")).status).toBe(200);
+    const missing = await (await app.request("/api/sources/curated/file?path=missing.md")).json();
     // Spelled any way, an excluded or not-included path reads like a missing file.
-    for (const path of ["private/secret.md", "./private/secret.md", "private//secret.md", "notes.txt", "img/logo.png"]) {
-      const res = await app.request(`/api/sources/curated/file?path=${encodeURIComponent(path)}`);
-      expect(res.status, path).toBe(404);
-      const body = (await res.json()) as { error: string; code: string };
-      expect(body).toEqual(await (await app.request("/api/sources/curated/file?path=missing.md")).json());
-      expect(body.code).toBe("PATH_NOT_FOUND");
+    for (const path of ["private/secret.md", "./private/secret.md", "private//secret.md", "Private/upper.md", "notes.txt", "img/logo.png"]) {
+      expect(await atBoth(app, `/curated/file?path=${q(path)}`), path).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
+      expect(await (await app.request(`/api/sources/curated/file?path=${q(path)}`)).json()).toEqual(missing);
     }
   });
 
-  it("a raw image honours exclude, and an include that lists documents still serves their images", async () => {
+  it("an alias of an excluded file (a file or directory symlink) is 404 on file and raw, and absent from search", async () => {
     const { app } = await buildApp(true);
-    expect((await app.request("/api/sources/curated/raw?path=img/logo.png")).status).toBe(200);
-    for (const path of ["private/photo.png", "./private/photo.png", "private//photo.png"]) {
-      const res = await app.request(`/api/sources/curated/raw?path=${encodeURIComponent(path)}`);
-      expect(res.status, path).toBe(404);
-      expect(((await res.json()) as { code: string }).code).toBe("PATH_NOT_FOUND");
+    for (const path of ["/curated/file?path=alias.md", "/curated/file?path=pub/secret.md", "/curated/raw?path=pub/photo.png"]) {
+      expect(await atBoth(app, path), path).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
     }
+    const search = (await (await app.request("/api/sources/curated/search?q=secret")).json()) as { matches: unknown[] };
+    expect(search.matches).toEqual([]);
+  });
+
+  it("raw serves an image in the tree or under an include's base, and nothing excluded or out of reach", async () => {
+    const { app } = await buildApp(true);
+    // include ["**/*.md"]: its base is the root, so images anywhere not excluded are served.
+    for (const path of ["img/logo.png", "deep/art/pic.png"]) {
+      expect((await atBoth(app, `/curated/raw?path=${q(path)}`)).status, path).toBe(200);
+    }
+    for (const path of ["private/photo.png", "./private/photo.png", "private//photo.png", "notes.txt"]) {
+      expect(await atBoth(app, `/curated/raw?path=${q(path)}`), path).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
+    }
+    // include ["docs/**/*.md"]: the image a doc embeds is served; one outside docs/ is not.
+    expect((await atBoth(app, "/scoped/raw?path=docs/img/x.png")).status).toBe(200);
+    expect(await atBoth(app, "/scoped/raw?path=other/y.png")).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
+  });
+
+  it("raw refuses bytes that are not the image their name promises", async () => {
+    const { app } = await buildApp(true);
+    // SVG text in a .tsx or .json, SVG inside HTML, and an image name that links to an SVG.
+    // An .svg whose root element is not <svg> (an <svg> inside HTML) is not SVG either.
+    for (const path of ["img/widget.tsx", "img/page.html", "img/data.json", "img/alias.png", "img/not-svg.svg"]) {
+      expect(await atBoth(app, `/docs/raw?path=${q(path)}`), path).toEqual({ status: 400, code: "PATH_NOT_CONFINED" });
+    }
+  });
+
+  it("raw serves an SVG whose root follows a byte-order mark, XML declaration, comment and doctype", async () => {
+    const { app } = await buildApp(true);
+    const res = await app.request("/api/sources/docs/raw?path=img/prolog.svg");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("image/svg+xml");
   });
 
   it("a traversal outside the tree still answers 400 PATH_NOT_CONFINED", async () => {
     const { app } = await buildApp(true);
     for (const route of ["file", "raw"]) {
-      const res = await app.request(`/api/sources/curated/${route}?path=../docs/index.md`);
-      expect(res.status).toBe(400);
-      expect(((await res.json()) as { code: string }).code).toBe("PATH_NOT_CONFINED");
+      expect(await atBoth(app, `/curated/${route}?path=../docs/index.md`)).toEqual({ status: 400, code: "PATH_NOT_CONFINED" });
     }
   });
 });

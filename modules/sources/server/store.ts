@@ -9,7 +9,7 @@
  */
 
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 
 import type { ServiceRef } from "@deck/module-sdk";
 import type { Source } from "@deck/schema";
@@ -20,7 +20,9 @@ import { SourceFailure, normalizeSourceFailure } from "./errors.js";
 import {
   buildManifest,
   compileReadMatchers,
+  imageTypeForPath,
   readFile as readConfinedFile,
+  realRelative,
   searchTree,
   MAX_FILE_BYTES,
   READ_CHUNK_BYTES,
@@ -123,13 +125,10 @@ export function createSourceStore(src: Source, deps: SourceStoreDeps): SourceSto
 
   /**
    * A read by path answers only for what the source exposes: a file outside the tree reads as
-   * not found, never by a direct URL. An image is read for the documents that embed it, and an
-   * `include` that lists only documents (markdown files, say) leaves it out of the tree, so the
-   * raw read honours `exclude` alone.
+   * not found, never by a direct URL. The raw read also serves an image the tree leaves out
+   * when it lies under an include glob's base (see `ReadMatchers.rawAllowed`).
    */
-  const readMatchers = compileReadMatchers(src.include, src.exclude);
-  const inTree = readMatchers.inTree;
-  const notExcluded = (relPath: string): boolean => !readMatchers.excluded(relPath);
+  const { inTree, rawAllowed } = compileReadMatchers(src.include, src.exclude);
 
   return {
     id: src.id,
@@ -165,8 +164,14 @@ export function createSourceStore(src: Source, deps: SourceStoreDeps): SourceSto
     /** Route path: raw image bytes, confined + bounded; image-only enforced at the route. */
     async readRaw(relPath: string, signal?: AbortSignal): Promise<RawReadResult> {
       const root = requireRoot();
-      await requireExposed(root, relPath, notExcluded);
-      return readRawConfined(root, relPath, signal);
+      const realRel = await requireExposed(root, relPath, rawAllowed);
+      const raw = await readRawConfined(root, relPath, signal);
+      // The bytes must be the image both names promise: a `.tsx` or `.json` holding SVG text,
+      // or a `logo.png` linked to an `.svg`, is not served as an image.
+      const named = imageTypeForPath(relPath);
+      return named !== undefined && named === imageTypeForPath(realRel) && named === raw.contentType
+        ? raw
+        : { ...raw, contentType: "application/octet-stream" };
     },
 
     /** Route path: server-side name+content search over the confined tree, capped. */
@@ -177,14 +182,19 @@ export function createSourceStore(src: Source, deps: SourceStoreDeps): SourceSto
 }
 
 /**
- * Throw `PATH_NOT_FOUND` for a path the source does not expose, the answer a missing file gets,
- * so a read cannot tell an excluded file from an absent one. A path that escapes the root is
- * confined first and still answers `PATH_NOT_CONFINED`.
+ * Confine `relPath` and throw `PATH_NOT_FOUND` unless the source exposes it by both the path
+ * requested and the real path it opens (so a symlink cannot alias an excluded file in). That is
+ * the answer a missing file gets, so a read cannot tell an excluded file from an absent one. A
+ * path that escapes the root still answers `PATH_NOT_CONFINED`. Returns the real path, relative
+ * to the root.
  */
-async function requireExposed(root: string, relPath: string, exposed: (relPath: string) => boolean): Promise<void> {
-  if (exposed(relPath)) return;
-  await confinePath(root, relPath);
-  throw new SourceFailure("PATH_NOT_FOUND", undefined, { attemptedPath: relPath });
+async function requireExposed(root: string, relPath: string, exposed: (relPath: string) => boolean): Promise<string> {
+  const target = await confinePath(root, relPath);
+  const realRel = realRelative(await realpath(root), target);
+  if (!exposed(relPath) || !exposed(realRel)) {
+    throw new SourceFailure("PATH_NOT_FOUND", undefined, { attemptedPath: relPath });
+  }
+  return realRel;
 }
 
 // --- Raw (image) read — confined + bounded -----------------
@@ -255,6 +265,25 @@ function readBoundedBytes(absPath: string, signal?: AbortSignal): Promise<Uint8A
   });
 }
 
+/** How far into a file the SVG sniff looks for its root element. */
+const SVG_SNIFF_BYTES = 4096;
+
+/**
+ * Whether text is an SVG document: its root element is `<svg`, after only what may precede a
+ * root (a byte-order mark, whitespace, an XML declaration or processing instruction, comments,
+ * a doctype). An `<svg` anywhere else (inside HTML, a script, a JSON string) is not SVG.
+ */
+function isSvgDocument(head: string): boolean {
+  let rest = head.replace(/^\u00ef\u00bb\u00bf/, "");
+  for (;;) {
+    rest = rest.trimStart();
+    const prolog = /^(?:<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!doctype[^[>]*(?:\[[\s\S]*?\])?\s*>)/i.exec(rest);
+    if (prolog === null) break;
+    rest = rest.slice(prolog[0].length);
+  }
+  return /^<svg[\s>/]/i.test(rest);
+}
+
 /** Decode a byte window as ASCII for magic-string comparison (no allocation of the whole file). */
 function ascii(bytes: Uint8Array, start: number, end: number): string {
   let out = "";
@@ -285,8 +314,5 @@ function sniffImageType(b: Uint8Array): string | undefined {
   if (b.length >= 4 && b[0] === 0x00 && b[1] === 0x00 && b[2] === 0x01 && b[3] === 0x00) {
     return "image/x-icon";
   }
-  // SVG is text — look for an <svg root in the leading window (tolerating an XML prolog).
-  const head = ascii(b, 0, Math.min(b.length, 256)).toLowerCase();
-  if (head.includes("<svg")) return "image/svg+xml";
-  return undefined;
+  return isSvgDocument(ascii(b, 0, Math.min(b.length, SVG_SNIFF_BYTES))) ? "image/svg+xml" : undefined;
 }

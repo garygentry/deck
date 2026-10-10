@@ -1,6 +1,6 @@
-import { canonicalize } from "../../config/canonical.js";
-import type { DeckConfig } from "../../contract/index.js";
-import type { RuntimePages, RuntimePageSource } from "../../ui/runtime-pages.js";
+import { canonicalize } from "../../../apps/server/src/config/canonical.js";
+import type { DeckConfig } from "../../../apps/server/src/contract/index.js";
+import type { RuntimePages, RuntimePageSource } from "../../../apps/server/src/ui/runtime-pages.js";
 import type { RemoteDescribe } from "./describe.js";
 import { remotePagesOf } from "./pages.js";
 

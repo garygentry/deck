@@ -1,0 +1,10 @@
+{
+  "name": "@deck/module-http-json",
+  "version": "0.3.2",
+  "private": true,
+  "description": "deck's built-in http-json module: the `http-json` data source that polls a URL and serves its parsed JSON body.",
+  "type": "module",
+  "dependencies": {
+    "@deck/module-sdk": "workspace:*"
+  }
+}

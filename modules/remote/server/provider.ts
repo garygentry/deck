@@ -1,8 +1,8 @@
 import type { ProviderFetchContext, ProviderHealth, ProviderSpec } from "@deck/module-sdk";
 import { isRfc3339DateTime } from "@deck/schema";
 
-import { fetchJson, HttpJsonError, type HttpJsonConfig } from "../http-json/index.js";
-import type { InstanceRequest } from "../http-json/request-config.js";
+import { fetchJson, HttpJsonError, type HttpJsonConfig } from "../../http-json/server/index.js";
+import type { InstanceRequest } from "../../http-json/server/request-config.js";
 import { checkDescribe } from "./describe.js";
 import type { RemoteDirectory } from "./directory.js";
 

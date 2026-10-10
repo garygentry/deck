@@ -42,7 +42,7 @@
     { "id": "s-config", "path": "apps/server/src/config/{resolve-dir,load,canonical}.ts, packages/schema/src/merge.ts", "type": "config", "note": "Config dir resolution (--config / $DECK_CONFIG_DIR / ./config), lexical *.yaml layering (00-base before 10-overlay), YAML→merge→validate, canonicalization." },
     { "id": "s-validate", "path": "packages/schema/src/validate/**", "type": "api", "note": "Rule-based validator: identity, layers, provider-kinds, references, secrets, types, version. Findings + exit classification." },
     { "id": "s-api", "path": "apps/server/src/server/app.ts, modules/sources/server/route.ts, modules/actions/server/route.ts, apps/server/src/contract/{api,index}.ts", "type": "api", "note": "HTTP route table (/api/config, /api/providers[/:id], /api/health, /api/sources/:id/{tree,file,raw,search}, /api/actions*) and the typed @deck/server contract barrel consumed by the web app." },
-    { "id": "s-providers", "path": "apps/server/src/providers/**, modules/{link,http-health,docker,gatus,prometheus,alertmanager,snapshot,markdown-tree,file-tree}/server/**", "type": "api", "note": "11 provider kinds — alertmanager, docker, file-tree, gatus, http-health, http-json, link, markdown-tree, prometheus, remote, snapshot — plus registry (register/read/startScheduler/listHealth) and wiring (registerAllProviders)." },
+    { "id": "s-providers", "path": "apps/server/src/providers/**, modules/{link,http-health,docker,gatus,prometheus,alertmanager,snapshot,markdown-tree,file-tree,http-json,remote}/server/**", "type": "api", "note": "11 provider kinds — alertmanager, docker, file-tree, gatus, http-health, http-json, link, markdown-tree, prometheus, remote, snapshot — plus registry (register/read/startScheduler/listHealth) and wiring (registerAllProviders)." },
     { "id": "s-drift", "path": "packages/drift/src/**", "type": "api", "note": "Server-derived drift/coverage projection: deriveDriftProjection, filters, evidence, ordering, coverage rows/counts, severities, waiver state." },
     { "id": "s-sources", "path": "modules/sources/server/**", "type": "api", "note": "Read-only source browsing: tree/file/raw/search, path confinement (confine.ts), git acquisition + on-disk cache, capability gating (SOURCE_NOT_FOUND when off)." },
     { "id": "s-llm-usage", "path": "modules/llm-usage/server/**", "type": "api", "note": "LLM usage collector: Claude statusLine/OAuth/transcripts and Codex app-server/rollout sources, adaptive cadence with the 2-minute OAuth floor, /api/llm-usage routes and the ingest bearer gate."},
@@ -62,7 +62,7 @@
     { "id": "s-ui-manifest", "path": "apps/server/src/ui/**, packages/contract/src/modules/**, apps/server/test/golden/ui/**", "type": "api", "note": "UI manifest resolution (GET /api/ui): extension tree, ui config overrides, config pages, widget types, status maps, hot reload (live.ts), sidecar pages; built-ins' shared UI contributions and the core slots and widget types." },
     { "id": "s-web-modules", "path": "apps/web/src/{registry,runtime,sdk,data}/**, apps/web/src/shell/config-page/**, apps/web/src/features/core-widgets/**", "type": "entrypoint", "note": "Web half registration (registerWebModule), runtime web halves over the import map, @deck/sdk, the TanStack Query data layer, config pages and the core widget renderers." },
     { "id": "s-extension-examples", "path": "examples/modules/**, examples/sidecars/**, examples/dashboard/**, packages/sdk/**", "type": "config", "note": "The runtime module template (hello) and example (maintenance), the NUT UPS sidecar, the no-code dashboard overlay, and the @deck/sdk build-time package (types, Tailwind preset, deck-module lint)." },
-    { "id": "s-remote", "path": "apps/server/src/providers/remote/**, packages/schema/schema/remote-describe.schema.json", "type": "api", "note": "The remote provider protocol v1: data and describe endpoints, describe validation (widget allowlist, bounds, link and markdown policy), sidecar pages and findings." },
+    { "id": "s-remote", "path": "modules/remote/server/**, packages/schema/schema/remote-describe.schema.json", "type": "api", "note": "The remote provider protocol v1: data and describe endpoints, describe validation (widget allowlist, bounds, link and markdown policy), sidecar pages and findings." },
     { "id": "s-charter", "path": "specs/deck/charter/01-decisions.md, specs/deck/**/.rauf/forge-decisions.json", "type": "history", "note": "Design decisions recorded during the forge pipeline — the why behind runtime, config layering, and the two-document model. Provenance for proposed ADRs; not user docs." }
   ],
   "documents": [
@@ -643,7 +643,7 @@
       "sourceRefs": ["s-remote"],
       "status": "existing",
       "priority": 3,
-      "verification": "Written against apps/server/src/providers/remote and remote-describe.schema.json."
+      "verification": "Written against modules/remote/server and remote-describe.schema.json."
     },
     {
       "id": "r8",

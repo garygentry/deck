@@ -482,7 +482,7 @@ manifest lists it under the module's `web` (`script`, optional `styles`).
 ### Sidecar pages
 
 A `remote` integration's page (`page:remote/<id>`) is not a component either. The server
-builds it at runtime from the sidecar's describe document (`providers/remote/pages.ts`) as a
+builds it at runtime from the sidecar's describe document (`modules/remote/server/pages.ts`) as a
 config page of module `remote`. `ConfigPage` renders it like any other: one section of the
 sidecar's widgets, each reading only that integration, then its links as a `core/link-tiles`
 widget. Until a describe succeeds, it shows a fixed placeholder. Markdown in a sidecar's widgets

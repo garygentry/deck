@@ -7,7 +7,7 @@
  */
 import type { EnvReader, ProviderFetchContext } from "@deck/module-sdk";
 
-import { POLL_DEFAULTS } from "../../contract/index.js";
+import { POLL_DEFAULTS } from "../../../apps/server/src/contract/index.js";
 import { credentialBodyKeys, credentialHeaderNames, credentialQueryParams } from "./literal.js";
 
 /** How the credential `credentialEnv` names is sent. Without one, it is the raw `Authorization` value. */

@@ -8,9 +8,9 @@ import { afterAll, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
 import { load } from "../src/config/load.js";
-import { checkDescribe } from "../src/providers/remote/describe.js";
-import { RemoteDirectory } from "../src/providers/remote/directory.js";
-import { RemoteProvider } from "../src/providers/remote/provider.js";
+import { checkDescribe } from "../../../modules/remote/server/describe.js";
+import { RemoteDirectory } from "../../../modules/remote/server/directory.js";
+import { RemoteProvider } from "../../../modules/remote/server/provider.js";
 import { makeConfigDir } from "./util/tmp-config.js";
 
 const EXAMPLE = fileURLToPath(new URL("../../../examples/sidecars/nut-ups/", import.meta.url));

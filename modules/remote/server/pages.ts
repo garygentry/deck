@@ -1,7 +1,7 @@
 import type { JsonValue } from "@deck/module-sdk";
 
-import type { ConfigSection, ConfigWidget } from "../../ui/config-pages.js";
-import type { RuntimePages } from "../../ui/runtime-pages.js";
+import type { ConfigSection, ConfigWidget } from "../../../apps/server/src/ui/config-pages.js";
+import type { RuntimePages } from "../../../apps/server/src/ui/runtime-pages.js";
 import { REMOTE_LINKS_WIDGET } from "./describe.js";
 import type { RemoteContribution } from "./directory.js";
 

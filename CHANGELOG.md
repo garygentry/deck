@@ -6,6 +6,204 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+The extensibility work: deck becomes a small kernel plus modules on one public contract, the UI
+becomes a config-driven tree of extensions, and there are supported ways to add what deck does
+not ship. It is drafted as two releases:
+
+- **0.4.0** (breaking): the module contract, schemaVersion 2 with `deck config migrate`,
+  config-driven UI, dashboards and widgets (#15–#30, #40, #41, #43, #44). It is the history up
+  to the merge of #44.
+- **0.5.0**: the external extension tiers (sidecars, runtime modules, the module template), the
+  browser security pass, and the move of the built-in modules into `modules/<id>/` (#39,
+  #45–#49, #55–#69).
+
+Whether these ship as two tags or as one release is the maintainer's call. For one release,
+merge the two sections, including both Migration sections: the framing changes in 0.5.0's
+Migration are breaking too.
+
+### 0.4.0
+
+The configuration format changes: deck accepts only `schemaVersion: 2`. Run
+`deck config migrate` on your config directory before upgrading (see Migration below). The HTTP
+API paths of 0.3.2 keep working.
+
+#### Added
+
+- **Modules.** Every feature is now a module on one contract (`@deck/module-sdk`): it declares
+  its config section, provider kinds, routes, health, findings and UI contributions in a
+  manifest, and the kernel names no feature. Each module's routes are served under
+  `/api/m/<id>`, with the 0.3.2 paths (`/api/actions`, `/api/sources`, `/api/llm-usage`) kept as
+  aliases with identical responses. `/api/health` gains `modules`, every module's state by id;
+  its other fields are unchanged.
+- **`deck config migrate <dir> [--dry-run]`** rewrites a schemaVersion 1 config directory as
+  version 2, layer by layer and in place. It keeps comments, formatting and line endings,
+  migrates a symlinked layer at its target, writes nothing unless every layer migrates, and is a
+  no-op on a directory that is already current. `--dry-run` prints a unified diff per layer and
+  writes nothing.
+- **`deck validate --advisory-disabled`** reports problems in a switched-off module's section as
+  info `MODULE_SECTION_DISABLED` instead of at their real severity.
+- **`GET /api/ui`**, the resolved UI manifest the web shell renders from: brand, home page,
+  modules, nav groups and entries, pages, slots, extensions, providers and widget types. It is
+  sent with an `ETag`, and its `findings` report problems that never stop the UI from rendering
+  (`UI_UNKNOWN_EXTENSION`, `UI_UNKNOWN_SLOT`, `UI_HOME_UNKNOWN` and others).
+- **The `ui` config section** (overlay layer only). See the `ui` section of
+  `docs/reference/estate-config.md`.
+  - `ui.brand`: `title`, `icon` and `logoUrl` for the sidebar, the browser tab and the page
+    title. Without it the title is `estate.name` (#25).
+  - `ui.theme`: the operator's default `mode`; four presets beyond `teal` (`slate`, `copper`,
+    `rose`, `high-contrast`), contrast-tested in light and dark; `density` (`compact`,
+    `comfortable`); and `radius` (`none`, `sm`, `md`, `lg`). A viewer's own light/dark choice
+    still wins (#25, #26).
+  - `ui.home`: any page id can be the page `/` renders. The default is still the portal (#25).
+  - `ui.nav`: group order, labels and icons, config-defined groups, and external links and
+    separators (#27).
+  - `ui.extensions`: switch off, move or re-order any extension, page, nav entry or widget by
+    id (#27).
+- **`ui` hot reload.** deck watches its config directory. An edit confined to `ui` applies
+  without a restart; an invalid edit keeps the last good config and shows `UI_CONFIG_INVALID` in
+  the shell; an edit outside `ui` is reported as `UI_RESTART_REQUIRED` (#28).
+- **Dashboards without code** (`ui.pages`): pages of sections (1–4 columns) of widgets, each
+  reading a provider, with an optional server-side JMESPath `select`. Widget options are
+  validated with the config, so a bad option stops boot at its path (#30). See
+  `docs/guides/build-a-dashboard.md` and `examples/dashboard/`.
+- **Widget types:** `core/stat`, `core/stat-grid`, `core/meter`, `core/key-value`, `core/list`,
+  `core/table`, `core/status-grid`, `core/link-tiles`, `core/markdown`, `core/health-pills` and
+  `core/json` (#30, #41), plus `portal/groups`, the portal's groups and filters as a widget (#43).
+  See `docs/reference/widget-types.md`.
+- **`ui.statusMaps`**: named value maps and numeric threshold rules that turn widget values into
+  status tones (#41).
+- **`core/embed`** shows another site's page in a sandboxed frame. It needs
+  `ui.allowUnsafeEmbeds: true`; without it, `UI_EMBED_DISALLOWED` stops boot (#44).
+- **`http-json` data source**: an integration that polls any HTTP API answering JSON, with the
+  credential read only from the environment variable `credentialEnv` names, manual redirects that
+  drop the credential when they leave the configured origin, a size cap, and classified failures
+  (#29).
+- **Snapshot content-age metrics** on `/metrics`: `deck_snapshot_generated_age_seconds` and
+  `deck_snapshot_generated_timestamp_seconds`, from the snapshot's `generatedAt` (#24).
+
+#### Changed
+
+- **The portal is a dashboard.** Its page is `page:portal/overview` at `/portal`, and `/` still
+  renders it while it is the home page. Card status now works for any status-capable binding:
+  `http-health` bindings drive live portal cards, as `docker` and `gatus` ones do (#43).
+- **Navigation follows the modules that run.** Pages of a switched-off module are not listed or
+  routed; opening one directly shows "module not enabled", naming the setting that turns it on
+  (for example `DECK_ACTIONS_ENABLED=true`) (#15).
+- **`deck validate`** checks the section of a module that is switched off where it runs (actions
+  without `DECK_ACTIONS_ENABLED`, say) at its real severity, as boot would once the module is on,
+  and adds an info `MODULE_SECTION_DISABLED`. A binding or integration of a provider kind whose
+  module is off is `PROVIDER_KIND_DISABLED`: a warning in `deck validate`, info at boot. A
+  binding of a kind that takes none (`prometheus`,
+  `alertmanager`, `snapshot`, `http-json`) is reported as `PROVIDER_BINDING_UNSUPPORTED` (info)
+  instead of being ignored silently. A `modules.<id>` section for a module deck does not have is
+  `MODULE_UNKNOWN`.
+- **Runtime image:** Bun 1.4.2 (was 1.3.9), pinned in `.bun-version` for the image and CI
+  (#40).
+
+#### Migration
+
+1. **Migrate the config to schemaVersion 2.** deck 0.4.0 refuses a version 1 config with
+   `CONFIG_MIGRATION_REQUIRED` (exit 2), at boot and in `deck validate`. Preview, apply, then
+   validate:
+
+   ```sh
+   deck config migrate <config dir> --dry-run
+   deck config migrate <config dir>
+   deck validate <config dir>
+   ```
+
+   From a checkout, `deck` is `bun apps/server/src/cli/deck.ts`. The keys move as follows:
+   `groups` → `modules.portal.groups`, `actions` → `modules.actions.actions`, `llmUsage` →
+   `modules.llm-usage`, `agents` is removed (it was reserved and unused; a warning is printed if
+   it had entries), and `schemaVersion` becomes `2`. Snapshots are unaffected and stay at their
+   own `schemaVersion: 1`. Migrate the config before re-pinning the image.
+2. **`DECK_DATA_DIR` must be an absolute path.** With governed actions on, a relative path now
+   fails boot. The audit store stays at `$DECK_DATA_DIR/actions`, so existing history is kept.
+3. **Image:** the runtime is Bun 1.4.2. Nothing to change unless you run deck from source on an
+   older Bun.
+
+No finding code or `DECK_*` environment variable of 0.3.2 is removed or renamed, and the HTTP
+API paths are unchanged.
+
+### 0.5.0
+
+Graded ways to extend deck beyond config: a sidecar in any language, a runtime module dropped
+into a directory, and a template to start one from. Browsers now get an enforced
+Content-Security-Policy, and framing deck from another origin is refused unless configured (see
+Migration below).
+
+#### Added
+
+- **Remote sidecars** (`remote` integration kind, protocol v1): deck polls
+  `<url>/deck/v1/data` and asks `<url>/deck/v1/describe` for the declarative widgets, links and
+  nav the sidecar contributes, validated against the same widget schemas and shown on the
+  sidecar's own page. Each sidecar has its own health entry. See
+  `docs/reference/remote-provider-protocol.md`, `docs/guides/write-a-sidecar-module.md` and the
+  NUT UPS example in `examples/sidecars/nut-ups/` (#45, #46).
+- **Runtime modules** (`DECK_MODULES_DIR`): a directory of modules, each with a
+  `deck-module.json`, loaded under the same lifecycle as the built-ins. Off unless
+  `DECK_MODULES_ENABLED=true`; while it is off deck reads their manifests and imports no code. A
+  module that fails to load is disabled with `MODULE_LOAD_FAILED` and boot continues, unless its
+  config section is present and invalid (#39).
+- **Integrity pins** (`moduleIntegrity.<id>`) and **`deck module digest <dir>`**, which prints
+  the `sha256-…` pin of a module directory. A module that does not match its pin is not
+  imported (#39).
+- **Web halves of runtime modules**, served at `/modules/<id>/web.js` and `web.css` and loaded
+  through an import map. They build against **`@deck/sdk`**, the curated `@/ui` patterns,
+  `Icon` (including module-contributed SVG icons), tones and data hooks. An incompatible or
+  failing module shows a tile instead of breaking the page (#47).
+- **Module template** in `examples/modules/hello/`, with a Vite library build, the
+  `@deck/sdk/tailwind` preset, and **`deck-module lint`**, which checks a module against deck's
+  UI rules (#49). See `docs/guides/runtime-modules.md` and `docs/guides/write-a-module.md`.
+- **`ui.frameAncestors`** and **`ui.frameSources`** (see Migration) (#48).
+- Architecture decisions ADR-005 (module contract and kernel), ADR-006 (config-driven UI) and
+  ADR-007 (extension tiers and trust), the explanation "Kernel and modules", and references for
+  the module manifest and widget types (#56).
+
+#### Changed
+
+- **Browser security policy** (#48): the web shell is served with an enforced
+  Content-Security-Policy (scripts from deck's origin with a per-response nonce, `fetch` to deck
+  only, frames limited to the `core/embed` origins in the config), and every response carries
+  `frame-ancestors` and `X-Content-Type-Options: nosniff`, plus `X-Frame-Options: SAMEORIGIN`
+  unless `ui.frameAncestors` lists other origins. `docs/security.md` gains the trust model for
+  each extension tier.
+- **Reserved provider ids:** an integration, source or binding that takes a fixed provider id
+  registered by another kind (`prometheus` beside a `prometheus` integration, or `snapshot` while
+  `DECK_SNAPSHOT_SOURCE` is set) is reported by `deck validate` as `PROVIDER_ID_RESERVED`
+  (error), since boot would fail on it with `PROVIDER_DUPLICATE_ID` (#48).
+- A built-in module whose manifest or schema is unusable now stops boot
+  (`MODULE_MANIFEST_INVALID`) instead of being switched off silently (#48).
+- A `remote` sidecar can no longer redirect deck to another origin (#48).
+- The built-in modules move into `modules/<id>/` workspace packages, each with its schema,
+  server half, web half and tests. Behaviour is unchanged (#55, #57–#59, #63–#66, #68, #69).
+
+#### Migration
+
+1. **Framing deck from another origin is refused by default.** A page on another origin that
+   shows deck in a frame (a Home Assistant panel, say) stops showing it. List that origin in the
+   overlay layer:
+
+   ```yaml
+   ui:
+     frameAncestors: [https://ha.example.net]
+   ```
+
+2. **Embeds that redirect to another origin need `ui.frameSources`.** With
+   `ui.allowUnsafeEmbeds`, a framed page may load only from its embed URL's own origin. One that
+   redirects elsewhere (single sign-on or forward-auth such as Authelia or Authentik, or an
+   `http`→`https` redirect that also changes the port) needs that origin listed. A plain upgrade
+   to `https` on the default port needs nothing.
+
+   ```yaml
+   ui:
+     frameSources: [https://auth.example.net]
+   ```
+
+3. **Scripts injected into deck's page are refused.** The shell's Content-Security-Policy
+   allows only deck's own scripts, so a script a reverse proxy injects into deck's HTML no longer
+   runs.
+
 ## [0.3.2] - 2026-09-25
 
 The first published image with the 0.3.1 fixes: the 0.3.1 release build crashed under QEMU,

@@ -119,8 +119,17 @@ async function getFile(context: Context, deps: SourceRoutesDeps): Promise<Respon
 }
 
 /**
+ * The policy every raw asset is served under. An SVG is a document that can hold script, and
+ * opened by its URL it would run as deck, on deck's origin. Under `sandbox` it runs in an opaque
+ * origin with scripts off, and `default-src 'none'` stops it fetching anything; its own inline
+ * styles still apply. An `<img>` that embeds the asset is unaffected: images never run script.
+ */
+export const RAW_ASSET_POLICY = "sandbox; default-src 'none'; style-src 'unsafe-inline'";
+
+/**
  * GET /api/sources/:id/raw?path=<rel> → 200 image bytes for markdown-relative images.
- * Confined + image-only + nosniff. Non-image paths are refused 400 (REQ-RO-01, §3.11).
+ * Confined + image-only + nosniff, under {@link RAW_ASSET_POLICY}. Non-image paths are refused
+ * 400 (REQ-RO-01, §3.11).
  */
 async function getRaw(context: Context, deps: SourceRoutesDeps): Promise<Response> {
   const store = resolveStore(context, deps);
@@ -149,6 +158,7 @@ async function getRaw(context: Context, deps: SourceRoutesDeps): Promise<Respons
       headers: {
         "Content-Type": raw.contentType,
         "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": RAW_ASSET_POLICY,
       },
     });
   });

@@ -82,6 +82,11 @@ async function main(): Promise<void> {
   // run on shutdown alongside the runtime owner's cleanup.
   const docsFixture = materializeSourceFixture("markdown-tree");
   const configsFixture = materializeSourceFixture("file-tree");
+  // A spec booting its own API may add files to the docs source (a JSON object of relative path
+  // to content in DECK_E2E_DOCS_FILES), so the shared fixture and its baselines stay as they are.
+  for (const [relPath, content] of Object.entries(JSON.parse(process.env.DECK_E2E_DOCS_FILES ?? "{}") as Record<string, string>)) {
+    await writeFile(join(docsFixture.root, relPath), content);
+  }
   await writeFile(
     join(runtime.configDir, "zzz-sources.yaml"),
     JSON.stringify({

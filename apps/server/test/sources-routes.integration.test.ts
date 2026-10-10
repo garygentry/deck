@@ -13,8 +13,8 @@ import type { Hono } from "hono";
 
 import { stopScheduler } from "../src/providers/registry.js";
 import { sourcesModule } from "../../../modules/sources/server/module.js";
-import { registerSourceRoutes, type SourceRoutesDeps } from "../../../modules/sources/server/route.js";
-import { materializeFixture } from "./fixtures/sources-estate/materialize.js";
+import { RAW_ASSET_POLICY, registerSourceRoutes, type SourceRoutesDeps } from "../../../modules/sources/server/route.js";
+import { ACTIVE_SVG, materializeFixture } from "./fixtures/sources-estate/materialize.js";
 import { sourcesApp } from "./util/sources-module.js";
 
 const cleanups: Array<() => void> = [];
@@ -113,6 +113,64 @@ describe("source routes — read surface", () => {
     expect(body.sourceId).toBe("docs");
     expect(body.matches.length).toBeGreaterThan(0);
     expect(body.matches.some((m) => m.path === "guide.md")).toBe(true);
+  });
+});
+
+describe("source routes — raw assets are served inert", () => {
+  it("every raw image carries the sandbox policy, so an SVG cannot run script as deck", async () => {
+    const { app } = await buildApp(true);
+    expect(RAW_ASSET_POLICY).toBe("sandbox; default-src 'none'; style-src 'unsafe-inline'");
+    for (const [path, type] of [["img/active.svg", "image/svg+xml"], ["img/logo.png", "image/png"]] as const) {
+      const res = await app.request(`/api/sources/docs/raw?path=${path}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toBe(type);
+      expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+      // The framing policy every response carries is a second policy beside it (both apply).
+      expect(res.headers.get("Content-Security-Policy")?.split(", ")).toContain(RAW_ASSET_POLICY);
+    }
+    // The bytes are served as committed (the policy, not a rewrite, makes the script inert).
+    const svg = await app.request("/api/sources/docs/raw?path=img/active.svg");
+    expect(await svg.text()).toBe(ACTIVE_SVG);
+  });
+});
+
+describe("source routes — reads honour include/exclude", () => {
+  it("lists only the files include/exclude keep", async () => {
+    const { app } = await buildApp(true);
+    const manifest = (await (await app.request("/api/sources/curated/tree")).json()) as { fileCount: number };
+    expect(manifest.fileCount).toBe(1); // index.md
+  });
+
+  it("a file in the tree reads; one left out by include or exclude is 404 PATH_NOT_FOUND", async () => {
+    const { app } = await buildApp(true);
+    expect((await app.request("/api/sources/curated/file?path=index.md")).status).toBe(200);
+    // Spelled any way, an excluded or not-included path reads like a missing file.
+    for (const path of ["private/secret.md", "./private/secret.md", "private//secret.md", "notes.txt", "img/logo.png"]) {
+      const res = await app.request(`/api/sources/curated/file?path=${encodeURIComponent(path)}`);
+      expect(res.status, path).toBe(404);
+      const body = (await res.json()) as { error: string; code: string };
+      expect(body).toEqual(await (await app.request("/api/sources/curated/file?path=missing.md")).json());
+      expect(body.code).toBe("PATH_NOT_FOUND");
+    }
+  });
+
+  it("a raw image honours exclude, and an include that lists documents still serves their images", async () => {
+    const { app } = await buildApp(true);
+    expect((await app.request("/api/sources/curated/raw?path=img/logo.png")).status).toBe(200);
+    for (const path of ["private/photo.png", "./private/photo.png", "private//photo.png"]) {
+      const res = await app.request(`/api/sources/curated/raw?path=${encodeURIComponent(path)}`);
+      expect(res.status, path).toBe(404);
+      expect(((await res.json()) as { code: string }).code).toBe("PATH_NOT_FOUND");
+    }
+  });
+
+  it("a traversal outside the tree still answers 400 PATH_NOT_CONFINED", async () => {
+    const { app } = await buildApp(true);
+    for (const route of ["file", "raw"]) {
+      const res = await app.request(`/api/sources/curated/${route}?path=../docs/index.md`);
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { code: string }).code).toBe("PATH_NOT_CONFINED");
+    }
   });
 });
 

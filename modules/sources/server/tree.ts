@@ -178,6 +178,30 @@ function isRenderable(m: Matchers, posixRel: string): boolean {
   return m.included(posixRel) && !m.excluded(posixRel);
 }
 
+/** What a direct read of one path may return, by the source's include/exclude globs. */
+export interface ReadMatchers {
+  /** True ⇒ the file is in the tree: it passes include and is not excluded. */
+  readonly inTree: (relPath: string) => boolean;
+  /** True ⇒ the path matches an exclude glob. */
+  readonly excluded: (relPath: string) => boolean;
+}
+
+/**
+ * The include/exclude matchers the tree walk applies, for a read by path: a request names a
+ * path as it likes (`./a.md`, `docs//a.md`), so it is first reduced to the walk's own spelling
+ * (no empty or `.` segments) and only then matched, and a respelling cannot slip past a glob.
+ * `..` is left in place: confinement rejects it.
+ */
+export function compileReadMatchers(include?: readonly string[], exclude?: readonly string[]): ReadMatchers {
+  const m = compileMatchers(include, exclude);
+  const walkSpelling = (relPath: string): string =>
+    relPath.split("/").filter((segment) => segment !== "" && segment !== ".").join("/");
+  return {
+    inTree: (relPath) => isRenderable(m, walkSpelling(relPath)),
+    excluded: (relPath) => m.excluded(walkSpelling(relPath)),
+  };
+}
+
 // --- The confined walk (REQ-SEC-02, REQ-PERF-02) --------------------------------------
 
 /**

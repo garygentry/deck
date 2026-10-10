@@ -66,6 +66,10 @@ sources:
 ```
 
 With no `include`, every file is included; with no `exclude`, none is excluded.
+The same globs apply to reads by path: a file left out of the tree reads as `404`
+`PATH_NOT_FOUND`, the answer a missing file gets. An image a document embeds is the exception
+for `include` only, so an `include` that lists only Markdown still shows its images; an
+`exclude` hides images too.
 Dotfiles are matched verbatim and are not hidden by default — curating what a source exposes
 is your job, so exclude anything sensitive.
 
@@ -113,7 +117,9 @@ Deck suppresses the body in two cases and shows a placeholder instead:
 
 **Images.**
 Relative images referenced from rendered Markdown load through the `raw` route, which serves
-image bytes only — any non-image path is refused.
+image bytes only — any non-image path is refused. Every image is served under a sandboxing
+Content-Security-Policy, so an SVG holding script, opened by its URL, runs no script on
+deck's origin; in a document it renders like any other image.
 
 **Search.**
 The search box queries one source at a time.

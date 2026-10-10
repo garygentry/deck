@@ -19,6 +19,7 @@ import { confinePath } from "./confine.js";
 import { SourceFailure, normalizeSourceFailure } from "./errors.js";
 import {
   buildManifest,
+  compileReadMatchers,
   readFile as readConfinedFile,
   searchTree,
   MAX_FILE_BYTES,
@@ -120,6 +121,16 @@ export function createSourceStore(src: Source, deps: SourceStoreDeps): SourceSto
     ...(src.exclude !== undefined ? { exclude: src.exclude } : {}),
   };
 
+  /**
+   * A read by path answers only for what the source exposes: a file outside the tree reads as
+   * not found, never by a direct URL. An image is read for the documents that embed it, and an
+   * `include` that lists only documents (markdown files, say) leaves it out of the tree, so the
+   * raw read honours `exclude` alone.
+   */
+  const readMatchers = compileReadMatchers(src.include, src.exclude);
+  const inTree = readMatchers.inTree;
+  const notExcluded = (relPath: string): boolean => !readMatchers.excluded(relPath);
+
   return {
     id: src.id,
     kind: src.kind as SourceKind,
@@ -146,12 +157,16 @@ export function createSourceStore(src: Source, deps: SourceStoreDeps): SourceSto
 
     /** Route path (05): one confined file with the 1 MiB cap + binary flag enforced in 03. */
     async readFile(relPath: string, signal?: AbortSignal): Promise<FileReadResult> {
-      return readConfinedFile(requireRoot(), relPath, signal);
+      const root = requireRoot();
+      await requireExposed(root, relPath, inTree);
+      return readConfinedFile(root, relPath, signal);
     },
 
     /** Route path (05): raw image bytes, confined + bounded; image-only enforced at the route. */
     async readRaw(relPath: string, signal?: AbortSignal): Promise<RawReadResult> {
-      return readRawConfined(requireRoot(), relPath, signal);
+      const root = requireRoot();
+      await requireExposed(root, relPath, notExcluded);
+      return readRawConfined(root, relPath, signal);
     },
 
     /** Route path (05): server-side name+content search over the confined tree, capped (03). */
@@ -159,6 +174,17 @@ export function createSourceStore(src: Source, deps: SourceStoreDeps): SourceSto
       return searchTree(requireRoot(), baseOpts, query, signal);
     },
   };
+}
+
+/**
+ * Throw `PATH_NOT_FOUND` for a path the source does not expose, the answer a missing file gets,
+ * so a read cannot tell an excluded file from an absent one. A path that escapes the root is
+ * confined first and still answers `PATH_NOT_CONFINED`.
+ */
+async function requireExposed(root: string, relPath: string, exposed: (relPath: string) => boolean): Promise<void> {
+  if (exposed(relPath)) return;
+  await confinePath(root, relPath);
+  throw new SourceFailure("PATH_NOT_FOUND", undefined, { attemptedPath: relPath });
 }
 
 // --- Raw (image) read — confined + bounded (REQ-DOCS-05, REQ-PERF-02) -----------------

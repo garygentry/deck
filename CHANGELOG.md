@@ -25,7 +25,7 @@ Migration are breaking too.
 
 The configuration format changes: deck accepts only `schemaVersion: 2`. Run
 `deck config migrate` on your config directory before upgrading (see Migration below). The HTTP
-API paths of 0.3.2 keep working.
+API paths of 0.3.2 keep working; `/api/config` returns the config in its new shape.
 
 #### Added
 
@@ -73,11 +73,13 @@ API paths of 0.3.2 keep working.
 - **`ui.statusMaps`**: named value maps and numeric threshold rules that turn widget values into
   status tones (#41).
 - **`core/embed`** shows another site's page in a sandboxed frame. It needs
-  `ui.allowUnsafeEmbeds: true`; without it, `UI_EMBED_DISALLOWED` stops boot (#44).
+  `ui.allowUnsafeEmbeds: true`; without it the widget frames nothing and says embeds are off,
+  and `deck validate` notes `UI_EMBED_DISALLOWED` (info). The gate takes effect on hot reload
+  (#44).
 - **`http-json` data source**: an integration that polls any HTTP API answering JSON, with the
-  credential read only from the environment variable `credentialEnv` names, manual redirects that
-  drop the credential when they leave the configured origin, a size cap, and classified failures
-  (#29).
+  credential read only from the environment variable `credentialEnv` names, a size cap, and
+  classified failures. An authenticated request never leaves its configured origin: a
+  cross-origin redirect fails the poll (#29).
 - **Snapshot content-age metrics** on `/metrics`: `deck_snapshot_generated_age_seconds` and
   `deck_snapshot_generated_timestamp_seconds`, from the snapshot's `generatedAt` (#24).
 
@@ -89,9 +91,12 @@ API paths of 0.3.2 keep working.
 - **Navigation follows the modules that run.** Pages of a switched-off module are not listed or
   routed; opening one directly shows "module not enabled", naming the setting that turns it on
   (for example `DECK_ACTIONS_ENABLED=true`) (#15).
-- **`deck validate`** checks the section of a module that is switched off where it runs (actions
-  without `DECK_ACTIONS_ENABLED`, say) at its real severity, as boot would once the module is on,
-  and adds an info `MODULE_SECTION_DISABLED`. A binding or integration of a provider kind whose
+- **`GET /api/config`** returns the merged config in the schemaVersion 2 shape: `groups`,
+  `actions` and `llmUsage` are under `modules.portal.groups`, `modules.actions.actions` and
+  `modules.llm-usage`, and `agents` is gone. A script that reads those keys needs the new paths.
+- **`deck validate`** notes a section of a module that is switched off where it runs with an info
+  `MODULE_SECTION_DISABLED`; `--advisory-disabled` turns that section's own problems into info as
+  well. A binding or integration of a provider kind whose
   module is off is `PROVIDER_KIND_DISABLED`: a warning in `deck validate`, info at boot. A
   binding of a kind that takes none (`prometheus`,
   `alertmanager`, `snapshot`, `http-json`) is reported as `PROVIDER_BINDING_UNSUPPORTED` (info)
@@ -112,18 +117,49 @@ API paths of 0.3.2 keep working.
    deck validate <config dir>
    ```
 
-   From a checkout, `deck` is `bun apps/server/src/cli/deck.ts`. The keys move as follows:
+   From a checkout, `deck` is `bun apps/server/src/cli/deck.ts`; for an image deployment see the
+   upgrade checklist below. The keys move as follows:
    `groups` → `modules.portal.groups`, `actions` → `modules.actions.actions`, `llmUsage` →
    `modules.llm-usage`, `agents` is removed (it was reserved and unused; a warning is printed if
    it had entries), and `schemaVersion` becomes `2`. Snapshots are unaffected and stay at their
-   own `schemaVersion: 1`. Migrate the config before re-pinning the image.
-2. **`DECK_DATA_DIR` must be an absolute path.** With governed actions on, a relative path now
+   own `schemaVersion: 1`. `GET /api/config` returns the new shape too.
+2. **Give every provider its own id.** Integration, source and binding ids share one provider-id
+   space, and an id used in two of them, or by two bindings, is the new `PROVIDER_ID_SHARED`
+   warning. Rename one and update what refers to it. (0.5.0's `PROVIDER_ID_RESERVED` is a
+   different check: an id taken from a kind's fixed provider id.)
+3. **Move credentials out of deck's own variables.** A `credentialEnv` that names a deck
+   deployment setting (`DECK_CONFIG_DIR`, `DECK_DATA_DIR`, `DECK_PORT` and the like) or a variable
+   another module owns (`DECK_SNAPSHOT_SOURCE`) is refused: deck does not read it, so the
+   credential is not sent, and `deck validate` reports `MODULE_CREDENTIAL_ENV_REFUSED` (warning).
+   Put the secret in a variable of its own and name that.
+
+   Like every warning, both fail `deck validate` (exit 1). Boot logs them and carries on, unless
+   two declarations sharing an id both register a provider (`PROVIDER_DUPLICATE_ID`).
+4. **`DECK_DATA_DIR` must be an absolute path.** With governed actions on, a relative path now
    fails boot. The audit store stays at `$DECK_DATA_DIR/actions`, so existing history is kept.
-3. **Image:** the runtime is Bun 1.4.2. Nothing to change unless you run deck from source on an
+5. **Image:** the runtime is Bun 1.4.2. Nothing to change unless you run deck from source on an
    older Bun.
 
 No finding code or `DECK_*` environment variable of 0.3.2 is removed or renamed, and the HTTP
-API paths are unchanged.
+API paths are unchanged (the `/api/config` body is the new shape).
+
+**Upgrade checklist for an image deployment.** 0.3.2 cannot boot a schemaVersion 2 config, and
+0.4.0 cannot boot a version 1 config, so migrate and re-pin together. The 0.4.0 image carries the
+CLI at `/app/apps/server/src/cli/deck.ts`; run it with the config directory mounted **writable**
+(the deployment mounts it read-only):
+
+```sh
+cp -a /path/to/your/estate /path/to/your/estate.v1-backup     # 1. back up every layer
+deck_cli() { docker run --rm -v /path/to/your/estate:/config --entrypoint bun \
+  ghcr.io/garygentry/deck:0.4.0 /app/apps/server/src/cli/deck.ts "$@"; }
+deck_cli config migrate /config --dry-run                     # 2. review the diff
+deck_cli config migrate /config                               # 3. apply
+deck_cli validate /config                                     # 4. expect exit 0
+```
+
+Give `deck_cli validate` the same `-e` settings as the deployment (`DECK_SNAPSHOT_SOURCE`, say),
+since some checks read them. Then re-pin the deployment to `0.4.0` straight away and check
+`/api/health`. To roll back, restore the backup over the config directory and re-pin `0.3.2`.
 
 ### 0.5.0
 
@@ -200,9 +236,15 @@ Migration below).
      frameSources: [https://auth.example.net]
    ```
 
-3. **Scripts injected into deck's page are refused.** The shell's Content-Security-Policy
-   allows only deck's own scripts, so a script a reverse proxy injects into deck's HTML no longer
-   runs.
+3. **Injected inline and cross-origin scripts no longer run.** The shell's
+   Content-Security-Policy allows scripts from deck's origin and inline scripts carrying the
+   response's nonce. An inline script a reverse proxy injects into deck's HTML (it has no nonce),
+   or a script from another origin, is refused. A script tag pointing at a path on deck's own
+   origin still runs.
+4. **Some embed URLs cannot be framed.** While embeds are on, an embed URL whose origin the
+   Content-Security-Policy cannot name (an IPv6 literal, or a hostname with `_`) is
+   `UI_EMBED_NOT_FRAMEABLE` (warning), and the widget says it can't be embedded. `frameSources`
+   does not help: give the service a DNS-style hostname, or link to it instead.
 
 ## [0.3.2] - 2026-09-25
 

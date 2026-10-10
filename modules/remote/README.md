@@ -16,7 +16,9 @@ The module is server-only: it has no config section (so no `schema.json`) and no
 pages render through the kernel's config pages). There is no `module.json`: a built-in's manifest
 is TypeScript. There is no build or test script here: the server half compiles and is tested
 inside `apps/server`. Requests, URL checks and credential handling are the `http-json` module's
-(`modules/http-json/server`), imported by path. Its tests stay in `apps/server/test`:
+(`modules/http-json/server`), imported by path. `markdown-it` renders sidecar markdown here
+only, but `apps/server` still declares it: the host's declaration is what the module-deps guard
+compares this module's copy against, so the server and its modules keep one instance. Its tests stay in `apps/server/test`:
 `remote.test.ts` and `remote-sidecar-example.test.ts` drive the module through the kernel (the
 registry, scheduler, app, config pipeline and UI manifest), and `remote-describe-throws.test.ts`
 mocks a module file with `vi.mock`, whose path is not a module specifier a pure move may rewrite.

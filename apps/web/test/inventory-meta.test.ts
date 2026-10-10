@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -8,6 +8,7 @@ import type { SnapshotProviderResult } from "@deck/contract";
 import { hostHref, serviceHref } from "../../../modules/inventory/web/model.js";
 import { INVENTORY_ENDPOINTS } from "../../../modules/inventory/web/use-inventory-data.js";
 import { getPages } from "../src/registry/registry.js";
+import { webTestRoots } from "./support/source-roots.js";
 
 // Importing the feature entrypoint performs its four side-effecting page
 // registrations into this file's isolated registry singleton.
@@ -253,14 +254,19 @@ describe("Chromium configuration and CI installation", () => {
 // ---------------------------------------------------------------------------
 
 describe("no focused or skipped inventory tests", () => {
-  const testDir = here;
   const metaFile = fileURLToPath(import.meta.url);
-  const inventoryTestFiles = sourceFiles(testDir).filter(
-    (file) => /inventory/.test(file) && file !== metaFile,
-  );
+  // The web suite's test roots: apps/web/test and every modules/<id>/test/web, so the module's
+  // own tests are scanned as well as the kernel tests that drive it.
+  const inventoryTestFiles = webTestRoots()
+    .flatMap(sourceFiles)
+    .filter((file) => /inventory/.test(relative(repoRoot, file)) && file !== metaFile);
 
   it("collects the inventory test files to scan", () => {
     expect(inventoryTestFiles.length).toBeGreaterThan(0);
+    // The module's own tests live in modules/inventory/test/web, outside this directory.
+    for (const moved of ["inventory-contrast.test.ts", "inventory-status.test.tsx"]) {
+      expect(inventoryTestFiles).toContain(join(repoRoot, "modules/inventory/test/web", moved));
+    }
   });
 
   it("contains no .only or unconditional .skip", () => {

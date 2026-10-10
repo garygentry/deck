@@ -4,7 +4,9 @@ deck's built-in `drift` module: inventory beside reality. It contributes the `/d
 findings and coverage), its topbar summary pill and the findings sections on the host and service
 detail pages. It has no config section and no server code of its own: the web half derives its
 projection in the browser from the snapshot provider, with the `@deck/drift` library
-(`packages/drift`, which stays a package of its own).
+(`packages/drift`, which stays a package of its own). It reads the snapshot through the inventory
+module's web half: its store (`modules/inventory/web/inventory-store.ts`) and model
+(`modules/inventory/web/model.ts`).
 
 | Path | Holds |
 |---|---|

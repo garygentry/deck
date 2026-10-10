@@ -377,7 +377,7 @@ additional properties.
 | `ttlMs` | integer | no | 1000–86400000; default the poll interval. |
 | `timeoutMs` | integer | no | 100–60000; default 5000. |
 | `maxBytes` | integer | no | 1–16777216; default 1048576. |
-| `followCrossOriginRedirects` | boolean | no | Follow a redirect to another origin; default `false` (same-origin redirects only). Ignored with `credentialEnv`. |
+| `followCrossOriginRedirects` | boolean | no | Follow a redirect to another origin; default `false` (same-origin redirects only). Ignored with `credentialEnv`; never onto `localhost` or a literal loopback or link-local address. |
 | `deepLink` | string | no | Link to the API's own UI. |
 
 The credential only ever comes from the variable `credentialEnv` names, under the rule above;

@@ -177,7 +177,12 @@ credential on each hop. An unauthenticated instance may set `followCrossOriginRe
 to follow redirects to any http(s) origin, for an API that answers from elsewhere (a CDN or an
 object store, say). An authenticated request never does, since the `Location` could itself
 carry the credential: the setting is ignored with `credentialEnv`
-(`HTTP_JSON_REDIRECT_OPT_IN_IGNORED`, a warning). A redirect to a non-http(s) URL or to a URL
+(`HTTP_JSON_REDIRECT_OPT_IN_IGNORED`, a warning). Even with the opt-in, a redirect to
+`localhost` or to a literal loopback, link-local or unspecified address (127.0.0.0/8,
+0.0.0.0/8, 169.254.0.0/16, `::1`, `::`, fe80::/10, or one of these IPv4-mapped) is refused
+(`redirect to a loopback, link-local or unspecified address refused`). That check reads the
+address as written and makes no DNS lookup, so a hostname that resolves to an internal address
+(deck's own host included) is still followed: opt in only for an upstream you trust. A redirect to a non-http(s) URL or to a URL
 with `user:password@` is refused. A 303, or a 301 or
 302 answering a `POST`, is followed with a `GET` and no body.
 
@@ -201,7 +206,7 @@ the credential, the response body or the runtime's own error text:
 | Body nested past 64 levels | `upstream response nests deeper than 64 levels` |
 | Body not JSON | `upstream response is not JSON` |
 | Body contains the credential | `upstream response contains the credential; not published` |
-| Redirect refused | `cross-origin redirect refused`, `cross-origin redirect refused for an authenticated request`, `redirect to a non-http(s) URL refused`, `more than 5 redirects`, … |
+| Redirect refused | `cross-origin redirect refused`, `cross-origin redirect refused for an authenticated request`, `redirect to a loopback, link-local or unspecified address refused`, `redirect to a non-http(s) URL refused`, `more than 5 redirects`, … |
 
 ```yaml
 integrations:
@@ -274,11 +279,16 @@ Each `card.summaries` entry:
 | `direction` | no | `above` or `below`; required when a threshold is set. |
 
 A summary with no threshold is classified `neutral`.
-Invalid summary entries are dropped at load without failing boot. A query Prometheus refuses
-with a 4xx (a 400 for PromQL that does not parse, a 422 for one it cannot execute) shows as that
-summary in error: Prometheus answered, so it is a query problem, not an outage. A connection
-failure or a 5xx leaves the query unreachable, and the provider is unhealthy only when every
-query is unreachable.
+Invalid summary entries are dropped at load without failing boot. A query error shows as that
+summary in error, with the provider still healthy: Prometheus answered, so it is a problem with
+the query, not an outage. A query error is a 400 (PromQL that does not parse), a 422 (a query it
+cannot execute), or another 4xx whose body is Prometheus's own error document
+(`{"status": "error", "errorType": …}`). Any other answer means the query never ran, and leaves
+it unreachable: a connection failure, a 5xx, or a refusal of the endpoint itself (401 or 403,
+404, 407, 429). The provider is unhealthy only when every query is unreachable. Its health then
+names a refusal when one was seen (`Prometheus authentication refused (401)`, `Prometheus not a
+Prometheus endpoint (404)`, `Prometheus rate limited (429)`, `Prometheus answered HTTP <status>`),
+and otherwise reads `Prometheus endpoint unreachable`.
 
 ## remote
 

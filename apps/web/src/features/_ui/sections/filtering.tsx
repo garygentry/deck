@@ -176,7 +176,8 @@ function PaletteDemo() {
       items: HOSTS.map((host) => ({
         id: `host:${host.name}`,
         label: host.name,
-        hint: host.state,
+        // A hint is plain secondary text, never a status (status needs a tone and an icon).
+        hint: host.kind,
         keywords: [...host.tags],
         onSelect: go(host.name),
       })),
@@ -261,7 +262,7 @@ function Filtering() {
         <SegmentedDemo />
         <SegmentedDemo disabled />
       </Specimen>
-      <Specimen label="CommandPalette: data-driven groups, label / hint / keyword matching, focus returns to the opener">
+      <Specimen label="CommandPalette: data-driven groups, label / hint / keyword matching, hints are secondary text (not status), Close button, focus returns to the opener">
         <PaletteDemo />
       </Specimen>
     </>

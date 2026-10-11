@@ -106,6 +106,24 @@ describe("StatusBadge", () => {
     expect(badge("Muted")).toHaveAttribute("data-variant", "outline");
     expect(badge("Muted (dot)")).toHaveAttribute("data-variant", "dot");
   });
+
+  it("keeps the map's variant under an explicit variant: undefined; role: undefined still drops the role", () => {
+    const MAP = defineStatusMap<"muted" | "down">({
+      muted: { tone: "neutral", icon: "circle-minus", label: "Muted", variant: "outline" },
+      down: { tone: "danger", icon: "circle-x", label: "Down", role: "alert" },
+    });
+    // A wrapper forwarding optional props it was not given: `{ variant: props.variant, ... }`.
+    renderUi(
+      <>
+        {StatusBadge.fromMap(MAP, "muted", { variant: undefined })}
+        {StatusBadge.fromMap(MAP, "down", { role: undefined })}
+      </>,
+    );
+    expect(screen.getByText("Muted").closest('[data-slot="status-badge"]')).toHaveAttribute("data-variant", "outline");
+    // `role: undefined` is the opt-out for static text (e.g. an outcome in a list).
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText("Down")).toBeInTheDocument();
+  });
 });
 
 describe("RelativeTime", () => {
@@ -150,6 +168,34 @@ describe("RelativeTime", () => {
 });
 
 describe("FreshnessBadge", () => {
+  it("carries every FRESHNESS_STATUS field (variant too), matching StatusBadge.fromMap", () => {
+    const stale = FRESHNESS_STATUS.stale as { variant?: string; role?: string };
+    const saved = { ...stale };
+    stale.variant = "outline";
+    stale.role = "status";
+    try {
+      const freshness = { state: "stale", observedAt: null, ageMs: null, ttlMs: null } as const;
+      renderUi(
+        <>
+          <FreshnessBadge tooltip={false} freshness={freshness} />
+          <FreshnessBadge tooltip={false} freshness={freshness} variant={undefined} />
+          {StatusBadge.fromMap(FRESHNESS_STATUS, "stale")}
+        </>,
+      );
+      const badges = screen.getAllByText("Stale").map((el) => el.closest("[data-tone]")!);
+      expect(badges).toHaveLength(3);
+      for (const badge of badges) {
+        expect(badge).toHaveAttribute("data-variant", "outline");
+        expect(badge).toHaveAttribute("role", "status");
+        expect(badge).toHaveAttribute("data-tone", "warn");
+      }
+    } finally {
+      delete stale.variant;
+      delete stale.role;
+      Object.assign(stale, saved);
+    }
+  });
+
   it("uses the shared wording: label plus '· as of <age>' for polled states", () => {
     renderUi(
       <FreshnessBadge

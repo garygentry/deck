@@ -97,6 +97,8 @@ export type StatusBadgeMapProps = Omit<StatusBadgeProps, "tone" | "icon" | "labe
 /**
  * Bind a feature's `defineStatusMap` entry to a badge: `StatusBadge.fromMap(MAP, state)`. The
  * entry's tone, icon, label, role and variant apply; `props` win over all but tone and icon.
+ * An explicit `variant: undefined` keeps the entry's variant; `role: undefined` drops the entry's role
+ * (static text that must not be a live region).
  */
 function fromMap<S extends string>(
   map: StatusMap<S>,
@@ -104,7 +106,11 @@ function fromMap<S extends string>(
   props?: StatusBadgeMapProps,
 ): ReactElement {
   const { tone, icon, label, role, variant } = map[state];
-  return <StatusBadgeBase tone={tone} icon={icon} label={label} role={role} variant={variant} {...props} />;
+  // A defined variant prop wins; an explicit `variant: undefined` (e.g. a forwarded optional prop)
+  // keeps the entry's. `role: undefined` stays the way to drop the entry's live-region role.
+  return (
+    <StatusBadgeBase tone={tone} icon={icon} label={label} role={role} {...props} variant={props?.variant ?? variant} />
+  );
 }
 
 export const StatusBadge: typeof StatusBadgeBase & { fromMap: typeof fromMap } = Object.assign(

@@ -511,7 +511,10 @@ renders with external links only.
 4. For keyboard list navigation use `useListNavigation`. Its editable-field guard and
    modifier-key passthrough are built in. A `DataTable` with `virtualize` renders only a window
    of its rows (plus the focused row and its neighbours, so single steps and Tab work), so the
-   first and last rows are not in the DOM. Wire Home/End (and vim `gg`/`G`) to the table's
+   first and last rows are not in the DOM. "Neighbours" are the nearest rows with a focus stop:
+   by default rows with a row link (or every row, without `rowLink`). When cell controls are
+   sparse (a button only some rows have), say which rows hold one with
+   `virtualize={{ isNavigable: (row) => … }}`, or Tab can jump across the window. Wire Home/End (and vim `gg`/`G`) to the table's
    handle through `focusEdge`:
 
    ```tsx
@@ -523,7 +526,8 @@ renders with external links only.
    ```
 
    The handle's `scrollToIndex` and `focusIndex` return promises that resolve once the row is
-   rendered (and, for `focusIndex`, focused). Await them before reaching for the row's DOM node,
+   rendered (and, for `focusIndex`, focused and visible on the page). `focusIndex` resolves
+   `false` without focusing when a user scroll or a newer handle call cancelled it. Await them before reaching for the row's DOM node,
    and reach rows outside the window this way rather than by `rowDomId`/`getElementById`.
 5. Declare it in the module's manifest (path, title, an `icon` from `ui/lib/icons.ts`, and a nav
    entry with its `group`), and add the component to the table `features/<name>/index.ts`

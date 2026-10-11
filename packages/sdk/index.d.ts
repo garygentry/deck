@@ -2207,25 +2207,29 @@ type DataTableScrollAlign = "start" | "center" | "end" | "auto";
 /** The imperative handle a `DataTable` exposes through its `ref`. */
 interface DataTableHandle {
     /**
-     * Scroll the row at `index` (into `data`) into view, inside the table's own scroll region
-     * (never the page), clear of a sticky header. The promise resolves once the row is rendered
-     * and in place: at once on a plain table; on a virtualized one after the window has moved
-     * to it and its rows are measured. It also resolves, with the row possibly not rendered,
-     * when a user scroll or a newer call takes over, or the row leaves `data`.
+     * Scroll the row at `index` (into `data`) into view, clear of a sticky header: inside the
+     * table's own scroll region when it has one, else (a plain table as tall as its rows) by
+     * scrolling the row into the page. The promise resolves once the row is rendered and in
+     * place: at once on a plain table; on a virtualized one after the window has moved to it and
+     * its rows are measured. It also resolves, with the row possibly not rendered, when a user
+     * scroll or a newer call takes over, or the row leaves `data`.
      */
     scrollToIndex: (index: number, options?: {
         align?: DataTableScrollAlign;
     }) => Promise<void>;
     /**
      * `scrollToIndex`, then focus the row's link (or the row itself, when `rowDomId` makes it
-     * focusable). Resolves `true` once it has focus. This is how keyboard navigation reaches
-     * row 0 or the last row of a virtualized table, whose far rows are not in the DOM.
+     * focusable) and make sure it is visible on the page. Resolves `true` once it has focus, and
+     * `false` without focusing when the scroll was cancelled (a user scroll, or a newer
+     * `scrollToIndex`/`focusIndex` call took over) or the row has nothing to focus. This is how
+     * keyboard navigation reaches row 0 or the last row of a virtualized table, whose far rows
+     * are not in the DOM.
      */
     focusIndex: (index: number, options?: {
         align?: DataTableScrollAlign;
     }) => Promise<boolean>;
 }
-interface DataTableVirtualizeOptions {
+interface DataTableVirtualizeOptions<T = unknown> {
     /** Virtualize when there are at least this many rows (at least 1). Default 300. */
     threshold?: number;
     /** Rows rendered beyond each edge of the viewport. Default 8. */
@@ -2237,6 +2241,14 @@ interface DataTableVirtualizeOptions {
      * too, so offsets stay exact.
      */
     rowHeight?: number;
+    /**
+     * Whether a row holds a keyboard focus stop. The focused row's previous and next rows for
+     * which this is true stay rendered, so Tab and Shift+Tab reach them from anywhere in the
+     * table. Default: rows with a row link when `rowLink` is set, else every row. Pass it when
+     * focusable controls are sparse, e.g. `(row) => row.canRestart` for a Restart button that
+     * only some rows have (or `hasLink(row) || hasAction(row)` for mixed rows).
+     */
+    isNavigable?: (row: T) => boolean;
 }
 type LinkComponent$2 = ElementType<{
     href: string;
@@ -2293,8 +2305,9 @@ interface DataTableProps<T> {
      * of varying height keep the spacers, scrollbar and `scrollToIndex` exact; the
      * table carries `aria-rowcount` and each row `aria-rowindex`.
      *
-     * Keyboard: the focused row and its previous and next navigable rows (the nearest
-     * with a row link, when `rowLink` is set) stay rendered whatever the scroll position
+     * Keyboard: the focused row, its adjacent rows and its previous and next navigable
+     * rows (`isNavigable`: by default the nearest with a row link when `rowLink` is set;
+     * pass it when cell controls are sparse) stay rendered whatever the scroll position
      * or `overscan`, tracked by row id (so they survive rows inserted or re-sorted above
      * them), and a focused row is scrolled into view. Tab, Shift+Tab and arrow keys
      * therefore move row by row across the rendered window. The first and last rows are
@@ -2308,7 +2321,7 @@ interface DataTableProps<T> {
      * focus) on every crossing. A table that has never virtualized renders the plain
      * (non-virtualized) table.
      */
-    virtualize?: boolean | DataTableVirtualizeOptions;
+    virtualize?: boolean | DataTableVirtualizeOptions<T>;
     /** Imperative handle (`scrollToIndex`, `focusIndex`); works with and without `virtualize`. */
     ref?: Ref<DataTableHandle>;
 }

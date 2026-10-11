@@ -54,7 +54,6 @@ import {
   LayoutGrid,
   Link,
   Link2Off,
-  Loader,
   Minus,
   Monitor,
   Moon,
@@ -131,7 +130,6 @@ export const ICONS = {
   copy: Copy,
   check: Check,
   "refresh-cw": RefreshCw,
-  loader: Loader,
 
   // Navigation (page registrations and the shell).
   "layout-grid": LayoutGrid,

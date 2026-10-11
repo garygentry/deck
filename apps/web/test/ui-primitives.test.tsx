@@ -206,4 +206,120 @@ describe("Button loading", () => {
     await user.click(button);
     expect(onClick).toHaveBeenCalledTimes(1);
   });
+
+  it("animates the spinner only when motion is allowed", () => {
+    render(<Button loading>Save</Button>);
+    const spinner = screen
+      .getByRole("button", { name: "Save" })
+      .querySelector('[data-slot="button-spinner"]');
+    const classes = spinner?.getAttribute("class")?.split(/\s+/) ?? [];
+    expect(classes).toContain("motion-safe:animate-spin");
+    expect(classes).not.toContain("animate-spin");
+  });
+
+  it("keeps its busy semantics and swallows activation over conflicting forwarded props", async () => {
+    const user = userEvent.setup();
+    const handlers = {
+      onClick: vi.fn(),
+      onClickCapture: vi.fn(),
+      onKeyDown: vi.fn(),
+      onKeyUp: vi.fn(),
+      onPointerDown: vi.fn(),
+      onMouseDown: vi.fn(),
+    };
+    render(
+      <Button loading aria-busy={false} aria-disabled={false} {...{ "data-loading": undefined }} {...handlers}>
+        Save
+      </Button>,
+    );
+    const button = screen.getByRole("button", { name: "Save" });
+    expect(button).toHaveAttribute("aria-busy", "true");
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveAttribute("data-loading");
+    await user.click(button);
+    button.focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard(" ");
+    for (const handler of Object.values(handlers)) expect(handler).not.toHaveBeenCalled();
+  });
+
+  it.each(["icon", "icon-sm", "icon-xs"] as const)(
+    "shows only the spinner in a %s-size button while loading",
+    (size) => {
+      const { rerender } = render(
+        <Button size={size} aria-label="Copy">
+          <svg data-testid="glyph" />
+        </Button>,
+      );
+      const button = screen.getByRole("button", { name: "Copy" });
+      expect(screen.getByTestId("glyph")).toBeInTheDocument();
+      rerender(
+        <Button size={size} aria-label="Copy" loading>
+          <svg data-testid="glyph" />
+        </Button>,
+      );
+      expect(screen.queryByTestId("glyph")).toBeNull();
+      expect(button.querySelectorAll("svg")).toHaveLength(1);
+      expect(button.querySelector('[data-slot="button-spinner"]')).not.toBeNull();
+    },
+  );
+
+  it("does not remount a text button's stateful children when loading toggles", async () => {
+    const user = userEvent.setup();
+    let mounts = 0;
+    function Counter() {
+      const [count, setCount] = useState(0);
+      useEffect(() => {
+        mounts += 1;
+      }, []);
+      return (
+        <span data-testid="count" onClick={() => setCount((c) => c + 1)}>
+          {count}
+        </span>
+      );
+    }
+    const { rerender } = render(
+      <Button>
+        <Counter />
+      </Button>,
+    );
+    await user.click(screen.getByTestId("count"));
+    expect(screen.getByTestId("count")).toHaveTextContent("1");
+    rerender(
+      <Button loading>
+        <Counter />
+      </Button>,
+    );
+    rerender(
+      <Button>
+        <Counter />
+      </Button>,
+    );
+    expect(screen.getByTestId("count")).toHaveTextContent("1");
+    expect(mounts).toBe(1);
+  });
+
+  it("looks inert while loading: progress cursor, dimmed, no hover change", () => {
+    const classesOf = (name: string) =>
+      screen.getByRole("button", { name }).getAttribute("class")?.split(/\s+/) ?? [];
+    render(
+      <>
+        <Button loading>Primary</Button>
+        <Button variant="ghost" loading>
+          Ghost
+        </Button>
+        <Button variant="ghost">Idle</Button>
+      </>,
+    );
+    const primary = classesOf("Primary");
+    expect(primary).toEqual(
+      expect.arrayContaining(["data-[loading]:cursor-progress", "data-[loading]:opacity-70"]),
+    );
+    expect(primary).toContain("hover:bg-primary");
+    expect(primary).not.toContain("hover:bg-primary/90");
+    const ghost = classesOf("Ghost");
+    expect(ghost).not.toContain("hover:bg-accent");
+    expect(ghost).toContain("hover:bg-transparent");
+    expect(classesOf("Idle")).toContain("hover:bg-accent");
+  });
 });

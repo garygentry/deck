@@ -1681,6 +1681,8 @@ interface StatusPresentation {
     label: string;
     /** Live-region role when the state should be announced; omit for static text. */
     role?: "status" | "alert";
+    /** Badge shape for this state (e.g. outline for a suppressed state); omit for the default, soft. */
+    variant?: "soft" | "outline" | "dot";
 }
 type StatusMap<S extends string> = Readonly<Record<S, StatusPresentation>>;
 /**
@@ -2011,8 +2013,14 @@ declare function Prose({ sanitizedHtml, className, ...props }: ProseProps): Reac
 interface DisclosureProps {
     /** Trigger text; it names the button. */
     label: ReactNode;
-    /** Optional count shown after the label (e.g. hidden items), in tabular figures. */
+    /**
+     * Optional count shown after the label as a pill (e.g. hidden items), in tabular figures. The
+     * pill is decorative: the trigger's accessible name gets a separated phrase instead, so it reads
+     * "Proposals, 3 items" rather than running the number into the label.
+     */
     count?: number;
+    /** The spoken count phrase; default "1 item" / "N items". */
+    countLabel?: (count: number) => string;
     children: ReactNode;
     defaultOpen?: boolean;
     /** Controlled open state (pair with `onOpenChange`). */
@@ -2032,7 +2040,7 @@ interface DisclosureProps {
  * optional count. The trigger is a real button with `aria-expanded` and
  * `aria-controls` (Radix Collapsible).
  */
-declare function Disclosure({ label, count, children, defaultOpen, open: openProp, onOpenChange, refocusOnCollapse, className, contentClassName, }: DisclosureProps): React.JSX.Element;
+declare function Disclosure({ label, count, countLabel, children, defaultOpen, open: openProp, onOpenChange, refocusOnCollapse, className, contentClassName, }: DisclosureProps): React.JSX.Element;
 
 type VisuallyHiddenProps = Omit<ComponentProps<"span">, "ref"> & {
     /** Render as a block element, e.g. for a live region that holds a sentence. */
@@ -2085,7 +2093,7 @@ declare function ExternalLink({ children, showIcon, plain, className, ...props }
 
 type StatusBadgeSize = "sm" | "md";
 /** `soft` = tinted pill; `outline` = bordered, no fill; `dot` = tinted icon beside plain text. */
-type StatusBadgeVariant = "soft" | "outline" | "dot";
+type StatusBadgeVariant = NonNullable<StatusPresentation["variant"]>;
 interface StatusBadgeProps extends Omit<ComponentProps<"span">, "title" | "children" | "role"> {
     tone: Tone;
     icon: IconName | (string & {});
@@ -2110,7 +2118,10 @@ interface StatusBadgeProps extends Omit<ComponentProps<"span">, "title" | "child
 declare function StatusBadgeBase({ tone, icon, label, detail, size, variant, title, className, ...props }: StatusBadgeProps): React.JSX.Element;
 /** Extra props when binding a map entry: everything but the presentation itself. */
 type StatusBadgeMapProps = Omit<StatusBadgeProps, "tone" | "icon" | "label"> & Partial<Pick<StatusBadgeProps, "label">>;
-/** Bind a feature's `defineStatusMap` entry to a badge: `StatusBadge.fromMap(MAP, state)`. */
+/**
+ * Bind a feature's `defineStatusMap` entry to a badge: `StatusBadge.fromMap(MAP, state)`. The
+ * entry's tone, icon, label, role and variant apply; `props` win over all but tone and icon.
+ */
 declare function fromMap<S extends string>(map: StatusMap<S>, state: S, props?: StatusBadgeMapProps): ReactElement;
 declare const StatusBadge: typeof StatusBadgeBase & {
     fromMap: typeof fromMap;

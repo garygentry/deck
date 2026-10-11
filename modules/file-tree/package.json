@@ -1,0 +1,11 @@
+{
+  "name": "@deck/module-file-tree",
+  "version": "0.3.2",
+  "private": true,
+  "description": "deck's built-in file-tree module: the `file-tree` data source that serves a declared config source's tree manifest for the Configs page.",
+  "type": "module",
+  "dependencies": {
+    "@deck/module-sdk": "workspace:*",
+    "@deck/schema": "workspace:*"
+  }
+}

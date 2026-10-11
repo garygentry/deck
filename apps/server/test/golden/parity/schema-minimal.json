@@ -1,0 +1,141 @@
+{
+  "validate": {
+    "exitClass": 0,
+    "stdout": "clean\n",
+    "stderr": ""
+  },
+  "config": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "schemaVersion": 1,
+      "estate": {
+        "name": "watershed-estate",
+        "domains": {
+          "field": "watershed.invalid"
+        }
+      },
+      "hosts": [
+        {
+          "name": "rill",
+          "kind": "bare-metal",
+          "purpose": "Minimal fixture host"
+        }
+      ],
+      "services": [
+        {
+          "name": "spruce",
+          "host": "rill",
+          "kind": "systemd",
+          "purpose": "Minimal fixture service"
+        }
+      ]
+    }
+  },
+  "providers": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "providers": []
+    }
+  },
+  "envelopes": {
+    "parity-unknown-provider": {
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "error": "No provider registered with id 'parity-unknown-provider'",
+        "code": "PROVIDER_NOT_FOUND"
+      }
+    }
+  },
+  "health": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "status": "ok",
+      "uptimeMs": 0,
+      "providerCount": 0,
+      "providers": {},
+      "modules": {}
+    }
+  },
+  "actions": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "enabled": false
+    }
+  },
+  "actionRefusals": {
+    "unknownAction": {
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "error": "The actions capability is disabled on this deck instance.",
+        "code": "ACTIONS_DISABLED"
+      }
+    },
+    "runnerUnresolved": {
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "error": "The actions capability is disabled on this deck instance.",
+        "code": "ACTIONS_DISABLED"
+      }
+    },
+    "paramsInvalid": {
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "error": "The actions capability is disabled on this deck instance.",
+        "code": "ACTIONS_DISABLED"
+      }
+    }
+  },
+  "actionsAudit": {
+    "status": 403,
+    "contentType": "application/json",
+    "body": {
+      "error": "The actions capability is disabled on this deck instance.",
+      "code": "ACTIONS_DISABLED"
+    }
+  },
+  "llmUsage": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "enabled": false,
+      "now": 1767225600000,
+      "poll": {
+        "mode": "paused",
+        "nextPollAt": null,
+        "consecutiveErrors": 0
+      },
+      "thresholds": {
+        "warn": 75,
+        "danger": 90
+      },
+      "claude": null,
+      "codex": null
+    }
+  },
+  "routes": [
+    "ALL /*",
+    "GET /api/actions",
+    "GET /api/actions/audit",
+    "GET /api/actions/audit/:runId",
+    "GET /api/config",
+    "GET /api/health",
+    "GET /api/llm-usage",
+    "GET /api/llm-usage/refresh",
+    "GET /api/providers",
+    "GET /api/providers/:id",
+    "GET /api/sources/:id/file",
+    "GET /api/sources/:id/raw",
+    "GET /api/sources/:id/search",
+    "GET /api/sources/:id/tree",
+    "POST /api/actions/:id",
+    "POST /api/actions/runs/:runId/cancel"
+  ]
+}

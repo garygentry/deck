@@ -3,7 +3,7 @@
 import type { JsonObject } from "../../types.js";
 
 export const base = {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "estate": {
     "name": "lantern-estate",
     "domains": {

@@ -12,10 +12,32 @@ import { runValidate } from "../src/cli/validate.js";
 import { makeConfigDir } from "./util/tmp-config.js";
 
 const cleanDir = dirname(primary.paths.base);
+const binding = (path: string, kind: string) =>
+  `info  /${path}/bindings/${kind}  PROVIDER_BINDING_UNSUPPORTED  provider kind '${kind}' does not accept host or service bindings`;
+/** The primary fixture's host bindings of snapshot, prometheus and alertmanager, which accept none. */
+const HOST_BINDINGS = [binding("hosts/0", "snapshot"), binding("hosts/1", "alertmanager"), binding("hosts/3", "prometheus")];
+/**
+ * `deck validate` on the primary fixture. Its host bindings of snapshot, prometheus and alertmanager and
+ * its service bindings of markdown-tree and file-tree accept none, so each is reported (info)
+ * for the overlay layer and again for the merged document, where the services sit at other
+ * indices. `between` are the merged document's other findings.
+ */
+const primaryValidate = (between: string[] = []) =>
+  [
+    ...HOST_BINDINGS,
+    binding("services/2", "markdown-tree"),
+    binding("services/3", "file-tree"),
+    ...HOST_BINDINGS,
+    ...between,
+    binding("services/3", "markdown-tree"),
+    binding("services/7", "file-tree"),
+    "clean (advisory only)",
+  ].map((line) => `${line}\n`).join("");
 const temporary: Array<() => void> = [];
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   while (temporary.length) temporary.pop()!();
 });
 
@@ -33,10 +55,21 @@ function spyOutput() {
 }
 
 describe("deck CLI", () => {
-  it("validates the primary fixture as clean with exit 0", () => {
+  it("validates the primary fixture as clean (advisory only) with exit 0", () => {
+    vi.stubEnv("DECK_ACTIONS_ENABLED", "true");
     const { stdout, stderr } = spyOutput();
     expect(runValidate([cleanDir])).toBe(0);
-    expect(stdout).toHaveBeenCalledWith("clean\n");
+    expect(stdout).toHaveBeenCalledWith(primaryValidate());
+    expect(stderr).not.toHaveBeenCalled();
+  });
+
+  it("notes the primary fixture's actions section at info while the actions module is off", () => {
+    vi.stubEnv("DECK_ACTIONS_ENABLED", "");
+    const { stdout, stderr } = spyOutput();
+    expect(runValidate([cleanDir])).toBe(0);
+    expect(stdout.mock.calls.map(([text]) => String(text)).join("")).toBe(
+      primaryValidate(['info  /modules/actions  MODULE_SECTION_DISABLED  modules.actions is set, but module "actions" is not enabled (not enabled: DECK_ACTIONS_ENABLED is not true); the section is ignored.']),
+    );
     expect(stderr).not.toHaveBeenCalled();
   });
 
@@ -82,6 +115,35 @@ describe("deck CLI", () => {
     expect(runRender([join(outputDir.dir, "absent"), "--out", missingOut])).toBe(2);
     expect(existsSync(invalidOut)).toBe(false);
     expect(existsSync(missingOut)).toBe(false);
+  });
+
+  it.each([
+    [
+      "a provider id shared across collections",
+      {
+        hosts: [{ name: "alpha", bindings: { docker: { id: "containers" } } }],
+        integrations: [{ id: "containers", kind: "docker", title: "Docker", baseUrl: "http://docker.invalid" }],
+      },
+      "PROVIDER_ID_SHARED",
+    ],
+    [
+      "a refused credentialEnv",
+      { integrations: [{ id: "status", kind: "gatus", title: "Gatus", baseUrl: "http://gatus.invalid", credentialEnv: "DECK_PORT" }] },
+      "MODULE_CREDENTIAL_ENV_REFUSED",
+    ],
+  ])("renders an estate with %s, as boot accepts it, while deck validate exits 1", (_label, overlay, code) => {
+    const estate = tracked({
+      "00-base.yaml": { schemaVersion: 2, estate: { name: "advisory" }, hosts: [{ name: "alpha", kind: "vm", purpose: "p" }] },
+      "10-overlay.yaml": { schemaVersion: 2, ...overlay },
+    });
+    const out = join(tracked({}).dir, "rendered.json");
+    const { stderr } = spyOutput();
+
+    expect(runRender([estate.dir, "--out", out])).toBe(0);
+    expect(existsSync(out)).toBe(true);
+    expect(renderConfig(estate.dir)).toBe(readFileSync(out, "utf8"));
+    expect(runValidate([estate.dir])).toBe(1);
+    expect(stderr.mock.calls.map(([text]) => String(text)).join("")).toContain(code);
   });
 
   it("renderConfig returns the clean canonical render", () => {

@@ -1,0 +1,22 @@
+{
+  "name": "@deck/module-drift",
+  "version": "0.3.2",
+  "private": true,
+  "description": "deck's built-in drift module: the drift and coverage page, its topbar summary pill and the findings sections on host and service detail pages.",
+  "type": "module",
+  "dependencies": {
+    "@deck/contract": "workspace:*",
+    "@deck/drift": "workspace:*",
+    "@deck/module-sdk": "workspace:*",
+    "@deck/schema": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.3.0",
+    "vitest": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "react": "^19.3.0",
+    "vitest": "^4.1.0"
+  }
+}

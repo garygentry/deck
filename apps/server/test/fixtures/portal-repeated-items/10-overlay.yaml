@@ -1,0 +1,11 @@
+schemaVersion: 2
+modules:
+  portal:
+    groups:
+      - id: overview
+        title: Overview
+        items:
+          - { type: service, host: apps, name: portal, title: Portal }
+          - { type: link, title: Gateway, href: "https://gateway.home.example/" }
+          - { type: service, host: apps, name: portal, title: Portal again }
+          - { type: link, title: Gateway again, href: "https://gateway.home.example/" }

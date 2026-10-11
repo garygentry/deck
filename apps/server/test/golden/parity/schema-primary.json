@@ -1,0 +1,600 @@
+{
+  "validate": {
+    "exitClass": 0,
+    "stdout": "clean\n",
+    "stderr": ""
+  },
+  "config": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "schemaVersion": 1,
+      "estate": {
+        "name": "lantern-estate",
+        "domains": {
+          "lan": "lantern.invalid",
+          "tailnet": "lantern-tail.invalid",
+          "mgmt": "lantern-mgmt.invalid"
+        },
+        "timezone": "Etc/UTC"
+      },
+      "hosts": [
+        {
+          "name": "azurite",
+          "kind": "bare-metal",
+          "purpose": "Invented fixture hypervisor alpha",
+          "addresses": [
+            {
+              "network": "lan",
+              "address": "192.0.2.10",
+              "primary": true
+            },
+            {
+              "network": "tailnet",
+              "address": "100.64.10.10"
+            },
+            {
+              "network": "mgmt",
+              "address": "198.51.100.10"
+            }
+          ],
+          "access": {
+            "reachable": true,
+            "method": "ssh",
+            "port": 22,
+            "user": "fixture"
+          },
+          "backup": {
+            "expected": true,
+            "schedule": "nightly",
+            "target": "archive-alpha"
+          },
+          "managedConfigs": [
+            {
+              "path": "/etc/lantern/azurite.conf",
+              "source": "configs/azurite.conf"
+            }
+          ],
+          "stacksRoot": "/srv/lantern/stacks",
+          "secrets": [
+            "azurite.ssh-key"
+          ],
+          "bindings": {
+            "docker": {
+              "endpoint": "fixture-docker"
+            },
+            "snapshot": {
+              "dataset": "fixture-alpha"
+            }
+          },
+          "links": [
+            {
+              "title": "Alpha Console",
+              "href": "https://azurite.lantern.invalid/"
+            }
+          ]
+        },
+        {
+          "name": "beryl",
+          "kind": "bare-metal",
+          "purpose": "Invented fixture hypervisor beta",
+          "addresses": [
+            {
+              "network": "lan",
+              "address": "192.0.2.11",
+              "primary": true
+            },
+            {
+              "network": "mgmt",
+              "address": "198.51.100.11"
+            }
+          ],
+          "backup": {
+            "expected": true,
+            "schedule": "weekly",
+            "target": "archive-beta"
+          },
+          "bindings": {
+            "alertmanager": {
+              "route": "fixture-alerts"
+            }
+          }
+        },
+        {
+          "name": "cirrus",
+          "kind": "vm",
+          "purpose": "Invented application guest",
+          "hypervisor": "azurite",
+          "vmid": 100,
+          "addresses": [
+            {
+              "network": "lan",
+              "address": "192.0.2.20",
+              "primary": true
+            }
+          ],
+          "secrets": [
+            "cirrus.runtime-ref"
+          ],
+          "bindings": {
+            "gatus": {
+              "group": "fixture-apps"
+            }
+          }
+        },
+        {
+          "name": "dapple",
+          "kind": "vm",
+          "purpose": "Invented monitoring guest",
+          "hypervisor": "beryl",
+          "vmid": 100,
+          "addresses": [
+            {
+              "network": "lan",
+              "address": "192.0.2.21",
+              "primary": true
+            }
+          ],
+          "bindings": {
+            "prometheus": {
+              "job": "fixture-metrics"
+            },
+            "http-health": {
+              "url": "https://dapple.lantern.invalid/health"
+            }
+          }
+        },
+        {
+          "name": "ember",
+          "kind": "lxc",
+          "purpose": "Invented lightweight guest",
+          "hypervisor": "azurite",
+          "vmid": 101
+        },
+        {
+          "name": "fable",
+          "kind": "appliance",
+          "purpose": "Invented network appliance",
+          "addresses": [
+            {
+              "network": "mgmt",
+              "address": "198.51.100.30",
+              "primary": true
+            }
+          ]
+        },
+        {
+          "name": "glint",
+          "kind": "endpoint",
+          "purpose": "Invented operator endpoint"
+        },
+        {
+          "name": "hush",
+          "kind": "unknown",
+          "purpose": "Invented unclassified device",
+          "hidden": true
+        }
+      ],
+      "services": [
+        {
+          "name": "beacon",
+          "host": "cirrus",
+          "kind": "docker-compose",
+          "purpose": "Invented portal service",
+          "status": "active",
+          "stack": "beacon",
+          "secrets": [
+            "beacon.session-ref"
+          ],
+          "backup": {
+            "expected": true,
+            "schedule": "nightly",
+            "target": "archive-alpha"
+          },
+          "bindings": {
+            "link": {
+              "href": "https://beacon.lantern.invalid/"
+            }
+          },
+          "links": [
+            {
+              "title": "Beacon",
+              "href": "https://beacon.lantern.invalid/"
+            }
+          ]
+        },
+        {
+          "name": "beacon",
+          "host": "dapple",
+          "kind": "systemd",
+          "purpose": "Invented metrics relay",
+          "status": "active",
+          "links": [
+            {
+              "title": "Relay",
+              "href": "https://relay.lantern.invalid/"
+            }
+          ]
+        },
+        {
+          "name": "kiln",
+          "host": "azurite",
+          "kind": "appliance",
+          "purpose": "Invented management interface",
+          "status": "active"
+        },
+        {
+          "name": "lumen",
+          "host": "ember",
+          "kind": "container",
+          "purpose": "Invented document service",
+          "status": "active",
+          "bindings": {
+            "markdown-tree": {
+              "source": "fixture-handbook"
+            }
+          }
+        },
+        {
+          "name": "mirage",
+          "host": "fable",
+          "kind": "external",
+          "purpose": "Invented external catalogue",
+          "status": "planned"
+        },
+        {
+          "name": "northstar",
+          "host": "azurite",
+          "kind": "docker-compose",
+          "purpose": "Invented status collector",
+          "status": "active"
+        },
+        {
+          "name": "opal",
+          "host": "beryl",
+          "kind": "systemd",
+          "purpose": "Invented alert relay",
+          "status": "active"
+        },
+        {
+          "name": "quill",
+          "host": "cirrus",
+          "kind": "container",
+          "purpose": "Invented file browser",
+          "status": "active",
+          "bindings": {
+            "file-tree": {
+              "source": "fixture-files"
+            }
+          },
+          "hidden": true
+        }
+      ],
+      "groups": [
+        {
+          "id": "overview",
+          "title": "Fixture Overview",
+          "order": 1,
+          "icon": "lantern",
+          "items": [
+            {
+              "type": "service",
+              "host": "cirrus",
+              "name": "beacon",
+              "title": "Portal"
+            },
+            {
+              "type": "link",
+              "title": "Fixture Guide",
+              "href": "https://guide.lantern.invalid/"
+            },
+            {
+              "type": "group",
+              "id": "operations",
+              "title": "Operations",
+              "items": [
+                {
+                  "type": "service",
+                  "host": "dapple",
+                  "name": "beacon"
+                },
+                {
+                  "type": "link",
+                  "title": "Operations Guide",
+                  "href": "https://ops.lantern.invalid/"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "id": "fixture-handbook",
+          "kind": "markdown-tree",
+          "title": "Fixture Handbook",
+          "location": {
+            "repo": "lantern-docs",
+            "ref": "main"
+          },
+          "include": [
+            "guides/**"
+          ],
+          "exclude": [
+            "drafts/**"
+          ],
+          "owner": {
+            "host": "ember",
+            "service": "lumen"
+          }
+        }
+      ],
+      "integrations": [
+        {
+          "id": "fixture-metrics",
+          "kind": "prometheus",
+          "title": "Fixture Metrics",
+          "baseUrl": "https://metrics.lantern.invalid/",
+          "deepLink": "/targets/{target}",
+          "card": {
+            "theme": "lantern"
+          },
+          "credentialEnv": "FIXTURE_METRICS_REF"
+        }
+      ],
+      "actions": [
+        {
+          "id": "restart-beacon",
+          "title": "Restart Fixture Beacon",
+          "runner": "fixture-restart-service",
+          "confirm": "typed-confirm",
+          "params": [
+            {
+              "name": "reason",
+              "type": "string",
+              "required": true,
+              "default": "routine",
+              "description": "Fixture change note"
+            },
+            {
+              "name": "graceful",
+              "type": "boolean",
+              "default": true
+            },
+            {
+              "name": "mode",
+              "type": "enum",
+              "values": [
+                "safe",
+                "quick"
+              ],
+              "default": null
+            }
+          ],
+          "target": {
+            "host": "cirrus",
+            "service": "beacon"
+          },
+          "description": "Exercises the governed action shape"
+        }
+      ],
+      "agents": []
+    }
+  },
+  "providers": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "providers": [
+        {
+          "id": "fixture-handbook",
+          "kind": "markdown-tree"
+        },
+        {
+          "id": "http-health:host:dapple",
+          "kind": "http-health"
+        },
+        {
+          "id": "link:service:cirrus:beacon",
+          "kind": "link"
+        },
+        {
+          "id": "prometheus",
+          "kind": "prometheus"
+        }
+      ]
+    }
+  },
+  "envelopes": {
+    "fixture-handbook": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": "fixture-handbook",
+        "kind": "markdown-tree",
+        "freshness": {
+          "state": "pending",
+          "observedAt": null,
+          "ageMs": null,
+          "ttlMs": 30000
+        },
+        "data": null,
+        "error": {
+          "message": "The source could not be acquired; serving the last known content if available."
+        }
+      }
+    },
+    "http-health:host:dapple": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": "http-health:host:dapple",
+        "kind": "http-health",
+        "freshness": {
+          "state": "pending",
+          "observedAt": null,
+          "ageMs": null,
+          "ttlMs": 30000
+        },
+        "data": null,
+        "error": {
+          "message": "network disabled in parity harness"
+        }
+      }
+    },
+    "link:service:cirrus:beacon": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": "link:service:cirrus:beacon",
+        "kind": "link",
+        "freshness": {
+          "state": "static",
+          "observedAt": null,
+          "ageMs": null,
+          "ttlMs": null
+        },
+        "data": {
+          "label": "service:cirrus:beacon",
+          "href": "https://beacon.lantern.invalid/"
+        },
+        "error": null
+      }
+    },
+    "prometheus": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": "prometheus",
+        "kind": "prometheus",
+        "freshness": {
+          "state": "fresh",
+          "observedAt": "2026-01-01T00:00:00.000Z",
+          "ageMs": 0,
+          "ttlMs": 30000
+        },
+        "data": {
+          "summaries": []
+        },
+        "error": null
+      }
+    },
+    "parity-unknown-provider": {
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "error": "No provider registered with id 'parity-unknown-provider'",
+        "code": "PROVIDER_NOT_FOUND"
+      }
+    }
+  },
+  "health": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "status": "degraded",
+      "uptimeMs": 0,
+      "providerCount": 4,
+      "providers": {
+        "fixture-handbook": {
+          "kind": "markdown-tree",
+          "ok": false,
+          "detail": "The source could not be acquired; serving the last known content if available."
+        },
+        "http-health:host:dapple": {
+          "kind": "http-health",
+          "ok": false,
+          "detail": "network disabled in parity harness"
+        },
+        "link:service:cirrus:beacon": {
+          "kind": "link",
+          "ok": true
+        },
+        "prometheus": {
+          "kind": "prometheus",
+          "ok": true,
+          "detail": "0 summaries"
+        }
+      },
+      "modules": {}
+    }
+  },
+  "actions": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "enabled": false
+    }
+  },
+  "actionRefusals": {
+    "unknownAction": {
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "error": "The actions capability is disabled on this deck instance.",
+        "code": "ACTIONS_DISABLED"
+      }
+    },
+    "runnerUnresolved": {
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "error": "The actions capability is disabled on this deck instance.",
+        "code": "ACTIONS_DISABLED"
+      }
+    },
+    "paramsInvalid": {
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "error": "The actions capability is disabled on this deck instance.",
+        "code": "ACTIONS_DISABLED"
+      }
+    }
+  },
+  "actionsAudit": {
+    "status": 403,
+    "contentType": "application/json",
+    "body": {
+      "error": "The actions capability is disabled on this deck instance.",
+      "code": "ACTIONS_DISABLED"
+    }
+  },
+  "llmUsage": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "enabled": false,
+      "now": 1767225600000,
+      "poll": {
+        "mode": "paused",
+        "nextPollAt": null,
+        "consecutiveErrors": 0
+      },
+      "thresholds": {
+        "warn": 75,
+        "danger": 90
+      },
+      "claude": null,
+      "codex": null
+    }
+  },
+  "routes": [
+    "ALL /*",
+    "GET /api/actions",
+    "GET /api/actions/audit",
+    "GET /api/actions/audit/:runId",
+    "GET /api/config",
+    "GET /api/health",
+    "GET /api/llm-usage",
+    "GET /api/llm-usage/refresh",
+    "GET /api/providers",
+    "GET /api/providers/:id",
+    "GET /api/sources/:id/file",
+    "GET /api/sources/:id/raw",
+    "GET /api/sources/:id/search",
+    "GET /api/sources/:id/tree",
+    "POST /api/actions/:id",
+    "POST /api/actions/runs/:runId/cancel"
+  ]
+}

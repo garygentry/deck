@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 #
-# Project smoke path (governed-actions extended it — spec 06 §7).
+# Project smoke path.
 #
 # Proves three things end-to-end against a real Bun server:
 #   1. Portal read path boots and serves a provider GET (the original smoke).
 #   2. With actions ENABLED, POST /api/actions/smoke-echo streams a real run to a
-#      terminal end/succeeded event (real Bun spawn + real audit write; SC-01/05).
+#      terminal end/succeeded event (real Bun spawn + real audit write).
 #   3. With actions DISABLED (default), the same POST refuses 403 ACTIONS_DISABLED
-#      (safe-by-default read-only posture; SC-08).
+#      (safe-by-default read-only posture).
 #   4. Sources read path serves a fixture markdown tree with confinement intact.
 #   5. With DECK_METRICS_ENABLED=true, GET /metrics serves Prometheus text; the
 #      default (off) returns 404.
+#   6. ui hot reload follows a Kubernetes ConfigMap ..data swap.
+#   7. A runtime module from DECK_MODULES_DIR adds a page, a pill and a provider.
 #
 # It runs one server at a time, on distinct ports, cleaning each up before the
 # next. Any failed assertion exits non-zero so impl-verify treats it as a failure.
@@ -24,10 +26,13 @@ SMOKE_CONFIG="${SCRIPT_DIR}/fixtures/actions-smoke"
 PORTAL_CONFIG="${SCRIPT_DIR}/fixtures/portal-estate"
 SOURCES_FIXTURE="${SCRIPT_DIR}/fixtures/markdown-tree"
 
-PORTAL_PORT=8788
-ACTIONS_PORT=8789
-SOURCES_PORT=8790
-METRICS_PORT=8791
+# Four consecutive ports from DECK_SMOKE_BASE_PORT (default 8788), so parallel checkouts can
+# run the smoke without colliding.
+SMOKE_BASE_PORT="${DECK_SMOKE_BASE_PORT:-8788}"
+PORTAL_PORT=$((SMOKE_BASE_PORT))
+ACTIONS_PORT=$((SMOKE_BASE_PORT + 1))
+SOURCES_PORT=$((SMOKE_BASE_PORT + 2))
+METRICS_PORT=$((SMOKE_BASE_PORT + 3))
 
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/deck-smoke.XXXXXX")"
 DATA_DIR="${TMP_ROOT}/data"
@@ -154,7 +159,7 @@ stop_server
 
 # ---------------------------------------------------------------------------
 # 4. Sources read path: boot a fixture local-path markdown-tree source and prove
-#    the confined read path end to end (no git, no network — spec 08 §7).
+#    the confined read path end to end (no git, no network).
 # ---------------------------------------------------------------------------
 # Write a config declaring the committed markdown-tree fixture as a local-path
 # source. JSON is valid YAML and the loader reads *.yaml, so an absolute path is
@@ -162,11 +167,11 @@ stop_server
 # is an overlay-owned key, so it lives in a second layer ("zzz-sources.yaml" sorts
 # after the base "estate.yaml") — not the base — mirroring the actions overlay.
 cat >"${SOURCES_CONFIG_DIR}/estate.yaml" <<EOF
-{ "schemaVersion": 1, "estate": { "name": "Sources smoke" } }
+{ "schemaVersion": 2, "estate": { "name": "Sources smoke" } }
 EOF
 cat >"${SOURCES_CONFIG_DIR}/zzz-sources.yaml" <<EOF
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sources": [
     { "id": "docs", "kind": "markdown-tree", "title": "Docs", "location": { "path": "${SOURCES_FIXTURE}" } }
   ]
@@ -251,4 +256,107 @@ MOFF="$(curl -sS -o /dev/null -w '%{http_code}' \
 [ "${MOFF}" = "404" ] || fail "metrics GET with flag off expected 404, got ${MOFF}"
 stop_server
 
-printf 'SMOKE OK: portal GET 200; actions enabled end/succeeded; actions disabled 403 ACTIONS_DISABLED; sources manifest+file 200, traversal rejected; metrics 200 text/plain, off 404\n'
+# ---------------------------------------------------------------------------
+# 6. ui hot reload under Bun from a Kubernetes ConfigMap layout: files linked
+#    through a `..data` symlink that is re-pointed atomically. Bun raises no
+#    file-system event for that, so the reload comes from the watch's periodic
+#    fingerprint of the config files (seen within about 5 s).
+# ---------------------------------------------------------------------------
+CM_DIR="${TMP_ROOT}/configmap"
+mkdir -p "${CM_DIR}/..v1" "${CM_DIR}/..v2"
+for v in v1 v2; do
+  printf 'schemaVersion: 2\nestate:\n  name: smoke\n' >"${CM_DIR}/..${v}/00-base.yaml"
+done
+printf 'schemaVersion: 2\nui:\n  brand:\n    title: Before swap\n' >"${CM_DIR}/..v1/10-overlay.yaml"
+printf 'schemaVersion: 2\nui:\n  brand:\n    title: After swap\n' >"${CM_DIR}/..v2/10-overlay.yaml"
+ln -s ..v1 "${CM_DIR}/..data"
+ln -s ..data/00-base.yaml "${CM_DIR}/00-base.yaml"
+ln -s ..data/10-overlay.yaml "${CM_DIR}/10-overlay.yaml"
+
+DECK_CONFIG_DIR="${CM_DIR}" DECK_PORT="${PORTAL_PORT}" bun "${BOOT}" &
+SRV=$!
+wait_ready "http://127.0.0.1:${PORTAL_PORT}/api/ui" \
+  || fail "configmap server did not become ready"
+curl -sS "http://127.0.0.1:${PORTAL_PORT}/api/ui" | grep -q '"title":"Before swap"' \
+  || fail "configmap server did not serve the first version's brand"
+# Past the boot-time re-read, so only the watch can see the swap.
+sleep 1
+ln -s ..v2 "${CM_DIR}/..data_tmp"
+mv -T "${CM_DIR}/..data_tmp" "${CM_DIR}/..data"
+SWAPPED=""
+for i in $(seq 1 40); do
+  if curl -sS "http://127.0.0.1:${PORTAL_PORT}/api/ui" 2>/dev/null | grep -q '"title":"After swap"'; then
+    SWAPPED=1
+    break
+  fi
+  sleep 0.25
+done
+[ -n "${SWAPPED}" ] || fail "configmap ..data swap was not reloaded within 10 s"
+stop_server
+
+# ---------------------------------------------------------------------------
+# 7. A runtime module under Bun: the maintenance example, copied into a
+#    DECK_MODULES_DIR of its own and imported from there, adds its page and
+#    pill to /api/ui and serves its provider and its web half
+#    (/modules/<id>/web.js; anything else there is a 404). With
+#    DECK_MODULES_ENABLED unset, the same module is listed off and its web half
+#    404s.
+# ---------------------------------------------------------------------------
+RT_MODULES_DIR="${TMP_ROOT}/runtime-modules"
+mkdir -p "${RT_MODULES_DIR}"
+cp -R "${REPO_ROOT}/examples/modules/maintenance" "${RT_MODULES_DIR}/maintenance"
+RT_CONFIG_DIR="${TMP_ROOT}/runtime-config"
+mkdir -p "${RT_CONFIG_DIR}"
+printf 'schemaVersion: 2\nestate:\n  name: smoke\n' >"${RT_CONFIG_DIR}/00-base.yaml"
+printf 'schemaVersion: 2\nmodules:\n  maintenance:\n    windows:\n      - name: smoke\n        start: 2999-01-01T00:00:00Z\n        durationMinutes: 5\n' \
+  >"${RT_CONFIG_DIR}/10-overlay.yaml"
+
+DECK_MODULES_DIR="${RT_MODULES_DIR}" DECK_MODULES_ENABLED=true \
+DECK_CONFIG_DIR="${RT_CONFIG_DIR}" DECK_PORT="${PORTAL_PORT}" bun "${BOOT}" &
+SRV=$!
+wait_ready "http://127.0.0.1:${PORTAL_PORT}/api/ui" \
+  || fail "runtime-module server did not become ready"
+RT_UI="$(curl -sS "http://127.0.0.1:${PORTAL_PORT}/api/ui")"
+printf '%s' "${RT_UI}" | grep -q '"id":"page:maintenance/windows"' \
+  || fail "runtime module page missing from /api/ui"
+printf '%s' "${RT_UI}" | grep -q '"id":"pill:maintenance/next"' \
+  || fail "runtime module pill missing from /api/ui"
+RT_DATA=""
+for i in $(seq 1 40); do
+  if curl -sS "http://127.0.0.1:${PORTAL_PORT}/api/providers/maintenance" 2>/dev/null | grep -q '"name":"smoke"'; then
+    RT_DATA=1
+    break
+  fi
+  sleep 0.25
+done
+[ -n "${RT_DATA}" ] || fail "runtime module provider did not serve its data"
+printf '%s' "${RT_UI}" | grep -q '"web":{"script":"/modules/maintenance/web.js"' \
+  || fail "runtime module web half missing from /api/ui"
+RT_WEB_TYPE="$(curl -sS -o /dev/null -w '%{http_code} %{content_type}' \
+  "http://127.0.0.1:${PORTAL_PORT}/modules/maintenance/web.js")" || RT_WEB_TYPE=000
+case "${RT_WEB_TYPE}" in
+  "200 text/javascript"*) ;;
+  *) fail "runtime module web.js expected 200 text/javascript, got ${RT_WEB_TYPE}" ;;
+esac
+for RT_PATH in /modules/maintenance/server.mjs /modules/maintenance/missing.js /modules; do
+  RT_CODE="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORTAL_PORT}${RT_PATH}")" || RT_CODE=000
+  [ "${RT_CODE}" = "404" ] || fail "${RT_PATH} expected 404, got ${RT_CODE}"
+done
+stop_server
+
+DECK_MODULES_DIR="${RT_MODULES_DIR}" \
+DECK_CONFIG_DIR="${RT_CONFIG_DIR}" DECK_PORT="${PORTAL_PORT}" bun "${BOOT}" &
+SRV=$!
+wait_ready "http://127.0.0.1:${PORTAL_PORT}/api/ui" \
+  || fail "runtime-modules-off server did not become ready"
+curl -sS "http://127.0.0.1:${PORTAL_PORT}/api/ui" | grep -q '"reason":"not enabled: DECK_MODULES_ENABLED is not true"' \
+  || fail "runtime module not reported off with DECK_MODULES_ENABLED unset"
+RT_OFF="$(curl -sS -o /dev/null -w '%{http_code}' \
+  "http://127.0.0.1:${PORTAL_PORT}/api/providers/maintenance")" || RT_OFF=000
+[ "${RT_OFF}" = "404" ] || fail "runtime module provider with modules off expected 404, got ${RT_OFF}"
+RT_OFF="$(curl -sS -o /dev/null -w '%{http_code}' \
+  "http://127.0.0.1:${PORTAL_PORT}/modules/maintenance/web.js")" || RT_OFF=000
+[ "${RT_OFF}" = "404" ] || fail "runtime module web.js with modules off expected 404, got ${RT_OFF}"
+stop_server
+
+printf 'SMOKE OK: portal GET 200; actions enabled end/succeeded; actions disabled 403 ACTIONS_DISABLED; sources manifest+file 200, traversal rejected; metrics 200 text/plain, off 404; configmap ..data swap reloaded under Bun; runtime module page+pill+provider, off when not enabled\n'

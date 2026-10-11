@@ -1,11 +1,14 @@
 import Ajv2020, { type ValidateFunction } from "ajv/dist/2020.js";
-import configSchema from "../../schema/deck.schema.json" with { type: "json" };
 import snapshotSchema from "../../schema/snapshot.schema.json" with { type: "json" };
 
 const RFC3339 =
   /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[Zz]|([+-])(\d{2}):(\d{2}))$/;
 
-function isRfc3339DateTime(value: string): boolean {
+/**
+ * The `date-time` format the schemas validate: RFC 3339 with a `Z` or `±hh:mm` offset and a
+ * real calendar date and time.
+ */
+export function isRfc3339DateTime(value: string): boolean {
   const match = RFC3339.exec(value);
   if (match === null) return false;
 
@@ -31,25 +34,78 @@ function isRfc3339DateTime(value: string): boolean {
   return true;
 }
 
-const ajv = new Ajv2020({
-  strict: true,
-  allErrors: true,
-  discriminator: true,
-  allowUnionTypes: true,
-});
+/** A fresh Ajv instance with deck's options and formats; one per compiled schema set. */
+export function createAjv(): Ajv2020 {
+  const ajv = new Ajv2020({
+    strict: true,
+    allErrors: true,
+    discriminator: true,
+    allowUnionTypes: true,
+  });
+  ajv.addFormat("date-time", { type: "string", validate: isRfc3339DateTime });
+  return ajv;
+}
 
-ajv.addFormat("date-time", { type: "string", validate: isRfc3339DateTime });
-
-function relaxRequired(schema: typeof configSchema): typeof configSchema {
-  const relaxed = structuredClone(schema);
-  delete (relaxed as { $id?: string }).$id;
+/**
+ * The overlay variant of a composed config schema: an overlay may omit what the base
+ * declares, so only `schemaVersion` and the identity fields stay required.
+ */
+export function relaxRequired<T extends object>(schema: T): T {
+  const relaxed = structuredClone(schema) as T & {
+    $id?: string;
+    required?: string[];
+    $defs: Record<string, { required?: string[] }>;
+  };
+  delete relaxed.$id;
   relaxed.required = ["schemaVersion"];
-  relaxed.$defs.Estate.required = [];
-  relaxed.$defs.Host.required = ["name"];
-  relaxed.$defs.Service.required = ["host", "name"];
+  relaxed.$defs.Estate!.required = [];
+  relaxed.$defs.Host!.required = ["name"];
+  relaxed.$defs.Service!.required = ["host", "name"];
   return relaxed;
 }
 
-export const checkConfig: ValidateFunction = ajv.compile(configSchema);
-export const checkSnapshot: ValidateFunction = ajv.compile(snapshotSchema);
-export const checkOverlay: ValidateFunction = ajv.compile(relaxRequired(configSchema));
+export const checkSnapshot: ValidateFunction = createAjv().compile(snapshotSchema);
+
+/**
+ * Why `options` do not satisfy a widget type's options schema, or null: the schema does not
+ * compile, or refuses them (the first error). How a module page's declared widgets, which take
+ * `{}`, are checked against their types.
+ */
+export function widgetOptionsProblem(schema: unknown, options: unknown): string | null {
+  let accepts: ValidateFunction;
+  try {
+    accepts = createAjv().compile(schema as object);
+  } catch (cause) {
+    return `its options schema does not compile: ${(cause as Error).message}`;
+  }
+  if (accepts(options)) return null;
+  const [first] = accepts.errors ?? [];
+  return `its type refuses the options ${JSON.stringify(options)}${first === undefined ? "" : ` (${first.instancePath || "/"} ${first.message ?? "is invalid"})`}`;
+}
+
+/** Where a value fails a schema, and how; never the value itself. */
+export interface SchemaProblem {
+  /** JSON pointer into the value (`/` for the value itself). */
+  path: string;
+  /** Ajv's message: the rule broken, which names schema values, never the data. */
+  message: string;
+}
+
+/**
+ * A widget type's options check, compiled once: the first problem with some options, or null.
+ * Unlike {@link widgetOptionsProblem} it never repeats the options, so its result may describe
+ * data from outside deck. A schema that does not compile refuses every value.
+ */
+export function compileWidgetOptions(schema: unknown): (options: unknown) => SchemaProblem | null {
+  let accepts: ValidateFunction;
+  try {
+    accepts = createAjv().compile(schema as object);
+  } catch {
+    return () => ({ path: "/", message: "its options schema does not compile" });
+  }
+  return (options) => {
+    if (accepts(options)) return null;
+    const [first] = accepts.errors ?? [];
+    return { path: first?.instancePath || "/", message: first?.message ?? "is invalid" };
+  };
+}

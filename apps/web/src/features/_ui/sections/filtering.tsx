@@ -61,7 +61,7 @@ const TAG_OPTIONS = options(TAGS, facetCounts(HOSTS, (host) => host.tags));
 
 type Facet = "kind" | "state" | "tag";
 
-/** A fully wired bar: `useFacetFilters` + every §F component over demo rows. */
+/** A fully wired bar: `useFacetFilters` + every filtering component over demo rows. */
 function WiredFilterBar({
   initialQuery,
   initialFacets,

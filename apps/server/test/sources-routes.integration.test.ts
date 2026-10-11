@@ -1,67 +1,49 @@
 /**
- * Integration tests for the four read-only source routes (05-http-routes.md), driven through
- * `app.request()` (mirrors provider-routes.integration.test.ts). Covers the read routes, HTTP
- * confinement rejections (400/404 with no leaked path), the capability-off / unknown-id 404s,
- * an acquired-but-empty tree (fileCount 0 is success, not an error), and the read-only
- * meta-guard (every route registerSourceRoutes adds is GET).
+ * Integration tests for the four read-only source routes, driven through
+ * `app.request()` on an app running the source modules (markdown-tree, file-tree, sources) as
+ * boot runs them. Covers the read routes at the legacy `/api/sources` alias and the module
+ * prefix, HTTP confinement rejections (400/404 with no leaked path), the unknown-id 404s, an
+ * acquired-but-empty tree (fileCount 0 is success, not an error), and the read-only meta-guard
+ * (every route registerSourceRoutes adds is GET).
  */
 
-import type { Logger } from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Hono } from "hono";
 
-import { createApp, type AppDeps } from "../src/server/app.js";
-import { registerSourceRoutes } from "../src/sources/route.js";
-import { resolveSourcesRuntime } from "../src/sources/runtime.js";
-import type { SourceStore } from "../src/sources/store.js";
-import { createFakeGitSpawner } from "./util/fake-git-spawner.js";
-import { materializeFixture } from "./fixtures/sources-estate/materialize.js";
+import { stopScheduler } from "../src/providers/registry.js";
+import { sourcesModule } from "../../../modules/sources/server/module.js";
+import { RAW_ASSET_POLICY, registerSourceRoutes, type SourceRoutesDeps } from "../../../modules/sources/server/route.js";
+import { ACTIVE_SVG, materializeFixture } from "./fixtures/sources-estate/materialize.js";
+import { sourcesApp } from "./util/sources-module.js";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()?.();
+  stopScheduler();
   vi.restoreAllMocks();
 });
 
-/** A no-op git spawner — local-path sources never spawn, but this guarantees no real git. */
-const noGit = () => ({ git: createFakeGitSpawner({}) });
-
-function stubLogger(): Logger {
-  return { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger;
-}
-
 /**
- * Build an app over the materialized estate; `withSources:false` omits the capability. When
- * sources are present, each store is primed with one `buildManifest()` — the acquisition the
- * provider scheduler performs on its first poll in a live server — so the read routes observe a
- * last-good confined root (before the first acquisition every read is SOURCE_UNAVAILABLE, by
- * design: store.ts).
+ * Build an app over the materialized estate; `withSources:false` runs only the `sources`
+ * module, with no data source serving a store. When sources are present, each declared
+ * source is primed with one tree read — the acquisition the provider scheduler performs on its
+ * first poll in a live server — so the read routes observe a last-good confined root (before
+ * the first acquisition every read is SOURCE_UNAVAILABLE, by design: store.ts).
  */
 async function buildApp(
   withSources: boolean,
-): Promise<{ app: Hono; deps: AppDeps; logger: Logger }> {
+): Promise<{ app: Hono; lines: Record<string, unknown>[] }> {
   const fixture = materializeFixture();
   cleanups.push(fixture.cleanup);
-  const logger = stubLogger();
-  const base: AppDeps = {
-    config: fixture.config,
-    providers: { read: () => undefined, count: () => 0, listHealth: () => ({}), listProviders: () => [] },
-    logger,
-  };
-  if (!withSources) return { app: createApp(base), deps: base, logger };
-
-  const runtime = resolveSourcesRuntime(
-    fixture.config,
-    { DECK_SOURCES_CACHE_DIR: fixture.cacheDir },
-    noGit(),
-  );
-  // Prime every store's last-good root (simulates the scheduler's first successful poll).
-  await Promise.all(
-    [...runtime.stores.values()].map((store: SourceStore) => store.buildManifest()),
-  );
-  const deps: AppDeps = { ...base, sources: runtime.reader };
-  return { app: createApp(deps), deps, logger };
+  const env = { DECK_SOURCES_CACHE_DIR: fixture.cacheDir };
+  const modules = withSources ? undefined : [sourcesModule];
+  const { app, lines } = await sourcesApp(fixture.config, { env, ...(modules === undefined ? {} : { modules }) });
+  if (withSources) {
+    // Prime every store's last-good root (simulates the scheduler's first successful poll).
+    await Promise.all((fixture.config.sources ?? []).map((source) => app.request(`/api/sources/${source.id}/tree`)));
+  }
+  return { app, lines };
 }
 
 describe("source routes — read surface", () => {
@@ -134,6 +116,120 @@ describe("source routes — read surface", () => {
   });
 });
 
+describe("source routes — raw assets are served inert", () => {
+  it("every raw image carries the sandbox policy, so an SVG cannot run script as deck", async () => {
+    const { app } = await buildApp(true);
+    expect(RAW_ASSET_POLICY).toBe("sandbox; default-src 'none'; style-src 'unsafe-inline'");
+    for (const [path, type] of [["img/active.svg", "image/svg+xml"], ["img/logo.png", "image/png"]] as const) {
+      const res = await app.request(`/api/sources/docs/raw?path=${path}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toBe(type);
+      expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+      // The framing policy every response carries is a second policy beside it (both apply).
+      expect(res.headers.get("Content-Security-Policy")?.split(", ")).toContain(RAW_ASSET_POLICY);
+    }
+    // The bytes are served as committed (the policy, not a rewrite, makes the script inert).
+    const svg = await app.request("/api/sources/docs/raw?path=img/active.svg");
+    expect(await svg.text()).toBe(ACTIVE_SVG);
+  });
+});
+
+/** GET `path` at both route prefixes; they must agree, and the legacy answer is returned. */
+async function atBoth(app: Hono, path: string): Promise<{ status: number; code?: string }> {
+  const answers = await Promise.all(
+    ["/api/sources", "/api/m/sources"].map(async (prefix) => {
+      const res = await app.request(`${prefix}${path}`);
+      const code = res.ok ? undefined : ((await res.json()) as { code: string }).code;
+      return { status: res.status, ...(code === undefined ? {} : { code }) };
+    }),
+  );
+  expect(answers[1], path).toEqual(answers[0]);
+  return answers[0];
+}
+
+const q = (path: string): string => encodeURIComponent(path);
+
+describe("source routes — reads honour include/exclude", () => {
+  it("lists only the files include/exclude keep, by listed and real path, whatever the exclude's case", async () => {
+    const { app } = await buildApp(true);
+    const manifest = (await (await app.request("/api/sources/curated/tree")).json()) as { fileCount: number; tree: unknown };
+    // index.md only: not alias.md or pub/secret.md (aliases of excluded files), notes-link.md (a
+    // markdown name for a non-included file), Private/upper.md or Build/out.md (excluded by
+    // `private/**` and `build/**` whatever the case).
+    expect(manifest.fileCount).toBe(1);
+    expect(JSON.stringify(manifest.tree)).not.toMatch(/alias|pub|secret|notes|Private|Build/);
+  });
+
+  it("a file in the tree reads; one left out by include or exclude is 404 PATH_NOT_FOUND", async () => {
+    const { app } = await buildApp(true);
+    expect((await atBoth(app, "/curated/file?path=index.md")).status).toBe(200);
+    const missing = await (await app.request("/api/sources/curated/file?path=missing.md")).json();
+    // Spelled any way, an excluded or not-included path reads like a missing file.
+    for (const path of ["private/secret.md", "./private/secret.md", "private//secret.md", "Private/upper.md", "Build/out.md", "notes.txt", "notes-link.md", "img/logo.png"]) {
+      expect(await atBoth(app, `/curated/file?path=${q(path)}`), path).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
+      expect(await (await app.request(`/api/sources/curated/file?path=${q(path)}`)).json()).toEqual(missing);
+    }
+  });
+
+  it("an alias of an excluded file (a file or directory symlink) is 404 on file and raw, and absent from search", async () => {
+    const { app } = await buildApp(true);
+    for (const path of ["/curated/file?path=alias.md", "/curated/file?path=pub/secret.md", "/curated/raw?path=pub/photo.png"]) {
+      expect(await atBoth(app, path), path).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
+    }
+    const search = (await (await app.request("/api/sources/curated/search?q=secret")).json()) as { matches: unknown[] };
+    expect(search.matches).toEqual([]);
+  });
+
+  it("raw serves an image in the tree or under an include's base, and nothing excluded or out of reach", async () => {
+    const { app } = await buildApp(true);
+    // include ["**/*.md"]: its base is the root, so images anywhere not excluded are served.
+    for (const path of ["img/logo.png", "deep/art/pic.png"]) {
+      expect((await atBoth(app, `/curated/raw?path=${q(path)}`)).status, path).toBe(200);
+    }
+    for (const path of ["private/photo.png", "./private/photo.png", "private//photo.png", "notes.txt"]) {
+      expect(await atBoth(app, `/curated/raw?path=${q(path)}`), path).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
+    }
+    // include ["docs/**/*.md"]: the image a doc embeds is served; one outside docs/ is not.
+    expect((await atBoth(app, "/scoped/raw?path=docs/img/x.png")).status).toBe(200);
+    expect(await atBoth(app, "/scoped/raw?path=other/y.png")).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
+  });
+
+  it("an include reaches the directories of its brace alternatives and of its literal files", async () => {
+    const { app } = await buildApp(true);
+    // ["README.md", "docs/**/*.md"]: README.md reaches its own directory, the root.
+    expect((await atBoth(app, "/readme/raw?path=assets/logo.png")).status).toBe(200);
+    // ["{docs,guides}/**/*.md"]: docs/ and guides/, nothing else.
+    expect((await atBoth(app, "/braced/raw?path=docs/x.png")).status).toBe(200);
+    expect((await atBoth(app, "/braced/raw?path=guides/y.png")).status).toBe(200);
+    expect(await atBoth(app, "/braced/raw?path=personal/scan.png")).toEqual({ status: 404, code: "PATH_NOT_FOUND" });
+    // ["*.md"]: root-level files, so the root, so the whole source.
+    expect((await atBoth(app, "/rootmd/raw?path=img/z.png")).status).toBe(200);
+  });
+
+  it("raw refuses bytes that are not the image their name promises", async () => {
+    const { app } = await buildApp(true);
+    // SVG text in a .tsx or .json, SVG inside HTML, and an image name that links to an SVG.
+    // An .svg whose root element is not <svg> (an <svg> inside HTML) is not SVG either.
+    for (const path of ["img/widget.tsx", "img/page.html", "img/data.json", "img/alias.png", "img/not-svg.svg"]) {
+      expect(await atBoth(app, `/docs/raw?path=${q(path)}`), path).toEqual({ status: 400, code: "PATH_NOT_CONFINED" });
+    }
+  });
+
+  it("raw serves an SVG whose root follows a byte-order mark, XML declaration, comment and doctype", async () => {
+    const { app } = await buildApp(true);
+    const res = await app.request("/api/sources/docs/raw?path=img/prolog.svg");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("image/svg+xml");
+  });
+
+  it("a traversal outside the tree still answers 400 PATH_NOT_CONFINED", async () => {
+    const { app } = await buildApp(true);
+    for (const route of ["file", "raw"]) {
+      expect(await atBoth(app, `/curated/${route}?path=../docs/index.md`)).toEqual({ status: 400, code: "PATH_NOT_CONFINED" });
+    }
+  });
+});
+
 describe("source routes — missing query params", () => {
   it("missing path on /file → 400 (not 500)", async () => {
     const { app } = await buildApp(true);
@@ -178,7 +274,7 @@ describe("source routes — confinement rejections over HTTP", () => {
 });
 
 describe("source routes — capability gate", () => {
-  it("an app without deps.sources returns 404 SOURCE_NOT_FOUND for every route", async () => {
+  it("with no data source serving a store, every route returns 404 SOURCE_NOT_FOUND", async () => {
     const { app } = await buildApp(false);
     const paths = [
       "/api/sources/docs/tree",
@@ -204,6 +300,27 @@ describe("source routes — capability gate", () => {
   });
 });
 
+describe("source routes — module prefix", () => {
+  it("answer at /api/m/sources exactly as at the legacy /api/sources alias", async () => {
+    const { app } = await buildApp(true);
+    for (const path of ["/docs/tree", "/configs/file?path=app.yaml", "/docs/search?q=nginx", "/nope/tree"]) {
+      const legacy = await app.request(`/api/sources${path}`);
+      const current = await app.request(`/api/m/sources${path}`);
+      expect(current.status).toBe(legacy.status);
+      expect(await current.json()).toEqual(await legacy.json());
+    }
+  });
+
+  it("logs a failure through the module logger with the source id and failure kind only", async () => {
+    const { app, lines } = await buildApp(true);
+    const res = await app.request("/api/sources/docs/file?path=../../etc/passwd");
+    expect(res.status).toBe(400);
+    const logged = lines.find((line) => line.event === "sources.failure");
+    expect(logged).toMatchObject({ module: "sources", sourceId: "docs", code: "PATH_NOT_CONFINED", msg: "source.failure" });
+    expect(JSON.stringify(logged)).not.toContain("passwd");
+  });
+});
+
 describe("source routes — acquired-but-empty tree", () => {
   it("a matches-nothing source returns 200 with fileCount 0 (success, not error)", async () => {
     const { app } = await buildApp(true);
@@ -215,7 +332,7 @@ describe("source routes — acquired-but-empty tree", () => {
   });
 });
 
-describe("source routes — read-only meta-guard (REQ-RO-01, SC-10)", () => {
+describe("source routes — read-only meta-guard", () => {
   it("registerSourceRoutes adds exactly four routes, all GET, no mutating verb", async () => {
     const calls: Array<{ method: string; path: string }> = [];
     // A recorder that captures any HTTP verb registerSourceRoutes might call. If the module
@@ -231,7 +348,7 @@ describe("source routes — read-only meta-guard (REQ-RO-01, SC-10)", () => {
       },
     ) as unknown as Hono;
 
-    const { deps } = await buildApp(true);
+    const deps: SourceRoutesDeps = { sources: { get: () => undefined }, logFailure: () => {} };
     registerSourceRoutes(recorder, deps);
 
     expect(calls).toHaveLength(4);
@@ -240,10 +357,10 @@ describe("source routes — read-only meta-guard (REQ-RO-01, SC-10)", () => {
       expect(calls.some((c) => c.method === verb)).toBe(false);
     }
     expect(calls.map((c) => c.path)).toEqual([
-      "/api/sources/:id/tree",
-      "/api/sources/:id/file",
-      "/api/sources/:id/raw",
-      "/api/sources/:id/search",
+      "/:id/tree",
+      "/:id/file",
+      "/:id/raw",
+      "/:id/search",
     ]);
   });
 });

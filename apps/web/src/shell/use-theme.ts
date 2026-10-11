@@ -1,20 +1,16 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { BOOT_ELEMENT_ID, THEME_MODES } from "@deck/contract";
 import { applyTheme } from "./theme.js";
+import { initialThemeMode, THEME_CHOICE_KEY, type ThemeMode } from "./theme-chain.js";
 
 /** User preference; "system" follows the OS via prefers-color-scheme. */
-export type ThemeMode = "system" | "light" | "dark";
+export type { ThemeMode } from "./theme-chain.js";
 
-const STORAGE_KEY = "deck-theme";
-const MODES: readonly ThemeMode[] = ["system", "light", "dark"];
 
+/** The start mode: the same chain the pre-paint script runs (see `theme-chain.ts`). */
 function readStored(): ThemeMode {
-  try {
-    const value = localStorage.getItem(STORAGE_KEY);
-    if (value === "light" || value === "dark" || value === "system") return value;
-  } catch {
-    // Private mode / blocked storage — fall back to the system default.
-  }
-  return "system";
+  const bootText = typeof document === "undefined" ? null : document.getElementById(BOOT_ELEMENT_ID)?.textContent;
+  return initialThemeMode((key) => localStorage.getItem(key), bootText);
 }
 
 function prefersDark(): boolean {
@@ -44,25 +40,27 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
+/** The viewer's choice: it is stored, so it wins over the operator's default from now on. */
 function setThemeMode(next: ThemeMode): void {
   current = next;
+  try {
+    localStorage.setItem(THEME_CHOICE_KEY, next);
+  } catch {
+    // Non-fatal; the theme still applies for this session.
+  }
   for (const listener of listeners) listener();
 }
 
 /**
- * Own the applied theme: persist the user's preference, apply the resolved
- * palette to <html>, and — while on "system" — track OS changes live.
+ * Own the applied theme: apply the resolved palette to <html>, and — while on
+ * "system" — track OS changes live. Only a choice made through the setter is
+ * stored; until then the operator's default keeps applying.
  */
 export function useThemeMode(): [ThemeMode, (next: ThemeMode) => void] {
   const mode = useSyncExternalStore(subscribe, getMode, getMode);
 
   useEffect(() => {
     applyTheme(document.documentElement, resolve(mode));
-    try {
-      localStorage.setItem(STORAGE_KEY, mode);
-    } catch {
-      // Non-fatal; the theme still applies for this session.
-    }
     if (mode !== "system" || typeof matchMedia !== "function") return;
     const media = matchMedia("(prefers-color-scheme: dark)");
     const onChange = (): void =>
@@ -76,5 +74,5 @@ export function useThemeMode(): [ThemeMode, (next: ThemeMode) => void] {
 
 /** The next preference in the system → light → dark cycle. */
 export function nextMode(mode: ThemeMode): ThemeMode {
-  return MODES[(MODES.indexOf(mode) + 1) % MODES.length]!;
+  return THEME_MODES[(THEME_MODES.indexOf(mode) + 1) % THEME_MODES.length]!;
 }

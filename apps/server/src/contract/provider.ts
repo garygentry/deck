@@ -18,6 +18,16 @@ export interface Provider<T = unknown> {
   fetch(context?: ProviderFetchContext): Promise<T>;
   /** Optionally project a failed poll into retained data without recording success. */
   onFetchError?(error: unknown, retainedData: Readonly<T> | null): T | null;
+  /**
+   * When the latest successful fetch's data was observed at its source (epoch ms), or null;
+   * the envelope's `observedAt` and age use it, clamped to now (see `ProviderSpec.observedAt`).
+   */
+  observedAt?(): number | null;
+  /**
+   * Called once when the provider stops polling (its module stops, or the registry is torn
+   * down): end any work it runs beside its polls, which must then change nothing.
+   */
+  stop?(): void;
 }
 
 export interface ProviderHealth {
@@ -34,9 +44,4 @@ export interface ProviderConfig {
   failureFreshness?: FailureFreshness;
 }
 
-export const POLL_DEFAULTS = {
-  pollIntervalMs: 30_000,
-  ttlMs: 30_000,
-  unreachableAfterMs: 90_000,
-  timeoutMs: 5_000,
-} as const;
+export { POLL_DEFAULTS } from "@deck/contract";

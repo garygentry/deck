@@ -1,0 +1,14 @@
+# Claude-only (no codex) keeps the collector passive at boot: no spawned app
+# server and no rollout watcher.
+schemaVersion: 1
+llmUsage:
+  claude:
+    credentialsFile: /nonexistent/claude/.credentials.json
+    statusLine:
+      credentialEnv: DECK_PARITY_INGEST_TOKEN
+    activeInterval: PT2M
+    idleInterval: PT5M
+  thresholds:
+    warn: 70
+    danger: 85
+  idlePause: PT5M

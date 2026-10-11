@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:deck:schema:remote-describe:1",
+  "title": "RemoteDescribe",
+  "description": "What a remote provider (sidecar) contributes, served at GET /deck/v1/describe: declarative widgets over its own data, links and nav entries. Deck renders them with its own widget types; nothing in it runs as code.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "deck",
+    "id",
+    "version"
+  ],
+  "properties": {
+    "deck": {
+      "const": 1,
+      "description": "The protocol version the document speaks."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "maxLength": 64,
+      "description": "The sidecar's id; it must equal the id of the integration that polls it."
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[0-9A-Za-z][0-9A-Za-z.+-]*$",
+      "description": "The sidecar's own version, shown in its health detail."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "\\S",
+      "description": "The heading over its widgets; default the integration's title."
+    },
+    "columns": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4,
+      "description": "Grid columns of its widget section from the md breakpoint up; default 1."
+    },
+    "widgets": {
+      "type": "array",
+      "maxItems": 24,
+      "items": {
+        "$ref": "#/$defs/RemoteWidget"
+      },
+      "description": "Widgets over the sidecar's data (GET /deck/v1/data), in reading order."
+    },
+    "links": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/RemoteLink"
+      },
+      "description": "Links shown as tiles below its widgets."
+    },
+    "nav": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/RemoteNavItem"
+      },
+      "description": "External sidebar links, in the nav group of the integration's page."
+    }
+  },
+  "$defs": {
+    "RemoteWidget": {
+      "title": "RemoteWidget",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^(?!s[0-9]+w[0-9]+$)[a-z0-9][a-z0-9-]*$",
+          "description": "A stable name, unique on the page; its id is widget:ui/<page>.<id>. Without one, the id is positional (s<N>w<M>, a form an id may not take) and changes when widgets move.",
+          "maxLength": 64
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*/[a-z0-9][a-z0-9-]*$",
+          "description": "The widget type, <module>/<name>, such as core/json."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "The widget's heading."
+        },
+        "select": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "A JMESPath expression over the provider's data, evaluated on the server when the data changes, within fixed size and work limits."
+        },
+        "options": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "description": "Options of the widget type, checked against its schema."
+        },
+        "span": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4,
+          "description": "Columns the widget spans; default 1, at most the section's columns."
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6,
+          "description": "Rows the widget spans; default 1."
+        }
+      }
+    },
+    "RemoteLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "href"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "href": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^(?:https?://[^/\\s]\\S*|/(?![/\\\\])\\S*)$",
+          "description": "An http(s) URL (it opens in a new tab) or an absolute path in deck."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "icon": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "description": "An icon name from the shell's icon set.",
+          "maxLength": 64
+        }
+      },
+      "title": "RemoteLink"
+    },
+    "RemoteNavItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "href"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "maxLength": 64,
+          "description": "The entry's name, unique in the document; deck lists it as nav:remote/<instance>.<id>."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The entry's label.",
+          "maxLength": 80
+        },
+        "href": {
+          "type": "string",
+          "pattern": "^https?://[^/\\s]\\S*$",
+          "description": "An external http(s) URL.",
+          "maxLength": 2048
+        },
+        "icon": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "description": "An icon name from the shell's icon set.",
+          "maxLength": 64
+        },
+        "order": {
+          "type": "number",
+          "description": "Order within the group; default 100."
+        }
+      },
+      "title": "RemoteNavItem"
+    },
+    "JsonValue": {
+      "title": "JsonValue",
+      "description": "Any value representable in JSON.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          }
+        }
+      ]
+    }
+  }
+}

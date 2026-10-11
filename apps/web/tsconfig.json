@@ -18,11 +18,16 @@
     "paths": {
       "@/*": [
         "src/*"
+      ],
+      "@web-test/*": [
+        "test/*"
       ]
     }
   },
   "include": [
     "src",
-    "test"
+    "test",
+    "../../modules/*/web",
+    "../../modules/*/test/web"
   ]
 }

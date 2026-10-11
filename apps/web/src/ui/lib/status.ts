@@ -5,6 +5,19 @@ export type Tone = "ok" | "warn" | "danger" | "info" | "pending" | "neutral";
 
 export const TONES: readonly Tone[] = ["ok", "warn", "danger", "info", "pending", "neutral"];
 
+/**
+ * The icon a bare tone shows, for a state that has a tone but no map entry of a feature's own
+ * (a config-declared status map's): so a toned value still never relies on colour alone.
+ */
+export const TONE_ICON: Readonly<Record<Tone, IconName>> = {
+  ok: "circle-check",
+  warn: "triangle-alert",
+  danger: "circle-x",
+  info: "info",
+  pending: "hourglass",
+  neutral: "circle-minus",
+};
+
 /** How one state of a domain value presents: tone and icon, plus text so colour is never alone. */
 export interface StatusPresentation {
   tone: Tone;

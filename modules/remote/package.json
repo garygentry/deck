@@ -1,0 +1,16 @@
+{
+  "name": "@deck/module-remote",
+  "version": "0.3.2",
+  "private": true,
+  "description": "deck's built-in remote module: the `remote` data source that polls an out-of-process sidecar's data and describe endpoints and renders its page.",
+  "type": "module",
+  "dependencies": {
+    "@deck/contract": "workspace:*",
+    "@deck/module-sdk": "workspace:*",
+    "@deck/schema": "workspace:*",
+    "markdown-it": "^14.3.2"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.2.0"
+  }
+}

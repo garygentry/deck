@@ -29,26 +29,27 @@ therefore costs at most the per-model rows, and an old OAuth value never hides a
 
 ## Enable it in the estate config
 
-Add a top-level `llmUsage` section. Both `claude` and `codex` are optional; include the ones
-you use. Without an `llmUsage` section the feature is off: no polling, no ingest route, and
+Add a `modules.llm-usage` section. Both `claude` and `codex` are optional; include the ones
+you use. Without a `modules.llm-usage` section the feature is off: no polling, no ingest route, and
 the page says it is not configured.
 
 ```yaml
-llmUsage:
-  claude:
-    credentialsFile: /data/claude/.credentials.json
-    transcriptsDir: /data/claude/projects
-    statusLine:
-      credentialEnv: DECK_LLM_USAGE_INGEST_TOKEN
-    activeInterval: PT2M   # OAuth poll interval while you are working (minimum PT2M)
-    idleInterval: PT5M     # OAuth poll interval otherwise (minimum PT2M)
-  codex:
-    codexHome: /home/you/.codex
-    command: /home/you/.codex/packages/standalone/current/bin/codex
-  thresholds:
-    warn: 75
-    danger: 90
-  idlePause: PT5M
+modules:
+  llm-usage:
+    claude:
+      credentialsFile: /data/claude/.credentials.json
+      transcriptsDir: /data/claude/projects
+      statusLine:
+        credentialEnv: DECK_LLM_USAGE_INGEST_TOKEN
+      activeInterval: PT2M   # OAuth poll interval while you are working (minimum PT2M)
+      idleInterval: PT5M     # OAuth poll interval otherwise (minimum PT2M)
+    codex:
+      codexHome: /home/you/.codex
+      command: /home/you/.codex/packages/standalone/current/bin/codex
+    thresholds:
+      warn: 75
+      danger: 90
+    idlePause: PT5M
 ```
 
 - `credentialEnv` is the **name** of an environment variable, never the token itself, like
@@ -63,7 +64,7 @@ llmUsage:
 - `deck validate` reports malformed or zero durations and a `warn` above `danger`
   (`LLM_USAGE_INVALID`); deck refuses to start with them too.
 
-See the [estate configuration reference](../reference/estate-config.md#llmusage) for every key.
+See the [estate configuration reference](../reference/estate-config.md#modulesllm-usage) for every key.
 
 ## Mount the credentials and data
 
@@ -123,10 +124,11 @@ services:
 ```
 
 ```yaml
-llmUsage:
-  codex:
-    codexHome: /home/you/.codex
-    command: /home/you/.codex/packages/standalone/current/bin/codex
+modules:
+  llm-usage:
+    codex:
+      codexHome: /home/you/.codex
+      command: /home/you/.codex/packages/standalone/current/bin/codex
 ```
 
 **npm** (`npm install -g @openai/codex`). The `codex` command on your PATH is a Node script

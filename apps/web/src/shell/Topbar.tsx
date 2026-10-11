@@ -1,8 +1,10 @@
-import { Separator, SidebarTrigger } from "@/ui";
+import { FragmentBoundary, Separator, SidebarTrigger } from "@/ui";
 import { HealthHeaderRegion } from "./health-header/HealthHeaderRegion.js";
-import { ThemeMenu } from "./ThemeMenu.js";
+import { useManifestSlot } from "./manifest-slot.js";
+import { TOPBAR_ACTIONS_SLOT } from "./topbar-actions.js";
+import { usePollResetKey } from "./use-slot-reset-key.js";
 
-/** The sticky top bar: sidebar toggle, current page, health pills, theme menu. */
+/** The sticky top bar: sidebar toggle, current page, then the status and actions slots. */
 export function Topbar({ title }: { title: string | undefined }) {
   return (
     <header
@@ -14,8 +16,26 @@ export function Topbar({ title }: { title: string | undefined }) {
       {title && <span className="hidden truncate text-sm font-medium sm:inline">{title}</span>}
       <div className="ml-auto flex min-w-0 items-center gap-2">
         <HealthHeaderRegion />
-        <ThemeMenu />
+        <TopbarActions />
       </div>
     </header>
+  );
+}
+
+/** The `app/topbar.actions` slot: each control isolated, so one that throws leaves the bar usable. */
+function TopbarActions() {
+  const actions = useManifestSlot(TOPBAR_ACTIONS_SLOT);
+  const resetKey = usePollResetKey();
+  return (
+    <>
+      {actions.map((extension) => {
+        const Action = extension.component!;
+        return (
+          <FragmentBoundary key={extension.id} label="Control" resetKey={resetKey}>
+            <Action />
+          </FragmentBoundary>
+        );
+      })}
+    </>
   );
 }

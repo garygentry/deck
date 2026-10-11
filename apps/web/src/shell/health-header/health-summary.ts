@@ -1,4 +1,4 @@
-import type { FreshnessStamp } from "@deck/server";
+import type { FreshnessStamp } from "@deck/contract";
 
 /** Health-header status severity; color is supplemental to icon + text only. */
 export type HealthStatus = "ok" | "warning" | "critical";

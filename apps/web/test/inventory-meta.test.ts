@@ -1,25 +1,25 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import type { SnapshotProviderResult } from "@deck/server";
+import type { SnapshotProviderResult } from "@deck/contract";
 
-import { INVENTORY_SLOTS } from "../src/features/hosts-and-services/components/EntitySlots.js";
-import { hostHref, serviceHref } from "../src/features/hosts-and-services/model.js";
-import { INVENTORY_ENDPOINTS } from "../src/features/hosts-and-services/use-inventory-data.js";
+import { hostHref, serviceHref } from "../../../modules/inventory/web/model.js";
+import { INVENTORY_ENDPOINTS } from "../../../modules/inventory/web/use-inventory-data.js";
 import { getPages } from "../src/registry/registry.js";
+import { webTestRoots } from "./support/source-roots.js";
 
 // Importing the feature entrypoint performs its four side-effecting page
 // registrations into this file's isolated registry singleton.
-import "../src/features/hosts-and-services/index.js";
+import "../../../modules/inventory/web/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "../../..");
-const featureDir = join(here, "../src/features/hosts-and-services");
+const featureDir = join(here, "../../../modules/inventory/web");
 
 // ---------------------------------------------------------------------------
-// Meta-guard scope (spec 08 §7.3).
+// Meta-guard scope.
 //
 // These guards protect the enumerated protection set: frozen registration,
 // provider, route, and slot contracts; the absence of schema edits, estate
@@ -31,7 +31,7 @@ const featureDir = join(here, "../src/features/hosts-and-services");
 // keyboard behavior, contrast, or any success-criterion behavior — those live in
 // the behavioral Vitest and Chromium suites. Where a behavioral assertion exists
 // we reference the runtime contract value rather than re-asserting implementation
-// text (spec 08 §7.3 non-goals).
+// text.
 // ---------------------------------------------------------------------------
 
 /** Recursively collect every `.ts`/`.tsx` source file under a directory. */
@@ -53,23 +53,23 @@ const FEATURE_TEXT = FEATURE_SOURCES.map((file) => readFileSync(file, "utf8"));
 // ---------------------------------------------------------------------------
 
 describe("frozen inventory registration and route contracts", () => {
-  const INVENTORY_IDS = new Set(["hosts", "services", "host-detail", "service-detail"]);
+  const INVENTORY_IDS = new Set(["page:inventory/hosts", "page:inventory/services", "page:inventory/host-detail", "page:inventory/service-detail"]);
   const inventoryPages = getPages().filter((page) => INVENTORY_IDS.has(page.id));
 
   it("registers exactly four inventory pages with the exact ids and paths", () => {
     const byId = new Map(inventoryPages.map((page) => [page.id, page]));
     expect(inventoryPages).toHaveLength(4);
-    expect(byId.get("hosts")?.path).toBe("/hosts");
-    expect(byId.get("services")?.path).toBe("/services");
-    expect(byId.get("host-detail")?.path).toBe("/hosts/:name");
-    expect(byId.get("service-detail")?.path).toBe("/services/:host/:name");
+    expect(byId.get("page:inventory/hosts")?.path).toBe("/hosts");
+    expect(byId.get("page:inventory/services")?.path).toBe("/services");
+    expect(byId.get("page:inventory/host-detail")?.path).toBe("/hosts/:name");
+    expect(byId.get("page:inventory/service-detail")?.path).toBe("/services/:host/:name");
   });
 
   it("exposes exactly two primary-navigation entries (Hosts and Services)", () => {
     const navVisible = inventoryPages.filter((page) => page.nav !== false).map((page) => page.id);
-    expect([...navVisible].sort()).toEqual(["hosts", "services"]);
+    expect([...navVisible].sort()).toEqual(["page:inventory/hosts", "page:inventory/services"]);
     // The two dynamic detail routes are routable but hidden from primary nav.
-    for (const id of ["host-detail", "service-detail"]) {
+    for (const id of ["page:inventory/host-detail", "page:inventory/service-detail"]) {
       expect(inventoryPages.find((page) => page.id === id)?.nav).toBe(false);
     }
   });
@@ -77,10 +77,6 @@ describe("frozen inventory registration and route contracts", () => {
   it("freezes the browser-facing snapshot provider endpoint and id", () => {
     expect(INVENTORY_ENDPOINTS.snapshot).toBe("/api/providers/snapshot");
     expect(INVENTORY_ENDPOINTS.config).toBe("/api/config");
-  });
-
-  it("freezes the two ordered fragment slot strings", () => {
-    expect([...INVENTORY_SLOTS]).toEqual(["findings", "configs"]);
   });
 
   it("freezes independently-encoded detail route segments", () => {
@@ -92,7 +88,7 @@ describe("frozen inventory registration and route contracts", () => {
 
 // A compile-time frozen-contract guard: the shared provider result must have
 // exactly these five top-level keys. Renaming/adding/removing one fails
-// `pnpm -r typecheck`, catching sibling-contract drift (spec 07 §9.3, CON-07).
+// `pnpm -r typecheck`, catching sibling-contract drift.
 const RESULT_KEYS = ["snapshot", "findings", "hostStates", "lastReadAt", "readError"] as const;
 type ResultKey = keyof SnapshotProviderResult;
 type ExpectedKey = (typeof RESULT_KEYS)[number];
@@ -242,9 +238,12 @@ describe("Chromium configuration and CI installation", () => {
     // Unit tests still run (in the node-pnpm job) and are not dropped.
     expect(ciText).toContain("test:unit");
     // Bun parity stays Vitest-only; no Playwright/Chromium install leaks into it.
-    expect(ciText).toContain("bunx vitest run");
+    // Its wrapper starts vitest with `--bun`, so the tests run on Bun, not Node.
+    expect(ciText).toContain("scripts/bun-parity-vitest.sh");
+    const bunParityScript = readFileSync(join(repoRoot, "scripts/bun-parity-vitest.sh"), "utf8");
+    expect(bunParityScript).toContain("bunx --bun vitest run");
+    expect(bunParityScript).not.toMatch(/playwright/i);
     // Existing repository gates remain intact.
-    expect(ciText).toContain("Check provider barrel drift");
     expect(ciText).toContain("Check golden render");
     expect(ciText).toContain("Bare-Bun boot smoke");
   });
@@ -255,14 +254,19 @@ describe("Chromium configuration and CI installation", () => {
 // ---------------------------------------------------------------------------
 
 describe("no focused or skipped inventory tests", () => {
-  const testDir = here;
   const metaFile = fileURLToPath(import.meta.url);
-  const inventoryTestFiles = sourceFiles(testDir).filter(
-    (file) => /inventory/.test(file) && file !== metaFile,
-  );
+  // The web suite's test roots: apps/web/test and every modules/<id>/test/web, so the module's
+  // own tests are scanned as well as the kernel tests that drive it.
+  const inventoryTestFiles = webTestRoots()
+    .flatMap(sourceFiles)
+    .filter((file) => /inventory/.test(relative(repoRoot, file)) && file !== metaFile);
 
   it("collects the inventory test files to scan", () => {
     expect(inventoryTestFiles.length).toBeGreaterThan(0);
+    // The module's own tests live in modules/inventory/test/web, outside this directory.
+    for (const moved of ["inventory-contrast.test.ts", "inventory-status.test.tsx"]) {
+      expect(inventoryTestFiles).toContain(join(repoRoot, "modules/inventory/test/web", moved));
+    }
   });
 
   it("contains no .only or unconditional .skip", () => {

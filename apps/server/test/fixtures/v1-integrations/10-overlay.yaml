@@ -1,0 +1,42 @@
+schemaVersion: 1
+hosts:
+  - name: web
+    bindings:
+      http-health: { url: "http://parity-upstream.invalid/web/health" }
+  - name: api
+    bindings:
+      http-health: { url: "http://parity-upstream.invalid/api/health", method: HEAD }
+  - name: edge
+    bindings:
+      http-health: { url: "http://unrouted.invalid/health" }
+services:
+  - name: site
+    host: web
+    bindings:
+      link: { href: "https://site.parity.invalid/" }
+integrations:
+  - id: docker
+    kind: docker
+    title: Docker
+    baseUrl: "http://parity-upstream.invalid/docker"
+  - id: gatus
+    kind: gatus
+    title: Gatus
+    baseUrl: "http://parity-upstream.invalid/gatus/"
+    # The router requires this env var's value as the Authorization header; the
+    # `.no-credential` case leaves it unset and pins the 401 path.
+    credentialEnv: DECK_PARITY_GATUS_TOKEN
+  - id: prometheus
+    kind: prometheus
+    title: Prometheus
+    baseUrl: "http://parity-upstream.invalid/prometheus"
+    card:
+      summaries:
+        - { id: load, label: Load, query: "avg(node_load1)", warning: 4, critical: 8, direction: above }
+        - { id: memory, label: Memory used, query: "avg(node_memory_used_percent)", unit: "%", warning: 70, critical: 90, direction: above }
+        - { id: disk-free, label: Disk free, query: "min(node_filesystem_free_percent)", unit: "%", warning: 20, critical: 10, direction: below }
+        - { id: broken, label: Broken query, query: "bad_shape_metric" }
+  - id: alertmanager
+    kind: alertmanager
+    title: Alertmanager
+    baseUrl: "http://parity-upstream.invalid/alertmanager"

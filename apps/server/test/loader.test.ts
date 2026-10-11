@@ -5,9 +5,10 @@ import { invalid, primary } from "@deck/schema/fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { load } from "../src/config/load.js";
 import { resolveConfigDir } from "../src/config/resolve-dir.js";
+import * as modulesConfig from "../src/modules/config.js";
 import { makeConfigDir } from "./util/tmp-config.js";
 
-const cleanDocument = { schemaVersion: 1, estate: { name: "loader-test" } };
+const cleanDocument = { schemaVersion: 2, estate: { name: "loader-test" } };
 const cleanDir = () => makeConfigDir({ "00-base.yaml": cleanDocument });
 const temporary: Array<() => void> = [];
 
@@ -47,7 +48,7 @@ describe("resolveConfigDir", () => {
     const root = tracked({ "placeholder.yaml": cleanDocument });
     const config = join(root.dir, "config");
     mkdirSync(config);
-    writeFileSync(join(config, "00.yaml"), "schemaVersion: 1\nestate:\n  name: loader-test\n");
+    writeFileSync(join(config, "00.yaml"), "schemaVersion: 2\nestate:\n  name: loader-test\n");
     expect(resolveConfigDir({ env: {}, cwd: root.dir })).toMatchObject({ ok: true, dir: config });
   });
 });
@@ -57,7 +58,9 @@ describe("load", () => {
     const validate = vi.spyOn(schema, "validate");
     const result = load({ arg: dirname(primary.paths.base) });
     expect(validate.mock.calls.map(([, options]) => options?.layer)).toEqual(["base", "overlay", "merged"]);
-    expect(validate.mock.calls[1][1]).toEqual({ layer: "overlay", base: primary.base });
+    expect(validate.mock.calls[1][1]).toMatchObject({ layer: "overlay", base: primary.base });
+    // Every call validates against the one composition of the built-in modules.
+    expect(new Set(validate.mock.calls.map(([, options]) => options?.composed)).size).toBe(1);
     expect(result.exitClass).toBe(0);
     if (result.exitClass === 0) expect(result.config).toEqual(primary.merged);
   });
@@ -67,10 +70,10 @@ describe("load", () => {
     const host = { name: "cross-overlay", kind: "vm", purpose: "loader test" };
     const { dir } = tracked({
       "00-base.yaml": cleanDocument,
-      "10-host.yaml": { schemaVersion: 1, hosts: [host] },
+      "10-host.yaml": { schemaVersion: 2, hosts: [host] },
       "20-layout.yaml": {
-        schemaVersion: 1,
-        groups: [{ id: "cross-overlay", title: "Cross overlay", items: [{ type: "host", host: host.name }] }],
+        schemaVersion: 2,
+        modules: { portal: { groups: [{ id: "cross-overlay", title: "Cross overlay", items: [{ type: "host", host: host.name }] }] } },
       },
     });
     load({ arg: dir });
@@ -111,11 +114,31 @@ describe("load", () => {
   it("MergeError maps to CONFIG_MERGE_ERROR with upstream details", () => {
     const { dir } = tracked({
       "00-base.yaml": cleanDocument,
-      "10-overlay.yaml": { schemaVersion: 2 },
+      "10-overlay.yaml": { schemaVersion: 3 },
     });
     const result = load({ arg: dir });
     expect(result).toMatchObject({ exitClass: 2, toolError: { code: "CONFIG_MERGE_ERROR", path: "/schemaVersion" } });
     if (result.exitClass === 2) expect(result.toolError.message).toContain("MERGE_VERSION_MISMATCH");
+  });
+
+  it("a schemaVersion 1 layer maps to CONFIG_MIGRATION_REQUIRED naming deck config migrate and the dir", () => {
+    for (const layers of [
+      { "00-base.yaml": { ...cleanDocument, schemaVersion: 1 } },
+      { "00-base.yaml": cleanDocument, "10-overlay.yaml": { schemaVersion: 1 } },
+    ]) {
+      const { dir } = tracked(layers);
+      const result = load({ arg: dir });
+      expect(result).toMatchObject({ exitClass: 2, findings: [], toolError: { code: "CONFIG_MIGRATION_REQUIRED" } });
+      if (result.exitClass === 2) expect(result.toolError.message).toContain(`deck config migrate ${dir}`);
+    }
+  });
+
+  it("a module contribution conflict maps to exit 2 instead of throwing", () => {
+    const composed = vi.spyOn(modulesConfig, "builtinComposition").mockImplementation(() => {
+      throw new schema.ComposeError("MODULE_MANIFEST_CONFLICT", "twin", "duplicate module id");
+    });
+    expect(load({ arg: tracked({ "00-base.yaml": cleanDocument }).dir })).toMatchObject({ exitClass: 2, toolError: { code: "MODULE_MANIFEST_CONFLICT" } });
+    composed.mockRestore();
   });
 
   it("validate classification 2 maps to exit 2 without throwing", () => {
@@ -141,7 +164,7 @@ describe("load", () => {
         expect.objectContaining({
           code: "REF_SERVICE_UNRESOLVED",
           severity: "error",
-          path: "/groups/0/items/0",
+          path: "/modules/portal/groups/0/items/0",
         }),
       ]),
     });

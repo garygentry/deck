@@ -1,0 +1,22 @@
+{
+  "name": "@deck/module-portal",
+  "version": "0.3.2",
+  "private": true,
+  "description": "deck's built-in portal module: the modules.portal groups config, the launch portal page, its groups widget and endpoint summary pill.",
+  "type": "module",
+  "dependencies": {
+    "@deck/contract": "workspace:*",
+    "@deck/module-sdk": "workspace:*",
+    "@deck/schema": "workspace:*",
+    "@deck/server": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.3.0",
+    "vitest": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "react": "^19.3.0",
+    "vitest": "^4.1.0"
+  }
+}

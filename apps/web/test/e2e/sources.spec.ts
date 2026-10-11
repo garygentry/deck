@@ -6,13 +6,13 @@ import { expect, test, type Page } from "@playwright/test";
  * local-path fixtures — `markdown-tree/` and `file-tree/` (the latter with a setup-only oversized
  * file and an escape symlink) — into the ephemeral runtime root and declares them as `docs` and
  * `configs` sources in an overlay layer. Local-path sources acquire in place, so no git and no
- * network are involved (08 §6). Neither source sets an `owner`, so the owned-configs fragment on
+ * network are involved. Neither source sets an `owner`, so the owned-configs fragment on
  * the inventory detail pages stays empty and the inventory suite is unaffected.
  *
- * Coverage: SC-01 (browse a markdown-tree source — GFM render, syntax highlight, an internal
- * relative link, a relative image served through the raw route), SC-02 (browse a file-tree source
- * — highlighted config, oversized → truncation notice, binary → placeholder), and SC-10
- * (observational: the surface exposes no edit/save/commit affordance).
+ * Coverage: browsing a markdown-tree source (GFM render, syntax highlight, an internal relative
+ * link, a relative image served through the raw route), browsing a file-tree source (highlighted
+ * config, oversized → truncation notice, binary → placeholder), and that neither surface exposes
+ * an edit/save/commit affordance.
  */
 
 /**
@@ -39,7 +39,7 @@ const fileFigure = (page: Page, name?: string) =>
   name === undefined ? page.getByRole("main").getByRole("figure") : page.getByRole("figure", { name });
 
 test.describe("sources: docs + configs read-only browsing", () => {
-  test("browse a markdown-tree source: GFM, highlight, internal link, image (SC-01)", async ({
+  test("browse a markdown-tree source: GFM, highlight, internal link, image", async ({
     page,
   }) => {
     await openSource(page, "/docs", "Docs");
@@ -70,7 +70,7 @@ test.describe("sources: docs + configs read-only browsing", () => {
       .toBeGreaterThan(0);
   });
 
-  test("browse a file-tree source: highlight, truncated, binary (SC-02)", async ({ page }) => {
+  test("browse a file-tree source: highlight, truncated, binary", async ({ page }) => {
     await openSource(page, "/configs", "Configs");
 
     // A highlightable config file renders with visible syntax highlighting and no truncation.
@@ -89,7 +89,7 @@ test.describe("sources: docs + configs read-only browsing", () => {
     await expect(fileFigure(page)).toHaveCount(0);
   });
 
-  test("no mutating affordance is exposed on either surface (SC-10)", async ({ page }) => {
+  test("no mutating affordance is exposed on either surface", async ({ page }) => {
     const mutating = /\b(edit|save|commit|write|create|update|delete|remove|new|push|apply)\b/i;
 
     for (const [route, heading] of [

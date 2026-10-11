@@ -9,7 +9,8 @@ import {
   Icon,
   type IconName,
 } from "@/ui";
-import { useThemeMode, type ThemeMode } from "./use-theme.js";
+import type { ThemeMode } from "@deck/contract";
+import { useThemeMode } from "./use-theme.js";
 
 const MODES: readonly { mode: ThemeMode; label: string; icon: IconName }[] = [
   { mode: "light", label: "Light", icon: "sun" },

@@ -1,6 +1,6 @@
 /**
  * Recursively freeze an object graph so any mutation attempt throws in strict mode.
- * Used to prove the library never mutates its inputs (REQ-VAL-13, REQ-LAYER-06).
+ * Used to prove the library never mutates its inputs.
  * Cycles are not expected in fixture/document inputs; a WeakSet guards anyway.
  */
 export function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {

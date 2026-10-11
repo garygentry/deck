@@ -8,8 +8,8 @@ import type { PageRegistration } from "../src/registry/registry-types.js";
 import { AppSidebar } from "../src/shell/AppSidebar.js";
 
 const pages: PageRegistration[] = [
-  { id: "hosts", path: "/hosts", label: "Hosts", component: () => null },
-  { id: "drift", path: "/drift", label: "Drift", component: () => null },
+  { id: "page:inventory/hosts", path: "/hosts", label: "Hosts", component: () => null },
+  { id: "page:drift/overview", path: "/drift", label: "Drift", component: () => null },
 ];
 
 function Harness({ path }: { path: string }) {

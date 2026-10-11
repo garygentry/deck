@@ -1,4 +1,4 @@
-schemaVersion: 1
+schemaVersion: 2
 estate:
   # A snapshot host older than this reads as "stale" in the inventory and
   # coverage views. The bundled example snapshot is stamped so most hosts land
@@ -23,21 +23,23 @@ services:
   - name: jellyfin
     host: media
     links: [{ title: Jellyfin, href: "https://media.home.example/" }]
-groups:
-  - id: overview
-    title: Overview
-    order: 1
-    items:
-      - { type: service, host: apps, name: portal, title: Portal }
-      - { type: service, host: nas, name: files, title: Files }
-      - { type: service, host: media, name: jellyfin, title: Jellyfin }
-      - { type: link, title: Gateway, href: "https://gateway.home.example/" }
-  - id: infrastructure
-    title: Infrastructure
-    order: 2
-    items:
-      - { type: link, title: NAS Console, href: "https://nas.home.example/" }
-      - { type: link, title: Gateway UI, href: "https://gateway.home.example/" }
+modules:
+  portal:
+    groups:
+      - id: overview
+        title: Overview
+        order: 1
+        items:
+          - { type: service, host: apps, name: portal, title: Portal }
+          - { type: service, host: nas, name: files, title: Files }
+          - { type: service, host: media, name: jellyfin, title: Jellyfin }
+          - { type: link, title: Gateway, href: "https://gateway.home.example/" }
+      - id: infrastructure
+        title: Infrastructure
+        order: 2
+        items:
+          - { type: link, title: NAS Console, href: "https://nas.home.example/" }
+          - { type: link, title: Gateway UI, href: "https://gateway.home.example/" }
 sources:
   - id: runbooks
     kind: markdown-tree
@@ -47,3 +49,60 @@ sources:
     kind: file-tree
     title: Host configs
     location: { path: examples/estate/configs }
+# Any HTTP API that answers JSON can be a data source: an `http-json`
+# integration polls its URL and serves the parsed body at
+# GET /api/providers/<id>. Commented out because it needs a reachable URL. The
+# credential comes only from the variable `credentialEnv` names (set
+# UPS_TOKEN in the environment, never here); literal `headers` are for
+# non-secret values only.
+# integrations:
+#   - id: ups
+#     kind: http-json
+#     title: UPS
+#     url: http://nut-exporter.home.example:9199/status.json
+#     headers: { X-Client: deck }
+#     credentialEnv: UPS_TOKEN
+#     auth: { scheme: bearer }   # or basic (user:password), or header + header: X-Api-Key
+#     pollIntervalMs: 15000
+#     timeoutMs: 3000
+# Presentation settings. The overlay owns `ui`, and every key is optional.
+ui:
+  brand:
+    # The sidebar mark: an icon in place of the title's initial. `logoUrl` (an
+    # http(s) URL or a root-relative path) shows an image instead; `title`
+    # replaces the estate name in the sidebar and the browser tab.
+    icon: server
+  # Named, contrast-tested presets only; config never carries a colour. These
+  # are the defaults, spelled out: try `preset: rose` (or slate, copper,
+  # high-contrast) and `density: compact` for tighter tables, lists and
+  # sections. `mode` (light | dark | system) is the default a viewer's own
+  # theme-menu choice overrides; `radius` is none | sm | md | lg.
+  theme:
+    preset: teal
+    density: comfortable
+  # The page "/" renders. The portal is the default; any page without path
+  # parameters can be home (`page:inventory/hosts`, say), and stays at its own path.
+  home: page:portal/overview
+  # The sidebar. Listed groups come first, in this order; the built-in groups not
+  # listed (overview, inventory, health, operate, knowledge) follow in that order.
+  # A `label` renames a group's heading, an `icon` shows beside it, and an id
+  # that is not built in is a new group, shown once an entry is in it. Across
+  # layers groups merge by id and keep the first layer's order.
+  # nav:
+  #   groups:
+  #     - { id: health, label: Monitoring, icon: activity }
+  #     - { id: lab, label: Lab, icon: boxes }
+  #   # Extra entries, ids nav:ui/<name>: external links (they open in a new tab)
+  #   # and separators, which need an entry on each side within their group.
+  #   items:
+  #     - { id: nav:ui/grafana, group: lab, label: Grafana, href: "https://grafana.example.net", icon: gauge, order: 10 }
+  #     - { id: nav:ui/rule, group: lab, separator: true, order: 20 }
+  #     - { id: nav:ui/prometheus, group: lab, label: Prometheus, href: "https://prometheus.example.net", order: 30 }
+  # Overrides by the ids GET /api/ui lists. They replace, never merge: `false`
+  # hides; `attachTo` moves (slot, order, and a nav entry's group). A later
+  # layer's attachTo or config for the same id replaces this one whole.
+  # extensions:
+  #   pill:drift/summary: false
+  #   pill:llm-usage/summary: { attachTo: { order: 5 } }
+  #   nav:sources/docs: { attachTo: { group: lab } }
+  #   page:llm-usage/overview: false

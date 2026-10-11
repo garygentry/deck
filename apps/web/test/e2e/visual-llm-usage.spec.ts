@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { populatedLlmUsage, type JsonObject } from "./llm-usage-fixture.js";
+import { seedTheme } from "./theme-seed.js";
 
 /**
  * Visual baselines for `/usage`. Like the other visual specs they are generated and
@@ -42,7 +43,7 @@ test.describe("llm usage visual baselines", () => {
       for (const width of WIDTHS) {
         test(`${name} ${width}px ${theme}`, async ({ page }) => {
           await page.clock.setFixedTime(FROZEN_NOW);
-          await page.addInitScript((mode) => localStorage.setItem("deck-theme", mode), theme);
+          await seedTheme(page, theme);
           await page.setViewportSize({ width, height: 900 });
           await routeUsage(page, scenario.body);
           const usage = page.locator('[data-slot="llm-usage-page"]');

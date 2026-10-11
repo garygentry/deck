@@ -10,7 +10,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { act } from "./support/render.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resetProvidersIndexCache } from "../src/shell/providers-index.js";
+import { resetQueryClient } from "../src/data/query-client.js";
 import {
   INITIAL_SNAPSHOT_ENVELOPE,
   INVENTORY_ENDPOINTS,
@@ -18,12 +18,12 @@ import {
   InventoryDataProvider,
   useInventoryData,
   useInventoryDataContext,
-} from "../src/features/hosts-and-services/use-inventory-data.js";
+} from "../../../modules/inventory/web/use-inventory-data.js";
 import type {
   InventoryData,
   InventoryGeneration,
   SnapshotClientState,
-} from "../src/features/hosts-and-services/use-inventory-data.js";
+} from "../../../modules/inventory/web/use-inventory-data.js";
 import {
   buildInventoryModel,
   compareOrdinal,
@@ -31,33 +31,30 @@ import {
   findService,
   hostHref,
   serviceHref,
-} from "../src/features/hosts-and-services/model.js";
+} from "../../../modules/inventory/web/model.js";
 import type {
   HostRow,
   InventoryModel,
   ServiceRow,
-} from "../src/features/hosts-and-services/model.js";
+} from "../../../modules/inventory/web/model.js";
 import {
   NO_HOST_FILTERS,
   NO_SERVICE_FILTERS,
   filterHosts,
   filterServices,
-} from "../src/features/hosts-and-services/search-filter.js";
+} from "../../../modules/inventory/web/search-filter.js";
 import type {
   HostFilterCriteria,
   ServiceFilterCriteria,
-} from "../src/features/hosts-and-services/search-filter.js";
+} from "../../../modules/inventory/web/search-filter.js";
 import type {
   Host,
   ObservedHost,
   ObservedService,
   Service,
 } from "@deck/schema";
-import type {
-  DeckConfig,
-  HostState,
-  SnapshotProviderResult,
-} from "@deck/server";
+import type { HostState, SnapshotProviderResult } from "@deck/contract";
+import type { DeckConfig } from "@deck/server";
 
 // ---------------------------------------------------------------------------
 // Response and fetch helpers.
@@ -106,9 +103,9 @@ function installFetch(): FetchHarness {
   let snapshotResponder: Responder = () => jsonResponse(200, pendingEnvelope());
   const calls: { url: string; init: RequestInit }[] = [];
   const mock = vi.fn(async (url: string, init: RequestInit) => {
-    // Provider discovery is infrastructure, not an aggregate poll: answer it
-    // with the registered set (snapshot present) and keep it out of `calls`.
-    if (url === "/api/providers") {
+    // The UI manifest is infrastructure, not an aggregate poll: answer it with
+    // the registered providers (snapshot present) and keep it out of `calls`.
+    if (url === "/api/ui") {
       return jsonResponse(200, { providers: [{ id: "snapshot", kind: "snapshot" }] });
     }
     calls.push({ url, init });
@@ -142,7 +139,7 @@ function pending(signal: AbortSignal): Promise<FakeResponse> {
 
 function validConfig(name = "Estate"): Record<string, unknown> {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     estate: { name },
     hosts: [{ name: "h1", kind: "bare-metal", purpose: "primary" }],
     services: [{ name: "s1", host: "h1", kind: "external", purpose: "svc" }],
@@ -225,7 +222,7 @@ async function mountProbe(intervalMs?: number): Promise<MountedProbe> {
   const {
     InventoryDataProvider: FreshProvider,
     useInventoryDataContext: useFreshContext,
-  } = await import("../src/features/hosts-and-services/use-inventory-data.js");
+  } = await import("../../../modules/inventory/web/use-inventory-data.js");
   const values: InventoryData[] = [];
   let force: (() => void) | undefined;
 
@@ -266,7 +263,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();
-  resetProvidersIndexCache();
+  resetQueryClient();
 });
 
 // ---------------------------------------------------------------------------
@@ -274,18 +271,16 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("useInventoryData lifecycle", () => {
-  it("polls immediately then once per exactly 30s with one shared GET-only signal", async () => {
+  it("polls immediately then once per exactly 30s, reading the config once, GET-only", async () => {
     vi.useFakeTimers();
     const fetchH = installFetch();
     const probe = await mountProbe();
+    const urls = () => fetchH.calls.map((c) => c.url);
+    const snapshotSignals = () =>
+      fetchH.calls.filter((c) => c.url === INVENTORY_ENDPOINTS.snapshot).map((c) => c.init.signal);
 
     // Immediate aggregate poll: one config GET and one snapshot GET.
-    expect(fetchH.calls.map((c) => c.url).sort()).toEqual(
-      [INVENTORY_ENDPOINTS.config, INVENTORY_ENDPOINTS.snapshot].sort(),
-    );
-    expect(fetchH.calls).toHaveLength(2);
-    // Shared signal between the two endpoint requests of one generation.
-    expect(fetchH.calls[0]!.init.signal).toBe(fetchH.calls[1]!.init.signal);
+    expect([...urls()].sort()).toEqual([INVENTORY_ENDPOINTS.config, INVENTORY_ENDPOINTS.snapshot].sort());
     // GET only; no request body or mutating method.
     for (const { init } of fetchH.calls) {
       expect(init.method).toBe("GET");
@@ -297,14 +292,15 @@ describe("useInventoryData lifecycle", () => {
       await vi.advanceTimersByTimeAsync(29_999);
     });
     expect(fetchH.calls).toHaveLength(2);
-    // Exactly at 30s the second generation fires.
+    // Exactly at 30s the second generation fires: the snapshot again, the config from cache.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
-    expect(fetchH.calls).toHaveLength(4);
-    expect(fetchH.calls[2]!.init.signal).toBe(fetchH.calls[3]!.init.signal);
+    expect(urls()).toHaveLength(3);
+    expect(urls().filter((url) => url === INVENTORY_ENDPOINTS.config)).toHaveLength(1);
     // The second generation uses a fresh, different signal.
-    expect(fetchH.calls[2]!.init.signal).not.toBe(fetchH.calls[0]!.init.signal);
+    expect(snapshotSignals()).toHaveLength(2);
+    expect(snapshotSignals()[1]).not.toBe(snapshotSignals()[0]);
 
     probe.unmount();
   });
@@ -317,7 +313,9 @@ describe("useInventoryData lifecycle", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
-    expect(fetchH.calls).toHaveLength(4);
+    // One more snapshot poll; the config is read once.
+    expect(fetchH.calls).toHaveLength(3);
+    expect(fetchH.calls[2]!.url).toBe(INVENTORY_ENDPOINTS.snapshot);
     probe.unmount();
 
     expect(() => useInventoryData(0)).toThrow(RangeError);
@@ -342,7 +340,7 @@ describe("snapshot HTTP classification", () => {
     },
     {
       // A first-poll request failure is a retained transient error, not an
-      // accepted `snapshot:request-error` generation (store §5.4).
+      // accepted `snapshot:request-error` generation.
       name: "other non-2xx -> transient error with decimal status",
       responder: () => jsonResponse(503, {}),
       expected: (d) => {
@@ -475,17 +473,15 @@ describe("atomic commit, retention, and concurrency", () => {
     vi.useFakeTimers();
     const fetchH = installFetch();
     let capturedSignal: AbortSignal | undefined;
-    // Generation A stalls until aborted.
-    fetchH.setConfig((signal) => {
+    // Generation A stalls on its snapshot until aborted (the config resolves).
+    fetchH.setSnapshot((signal) => {
       capturedSignal = signal;
       return pending(signal);
     });
-    fetchH.setSnapshot((signal) => pending(signal));
     const probe = await mountProbe();
     expect(probe.last().config).toBeNull(); // still cold-start pending
 
-    // Generation B resolves cleanly with a distinct estate name.
-    fetchH.setConfig(() => jsonResponse(200, validConfig("Generation B")));
+    // Generation B resolves cleanly.
     fetchH.setSnapshot(() => jsonResponse(200, availableEnvelope(null)));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
@@ -494,18 +490,17 @@ describe("atomic commit, retention, and concurrency", () => {
 
     expect(capturedSignal?.aborted).toBe(true);
     const data = probe.last();
-    expect(data.config?.estate.name).toBe("Generation B");
+    expect(data.config?.estate.name).toBe("Estate");
     probe.unmount();
   });
 
   it("aborts in-flight work on unmount and commits nothing further", async () => {
     const fetchH = installFetch();
     let capturedSignal: AbortSignal | undefined;
-    fetchH.setConfig((signal) => {
+    fetchH.setSnapshot((signal) => {
       capturedSignal = signal;
       return pending(signal);
     });
-    fetchH.setSnapshot((signal) => pending(signal));
     const probe = await mountProbe(1000);
     const before = probe.values.length;
     probe.unmount();
@@ -550,7 +545,7 @@ describe("immutability and completeness", () => {
     const source = readFileSync(
       fileURLToPath(
         new URL(
-          "../src/features/hosts-and-services/use-inventory-data.tsx",
+          "../../../modules/inventory/web/use-inventory-data.tsx",
           TEST_FILE_URL,
         ),
       ),
@@ -628,7 +623,7 @@ describe("context and memoization", () => {
 });
 
 // ===========================================================================
-// buildInventoryModel — immutable normalization (item 012)
+// buildInventoryModel — immutable normalization
 // ===========================================================================
 
 // --- Pure model fixture builders (no DOM/fetch) ----------------------------
@@ -642,7 +637,7 @@ function service(hostName: string, name: string, extra: Partial<Service> = {}): 
 }
 
 function configOf(hosts: Host[] = [], services: Service[] = []): DeckConfig {
-  return { schemaVersion: 1, estate: { name: "Estate" }, hosts, services };
+  return { schemaVersion: 2, estate: { name: "Estate" }, hosts, services };
 }
 
 function observedHost(name: string, extra: Partial<ObservedHost> = {}): ObservedHost {
@@ -1117,7 +1112,7 @@ describe("buildInventoryModel at 150 hosts / 300 services", () => {
 });
 
 // ===========================================================================
-// search-filter — pure host/service projection (item 013)
+// search-filter — pure host/service projection
 // ===========================================================================
 
 /** A rich available model: declared+observed, hidden, undeclared, mixed kinds/states. */

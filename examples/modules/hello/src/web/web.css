@@ -1,0 +1,5 @@
+/* The module's own styles: deck's Tailwind preset, with every class under the prefix `hello:`. */
+@import "@deck/sdk/tailwind" prefix(hello);
+
+/* Tailwind finds the classes the module's sources use. */
+@source "../";

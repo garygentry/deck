@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { seedTheme } from "./theme-seed.js";
 
 /**
  * Visual baselines for `/actions` in its main states, independent of the `/_ui`
@@ -193,7 +194,8 @@ async function routeScenario(page: Page, scenario: Scenario): Promise<void> {
   await page.route("**/api/config", async (route) => {
     const response = await route.fetch();
     const config = (await response.json()) as JsonObject;
-    await route.fulfill({ json: { ...config, actions: ACTIONS } });
+    const modules = (config.modules ?? {}) as JsonObject;
+    await route.fulfill({ json: { ...config, modules: { ...modules, actions: { actions: ACTIONS } } } });
   });
   await page.route("**/api/actions", (route) => route.fulfill({ json: { enabled: scenario.enabled } }));
   await page.route("**/api/actions/audit", (route) =>
@@ -213,7 +215,7 @@ test.describe("actions visual baselines", () => {
       for (const width of WIDTHS) {
         test(`${name} ${width}px ${theme}`, async ({ page }) => {
           await page.clock.setFixedTime(FROZEN_NOW);
-          await page.addInitScript((mode) => localStorage.setItem("deck-theme", mode), theme);
+          await seedTheme(page, theme);
           await page.setViewportSize({ width, height: 900 });
           await routeScenario(page, scenario);
           const actions = page.getByTestId("actions");

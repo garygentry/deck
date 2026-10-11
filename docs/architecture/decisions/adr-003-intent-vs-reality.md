@@ -18,7 +18,7 @@ a fresh or stale judgement" — the snapshot records what was seen and when, and
 judgement to the reader.
 
 The two documents are joined only at derivation time.
-`deriveDriftProjection` (`apps/server/src/drift/derive.ts`) consumes a snapshot generation and an
+`deriveDriftProjection` (`packages/drift/src/derive.ts`) consumes a snapshot generation and an
 explicit clock and produces an immutable projection — findings grouped by host and service,
 coverage rows per host, waiver state judged against the clock, and summary counts.
 Deck reads both documents and derives the difference; it never writes estate facts back into either.

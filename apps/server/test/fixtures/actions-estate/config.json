@@ -1,47 +1,51 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "estate": { "name": "Actions test estate" },
-  "actions": [
-    {
-      "id": "restart-quiet",
-      "title": "Restart quietly",
-      "runner": "echo-runner",
-      "confirm": "none",
-      "description": "A no-parameter action that runs without confirmation."
-    },
-    {
-      "id": "deploy",
-      "title": "Deploy release",
-      "runner": "echo-runner",
-      "confirm": "confirm",
-      "description": "A typed-parameter action requiring an explicit confirm.",
-      "params": [
-        { "name": "name", "type": "string", "required": true },
-        { "name": "count", "type": "number" },
-        { "name": "verbose", "type": "boolean", "default": false },
-        { "name": "mode", "type": "enum", "values": ["fast", "safe"] }
+  "modules": {
+    "actions": {
+      "actions": [
+        {
+          "id": "restart-quiet",
+          "title": "Restart quietly",
+          "runner": "echo-runner",
+          "confirm": "none",
+          "description": "A no-parameter action that runs without confirmation."
+        },
+        {
+          "id": "deploy",
+          "title": "Deploy release",
+          "runner": "echo-runner",
+          "confirm": "confirm",
+          "description": "A typed-parameter action requiring an explicit confirm.",
+          "params": [
+            { "name": "name", "type": "string", "required": true },
+            { "name": "count", "type": "number" },
+            { "name": "verbose", "type": "boolean", "default": false },
+            { "name": "mode", "type": "enum", "values": ["fast", "safe"] }
+          ]
+        },
+        {
+          "id": "danger",
+          "title": "Dangerous action",
+          "runner": "echo-runner",
+          "confirm": "typed-confirm",
+          "description": "Requires typing the action id to arm."
+        },
+        {
+          "id": "restart-service",
+          "title": "Restart nginx",
+          "runner": "echo-runner",
+          "confirm": "confirm",
+          "target": { "host": "web01", "service": "nginx" }
+        },
+        {
+          "id": "orphan",
+          "title": "Orphaned action",
+          "runner": "missing-runner",
+          "confirm": "none",
+          "description": "Its runner is intentionally absent from the manifest."
+        }
       ]
-    },
-    {
-      "id": "danger",
-      "title": "Dangerous action",
-      "runner": "echo-runner",
-      "confirm": "typed-confirm",
-      "description": "Requires typing the action id to arm."
-    },
-    {
-      "id": "restart-service",
-      "title": "Restart nginx",
-      "runner": "echo-runner",
-      "confirm": "confirm",
-      "target": { "host": "web01", "service": "nginx" }
-    },
-    {
-      "id": "orphan",
-      "title": "Orphaned action",
-      "runner": "missing-runner",
-      "confirm": "none",
-      "description": "Its runner is intentionally absent from the manifest."
     }
-  ]
+  }
 }

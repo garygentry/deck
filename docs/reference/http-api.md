@@ -18,25 +18,177 @@ follows the estate config schema.
 | --- | --- | --- | --- |
 | `GET` | `/api/config` | The loaded, merged estate config document. | `DeckConfig` |
 | `GET` | `/api/providers` | Registered providers' identities (id and kind), in deterministic id order. | `ProvidersResponse` |
-| `GET` | `/api/providers/:id` | One provider's cached envelope (data, freshness, error). Unknown id → 404 `PROVIDER_NOT_FOUND`. | `ProviderEnvelope` |
+| `GET` | `/api/providers/:id` | One provider's cached envelope (data, freshness, error, and the `select` results of the config page widgets that read it). Unknown id → 404 `PROVIDER_NOT_FOUND`. | `ProviderEnvelope` |
 | `GET` | `/api/health` | Cached readiness: overall status, uptime, provider count, and per-provider health. Performs no upstream I/O. | `HealthResponse` |
+| `GET` | `/api/ui` | The resolved UI manifest: brand, home page, modules, slots, pages (config pages with their layout), nav groups and entries, extensions, providers and widget types. Resolved at startup, and again when only `ui` config changes. Sent with an `ETag` and `Cache-Control: no-cache`; a matching `If-None-Match` gets `304`. | `UiManifest` (`@deck/module-sdk`) |
+
+A provider envelope's `projections`, present when a config page widget reads the provider with
+a `select`, maps each such widget's id (`widget:ui/<page>.<name>`) to the expression's result
+over the envelope's `data`: `{"value": …}` (plain JSON; `null` where it selects nothing) or
+`{"error": "…"}` when the expression fails on this data or exceeds its limits (10 000 values,
+depth 64, 256 KiB of UTF-8 JSON, 200 000 steps, 256 Ki characters of built text; see the
+estate configuration reference). The server compiles
+each select once and evaluates it each time the data changes, not per request; while there is
+no data the map is empty. A failing select never affects the provider's own `error` or health,
+or another projection.
 
 `HealthResponse.status` is `degraded` when any provider's latest health is not ok, otherwise `ok`.
+`HealthResponse.modules` lists every known module's state by id. A module with no health report
+of its own (`portal`, `inventory`, `drift`, `monitoring`) shows `{state: "ok"}` while it runs.
+
+### UI manifest
+
+`/api/ui` tells the web shell what to render, where, and with what config. It is built at startup
+from every module's declared contributions, and rebuilt when only the `ui` config changes. The portal, inventory, drift, monitoring, actions and
+llm-usage features are built-in modules (`origin: "module"`), as is `metrics`, which contributes
+no UI. Features not yet on the module contract declare theirs from the kernel and are listed with
+`origin: "kernel"`.
+
+- `modules` lists every known module with `enabled` and, when not enabled, a `reason`. A
+  module that is disabled (its enabling section or env var is absent, its manifest is unusable,
+  or a kernel capability such as actions is off) contributes nothing. When the module is off
+  only because settings that enable it are unset, `enabledBy` lists them: its own (for example
+  `[{"env": "DECK_ACTIONS_ENABLED"}]`, or `{"config": "modules.<id>"}`), then those of a
+  `dependsOn` dependency that is off only because of its own. It holds names only, never a
+  value, and is absent rather than empty.
+- `disabledPages` lists the pages of disabled modules (`id`, `module`, `path`, `title`, `icon`),
+  so the shell can answer their paths with "module not enabled". A page whose path an enabled
+  page or a root path serves is left out, and so is one whose path is not a usable page path
+  (with a `UI_INVALID_PAGE` finding).
+- `pages`, `nav` and `extensions` hold only what renders. Extension ids have the form
+  `<kind>:<module>/<name>` (for example `pill:llm-usage/summary`). Each extension and nav entry
+  names the slot it attaches to and its order there, and attaches only to a slot that accepts
+  its kind.
+- `brand.title` is the name the shell shows in the sidebar and the document title:
+  `ui.brand.title`, else the estate's `estate.name`, else `Deck`. `brand.icon` and
+  `brand.logoUrl` are present when `ui.brand` sets them.
+- `home` names the page `/` renders (`page`) and that page's own path (`path`): `ui.home` when
+  it names a routed page without path parameters, else the portal. It is `null` when neither
+  can be home, and then `/` is not found. No page is routed at `/` itself: `/` always renders
+  the home page.
+- `navGroups` lists the sidebar's groups in order, each with its `label` and, when one is set,
+  its `icon`. The groups the merged `ui.nav.groups` lists come first, in its order; then the built-in groups
+  it does not list, in their order (Overview, Inventory, Health, Operate, Knowledge); then any
+  other group an entry names, by id, headed by its id. Only groups with a link entry are listed.
+- `nav` is sorted by group (in `navGroups` order), then order, then id: `order` applies within a
+  group. Each entry has a `label` and, usually, an `icon`; an entry to a page that declares none
+  of its own takes the page's title and icon. The `ui.nav.items` entries (`nav:ui/…`) are listed with
+  module `ui`: a link has an `http(s)` `href`, and a separator has `separator: true` and an empty
+  `label`. An override's `attachTo.group` moves a nav entry to that group.
+- `providers` lists the registered provider instances (id and kind), so the web polls only
+  providers that exist.
+- `statusKinds`, present when an enabled module declares one, lists the bindable,
+  status-capable provider kinds whose binding gives a portal card its status, by kind: `kind`,
+  `module`, `fixedId` (when the status reads the kind's fixed instance) and `status` (the
+  module's declaration: which `provider` a binding reads, `binding` or `fixed`; `match`, how
+  the bound item is found in a list; `up`, the conditions that make it up). The web derives a
+  card's status from it, with no code per kind.
+- A module page that declares a dashboard has a `layout` too (the portal's: `{slot:
+  "portal/summary"}`, then a section of one `portal/groups` widget,
+  `widget:portal/overview.groups`). A slot section is listed while its host is enabled; a
+  widget section has no `title`, and its widgets read no source and take no options. An
+  override can switch such a widget off by id.
+- `pages` also lists the config pages (`ui.pages`) that route, as pages of module `ui`
+  (`page:ui/<id>`, component `ConfigPage`) with a `layout`: their `sections` (`title`,
+  `columns`), each with its `widgets` in order. A widget has its `id`
+  (`widget:ui/<page>.<name>`, positional `…s<N>w<M>` without a configured id), `type`, `title`,
+  `options`, `span` (clamped to the section's columns), `rows`, and its `source` resolved to a
+  registered provider (`{id, kind}`), or `null`, with a `sourceProblem` to show when the
+  configured one did not resolve. A widget whose type no enabled module provides has a
+  `typeProblem`, no source and no projection: it renders as unavailable and reads nothing. A widget with a `select` has it, and `projection`: the key of
+  its result in that provider's envelope `projections`. Widgets an override switches off are
+  left out, and a section without widgets with them.
+- `widgetTypes` lists the widget types a config page may use: deck's own (`core/stat`,
+  `core/table`, … `core/json`) and those of enabled modules (`type`, `module`, and `sources`, the
+  provider kinds a type renders, when it limits them). See the
+  [widget types reference](widget-types.md).
+- `statusMaps`, present only when the config declares some, is `ui.statusMaps` by name (each
+  with its `values` and `rules`): what a widget's `statusMap` option names.
+- `allowUnsafeEmbeds: true`, present only when the config sets `ui.allowUnsafeEmbeds: true`: the
+  web frames a `core/embed` widget's page only then.
+- `findings` holds problems that never stop the UI from rendering:
+  - `UI_UNKNOWN_EXTENSION`: an override for an unknown id, or a nav entry to an undeclared page;
+  - `UI_UNKNOWN_SLOT`: an extension on an unknown slot;
+  - `UI_SLOT_KIND_MISMATCH`: an extension on a slot that does not accept its kind;
+  - `UI_PAGE_PATH_COLLISION`: two pages on one path, a page on a module's declared root
+    path, which the server always answers instead (or 404s while that module is off), or a page
+    declaring `/`, which renders the home page;
+  - `UI_HOME_UNKNOWN`, `UI_HOME_DISABLED`, `UI_HOME_NOT_ROUTABLE`: `ui.home` names an unknown
+    page, a page that is not routed (its module is off, an override disables it, or its path is
+    taken), or a page with path parameters; the portal stays home;
+  - `UI_DUPLICATE_ID`: an id or slot contributed twice (the incumbent keeps it: the kernel's
+    shell first, then the kernel-wired features and built-in modules, then other modules), or
+    a nav group configured twice (its first entry is used);
+  - `UI_INVALID_OVERRIDE`: a malformed override (including an `attachTo.group` on anything but
+    a nav entry);
+  - `UI_INVALID_PAGE`: a disabled module's page whose path is not a usable page path, so it is
+    not listed in `disabledPages`, or a config page whose path the server answers (under `/api`,
+    or a root path such as `/metrics`), so it is not routed;
+  - `UI_WIDGET_SOURCE_UNKNOWN`: a config page widget's `source` names no registered provider
+    (or no provider of its kind);
+  - `UI_WIDGET_SOURCE_KIND`: a widget's provider is of a kind its widget type cannot render;
+  - `UI_WIDGET_SPAN`: a widget spans more columns than its section has (it spans them all);
+  - `UI_WIDGET_OPTION_UNKNOWN`: a widget option names an entry its module's config does not have
+    (a `portal/groups` group id); the widget skips it;
+  - `UI_STATUS_UNDECLARED`: a bindable, status-capable provider kind declares no `status`, so
+    its bindings give cards no status;
+  - `UI_OVERRIDE_POSITIONAL` (`severity: "info"`): an override targets a widget by its
+    positional id, which changes when its page's sections or widgets move;
+  - `UI_CONFIG_INVALID`: the config directory changed and no longer loads, so the last good
+    config is still served; the message names the problem by finding code and JSON pointer
+    only (`deck validate` gives the details);
+  - `UI_RESTART_REQUIRED`: the config directory changed outside `ui`, which applies only after
+    a restart; the message names the changed keys.
+  - `REMOTE_DESCRIBE_INVALID`, `REMOTE_DESCRIBE_UNREACHABLE`: a remote integration's latest
+    describe was refused, or could not be fetched; its last good describe (if any) still renders
+    (see the [remote provider protocol](remote-provider-protocol.md));
+  - `REMOTE_DESCRIBE_ID_MISMATCH` (`severity: "info"`): a sidecar's describe names another id
+    than its integration's, which deck uses;
+  - `REMOTE_NAV_UNPLACED` (`severity: "info"`): a sidecar describes nav entries, but its page
+    has no sidebar entry (`page.nav`) to list them with.
+
+  The shell shows the last two in a notice. They clear when the edit is fixed or reverted (see
+  [hot reload](estate-config.md#hot-reload)).
+
+  Overrides come from the `ui.extensions` config section (see the
+  [estate configuration reference](estate-config.md#ui)).
+
+### The web shell's page
+
+When deck serves the web app, every path outside `/api` that is not a static file (including
+`/` and `/index.html`) answers with the shell's `index.html`, sent with `Cache-Control: no-cache`.
+The server writes two things into it: the brand title as its `<title>`, and a boot object in
+`<script type="application/json" id="deck-boot">`, which the page reads before it can make any
+request:
+
+```json
+{ "bootApi": 1, "brand": { "title": "Gentry Lab" }, "theme": { "mode": "dark" }, "home": "page:inventory/hosts" }
+```
+
+`theme.mode` is `ui.theme.mode`, absent when unset; the pre-paint script applies it unless the
+viewer has chosen a mode. `home` is the UI manifest's `home.page` (`null` when no page can be
+home), so the shell routes `/` correctly before `/api/ui` answers. The server re-reads
+`index.html` when the file's modification time changes. The shape is `DeckBoot` in `@deck/contract`; a new boot-time setting is
+an optional field there.
 
 ## Metrics
 
-When `DECK_METRICS_ENABLED` is true, deck also serves `GET /metrics` — outside `/api` — as
-Prometheus text exposition (`Content-Type: text/plain; version=0.0.4`), built from cached
-registry state with no upstream I/O.
-When the flag is off the route is not registered.
+When `DECK_METRICS_ENABLED` is true, the built-in `metrics` module serves `GET /metrics` —
+outside `/api` — as Prometheus text exposition (`Content-Type: text/plain; version=0.0.4`),
+built from cached registry state with no upstream I/O. Any other method gets deck's plain 404.
+When the flag is off the module does not run and `/metrics` answers the plain 404; it is
+never rewritten to the web app, either way.
 See [Connect monitoring](../guides/connect-monitoring.md#scrape-decks-own-metrics) for the
 metric names.
 
 ## Sources
 
-The four source-browsing routes are read-only (`GET`) and gate on the sources capability.
-When the capability is off, or the id is not a declared source, the route answers 404
-`SOURCE_NOT_FOUND`, so a disabled deployment is indistinguishable from an unknown id.
+The four source-browsing routes are read-only (`GET`). When the id is not a declared source of a
+kind a running data-source module serves, the route answers 404 `SOURCE_NOT_FOUND`.
+
+These routes belong to the `sources` module. It serves them under `/api/m/sources` as well, and
+keeps the `/api/sources` paths as aliases with identical responses. `/api/health` lists it under
+`modules.sources`, and the `markdown-tree` and `file-tree` data sources under their own ids.
 
 | Method | Path | Purpose | Response |
 | --- | --- | --- | --- |
@@ -57,6 +209,11 @@ When the capability is off, the run, cancel, and audit routes refuse with 403 `A
 the probe route always answers 200 so the web can learn the capability state without provoking a
 403.
 
+These routes belong to the `actions` module. It serves them under `/api/m/actions` as well, and
+keeps the `/api/actions` paths as aliases with identical responses, whether the capability is on or
+off. `/api/health` lists the module under `modules.actions`: `{state: "ok"}` while it runs, else
+`{state: "disabled", detail}`.
+
 | Method | Path | Purpose | Response |
 | --- | --- | --- | --- |
 | `GET` | `/api/actions` | Capability probe; reports whether governed actions are enabled. Always 200. | `ActionsCapabilityResponse` |
@@ -73,7 +230,7 @@ envelope.
 
 ## LLM usage
 
-Present when the estate config has an `llmUsage` section; the read routes answer
+Present when the estate config has a `modules.llm-usage` section; the read routes answer
 `enabled: false` otherwise.
 Every read counts as a viewer, which keeps upstream polling awake (see `idlePause`).
 
@@ -81,10 +238,16 @@ Every read counts as a viewer, which keeps upstream polling awake (see `idlePaus
 | --- | --- | --- | --- |
 | `GET` | `/api/llm-usage` | Current usage bars, per-source states and poll state. Performs no upstream I/O. | `LlmUsageResponse` |
 | `GET` | `/api/llm-usage/refresh` | The same after an immediate poll, debounced to once per 5 seconds. Codex is always re-read; the Claude OAuth endpoint only if its last call was 2+ minutes ago and deck is not backing off. | `LlmUsageResponse` |
-| `POST` | `/api/llm-usage/ingest` | A Claude Code statusLine payload (JSON, at most 2 MB), with `Authorization: Bearer <token>`. Registered only when the env var named by `llmUsage.claude.statusLine.credentialEnv` is set. | 204, empty body |
+| `POST` | `/api/llm-usage/ingest` | A Claude Code statusLine payload (JSON, at most 2 MB), with `Authorization: Bearer <token>`. Registered only when the env var named by `modules.llm-usage.claude.statusLine.credentialEnv` is set. | 204, empty body |
+
+These routes belong to the `llm-usage` module. It serves them at `/api/m/llm-usage`,
+`/api/m/llm-usage/refresh` and `/api/m/llm-usage/ingest` as well, and keeps the `/api/llm-usage`
+paths as aliases with identical responses.
 
 `/api/health` gains an `llmUsage` entry (`mode`, `lastPollAt`, `consecutiveErrors`) when the
-feature is on. It never changes the overall health `status`.
+feature is on, and always lists the module under `modules["llm-usage"]`: `{state, data}`, where
+`data` is the same entry, or `{state: "ok", detail: "not configured"}` without the section.
+Neither changes the overall health `status`.
 
 ## Errors
 
@@ -99,6 +262,7 @@ API errors share one envelope.
 | Code | Status | Meaning |
 | --- | --- | --- |
 | `NOT_FOUND` | 404 | An `/api/*` path with no matching route. |
+| `SHUTTING_DOWN` | 503 | The request arrived after deck began shutting down (on a kept-alive connection); the connection is closed. |
 | `PROVIDER_NOT_FOUND` | 404 | No provider registered with the requested id. |
 | `SOURCE_NOT_FOUND` | 404 | Sources capability off, or no source declared with the requested id. |
 | `UNAUTHORIZED` | 401 | LLM usage ingest with a missing or wrong bearer token. |
@@ -114,3 +278,5 @@ action routes use the capability, gate, and lookup codes listed under
 
 - [Environment variables](./environment-variables.md) — capability switches that gate these routes.
 - [CLI reference](./cli.md) — offline config validation and rendering.
+- [Module manifest reference](./module-manifest.md) — what modules contribute to `GET /api/ui`.
+- [Widget types reference](./widget-types.md) — the types `widgetTypes` lists.

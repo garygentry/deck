@@ -1,0 +1,77 @@
+{
+  "version-unsupported": {
+    "exitClass": 1,
+    "stdout": "",
+    "stderr": "error  /schemaVersion  VERSION_UNSUPPORTED  schemaVersion 2 is not supported; this library supports version(s) 1. Re-render with the projector pinned to the matching deck revision.\nerror  /schemaVersion  VERSION_UNSUPPORTED  schemaVersion 2 is not supported; this library supports version(s) 1. Re-render with the projector pinned to the matching deck revision.\n"
+  },
+  "schema-invalid": {
+    "exitClass": 1,
+    "stdout": "",
+    "stderr": "error  /estate/name  SCHEMA_INVALID  type: must be string.\nerror  /estate/name  SCHEMA_INVALID  type: must be string.\n"
+  },
+  "schema-unknown-property": {
+    "exitClass": 1,
+    "stdout": "",
+    "stderr": "error  /surprise  SCHEMA_UNKNOWN_PROPERTY  Property surprise is not allowed in the closed base schema object.\nerror  /surprise  SCHEMA_UNKNOWN_PROPERTY  Property surprise is not allowed in the closed merged schema object.\n"
+  },
+  "schema-required-missing": {
+    "exitClass": 1,
+    "stdout": "",
+    "stderr": "error  /estate  SCHEMA_REQUIRED_MISSING  Required property estate is missing from the base document.\nerror  /estate  SCHEMA_REQUIRED_MISSING  Required property estate is missing from the merged document.\n"
+  },
+  "host-duplicate": {
+    "exitClass": 1,
+    "stdout": "",
+    "stderr": "error  /hosts/1  HOST_DUPLICATE  Host name \"echo\" is declared more than once.\nerror  /hosts/1  HOST_DUPLICATE  Host name \"echo\" is declared more than once.\n"
+  },
+  "service-duplicate": {
+    "exitClass": 1,
+    "stdout": "",
+    "stderr": "error  /services/1  SERVICE_DUPLICATE  Service (\"echo\", \"pulse\") is declared more than once.\nerror  /services/1  SERVICE_DUPLICATE  Service (\"echo\", \"pulse\") is declared more than once.\n"
+  },
+  "id-duplicate": {
+    "exitClass": 1,
+    "stdout": "",
+    "stderr": "warning  /groups/0/id  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/id\nwarning  /groups/0/items  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/items\nwarning  /groups/0/title  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/title\nerror  /groups/1  ID_DUPLICATE  Group or subgroup id \"same\" is used more than once across the groups tree.\nwarning  /groups/1/id  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/1/id\nwarning  /groups/1/items  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/1/items\nwarning  /groups/1/title  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/1/title\nerror  /groups/1  ID_DUPLICATE  Group or subgroup id \"same\" is used more than once across the groups tree.\n"
+  },
+  "ref-host-unresolved": {
+    "exitClass": 1,
+    "stdout": "",
+    "stderr": "error  /services/0/host  REF_HOST_UNRESOLVED  host reference at /services/0/host does not resolve\nerror  /services/0/host  REF_HOST_UNRESOLVED  host reference at /services/0/host does not resolve\n"
+  },
+  "ref-service-unresolved": {
+    "exitClass": 1,
+    "stdout": "",
+    "stderr": "warning  /groups/0/id  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/id\nerror  /groups/0/items/0  REF_SERVICE_UNRESOLVED  service reference at /groups/0/items/0 does not resolve\nwarning  /groups/0/items/0/host  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/items/0/host\nwarning  /groups/0/items/0/name  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/items/0/name\nwarning  /groups/0/items/0/type  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/items/0/type\nwarning  /groups/0/title  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/title\nerror  /groups/0/items/0  REF_SERVICE_UNRESOLVED  service reference at /groups/0/items/0 does not resolve\n"
+  },
+  "layer-overlay-key-in-base": {
+    "exitClass": 1,
+    "stdout": "",
+    "stderr": "warning  /groups/0/id  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/id\nwarning  /groups/0/items  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/items\nwarning  /groups/0/title  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/title\n"
+  },
+  "layer-base-key-in-overlay": {
+    "exitClass": 1,
+    "stdout": "",
+    "stderr": "error  /hosts/0/kind  LAYER_BASE_KEY_IN_OVERLAY  base-owned value is present in the overlay layer at /hosts/0/kind\nerror  /hosts/0/purpose  LAYER_BASE_KEY_IN_OVERLAY  base-owned value is present in the overlay layer at /hosts/0/purpose\n"
+  },
+  "overlay-dangling-ref": {
+    "exitClass": 1,
+    "stdout": "",
+    "stderr": "error  /groups/0/items/0  OVERLAY_DANGLING_REF  overlay reference at /groups/0/items/0 does not resolve against the base layer\nerror  /groups/0/items/0  REF_SERVICE_UNRESOLVED  service reference at /groups/0/items/0 does not resolve\n"
+  },
+  "provider-kind-unknown": {
+    "exitClass": 1,
+    "stdout": "",
+    "stderr": "warning  /integrations/0/baseUrl  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /integrations/0/baseUrl\nwarning  /integrations/0/id  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /integrations/0/id\nwarning  /integrations/0/kind  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /integrations/0/kind\nwarning  /integrations/0/kind  PROVIDER_KIND_UNKNOWN  provider kind 'mystery-kind' is not registered\nwarning  /integrations/0/title  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /integrations/0/title\nwarning  /integrations/0/kind  PROVIDER_KIND_UNKNOWN  provider kind 'mystery-kind' is not registered\n"
+  },
+  "secret-value-suspected": {
+    "exitClass": 0,
+    "stdout": "info  /estate/domains/password  SECRET_VALUE_SUSPECTED  credential-named key 'password' carries a value that is not a secret reference (length 21)\ninfo  /estate/domains/password  SECRET_VALUE_SUSPECTED  credential-named key 'password' carries a value that is not a secret reference (length 21)\nclean (advisory only)\n",
+    "stderr": ""
+  },
+  "llm-usage-invalid": {
+    "exitClass": 1,
+    "stdout": "",
+    "stderr": "warning  /llmUsage/thresholds/danger  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /llmUsage/thresholds/danger\nwarning  /llmUsage/thresholds/warn  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /llmUsage/thresholds/warn\nerror  /llmUsage/thresholds  LLM_USAGE_INVALID  warn (95) exceeds danger (90)\n"
+  }
+}

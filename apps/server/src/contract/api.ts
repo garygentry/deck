@@ -1,10 +1,9 @@
-import type { LlmUsageHealth } from "../llm-usage/types.js";
+import type { ApiErrorBody, ModuleHealthEntry } from "@deck/module-sdk";
+
 import type { ProviderHealth } from "./provider.js";
 
-export interface ApiError {
-  error: string;
-  code?: string;
-}
+/** The API error envelope every route uses (shared with modules through the SDK). */
+export type ApiError = ApiErrorBody;
 
 /** Latest non-I/O health snapshot for one registered provider. */
 export interface ProviderHealthEntry extends ProviderHealth {
@@ -12,8 +11,16 @@ export interface ProviderHealthEntry extends ProviderHealth {
   kind: string;
 }
 
+/**
+ * Top-level `/api/health` fields that mirror a module's health `data` (its manifest's
+ * `health.legacyKey`), for fields that predate the module. Each module declares its own
+ * field by augmenting this interface, so the kernel contract names no module.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface LegacyHealthFields {}
+
 /** Cached readiness response; reading it performs no provider I/O. */
-export interface HealthResponse {
+export interface HealthResponse extends LegacyHealthFields {
   /** Degraded when one or more providers' latest health is not ok. */
   status: "ok" | "degraded";
   /** Milliseconds since app construction. */
@@ -22,8 +29,11 @@ export interface HealthResponse {
   providerCount: number;
   /** Provider health keyed by id in deterministic id order. */
   providers: Record<string, ProviderHealthEntry>;
-  /** LLM usage collector state; present only when the `llmUsage` section is configured. */
-  llmUsage?: LlmUsageHealth;
+  /**
+   * Every known module's health by id, in id order; disabled modules report why. Module
+   * health never affects `status`.
+   */
+  modules: Record<string, ModuleHealthEntry>;
 }
 
 export interface ProviderParams {
@@ -42,13 +52,4 @@ export interface ProviderDescriptor {
 export interface ProvidersResponse {
   /** Registered providers in deterministic id order. */
   providers: ProviderDescriptor[];
-}
-
-/**
- * Actions capability probe. Answered with HTTP 200 whether or not the capability
- * is enabled, so the web can gate its audit poll without provoking a 403.
- */
-export interface ActionsCapabilityResponse {
-  /** True only when the governed-actions runtime is configured and enabled. */
-  enabled: boolean;
 }

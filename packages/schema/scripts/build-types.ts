@@ -4,6 +4,9 @@ import { fileURLToPath } from "node:url";
 
 import { compile } from "json-schema-to-typescript";
 
+import { composeDefault } from "../src/compose/builtin.js";
+import type { JsonObject } from "../src/types.js";
+
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const generatedFiles = {
@@ -25,16 +28,28 @@ async function generateFile(
   schemaPath: string,
   rootName: string,
 ): Promise<string> {
-  const schema = JSON.parse(
-    await readFile(resolve(packageRoot, schemaPath), "utf8"),
-  ) as Schema;
+  // The config types cover the kernel schema composed with the built-in contributions.
+  // Module sections are typed by their modules, so `modules` is an open map here.
+  const schema = (schemaPath === generatedFiles.config.schema
+    ? openModules(structuredClone(composeDefault().schema))
+    : JSON.parse(await readFile(resolve(packageRoot, schemaPath), "utf8"))) as Schema;
 
   return compile(schema, rootName, {
     additionalProperties: false,
     strictIndexSignatures: true,
     format: false,
-    bannerComment: `/* GENERATED from ${schemaPath} — do not edit; run pnpm types:build */`,
+    bannerComment: schemaPath === generatedFiles.config.schema
+      ? `/* GENERATED from ${schemaPath} composed with the built-in contributions — do not edit; run pnpm types:build */`
+      : `/* GENERATED from ${schemaPath} — do not edit; run pnpm types:build */`,
   });
+}
+
+/** Type `modules` as a map of sections, whatever sections the composition happens to carry. */
+function openModules(schema: JsonObject): JsonObject {
+  const properties = schema.properties as Record<string, JsonObject>;
+  const { description } = properties.modules!;
+  properties.modules = { type: "object", additionalProperties: {}, ...(description === undefined ? {} : { description }) };
+  return schema;
 }
 
 export interface GeneratedTypes {

@@ -13,22 +13,24 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "gen:providers": "bun src/scripts/gen-providers.ts",
+    "gen:module-types": "bun src/scripts/gen-module-types.ts",
     "render:golden": "bun src/cli/deck.ts render ../../packages/schema/src/fixtures/primary --out test/golden/deck.config.json",
     "smoke:bun": "bun src/server/boot.ts"
   },
   "dependencies": {
+    "@deck/contract": "workspace:*",
+    "@deck/drift": "workspace:*",
+    "@deck/module-sdk": "workspace:*",
     "@deck/schema": "workspace:*",
     "hono": "^4.6.0",
-    "iso8601-duration": "^2",
-    "picomatch": "^4.0.2",
-    "yaml": "^2.9.0",
-    "pino": "^9.0.0"
+    "markdown-it": "^14.3.2",
+    "pino": "^9.0.0",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^22",
-    "@types/picomatch": "^3.0.1",
+    "json-schema-to-typescript": "^16.0.0",
     "typescript": "^5.4.0",
-    "vitest": "^1.6.0"
+    "vitest": "^4.1.0"
   }
 }

@@ -3,20 +3,21 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { MONITORING_IMPLEMENTATION_IMPORT } from "./support/monitoring-imports.js";
 import {
   emitDriftDiagnostic,
   setDriftDiagnosticSink,
   type DriftDiagnosticEvent,
-} from "../src/features/drift-and-coverage/diagnostics.js";
+} from "../../../modules/drift/web/diagnostics.js";
 
 // ---------------------------------------------------------------------------
-// Drift meta-guards (spec 08 §10.2 — the closed, enumerated protection set).
+// Drift meta-guards (the closed, enumerated protection set).
 //
 // These lexical/filesystem/runtime guards protect ONLY the eleven items below.
 // They deliberately do NOT prove — and must not be read as proving — WCAG
 // conformance, visual layout, keyboard behavior, semantic rendering,
 // grouping/counting/filtering correctness, atomicity, performance, upstream
-// secret absence, dependency-tree purity, or general security (spec 08 §10.3).
+// secret absence, dependency-tree purity, or general security.
 // Those live in the behavioral Vitest and Chromium suites and in typecheck/
 // build/dependency review. A new lexical shape outside this set is not by
 // itself a defect in this guard.
@@ -28,8 +29,9 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../../..");
-const webFeatureDir = resolve(here, "../src/features/drift-and-coverage");
-const serverDriftDir = resolve(repoRoot, "apps/server/src/drift");
+const webFeatureDir = resolve(repoRoot, "modules/drift/web");
+const serverDriftDir = resolve(repoRoot, "modules/drift/server");
+const moduleTestDir = resolve(repoRoot, "modules/drift/test");
 
 /** Recursively collect every `.ts`/`.tsx` source file under a directory. */
 function sourceFiles(dir: string): string[] {
@@ -152,7 +154,7 @@ describe("3. no raw-HTML or HTML-evaluator path in value renderers", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. Diagnostics carry only the exact DERIVE_KEYS / RENDER_KEYS (spec 08 §5.6).
+// 4. Diagnostics carry only the exact DERIVE_KEYS / RENDER_KEYS.
 //    Runtime recorder assertions elsewhere remain the authority for VALUES; this
 //    proves the emitted KEY sets are exactly those and nothing else.
 // ---------------------------------------------------------------------------
@@ -289,7 +291,7 @@ describe("5. server drift source imports no server-only runtime", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 6. No drift/secret/auth endpoint, schema-deep import, or alerts-and-health dep.
+// 6. No drift/secret/auth endpoint, schema-deep import, or monitoring-module dep.
 // ---------------------------------------------------------------------------
 
 describe("6. no forbidden endpoint, schema-deep import, or sibling dependency", () => {
@@ -315,19 +317,32 @@ describe("6. no forbidden endpoint, schema-deep import, or sibling dependency", 
     }
   });
 
-  it("imports nothing from alerts-and-health", () => {
+  it("imports nothing from the monitoring module's implementation", () => {
     // Match an actual import specifier, not the phrase in a doc-comment.
     for (const [index, code] of ALL_FEATURE_CODE.entries()) {
-      expect(code, ALL_FEATURE_FILES[index]).not.toMatch(
-        /from\s+["'][^"']*alerts-and-health/,
-      );
+      expect(code, ALL_FEATURE_FILES[index]).not.toMatch(MONITORING_IMPLEMENTATION_IMPORT);
     }
+  });
+
+  it("the monitoring guard catches the module's halves and allows its contract", () => {
+    for (const caught of [
+      'import { x } from "../../monitoring/web/x.js";',
+      'import { x } from "../../../../modules/monitoring/server/module.js";',
+      'import { x } from "../alerts-and-health/status.js";',
+      'import { x } from "@deck/module-monitoring";',
+      'const m = await import("../../monitoring/web/x.js");',
+    ]) {
+      expect(caught).toMatch(MONITORING_IMPLEMENTATION_IMPORT);
+    }
+    expect('import { MONITORING_UI } from "@deck/contract/modules/monitoring";').not.toMatch(
+      MONITORING_IMPLEMENTATION_IMPORT,
+    );
   });
 });
 
 // ---------------------------------------------------------------------------
 // 7. Exact behavioral registration is delegated to the registry test.
-//    Spec 08 §10.2(7): checked behaviorally through registry accessors, NOT by
+//    Checked behaviorally through registry accessors, NOT by
 //    scanning registration source text here.
 // ---------------------------------------------------------------------------
 
@@ -339,8 +354,8 @@ describe("7. registration behavior is delegated to registry accessors", () => {
     expect(registrationText.length).toBeGreaterThan(0);
     // The authority for the exact four ids/paths/slots is behavioral: it imports
     // the feature entry and reads registry accessors rather than scanning source.
-    expect(registrationText).toContain("../src/features/drift-and-coverage/index.js");
-    expect(registrationText).toMatch(/getPages|getEntityFragments|getSummaryFragments/);
+    expect(registrationText).toContain("../../../modules/drift/web/index.js");
+    expect(registrationText).toMatch(/getPages|getEntityFragments|getExtensions/);
   });
 });
 
@@ -357,7 +372,8 @@ describe("8. no focused or skipped drift tests", () => {
   const serverDriftTests = sourceFiles(serverTestDir).filter((file) =>
     /drift-/.test(file),
   );
-  const driftTestFiles = [...webDriftTests, ...serverDriftTests];
+  const moduleDriftTests = sourceFiles(moduleTestDir);
+  const driftTestFiles = [...webDriftTests, ...serverDriftTests, ...moduleDriftTests];
 
   it("collects the drift test files to scan", () => {
     expect(driftTestFiles.length).toBeGreaterThan(0);
@@ -430,7 +446,7 @@ describe("10. invented estate sentinels and hostnames only", () => {
   // URLs (the ephemeral .tmp E2E runtime is uncommitted and excluded).
   const committedFixtures = [
     join(here, "drift-store.test.ts"),
-    join(here, "drift-keyboard.test.tsx"),
+    join(moduleTestDir, "web/drift-keyboard.test.tsx"),
     join(here, "e2e/drift.spec.ts"),
   ];
   const fixtureText = committedFixtures.map((file) => readFileSync(file, "utf8"));
@@ -474,7 +490,7 @@ describe("10. invented estate sentinels and hostnames only", () => {
 
 // ---------------------------------------------------------------------------
 // 11. Forbidden implementation-path diff boundaries.
-//     Spec 08 §10.2(11): implementation review/diff is authoritative because a
+//     Implementation review/diff is authoritative because a
 //     runtime test cannot prove historical non-editing. This guard confines the
 //     feature's implementation FOOTPRINT — the feature directories own only
 //     feature source, never a schema, CI, Playwright-config, or route file — and

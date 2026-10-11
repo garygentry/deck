@@ -1,0 +1,7 @@
+{
+  "validate": {
+    "exitClass": 1,
+    "stdout": "",
+    "stderr": "warning  /groups/0/id  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/id\nerror  /groups/0/items/0  REF_SERVICE_UNRESOLVED  service reference at /groups/0/items/0 does not resolve\nwarning  /groups/0/items/0/host  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/items/0/host\nwarning  /groups/0/items/0/name  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/items/0/name\nwarning  /groups/0/items/0/title  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/items/0/title\nwarning  /groups/0/items/0/type  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/items/0/type\nwarning  /groups/0/title  LAYER_OVERLAY_KEY_IN_BASE  overlay-owned value is present in the base layer at /groups/0/title\nerror  /groups/0/items/0  REF_SERVICE_UNRESOLVED  service reference at /groups/0/items/0 does not resolve\n"
+  }
+}

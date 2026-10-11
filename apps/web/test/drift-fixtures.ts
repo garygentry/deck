@@ -13,7 +13,7 @@ import type {
   HostState,
   ProviderEnvelope,
   SnapshotProviderResult,
-} from "@deck/server";
+} from "@deck/contract";
 
 /**
  * Deterministic invented scale factories for the drift-and-coverage performance
@@ -274,7 +274,7 @@ export function buildAboveScaleFixture(): Readonly<{
   };
 
   const config: DeckConfigDocument = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     estate: { name: "Fixture Estate (above scale)" },
     hosts,
     services,

@@ -1,0 +1,5 @@
+# Example Caddy reverse-proxy config for the portal stack.
+portal.home.example {
+	encode zstd gzip
+	reverse_proxy portal:8080
+}

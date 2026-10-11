@@ -1,0 +1,92 @@
+# An example dashboard layer: a config page built only from deck's generic
+# widgets over an `http-json` data source. No code, no extra container.
+#
+# The data source is deck's own health endpoint, so the page works anywhere
+# deck runs. To try it with the example estate, copy this file beside its
+# layers and start deck:
+#
+#   cp examples/dashboard/20-dashboard.yaml examples/estate/
+#   cd examples && docker compose up --build    # then open http://localhost:8080/pulse
+#
+# The URL is the address deck itself listens on inside its container (8080 in
+# examples/compose.yaml). `pnpm dev` serves the API on 8788, so change the
+# port to match. Point `url` at any JSON API to build your own dashboard.
+# The guide docs/guides/build-a-dashboard.md walks through every part.
+schemaVersion: 2
+integrations:
+  - id: deck-health
+    kind: http-json
+    title: Deck health
+    url: http://127.0.0.1:8080/api/health
+    pollIntervalMs: 15000
+ui:
+  # Named maps from a widget's values to status tones. Config never names a
+  # colour: a toned value shows the tone's icon and its own text.
+  statusMaps:
+    deck-status: { values: { ok: ok, degraded: warn } }
+    healthy: { values: { "true": ok, "false": danger } }
+  nav:
+    groups:
+      - { id: lab, label: Lab, icon: boxes }
+  pages:
+    - id: pulse
+      path: /pulse
+      title: Estate pulse
+      icon: activity
+      nav: { group: lab, label: Pulse, order: 0 }
+      sections:
+        - title: Deck
+          columns: 3
+          widgets:
+            # `select` is a JMESPath expression deck evaluates on the server;
+            # the widget shows its result.
+            - { id: status, type: core/stat, title: Status, source: deck-health, select: status, options: { statusMap: deck-status } }
+            - id: counts
+              type: core/stat-grid
+              title: Data sources
+              source: deck-health
+              select: "{total: providerCount, healthy: length(values(providers)[?ok])}"
+              span: 2
+              options:
+                items:
+                  - { field: total, label: Registered }
+                  - { field: healthy, label: Healthy }
+        - title: Providers
+          widgets:
+            # `providers` is an object keyed by provider id. JMESPath cannot turn
+            # keys into row fields, so `values(providers)` rows show each
+            # provider's kind and detail, not its id. `keys(providers)` lists
+            # the ids alone, e.g. as a core/list.
+            - id: providers
+              type: core/table
+              title: Provider health
+              source: deck-health
+              select: values(providers)
+              options:
+                columns:
+                  - { field: kind, header: Kind }
+                  - { field: detail, header: Detail }
+                  - { field: ok, header: Healthy, statusMap: healthy }
+        - title: Elsewhere
+          columns: 2
+          widgets:
+            - id: shortcuts
+              type: core/link-tiles
+              title: Shortcuts
+              options:
+                links:
+                  - { title: Hosts, href: /hosts, icon: server, description: Declared and observed }
+                  - { title: Drift, href: /drift, icon: git-compare }
+            - id: notes
+              type: core/markdown
+              title: About this page
+              options:
+                content: |
+                  Built from config alone: an `http-json` integration, a few
+                  generic widgets and two status maps.
+  # To show another site's page in a frame (a Grafana panel, a router's status
+  # page), turn embeds on and add a `core/embed` widget. Framed pages run in a
+  # sandbox; see the guide before you turn this on.
+  # allowUnsafeEmbeds: true
+  #   ...and under `widgets:` in a section:
+  #   - { id: graph, type: core/embed, title: UPS load, options: { url: "https://grafana.home.example/d-solo/ups?panelId=2", height: lg } }

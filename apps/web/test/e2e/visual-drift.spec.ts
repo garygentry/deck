@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { FIXTURE } from "./inventory-fixture.js";
+import { seedTheme } from "./theme-seed.js";
 
 /**
  * Visual baselines for the drift & coverage surfaces: the /drift page (with and
@@ -115,7 +116,7 @@ function fixedEnvelope(): Record<string, unknown> {
 
 async function open(page: Page, theme: string, width: number, path: string): Promise<void> {
   await page.clock.setFixedTime(FROZEN_NOW);
-  await page.addInitScript((mode) => localStorage.setItem("deck-theme", mode), theme);
+  await seedTheme(page, theme);
   await page.route("**/api/providers/snapshot", (route) => route.fulfill({ json: fixedEnvelope() }));
   await page.setViewportSize({ width, height: 900 });
   await page.goto(path);

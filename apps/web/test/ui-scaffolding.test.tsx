@@ -377,12 +377,12 @@ describe("ConfigGate", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response("nope", { status: 503 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ title: "Estate" }), { status: 200 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ schemaVersion: 2, estate: { name: "Estate" } }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     render(
       <ConfigGate title="Actions">
-        {(config) => <p>Loaded {(config as unknown as { title: string }).title}</p>}
+        {(config) => <p>Loaded {config.estate.name}</p>}
       </ConfigGate>,
     );
     expect(screen.getByRole("status", { name: "Loading…" })).toBeInTheDocument();

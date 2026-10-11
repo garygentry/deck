@@ -377,7 +377,7 @@ describe("columnsFromOffsets", () => {
   });
 });
 
-describe("workbench §E section", () => {
+describe("workbench collections section", () => {
   it("renders every specimen without throwing", async () => {
     const { collections } = await import("../src/features/_ui/sections/collections.js");
     const { Demo } = collections;

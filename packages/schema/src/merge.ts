@@ -1,9 +1,10 @@
 import type { JsonObject, JsonValue } from "./types.js";
-import { IDENTITY, resolveOwner } from "./ownership.js";
-import type { Owner } from "./ownership.js";
+import { composeDefault } from "./compose/builtin.js";
+import type { ComposedConfig } from "./compose/compose.js";
+import { LATER_WINS, REPLACED, resolveOwner, type IdentitySpec, type Owner } from "./ownership.js";
 
 /**
- * Thrown by `merge` on a precondition failure (REQ-LAYER-07), before any output is
+ * Thrown by `merge` on a precondition failure, before any output is
  * constructed — so no partial document is ever produced. Consumers catch it and map
  * to exit 2. `merge` never returns findings.
  */
@@ -30,18 +31,31 @@ export class MergeError extends Error {
 }
 
 type InputLayer = "base" | "overlay";
-type IdentitySpec = readonly string[] | Readonly<Record<string, readonly string[]>>;
+/** The ownership and identity tables one merge reads. */
+interface Tables {
+  ownership: Readonly<Record<string, Owner>>;
+  identity: Readonly<Record<string, IdentitySpec>>;
+}
 
 const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
-/** Combine generated inventory and authored presentation layers into a fresh object. */
-export function merge(base: JsonObject, overlay: JsonObject): JsonObject {
+/**
+ * Combine generated inventory and authored presentation layers into a fresh object, by the
+ * ownership and identity rows of `composed` (default: the kernel plus the built-in
+ * contributions).
+ */
+export function merge(
+  base: JsonObject,
+  overlay: JsonObject,
+  composed: ComposedConfig = composeDefault(),
+): JsonObject {
+  const tables: Tables = { ownership: composed.ownership, identity: composed.identity };
   assertObject(base, "base");
   assertObject(overlay, "overlay");
   assertVersions(base, overlay);
-  assertIdentities(base, "", "", "base");
-  assertIdentities(overlay, "", "", "overlay");
-  return mergeObject(base, overlay, "");
+  assertIdentities(tables, base, "", "", "base");
+  assertIdentities(tables, overlay, "", "", "overlay");
+  return mergeObject(tables, base, overlay, "");
 }
 
 function assertObject(value: unknown, layer: InputLayer): asserts value is JsonObject {
@@ -71,17 +85,18 @@ function assertVersions(base: JsonObject, overlay: JsonObject): void {
 }
 
 function assertIdentities(
+  tables: Tables,
   value: JsonValue,
   ownerPath: string,
   pointer: string,
   layer: InputLayer,
 ): void {
   if (Array.isArray(value)) {
-    const spec = identitySpec(ownerPath);
+    const spec = identitySpec(tables, ownerPath);
     value.forEach((element, index) => {
       const elementPointer = `${pointer}/${index}`;
       if (spec !== undefined) assertElementIdentity(element, spec, elementPointer, layer);
-      assertIdentities(element, `${ownerPath}[]`, elementPointer, layer);
+      assertIdentities(tables, element, `${ownerPath}[]`, elementPointer, layer);
     });
     return;
   }
@@ -89,7 +104,7 @@ function assertIdentities(
   for (const key of Object.keys(value)) {
     if (isForbiddenKey(key)) continue;
     const childPath = ownerPath === "" ? key : `${ownerPath}.${key}`;
-    assertIdentities(value[key], childPath, `${pointer}/${escapePointer(key)}`, layer);
+    assertIdentities(tables, value[key], childPath, `${pointer}/${escapePointer(key)}`, layer);
   }
 }
 
@@ -112,14 +127,36 @@ function throwIdentity(layer: InputLayer, pointer: string): never {
   );
 }
 
-function mergeObject(base: JsonObject, overlay: JsonObject, ownerPath: string): JsonObject {
+/**
+ * `replaced` names the fields of this object an overlay value replaces whole (an entry of a
+ * `REPLACED` map).
+ */
+function mergeObject(
+  tables: Tables,
+  base: JsonObject,
+  overlay: JsonObject,
+  ownerPath: string,
+  replaced: readonly string[] = [],
+): JsonObject {
   const output: JsonObject = {};
+  const entryFields = replacedFields(ownerPath);
   for (const key of Object.keys(base)) {
     if (isForbiddenKey(key)) continue;
     const childPath = ownerPath === "" ? key : `${ownerPath}.${key}`;
-    output[key] = hasOwn(overlay, key)
-      ? combine(base[key], overlay[key], resolveOwner(childPath), childPath)
-      : clone(base[key]);
+    if (!hasOwn(overlay, key)) {
+      output[key] = clone(base[key]);
+      continue;
+    }
+    const owner = resolveOwner(childPath, tables.ownership);
+    if (LATER_WINS.includes(childPath) && isPlainObject(base[key]) && isPlainObject(overlay[key])) {
+      output[key] = { ...clone(base[key]) as JsonObject, ...clone(overlay[key]) as JsonObject };
+    } else if (owner === "overlay" && replaced.includes(key)) {
+      output[key] = clone(overlay[key]);
+    } else if (owner === "overlay" && entryFields !== undefined && isPlainObject(base[key]) && isPlainObject(overlay[key])) {
+      output[key] = mergeObject(tables, base[key], overlay[key], childPath, entryFields);
+    } else {
+      output[key] = combine(tables, base[key], overlay[key], owner, childPath);
+    }
   }
   for (const key of Object.keys(overlay)) {
     if (isForbiddenKey(key) || hasOwn(base, key)) continue;
@@ -128,32 +165,33 @@ function mergeObject(base: JsonObject, overlay: JsonObject, ownerPath: string): 
   return output;
 }
 
-function combine(base: JsonValue, overlay: JsonValue, owner: Owner, path: string): JsonValue {
+function combine(tables: Tables, base: JsonValue, overlay: JsonValue, owner: Owner, path: string): JsonValue {
   switch (owner) {
     case "base":
     case "both":
       return clone(base);
     case "overlay":
-      if (isPlainObject(base) && isPlainObject(overlay)) return mergeObject(base, overlay, path);
-      if (isIdentityArray(path, base, overlay)) {
-        return mergeIdentityArray(base as JsonValue[], overlay as JsonValue[], path);
+      if (isPlainObject(base) && isPlainObject(overlay)) return mergeObject(tables, base, overlay, path);
+      if (isIdentityArray(tables, path, base, overlay)) {
+        return mergeIdentityArray(tables, base as JsonValue[], overlay as JsonValue[], path);
       }
       return clone(overlay);
     case "container":
-      if (isPlainObject(base) && isPlainObject(overlay)) return mergeObject(base, overlay, path);
-      if (isIdentityArray(path, base, overlay)) {
-        return mergeIdentityArray(base as JsonValue[], overlay as JsonValue[], path);
+      if (isPlainObject(base) && isPlainObject(overlay)) return mergeObject(tables, base, overlay, path);
+      if (isIdentityArray(tables, path, base, overlay)) {
+        return mergeIdentityArray(tables, base as JsonValue[], overlay as JsonValue[], path);
       }
       return clone(base);
   }
 }
 
 function mergeIdentityArray(
+  tables: Tables,
   base: JsonValue[],
   overlay: JsonValue[],
   arrayPath: string,
 ): JsonValue[] {
-  const spec = identitySpec(arrayPath)!;
+  const spec = identitySpec(tables, arrayPath)!;
   const elementPath = `${arrayPath}[]`;
   const overlayByKey = new Map<string, JsonValue>();
   const overlayOrder: string[] = [];
@@ -170,7 +208,7 @@ function mergeIdentityArray(
     const overlayElement = overlayByKey.get(key);
     if (overlayElement !== undefined && isPlainObject(baseElement) && isPlainObject(overlayElement)) {
       matched.add(key);
-      output.push(mergeObject(baseElement, overlayElement, elementPath));
+      output.push(mergeObject(tables, baseElement, overlayElement, elementPath));
     } else {
       output.push(clone(baseElement));
     }
@@ -203,16 +241,22 @@ function isFixedIdentitySpec(spec: IdentitySpec): spec is readonly string[] {
   return Array.isArray(spec);
 }
 
-function identitySpec(path: string): IdentitySpec | undefined {
-  return (IDENTITY as Readonly<Record<string, IdentitySpec>>)[path];
+/** The fields replaced whole in each entry of the map at `path`, if it is a `REPLACED` map. */
+function replacedFields(path: string): readonly string[] | undefined {
+  return Object.prototype.hasOwnProperty.call(REPLACED, path) ? REPLACED[path as keyof typeof REPLACED] : undefined;
+}
+
+function identitySpec(tables: Tables, path: string): IdentitySpec | undefined {
+  return Object.prototype.hasOwnProperty.call(tables.identity, path) ? tables.identity[path] : undefined;
 }
 
 function isIdentityArray(
+  tables: Tables,
   path: string,
   base: JsonValue,
   overlay: JsonValue,
 ): base is JsonValue[] {
-  return identitySpec(path) !== undefined && Array.isArray(base) && Array.isArray(overlay);
+  return identitySpec(tables, path) !== undefined && Array.isArray(base) && Array.isArray(overlay);
 }
 
 function clone(value: JsonValue): JsonValue {

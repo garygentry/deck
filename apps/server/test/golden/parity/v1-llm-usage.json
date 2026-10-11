@@ -1,0 +1,167 @@
+{
+  "validate": {
+    "exitClass": 0,
+    "stdout": "clean\n",
+    "stderr": ""
+  },
+  "config": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "schemaVersion": 1,
+      "estate": {
+        "name": "llm-usage-estate"
+      },
+      "llmUsage": {
+        "claude": {
+          "credentialsFile": "/nonexistent/claude/.credentials.json",
+          "statusLine": {
+            "credentialEnv": "DECK_PARITY_INGEST_TOKEN"
+          },
+          "activeInterval": "PT2M",
+          "idleInterval": "PT5M"
+        },
+        "thresholds": {
+          "warn": 70,
+          "danger": 85
+        },
+        "idlePause": "PT5M"
+      }
+    }
+  },
+  "providers": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "providers": []
+    }
+  },
+  "envelopes": {
+    "parity-unknown-provider": {
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "error": "No provider registered with id 'parity-unknown-provider'",
+        "code": "PROVIDER_NOT_FOUND"
+      }
+    }
+  },
+  "health": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "status": "ok",
+      "uptimeMs": 0,
+      "providerCount": 0,
+      "providers": {},
+      "llmUsage": {
+        "mode": "paused",
+        "lastPollAt": null,
+        "consecutiveErrors": 0
+      },
+      "modules": {}
+    }
+  },
+  "actions": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "enabled": false
+    }
+  },
+  "actionRefusals": {
+    "unknownAction": {
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "error": "The actions capability is disabled on this deck instance.",
+        "code": "ACTIONS_DISABLED"
+      }
+    },
+    "runnerUnresolved": {
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "error": "The actions capability is disabled on this deck instance.",
+        "code": "ACTIONS_DISABLED"
+      }
+    },
+    "paramsInvalid": {
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "error": "The actions capability is disabled on this deck instance.",
+        "code": "ACTIONS_DISABLED"
+      }
+    }
+  },
+  "actionsAudit": {
+    "status": 403,
+    "contentType": "application/json",
+    "body": {
+      "error": "The actions capability is disabled on this deck instance.",
+      "code": "ACTIONS_DISABLED"
+    }
+  },
+  "llmUsage": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "enabled": true,
+      "now": 1767225600000,
+      "poll": {
+        "mode": "idle",
+        "nextPollAt": 1767225600000,
+        "consecutiveErrors": 0
+      },
+      "thresholds": {
+        "warn": 70,
+        "danger": 85
+      },
+      "claude": {
+        "plan": null,
+        "bars": [],
+        "sources": [
+          {
+            "id": "claude.statusLine",
+            "state": "no-data-yet",
+            "observedAt": null,
+            "detail": "no statusLine push yet"
+          },
+          {
+            "id": "claude.oauth",
+            "state": "no-data-yet",
+            "observedAt": null,
+            "detail": null
+          },
+          {
+            "id": "claude.transcripts",
+            "state": "not-configured",
+            "observedAt": null,
+            "detail": "no transcriptsDir configured"
+          }
+        ],
+        "transcripts": null
+      },
+      "codex": null
+    }
+  },
+  "routes": [
+    "ALL /*",
+    "GET /api/actions",
+    "GET /api/actions/audit",
+    "GET /api/actions/audit/:runId",
+    "GET /api/config",
+    "GET /api/health",
+    "GET /api/llm-usage",
+    "GET /api/llm-usage/refresh",
+    "GET /api/providers",
+    "GET /api/providers/:id",
+    "GET /api/sources/:id/file",
+    "GET /api/sources/:id/raw",
+    "GET /api/sources/:id/search",
+    "GET /api/sources/:id/tree",
+    "POST /api/actions/:id",
+    "POST /api/actions/runs/:runId/cancel"
+  ]
+}

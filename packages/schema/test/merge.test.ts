@@ -4,18 +4,17 @@ import type { JsonObject } from "../src/types.js";
 import { deepFreeze } from "./util.js";
 
 const base: JsonObject = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   estate: { name: "atlas", timezone: "UTC" },
   hosts: [
     { name: "beta", kind: "vm", purpose: "base beta" },
     { name: "alpha", kind: "bare-metal", purpose: "base alpha" },
   ],
   services: [{ host: "alpha", name: "api", kind: "systemd", purpose: "base api" }],
-  groups: [{ id: "main", title: "Base", items: [{ type: "service", host: "alpha", name: "api" }] }],
 };
 
 const overlay: JsonObject = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   estate: { name: "ignored", freshness: { snapshotStaleAfter: "PT6H" } },
   hosts: [
     { name: "alpha", purpose: "ignored", hidden: true },
@@ -23,7 +22,6 @@ const overlay: JsonObject = {
     { name: "delta", hidden: false },
   ],
   services: [{ host: "alpha", name: "api", links: [{ title: "Docs", href: "https://example.test/api" }] }],
-  groups: [{ id: "main", title: "Overlay", items: [{ type: "service", host: "alpha", name: "api", title: "API" }] }],
 };
 
 describe("merge", () => {
@@ -39,9 +37,6 @@ describe("merge", () => {
     expect((result.services as JsonObject[])[0].links).toEqual([
       { title: "Docs", href: "https://example.test/api" },
     ]);
-    expect((result.groups as JsonObject[])[0]).toMatchObject({
-      id: "main", title: "Overlay", items: [{ type: "service", host: "alpha", name: "api", title: "API" }],
-    });
   });
 
   it("is deterministic under repeated calls and a shared-key overlay shuffle", () => {
@@ -49,7 +44,6 @@ describe("merge", () => {
     expect([merge(base, overlay), merge(base, overlay), merge(base, overlay)].map((value) => JSON.stringify(value)))
       .toEqual([expected, expected, expected]);
     const shuffled: JsonObject = {
-      groups: overlay.groups,
       services: overlay.services,
       hosts: overlay.hosts,
       estate: overlay.estate,
@@ -71,16 +65,16 @@ describe("merge", () => {
     expectMergeError(() => merge([] as unknown as JsonObject, overlay), "MERGE_INPUT_NOT_OBJECT", "base", "");
     expectMergeError(() => merge(base, { estate: {} }), "MERGE_VERSION_MISMATCH", "overlay", "/schemaVersion");
     expectMergeError(
-      () => merge(base, { schemaVersion: 1, hosts: [{ hidden: true }] }),
+      () => merge(base, { schemaVersion: 2, hosts: [{ hidden: true }] }),
       "MERGE_IDENTITY_MISSING", "overlay", "/hosts/0",
     );
   });
 
   it("skips prototype-pollution keys at every copied depth", () => {
     const unsafe = JSON.parse(
-      '{"schemaVersion":1,"estate":{"name":"atlas","__proto__":{"polluted":true},"constructor":1,"prototype":2}}',
+      '{"schemaVersion":2,"estate":{"name":"atlas","__proto__":{"polluted":true},"constructor":1,"prototype":2}}',
     ) as JsonObject;
-    const result = merge(unsafe, { schemaVersion: 1, estate: {} });
+    const result = merge(unsafe, { schemaVersion: 2, estate: {} });
     const estate = result.estate as JsonObject;
     expect(Object.keys(estate)).toEqual(["name"]);
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();

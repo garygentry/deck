@@ -1,11 +1,13 @@
-schemaVersion: 1
-# `actions` is an overlay-owned key (packages/schema ownership), so it must be
-# declared in an overlay layer rather than the base. Declares the single
-# `smoke-echo` action the smoke path invokes; the runner name resolves from the
-# runtime-written runner manifest to the committed echo script.
-actions:
-  - id: smoke-echo
-    title: Smoke echo
-    runner: smoke-echo
-    confirm: none
-    description: Echo runner exercised by the extended smoke path.
+schemaVersion: 2
+modules:
+  actions:
+    # `actions` is an overlay-owned key (packages/schema ownership), so it must be
+    # declared in an overlay layer rather than the base. Declares the single
+    # `smoke-echo` action the smoke path invokes; the runner name resolves from the
+    # runtime-written runner manifest to the committed echo script.
+    actions:
+      - id: smoke-echo
+        title: Smoke echo
+        runner: smoke-echo
+        confirm: none
+        description: Echo runner exercised by the extended smoke path.

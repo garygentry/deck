@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2025-12-31T23:57:00.000Z",
+  "hosts": [
+    {
+      "name": "gateway",
+      "coverage": "collected",
+      "reachable": true,
+      "addresses": [
+        {
+          "network": "lan",
+          "address": "192.0.2.1",
+          "primary": true
+        }
+      ],
+      "os": {
+        "name": "EdgeOS",
+        "version": "3.2",
+        "kernel": "5.15.0"
+      },
+      "uptimeSeconds": 5346000,
+      "facts": {
+        "role": "edge-router"
+      },
+      "collectedAt": "2025-12-31T23:56:00.000Z"
+    },
+    {
+      "name": "nas",
+      "coverage": "collected",
+      "reachable": true,
+      "addresses": [
+        {
+          "network": "lan",
+          "address": "192.0.2.10",
+          "primary": true
+        }
+      ],
+      "os": {
+        "name": "Debian",
+        "version": "12",
+        "kernel": "6.1.0"
+      },
+      "uptimeSeconds": 8640000,
+      "managedConfigs": [
+        {
+          "path": "/etc/samba/smb.conf",
+          "inSync": true
+        },
+        {
+          "path": "/srv/nas-local",
+          "inSync": false
+        }
+      ],
+      "facts": {
+        "role": "storage"
+      },
+      "collectedAt": "2025-12-23T21:00:00.000Z"
+    },
+    {
+      "name": "apps",
+      "coverage": "partial",
+      "reachable": true,
+      "addresses": [
+        {
+          "network": "lan",
+          "address": "192.0.2.20",
+          "primary": true
+        }
+      ],
+      "collectors": {
+        "succeeded": [
+          "system",
+          "containers"
+        ],
+        "failed": [
+          {
+            "name": "configs",
+            "reason": "SSH config collector timed out"
+          }
+        ]
+      },
+      "containers": [
+        {
+          "name": "portal",
+          "image": "example/portal:1",
+          "state": "running"
+        },
+        {
+          "name": "reverse-proxy",
+          "image": "caddy:2",
+          "state": "running"
+        }
+      ],
+      "facts": {
+        "role": "apps"
+      },
+      "collectedAt": "2025-12-31T23:54:00.000Z"
+    },
+    {
+      "name": "media",
+      "coverage": "unreachable",
+      "reachable": false
+    }
+  ],
+  "services": [
+    {
+      "host": "apps",
+      "name": "portal",
+      "state": "running",
+      "facts": {
+        "replicas": 1
+      }
+    },
+    {
+      "host": "apps",
+      "name": "reverse-proxy",
+      "state": "running",
+      "facts": {
+        "replicas": 1
+      }
+    },
+    {
+      "host": "nas",
+      "name": "files",
+      "state": "running"
+    },
+    {
+      "host": "nas",
+      "name": "backups",
+      "state": "degraded"
+    },
+    {
+      "host": "gateway",
+      "name": "router-ui",
+      "state": "running"
+    },
+    {
+      "host": "media",
+      "name": "jellyfin",
+      "state": "unknown"
+    }
+  ],
+  "drift": [
+    {
+      "id": "nas-backup-target",
+      "severity": "error",
+      "location": {
+        "host": "nas",
+        "path": "/srv/nas-local"
+      },
+      "category": "config",
+      "message": "Backup target path differs from the declared managed config.",
+      "expected": "/srv/nas-local",
+      "observed": "/srv/backups-old"
+    },
+    {
+      "id": "apps-proxy-replicas",
+      "severity": "warning",
+      "location": {
+        "host": "apps",
+        "service": "reverse-proxy"
+      },
+      "category": "runtime",
+      "message": "reverse-proxy is running fewer replicas than expected.",
+      "expected": 2,
+      "observed": 1,
+      "waiver": {
+        "reason": "Single replica accepted until the second apps node is provisioned.",
+        "who": "ops@home.example",
+        "until": "2026-01-31T00:00:00.000Z"
+      }
+    },
+    {
+      "id": "gateway-firmware",
+      "severity": "info",
+      "location": {
+        "host": "gateway"
+      },
+      "category": "inventory",
+      "message": "Firmware update available for the gateway appliance."
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { FIXTURE } from "./inventory-fixture.js";
+import { seedTheme } from "./theme-seed.js";
 
 /**
  * Visual baselines for the inventory detail pages (/hosts/:name,
@@ -73,7 +74,7 @@ if (VISUALS) test.describe("inventory detail visual baselines", () => {
       for (const width of WIDTHS) {
         test(`${target.name} ${width}px ${theme}`, async ({ page }) => {
           await page.clock.setFixedTime(FROZEN_NOW);
-          await page.addInitScript((mode) => localStorage.setItem("deck-theme", mode), theme);
+          await seedTheme(page, theme);
           await pinSnapshot(page);
           await page.setViewportSize({ width, height: 900 });
           await page.goto(target.path);

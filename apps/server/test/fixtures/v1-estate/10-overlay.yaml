@@ -1,0 +1,49 @@
+schemaVersion: 1
+estate:
+  # A snapshot host older than this reads as "stale" in the inventory and
+  # coverage views. The bundled example snapshot is stamped so most hosts land
+  # inside this window and one (nas) lands outside it.
+  freshness:
+    snapshotStaleAfter: P2D
+hosts:
+  - name: gateway
+    links: [{ title: Gateway UI, href: "https://gateway.home.example/" }]
+  - name: nas
+    links: [{ title: NAS Console, href: "https://nas.home.example/" }]
+  - name: apps
+  - name: media
+    links: [{ title: Jellyfin, href: "https://media.home.example/" }]
+services:
+  - name: portal
+    host: apps
+    links: [{ title: Portal, href: "https://portal.home.example/" }]
+  - name: files
+    host: nas
+    links: [{ title: Files, href: "https://files.home.example/" }]
+  - name: jellyfin
+    host: media
+    links: [{ title: Jellyfin, href: "https://media.home.example/" }]
+groups:
+  - id: overview
+    title: Overview
+    order: 1
+    items:
+      - { type: service, host: apps, name: portal, title: Portal }
+      - { type: service, host: nas, name: files, title: Files }
+      - { type: service, host: media, name: jellyfin, title: Jellyfin }
+      - { type: link, title: Gateway, href: "https://gateway.home.example/" }
+  - id: infrastructure
+    title: Infrastructure
+    order: 2
+    items:
+      - { type: link, title: NAS Console, href: "https://nas.home.example/" }
+      - { type: link, title: Gateway UI, href: "https://gateway.home.example/" }
+sources:
+  - id: runbooks
+    kind: markdown-tree
+    title: Runbooks
+    location: { path: test/fixtures/v1-estate/docs }
+  - id: host-configs
+    kind: file-tree
+    title: Host configs
+    location: { path: test/fixtures/v1-estate/configs }

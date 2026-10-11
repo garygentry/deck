@@ -1,0 +1,81 @@
+{
+  "title": "File-tree source",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "title",
+    "location"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Source id, unique across sources."
+    },
+    "kind": {
+      "const": "file-tree",
+      "description": "Source kind."
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable source title."
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Filesystem or repository source location.",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Filesystem path to the source root."
+        },
+        "repo": {
+          "type": "string",
+          "description": "Repository reference."
+        },
+        "ref": {
+          "type": "string",
+          "description": "Optional revision or branch."
+        }
+      }
+    },
+    "include": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional include glob patterns."
+    },
+    "exclude": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional exclude glob patterns."
+    },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional owning host or service.",
+      "required": [
+        "host"
+      ],
+      "properties": {
+        "host": {
+          "type": "string",
+          "description": "Owning host name."
+        },
+        "service": {
+          "type": "string",
+          "description": "Optional owning service name on that host."
+        }
+      }
+    },
+    "credentialEnv": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "description": "Environment variable name holding a credential, never its value."
+    }
+  }
+}

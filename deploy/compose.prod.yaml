@@ -41,7 +41,7 @@ services:
       # DECK_ACTIONS_ENABLED: "true"
       # DECK_DATA_DIR: /var/lib/deck
       # DECK_RUNNERS_FILE: /config/runners.yaml
-      # LLM usage statusLine ingest token, when llmUsage.claude.statusLine names
+      # LLM usage statusLine ingest token, when modules.llm-usage.claude.statusLine names
       # this variable (see docs/guides/llm-usage.md). Unset = no ingest route.
       # DECK_LLM_USAGE_INGEST_TOKEN: ${DECK_LLM_USAGE_INGEST_TOKEN}
     volumes:
@@ -55,11 +55,11 @@ services:
       - deck-sources-cache:/var/cache/deck/sources
       # Uncomment when governed actions are enabled (see DECK_DATA_DIR above).
       # - deck-data:/var/lib/deck
-      # LLM usage (llmUsage section): the Claude directory read-only (not the
+      # LLM usage (modules.llm-usage section): the Claude directory read-only (not the
       # credentials file alone: a refreshed file would not show through), and the
       # host's own Codex home read-write at the SAME path (the app-server refreshes
       # auth.json, and the standalone install's `current` symlink is absolute). The
-      # image has no codex: point llmUsage.codex.command at the host binary, e.g.
+      # image has no codex: point modules.llm-usage.codex.command at the host binary, e.g.
       # /home/you/.codex/packages/standalone/current/bin/codex. npm installs and
       # file ownership: see docs/guides/llm-usage.md.
       # - /home/you/.claude:/data/claude:ro

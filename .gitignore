@@ -30,6 +30,9 @@ examples/estate/.runtime/
 **/backlog.json.bak
 **/.rauf/forge-decisions.json
 
+# playwright-cli session artifacts
+.playwright-cli/
+
 # Planning artifacts and loop state stay local (not published).
 /specs
 /.rauf

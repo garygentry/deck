@@ -15,11 +15,11 @@ export interface Context {
   hostOccurrences: readonly Located[];
   serviceOccurrences: readonly Located[];
   idOccurrences: {
-    groups: readonly Located[];
     sources: readonly Located[];
     integrations: readonly Located[];
-    actions: readonly Located[];
-    agents: readonly Located[];
+    "ui.nav.groups": readonly Located[];
+    "ui.nav.items": readonly Located[];
+    "ui.pages": readonly Located[];
   };
 }
 
@@ -29,28 +29,12 @@ export function serviceKey(host: string, name: string): string {
 
 function collectIds<T extends { id: string }>(
   values: readonly T[] | undefined,
-  collection: string,
+  pointer: string,
 ): Located[] {
   return (values ?? []).map((value, index) => ({
     key: value.id,
-    path: `/${collection}/${index}`,
+    path: `${pointer}/${index}`,
   }));
-}
-
-function collectGroupIds(doc: DeckConfigDocument): Located[] {
-  const ids: Located[] = [];
-  for (const [groupIndex, group] of (doc.groups ?? []).entries()) {
-    ids.push({ key: group.id, path: `/groups/${groupIndex}` });
-    for (const [itemIndex, item] of group.items.entries()) {
-      if (item.type === "group") {
-        ids.push({
-          key: item.id,
-          path: `/groups/${groupIndex}/items/${itemIndex}`,
-        });
-      }
-    }
-  }
-  return ids;
 }
 
 export function buildContext(doc: DeckConfigDocument): Context {
@@ -76,11 +60,11 @@ export function buildContext(doc: DeckConfigDocument): Context {
     hostOccurrences,
     serviceOccurrences,
     idOccurrences: {
-      groups: collectGroupIds(doc),
-      sources: collectIds(doc.sources, "sources"),
-      integrations: collectIds(doc.integrations, "integrations"),
-      actions: collectIds(doc.actions, "actions"),
-      agents: collectIds(doc.agents, "agents"),
+      sources: collectIds(doc.sources, "/sources"),
+      integrations: collectIds(doc.integrations, "/integrations"),
+      "ui.nav.groups": collectIds(doc.ui?.nav?.groups, "/ui/nav/groups"),
+      "ui.nav.items": collectIds(doc.ui?.nav?.items, "/ui/nav/items"),
+      "ui.pages": collectIds(doc.ui?.pages, "/ui/pages"),
     },
   };
 }

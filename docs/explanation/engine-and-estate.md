@@ -97,3 +97,5 @@ drift and coverage from the two documents.*
 - [Snapshot contract reference](../reference/snapshot-contract.md) — the observed-reality shape.
 - [Inventory beside reality: how drift and coverage work](../explanation/drift-and-coverage.md) —
   how the difference is derived and how freshness is judged.
+- [Kernel and modules](kernel-and-modules.md) — how the engine itself is built from modules on
+  one contract, and how to extend it.

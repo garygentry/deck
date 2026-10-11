@@ -1,8 +1,10 @@
 import { ToggleGroup, ToggleGroupItem, TooltipProvider } from "@/ui";
-import { useThemeMode, type ThemeMode } from "../../shell/use-theme.js";
+import type { ThemeMode } from "@deck/contract";
+import { useThemeMode } from "../../shell/use-theme.js";
 import { SECTIONS } from "./sections/index.js";
 
-const MODES: readonly ThemeMode[] = ["light", "dark", "system"];
+/** The toggle's display order of the contract's modes. */
+const MODES = ["light", "dark", "system"] as const satisfies readonly ThemeMode[];
 
 /**
  * The dev-only component workbench: every `@/ui` component in every state, one

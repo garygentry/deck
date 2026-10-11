@@ -5,7 +5,9 @@
   "packageManager": "pnpm@10.34.5",
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/*",
+    "examples/modules/*",
+    "modules/*"
   ],
   "scripts": {
     "typecheck": "pnpm -r typecheck",

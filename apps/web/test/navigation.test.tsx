@@ -10,28 +10,42 @@ const ServiceDetail = () => <div data-testid="service-detail-page">service detai
 async function setup() {
   const registry = await import("../src/registry/registry.js");
   // Existing-style registrations with nav omitted must stay visible.
-  registry.registerPage({ id: "home", path: "/", label: "Home", component: Home });
-  registry.registerPage({ id: "hosts", path: "/hosts", label: "Hosts", component: Hosts });
+  registry.registerPage({ id: "page:core/home", path: "/", label: "Home", component: Home });
+  registry.registerPage({ id: "page:inventory/hosts", path: "/hosts", label: "Hosts", component: Hosts });
   registry.registerPage({
-    id: "services",
+    id: "page:inventory/services",
     path: "/services",
     label: "Services",
     component: Services,
   });
   // Both synthetic navigation-hidden dynamic routes remain routable.
   registry.registerPage({
-    id: "host-detail",
+    id: "page:inventory/host-detail",
     path: "/hosts/:name",
     label: "Host",
     component: HostDetail,
     nav: false,
   });
   registry.registerPage({
-    id: "service-detail",
+    id: "page:inventory/service-detail",
     path: "/services/:host/:name",
     label: "Service",
     component: ServiceDetail,
     nav: false,
+  });
+  // The sidebar lists the UI manifest's nav (here, the three listed pages).
+  const { getQueryClient } = await import("../src/data/query-client.js");
+  const nav = (page: string, group: string, label: string) => ({
+    id: page.replace("page:", "nav:"), module: page.split(/[:/]/)[1], slot: "app/nav", page, group, label, order: 100,
+  });
+  getQueryClient().setQueryData(["ui"], {
+    uiApi: 1, brand: { title: "Lab" }, modules: [], slots: [], pages: [], disabledPages: [], extensions: [], providers: [], findings: [],
+    navGroups: [{ id: "overview", label: "Overview" }, { id: "inventory", label: "Inventory" }],
+    nav: [
+      nav("page:core/home", "overview", "Home"),
+      nav("page:inventory/hosts", "inventory", "Hosts"),
+      nav("page:inventory/services", "inventory", "Services"),
+    ],
   });
   const { App } = await import("../src/shell/App.js");
   return { App };
@@ -51,13 +65,13 @@ describe("shell navigation and routing", () => {
     vi.unstubAllGlobals();
   });
 
-  it("routes every page but hides nav:false registrations from primary navigation", async () => {
+  it("routes every page; primary navigation lists the manifest's entries", async () => {
     vi.stubGlobal("location", new URL("http://localhost/"));
     const { App } = await setup();
 
     const html = render(<App />);
 
-    // Primary navigation excludes only nav === false; omitted nav remains visible.
+    // The detail routes have no nav entry.
     expect(navLinks(html)).toEqual(["/", "/hosts", "/services"]);
     expect(html).not.toContain('href="/hosts/:name"');
     expect(html).not.toContain('href="/services/:host/:name"');
@@ -65,11 +79,11 @@ describe("shell navigation and routing", () => {
     const { getPages } = await import("../src/registry/registry.js");
     // Sorted by order then id; routing preserves it verbatim.
     expect(getPages().map((page) => page.id)).toEqual([
-      "home",
-      "host-detail",
-      "hosts",
-      "service-detail",
-      "services",
+      "page:core/home",
+      "page:inventory/host-detail",
+      "page:inventory/hosts",
+      "page:inventory/service-detail",
+      "page:inventory/services",
     ]);
   });
 
@@ -87,7 +101,7 @@ describe("shell navigation and routing", () => {
     expect(navLinks(serviceHtml)).toEqual(["/", "/hosts", "/services"]);
   });
 
-  it("keeps existing omitted-nav pages visible in registration order", async () => {
+  it("lists the nav entries in the manifest's order", async () => {
     vi.stubGlobal("location", new URL("http://localhost/hosts"));
     const { App } = await setup();
 

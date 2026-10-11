@@ -59,27 +59,29 @@ runner name can never be used to reach an executable that is not on the list.
 
 ## Author an action
 
-Declare actions in your estate config under the top-level `actions` list.
+Declare actions in your estate config under the `modules.actions.actions` list.
 Each action requires `id`, `title`, `runner`, and `confirm`; the `runner` must be a name from
 your allowlist.
 
 ```yaml
-actions:
-  - id: restart-portal
-    title: Restart portal
-    runner: restart-service
-    confirm: typed-confirm
-    description: Restart the portal service on the apps host.
-    target: { host: apps, service: portal }
-    params:
-      - name: reason
-        type: string
-        required: true
-        description: Why the restart is being performed (recorded in the audit log).
-      - name: mode
-        type: enum
-        values: [graceful, force]
-        default: graceful
+modules:
+  actions:
+    actions:
+      - id: restart-portal
+        title: Restart portal
+        runner: restart-service
+        confirm: typed-confirm
+        description: Restart the portal service on the apps host.
+        target: { host: apps, service: portal }
+        params:
+          - name: reason
+            type: string
+            required: true
+            description: Why the restart is being performed (recorded in the audit log).
+          - name: mode
+            type: enum
+            values: [graceful, force]
+            default: graceful
 ```
 
 `confirm` sets the confirmation deck's UI requires before it will run the action, and takes one

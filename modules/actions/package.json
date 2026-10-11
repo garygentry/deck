@@ -1,0 +1,26 @@
+{
+  "name": "@deck/module-actions",
+  "version": "0.3.2",
+  "private": true,
+  "description": "deck's built-in actions module: governed actions (runner allowlist, parameter validation, execution, audit), their routes and the Actions page.",
+  "type": "module",
+  "dependencies": {
+    "@deck/contract": "workspace:*",
+    "@deck/module-sdk": "workspace:*",
+    "hono": "^4.6.0"
+  },
+  "peerDependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "vitest": "^4.1.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
+    "@types/node": "^22",
+    "@types/react": "^19.3.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "vitest": "^4.1.0"
+  }
+}

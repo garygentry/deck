@@ -1,0 +1,319 @@
+{
+  "validate": {
+    "exitClass": 0,
+    "stdout": "clean\n",
+    "stderr": ""
+  },
+  "config": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "schemaVersion": 1,
+      "estate": {
+        "name": "Alerts smoke estate"
+      },
+      "hosts": [
+        {
+          "name": "atlas",
+          "kind": "bare-metal",
+          "purpose": "Monitoring host"
+        }
+      ],
+      "services": [
+        {
+          "name": "monitoring",
+          "host": "atlas",
+          "kind": "container",
+          "purpose": "Metrics and alerts backend",
+          "status": "active"
+        }
+      ],
+      "integrations": [
+        {
+          "id": "prometheus-primary",
+          "kind": "prometheus",
+          "title": "Prometheus",
+          "baseUrl": "http://127.0.0.1:65532",
+          "credentialEnv": "PROMETHEUS_TOKEN",
+          "card": {
+            "summaries": [
+              {
+                "id": "cpu",
+                "label": "CPU load",
+                "query": "avg(node_load1)",
+                "warning": 4,
+                "critical": 8,
+                "direction": "above"
+              },
+              {
+                "id": "memory",
+                "label": "Memory used",
+                "query": "avg(node_memory_used_percent)",
+                "unit": "%",
+                "warning": 80,
+                "critical": 90,
+                "direction": "above"
+              },
+              {
+                "id": "disk-free",
+                "label": "Disk free",
+                "query": "min(node_filesystem_free_percent)",
+                "unit": "%",
+                "warning": 20,
+                "critical": 10,
+                "direction": "below"
+              },
+              {
+                "id": "uptime",
+                "label": "Uptime",
+                "query": "min(node_time_seconds - node_boot_time_seconds)",
+                "unit": "s"
+              }
+            ]
+          }
+        },
+        {
+          "id": "alertmanager-primary",
+          "kind": "alertmanager",
+          "title": "Alertmanager",
+          "baseUrl": "http://127.0.0.1:65531"
+        },
+        {
+          "id": "prometheus-secondary",
+          "kind": "prometheus",
+          "title": "Prometheus (secondary)",
+          "baseUrl": "http://127.0.0.1:65530"
+        },
+        {
+          "id": "opaque-tool",
+          "kind": "file-tree",
+          "title": "Opaque tool",
+          "baseUrl": "http://127.0.0.1:65529"
+        }
+      ]
+    }
+  },
+  "providers": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "providers": [
+        {
+          "id": "alertmanager",
+          "kind": "alertmanager"
+        },
+        {
+          "id": "prometheus",
+          "kind": "prometheus"
+        }
+      ]
+    }
+  },
+  "envelopes": {
+    "alertmanager": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": "alertmanager",
+        "kind": "alertmanager",
+        "freshness": {
+          "state": "fresh",
+          "observedAt": "2026-01-01T00:00:00.000Z",
+          "ageMs": 0,
+          "ttlMs": 30000
+        },
+        "data": {
+          "alerts": [
+            {
+              "fingerprint": "a1b2c3",
+              "name": "HostDown",
+              "severity": "critical",
+              "startsAt": "2026-09-15T09:12:00.000Z",
+              "suppressed": false,
+              "sourceUrl": "https://prometheus.lantern.invalid/graph?g0.expr=up"
+            },
+            {
+              "fingerprint": "e5f6g7",
+              "name": "LatencyHigh",
+              "severity": "warning",
+              "startsAt": "2026-09-15T09:20:00.000Z",
+              "suppressed": false,
+              "sourceUrl": null
+            },
+            {
+              "fingerprint": "g7h8i9",
+              "name": "nightly backup overdue",
+              "severity": "",
+              "startsAt": "2026-09-15T07:00:00.000Z",
+              "suppressed": false,
+              "sourceUrl": null
+            }
+          ],
+          "silences": [
+            {
+              "id": "sil-777",
+              "endsAt": "2026-09-15T12:00:00.000Z",
+              "matchers": "instance=\"web-02\", severity=~\"warn.*\""
+            }
+          ],
+          "firingCount": 3
+        },
+        "error": null
+      }
+    },
+    "prometheus": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": "prometheus",
+        "kind": "prometheus",
+        "freshness": {
+          "state": "fresh",
+          "observedAt": "2026-01-01T00:00:00.000Z",
+          "ageMs": 0,
+          "ttlMs": 30000
+        },
+        "data": {
+          "summaries": [
+            {
+              "id": "cpu",
+              "label": "CPU load",
+              "value": 42,
+              "status": "critical"
+            },
+            {
+              "id": "memory",
+              "label": "Memory used",
+              "unit": "%",
+              "value": 75,
+              "status": "ok"
+            },
+            {
+              "id": "disk-free",
+              "label": "Disk free",
+              "unit": "%",
+              "value": null,
+              "status": "error"
+            },
+            {
+              "id": "uptime",
+              "label": "Uptime",
+              "unit": "s",
+              "value": null,
+              "status": "error"
+            }
+          ]
+        },
+        "error": null
+      }
+    },
+    "parity-unknown-provider": {
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "error": "No provider registered with id 'parity-unknown-provider'",
+        "code": "PROVIDER_NOT_FOUND"
+      }
+    }
+  },
+  "health": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "status": "ok",
+      "uptimeMs": 0,
+      "providerCount": 2,
+      "providers": {
+        "alertmanager": {
+          "kind": "alertmanager",
+          "ok": true,
+          "detail": "3 firing, 1 silence(s)"
+        },
+        "prometheus": {
+          "kind": "prometheus",
+          "ok": true,
+          "detail": "4 summaries, 2 errored"
+        }
+      },
+      "modules": {}
+    }
+  },
+  "actions": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "enabled": false
+    }
+  },
+  "actionRefusals": {
+    "unknownAction": {
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "error": "The actions capability is disabled on this deck instance.",
+        "code": "ACTIONS_DISABLED"
+      }
+    },
+    "runnerUnresolved": {
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "error": "The actions capability is disabled on this deck instance.",
+        "code": "ACTIONS_DISABLED"
+      }
+    },
+    "paramsInvalid": {
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "error": "The actions capability is disabled on this deck instance.",
+        "code": "ACTIONS_DISABLED"
+      }
+    }
+  },
+  "actionsAudit": {
+    "status": 403,
+    "contentType": "application/json",
+    "body": {
+      "error": "The actions capability is disabled on this deck instance.",
+      "code": "ACTIONS_DISABLED"
+    }
+  },
+  "llmUsage": {
+    "status": 200,
+    "contentType": "application/json",
+    "body": {
+      "enabled": false,
+      "now": 1767225600000,
+      "poll": {
+        "mode": "paused",
+        "nextPollAt": null,
+        "consecutiveErrors": 0
+      },
+      "thresholds": {
+        "warn": 75,
+        "danger": 90
+      },
+      "claude": null,
+      "codex": null
+    }
+  },
+  "routes": [
+    "ALL /*",
+    "GET /api/actions",
+    "GET /api/actions/audit",
+    "GET /api/actions/audit/:runId",
+    "GET /api/config",
+    "GET /api/health",
+    "GET /api/llm-usage",
+    "GET /api/llm-usage/refresh",
+    "GET /api/providers",
+    "GET /api/providers/:id",
+    "GET /api/sources/:id/file",
+    "GET /api/sources/:id/raw",
+    "GET /api/sources/:id/search",
+    "GET /api/sources/:id/tree",
+    "POST /api/actions/:id",
+    "POST /api/actions/runs/:runId/cancel"
+  ]
+}

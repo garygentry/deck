@@ -7,6 +7,7 @@ import { hooks } from "./hooks.js";
 import { primitives } from "./primitives.js";
 import { scaffolding } from "./scaffolding.js";
 import { status } from "./status.js";
+import { widgets } from "./widgets.js";
 
 /**
  * Workbench sections in page order. Each catalogue group owns one file, so
@@ -21,4 +22,5 @@ export const SECTIONS: readonly WorkbenchSectionDef[] = [
   collections,
   filtering,
   hooks,
+  widgets,
 ];

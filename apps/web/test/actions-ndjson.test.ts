@@ -1,12 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ActionRunEvent } from "@deck/server";
+import type { ActionRunEvent } from "../../../modules/actions/server/types.js";
 
-type RunStoreModule = typeof import("../src/features/governed-actions/run-store.js");
-type ClientModule = typeof import("../src/features/governed-actions/client.js");
-
-const RUN_STORE_PATH = "../src/features/governed-actions/run-store.js";
-const CLIENT_PATH = "../src/features/governed-actions/client.js";
+type RunStoreModule = typeof import("../../../modules/actions/web/run-store.js");
+type ClientModule = typeof import("../../../modules/actions/web/client.js");
 
 /**
  * The run store and client are module singletons. Each case loads a fresh module set
@@ -20,8 +17,8 @@ interface Loaded {
 }
 async function load(): Promise<Loaded> {
   vi.resetModules();
-  const store = (await import(RUN_STORE_PATH)) as RunStoreModule;
-  const client = (await import(CLIENT_PATH)) as ClientModule;
+  const store = (await import("../../../modules/actions/web/run-store.js")) as RunStoreModule;
+  const client = (await import("../../../modules/actions/web/client.js")) as ClientModule;
   return { store, client };
 }
 

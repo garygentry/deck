@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FALLBACK_ICON, Icon, ICONS, isIconName } from "@/ui";
+
+import { REPO_ROOT, sourceRel, webSourceFiles } from "./support/source-roots.js";
 
 afterEach(cleanup);
 
@@ -22,18 +25,20 @@ function* files(dir: string, pattern: RegExp): Generator<string> {
 }
 
 /**
- * Every icon token the app source hands to the icon system: `icon: "…"` fields,
- * literal `data-icon="…"` attributes, and the values of `*_ICON` maps. The
- * vendored `src/ui` library is excluded (it imports Lucide components directly).
+ * Every icon token the web's sources (the app's own and each module's web half) hand to the icon
+ * system: `icon: "…"` fields, literal `data-icon="…"` attributes, and the values of `*_ICON`
+ * maps, each with the file it first appears in. The vendored `src/ui` library is excluded (it
+ * imports Lucide components directly).
  */
-function sourceIconTokens(): Map<string, string> {
+function sourceIconTokens(repo: string = REPO_ROOT): Map<string, string> {
   const tokens = new Map<string, string>();
   const add = (token: string, file: string): void => {
     if (!tokens.has(token)) tokens.set(token, file);
   };
-  for (const file of files(root("src"), /\.tsx?$/)) {
-    if (file.includes(`${join("src", "ui")}`)) continue;
-    const text = readFileSync(file, "utf8");
+  for (const path of webSourceFiles(repo)) {
+    const file = sourceRel(path, repo);
+    if (!/\.tsx?$/.test(file) || file.startsWith("src/ui/")) continue;
+    const text = readFileSync(path, "utf8");
     for (const [, token] of text.matchAll(/\bicon:\s*"([^"]+)"/g)) add(token!, file);
     for (const [, token] of text.matchAll(/data-icon="([^"]+)"/g)) add(token!, file);
     for (const [, body] of text.matchAll(/\bconst \w+_ICON\b[^={]*=\s*(?:Object\.freeze\()?\{([^}]*)\}/g)) {
@@ -68,6 +73,21 @@ describe("icon registry", () => {
     expect(tokens.size).toBeGreaterThan(30);
     const unknown = [...tokens].filter(([token]) => !isIconName(token));
     expect(unknown).toEqual([]);
+    // The scan reads the built-in modules' web halves too (llm-usage's status icons).
+    expect(webSourceFiles().map((path) => sourceRel(path))).toContain("modules/llm-usage/web/status.ts");
+  });
+
+  it("would refuse an unknown icon token in a module's web half", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ui-icons-"));
+    try {
+      const probe = join(repo, "modules/llm-usage/web/Probe.tsx");
+      mkdirSync(dirname(probe), { recursive: true });
+      writeFileSync(probe, 'export const PAGE = { icon: "no-such-icon" };\n');
+      const unknown = [...sourceIconTokens(repo)].filter(([token]) => !isIconName(token));
+      expect(unknown).toEqual([["no-such-icon", "modules/llm-usage/web/Probe.tsx"]]);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 
   it("covers every icon token in the example estate", () => {

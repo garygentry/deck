@@ -24,6 +24,7 @@ function harness(overrides: Partial<ProviderReader> = {}) {
     count: () => 1,
     listHealth: () => ({}),
     listProviders: () => [],
+    setProjections: () => {},
     ...overrides,
   };
   const logger = {
@@ -76,7 +77,7 @@ describe("HTTP app", () => {
     const body = (await response.json()) as Record<string, unknown>;
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ status: "ok", uptimeMs: expect.any(Number), providerCount: 0, providers: {} });
+    expect(body).toEqual({ status: "ok", uptimeMs: expect.any(Number), providerCount: 0, providers: {}, modules: {} });
   });
 
   it("aggregates cached provider health and reports ok when every entry is ok", async () => {
@@ -89,7 +90,7 @@ describe("HTTP app", () => {
     const body = (await response.json()) as Record<string, unknown>;
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ status: "ok", uptimeMs: expect.any(Number), providerCount: 2, providers });
+    expect(body).toEqual({ status: "ok", uptimeMs: expect.any(Number), providerCount: 2, providers, modules: {} });
   });
 
   it("reports degraded when any cached provider entry is not ok", async () => {

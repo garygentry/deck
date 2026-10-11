@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 import type { IconName } from "@/ui/lib/icons";
-import type { StatusMap, Tone } from "@/ui/lib/status";
+import type { StatusMap, StatusPresentation, Tone } from "@/ui/lib/status";
 import { TONE_FG, TONE_OUTLINE, TONE_SOFT } from "@/ui/lib/tone";
 import { cn } from "@/ui/lib/utils";
 import { Icon } from "@/ui/patterns/icon";
@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/primitives/tooltip
 
 export type StatusBadgeSize = "sm" | "md";
 /** `soft` = tinted pill; `outline` = bordered, no fill; `dot` = tinted icon beside plain text. */
-export type StatusBadgeVariant = "soft" | "outline" | "dot";
+export type StatusBadgeVariant = NonNullable<StatusPresentation["variant"]>;
 
 export interface StatusBadgeProps
   extends Omit<ComponentProps<"span">, "title" | "children" | "role"> {
@@ -94,14 +94,23 @@ function StatusBadgeBase({
 export type StatusBadgeMapProps = Omit<StatusBadgeProps, "tone" | "icon" | "label"> &
   Partial<Pick<StatusBadgeProps, "label">>;
 
-/** Bind a feature's `defineStatusMap` entry to a badge: `StatusBadge.fromMap(MAP, state)`. */
+/**
+ * Bind a feature's `defineStatusMap` entry to a badge: `StatusBadge.fromMap(MAP, state)`. The
+ * entry's tone, icon, label, role and variant apply; `props` win over all but tone and icon.
+ * An explicit `variant: undefined` keeps the entry's variant; `role: undefined` drops the entry's role
+ * (static text that must not be a live region).
+ */
 function fromMap<S extends string>(
   map: StatusMap<S>,
   state: S,
   props?: StatusBadgeMapProps,
 ): ReactElement {
-  const { tone, icon, label, role } = map[state];
-  return <StatusBadgeBase tone={tone} icon={icon} label={label} role={role} {...props} />;
+  const { tone, icon, label, role, variant } = map[state];
+  // A defined variant prop wins; an explicit `variant: undefined` (e.g. a forwarded optional prop)
+  // keeps the entry's. `role: undefined` stays the way to drop the entry's live-region role.
+  return (
+    <StatusBadgeBase tone={tone} icon={icon} label={label} role={role} {...props} variant={props?.variant ?? variant} />
+  );
 }
 
 export const StatusBadge: typeof StatusBadgeBase & { fromMap: typeof fromMap } = Object.assign(

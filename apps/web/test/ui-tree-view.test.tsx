@@ -102,6 +102,34 @@ describe("TreeView semantics", () => {
     expect(screen.queryByRole("treeitem", { name: "logo.png" })).toBeNull();
   });
 
+  it("describes each treeitem with its row meta; rows without meta get no description", () => {
+    renderTree({
+      defaultExpanded: ["docs"],
+      renderMeta: (n) => (n.children === undefined ? <span>file · {n.name.length} chars</span> : null),
+    });
+    expect(item("readme.md")).toHaveAccessibleDescription("file · 9 chars");
+    expect(item("guide.md")).toHaveAccessibleDescription("file · 8 chars");
+    expect(item("docs")).not.toHaveAttribute("aria-describedby");
+    // The description target is a real box (not `display: contents`, which some engines drop from
+    // the accessibility tree), and resolves to the meta element.
+    const target = document.getElementById(item("readme.md").getAttribute("aria-describedby")!)!;
+    expect(target).toHaveTextContent("file · 9 chars");
+    expect(target.className).not.toMatch(/\bcontents\b/);
+    expect(target).toHaveClass("inline-flex", "min-w-0"); // long meta text can shrink, not overflow
+    // The meta never joins the accessible name.
+    expect(screen.getByRole("treeitem", { name: "readme.md" })).toBeInTheDocument();
+  });
+
+  it("passes aria-describedby through to the tree", () => {
+    render(
+      <>
+        <p id="tree-help">Arrow keys move</p>
+        <TreeView aria-label="Files" aria-describedby="tree-help" nodes={TREE} {...accessors} />
+      </>,
+    );
+    expect(screen.getByRole("tree", { name: "Files" })).toHaveAccessibleDescription("Arrow keys move");
+  });
+
   it("names a branch by its own label, not its descendants", () => {
     renderTree({ defaultExpanded: ["docs"] });
     expect(item("docs")).toHaveAccessibleName("docs");

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { useState } from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -281,16 +282,46 @@ describe("Prose", () => {
 });
 
 describe("Disclosure", () => {
-  it("is a button with aria-expanded/aria-controls, named by label and count", async () => {
+  it("speaks a singular count, a custom count phrase, and no separator without a count", () => {
+    render(
+      <>
+        <Disclosure label="Waivers" count={1}>
+          <p>One</p>
+        </Disclosure>
+        <Disclosure label="Findings" count={0} countLabel={(n) => `${n} open`}>
+          <p>None</p>
+        </Disclosure>
+        <Disclosure label="Proposals" count={4} countLabel="4 pending">
+          <p>Four</p>
+        </Disclosure>
+        <Disclosure label="Details">
+          <p>Body</p>
+        </Disclosure>
+      </>,
+    );
+    expect(screen.getByRole("button", { name: "Waivers, 1 item" })).toBeInTheDocument();
+    // countLabel as a function of the count, or as a plain string (like HealthPill.countLabel).
+    expect(screen.getByRole("button", { name: "Findings, 0 open" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Proposals, 4 pending" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Details$/ })).toBeInTheDocument();
+  });
+
+  it("is a button with aria-expanded/aria-controls, named by label and a separated count", async () => {
     const user = userEvent.setup();
     render(
       <Disclosure label="Waivers" count={3}>
         <p>Three waived findings</p>
       </Disclosure>,
     );
-    const trigger = screen.getByRole("button", { name: "Waivers 3" });
+    // Exactly "Waivers, 3 items": no stray space before the comma.
+    const trigger = screen.getByRole("button", { name: "Waivers, 3 items" });
+    // Named explicitly, so every engine computes the same string.
+    expect(trigger).toHaveAttribute("aria-label", "Waivers, 3 items");
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("Three waived findings")).toBeNull();
+
+    // The visible pill still shows the bare number.
+    expect(within(trigger).getByText("3")).toHaveAttribute("aria-hidden", "true");
 
     await user.click(trigger);
     expect(trigger).toHaveAttribute("aria-expanded", "true");
@@ -303,6 +334,49 @@ describe("Disclosure", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     await user.keyboard(" ");
     expect(trigger).toHaveAttribute("aria-expanded", "true");
+  });
+
+  // A ReactNode label keeps live browser naming (aria-labelledby: the label span plus a visually
+  // hidden ", N items"); an engine may put one space before the comma there.
+  const nodeNamed = (label: string, count: string): RegExp => new RegExp(`^${label} ?, ${count}$`);
+
+  it("names a ReactNode label live: descendant aria-label counts, aria-hidden text does not", () => {
+    render(
+      <Disclosure
+        label={
+          <>
+            <span role="img" aria-label="Warnings">
+              ⚠
+            </span>
+            <span aria-hidden="true"> (decorative)</span>
+          </>
+        }
+        count={2}
+      >
+        <p>Body</p>
+      </Disclosure>,
+    );
+    const trigger = screen.getByRole("button", { name: nodeNamed("Warnings", "2 items") });
+    expect(trigger).not.toHaveAttribute("aria-label");
+    expect(trigger.getAttribute("aria-labelledby")?.split(" ")).toHaveLength(2);
+    expect(trigger).not.toHaveAccessibleName(/⚠|decorative/);
+  });
+
+  it("follows a label component that updates its own text without Disclosure rerendering", () => {
+    let rename: (text: string) => void = () => {};
+    function LiveLabel() {
+      const [text, setText] = useState("Waivers");
+      rename = setText;
+      return <em>{text}</em>;
+    }
+    render(
+      <Disclosure label={<LiveLabel />} count={3}>
+        <p>Body</p>
+      </Disclosure>,
+    );
+    expect(screen.getByRole("button", { name: nodeNamed("Waivers", "3 items") })).toBeInTheDocument();
+    act(() => rename("Exceptions"));
+    expect(screen.getByRole("button", { name: nodeNamed("Exceptions", "3 items") })).toBeInTheDocument();
   });
 
   it("starts open with defaultOpen", () => {

@@ -274,7 +274,11 @@ function DiagnosticsSection({ data, now }: { data: LlmUsageResponse; now: number
   const mode = POLL_MODE_UI[data.poll.mode];
   return (
     <Section id="diagnostics" title="Diagnostics">
-      <Disclosure label="Sources and polling" count={attention > 0 ? attention : undefined}>
+      <Disclosure
+        label="Sources and polling"
+        count={attention > 0 ? attention : undefined}
+        countLabel={(n) => `${n} need${n === 1 ? "s" : ""} attention`}
+      >
         <div className="flex flex-col gap-4">
           <KeyValueList
             items={[

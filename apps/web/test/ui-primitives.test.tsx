@@ -244,23 +244,38 @@ describe("Button loading", () => {
   });
 
   it.each(["icon", "icon-sm", "icon-xs"] as const)(
-    "shows only the spinner in a %s-size button while loading",
+    "shows only the spinner in a %s-size button while loading, keeping its children",
     (size) => {
-      const { rerender } = render(
-        <Button size={size} aria-label="Copy">
-          <svg data-testid="glyph" />
-        </Button>,
+      let mounts = 0;
+      function Glyph() {
+        useEffect(() => {
+          mounts += 1;
+        }, []);
+        return <svg data-testid="glyph" />;
+      }
+      const tree = (loading: boolean) => (
+        <Button size={size} loading={loading}>
+          <Glyph />
+          <span className="sr-only">Copy</span>
+        </Button>
       );
-      const button = screen.getByRole("button", { name: "Copy" });
-      expect(screen.getByTestId("glyph")).toBeInTheDocument();
-      rerender(
-        <Button size={size} aria-label="Copy" loading>
-          <svg data-testid="glyph" />
-        </Button>,
+      const { rerender } = render(tree(false));
+      const button = screen.getByRole("button");
+      expect(button).toHaveAccessibleName("Copy");
+      rerender(tree(true));
+      expect(button).toHaveAccessibleName("Copy");
+      const content = button.querySelector('[data-slot="button-content"]');
+      expect(content).toHaveClass("sr-only");
+      expect(content).toContainElement(screen.getByTestId("glyph"));
+      const visibleSvgs = [...button.querySelectorAll("svg")].filter(
+        (svg) => !content?.contains(svg),
       );
-      expect(screen.queryByTestId("glyph")).toBeNull();
-      expect(button.querySelectorAll("svg")).toHaveLength(1);
-      expect(button.querySelector('[data-slot="button-spinner"]')).not.toBeNull();
+      expect(visibleSvgs).toHaveLength(1);
+      expect(visibleSvgs[0]).toHaveAttribute("data-slot", "button-spinner");
+      rerender(tree(false));
+      expect(content).toHaveClass("contents");
+      expect(button).toHaveAccessibleName("Copy");
+      expect(mounts).toBe(1);
     },
   );
 

@@ -3,9 +3,11 @@
  * `aria-busy`/`aria-disabled`/`data-loading` (these win over forwarded props),
  * swallows clicks and skips the caller's other activation handlers, and never sets
  * `disabled`, so a focused button keeps focus while its action is in flight. It looks
- * inert (dimmed, progress cursor, no hover change). An icon-size button shows the
- * spinner in place of its children; a text button keeps its children mounted after
- * the spinner. The spinner only rotates under `prefers-reduced-motion: no-preference`.
+ * inert (dimmed, progress cursor, no hover change). An icon-size button shows only the
+ * spinner: its children stay mounted and in the accessibility tree (so sr-only text
+ * still names it) but are visually hidden. A text button keeps its children after the
+ * spinner. Without `asChild`, toggling `loading` never remounts children. The spinner
+ * only rotates under `prefers-reduced-motion: no-preference`.
  * With `asChild`, Radix `Slot` runs the child's own handlers before the swallowing
  * one and pointer-down triggers (menus) still open: use `loading` on a plain
  * `Button` around an action, not on an `asChild` trigger.
@@ -124,11 +126,21 @@ function Button({
       data-slot="button-spinner"
     />
   ) : null
-  // An icon button has room for one glyph: the spinner replaces its children.
-  const content = loading && ICON_SIZES.has(size ?? "") ? null : children
+  // An icon button has room for one glyph: while loading its children move into an
+  // sr-only wrapper (still mounted, still naming the button) and only the spinner
+  // shows. The wrapper is always there (`contents` when idle, so layout is
+  // unchanged) to keep the child structure stable.
+  const content = ICON_SIZES.has(size ?? "") ? (
+    <span data-slot="button-content" className={loading ? "sr-only" : "contents"}>
+      {children}
+    </span>
+  ) : (
+    children
+  )
 
-  // Same two-slot child structure loading or not, so toggling `loading` never
-  // remounts stateful children.
+  // Without `asChild` the child structure is the same loading or not, so toggling
+  // `loading` never remounts stateful children (the idle `asChild` path above
+  // renders children directly).
   return (
     <Comp
       data-slot="button"

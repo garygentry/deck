@@ -15,6 +15,7 @@ apps/web/src/
   ui/
     primitives/   vendored shadcn/ui source (Radix-based): Button, Table, Sidebar, Tooltip, …
     patterns/     deck composites: StatusBadge, DataTable, FilterBar, TreeView, PageHeader, …
+    viz/          dependency-free SVG charts coloured by tone: Sparkline, StatusTimeline, Gauge
     hooks/        useListNavigation, useFacetFilters, useScrollToHash, useDocumentTitle, …
     lib/          cn(), icons.ts (curated Lucide set), status.ts (tones), format.ts, filters.ts,
                   markdown.ts + highlight.ts (the markdown pipeline; deep-imported, not in the barrel)
@@ -44,6 +45,11 @@ modules/<id>/web/ a co-located built-in module's web half, compiled into the app
 - **Patterns** are deck's own components built on the primitives. They carry the product's
   decisions: never colour-only status, a labelled region for every scrolling table, one `h1` per
   page, and so on.
+- **Viz** components are deck's charts: small SVG components with no charting dependency,
+  coloured only by status tone (`TONE_SVG_FILL`/`TONE_SVG_STROKE` in `lib/tone.ts`). A status
+  mark takes a status-map entry, and an `outline` entry draws hatched or dashed, so two states on
+  one tone stay distinct. A chart never carries state by colour alone: it is a `meter`, has a
+  text alternative, or sits beside a `StatusBadge`.
 - **Hooks and lib** hold behaviour that has no markup: keyboard navigation, filter state, time
   formatting, and the tone vocabulary.
 - **Features** compose patterns and hold domain logic. A feature imports UI only from the barrel.
@@ -537,7 +543,8 @@ renders with external links only.
 
 ## Adding a pattern
 
-Put it in `ui/patterns/<kebab-name>.tsx`, export it from `ui/index.ts`, and:
+Put it in `ui/patterns/<kebab-name>.tsx` (a chart goes in `ui/viz/<kebab-name>.tsx`), export
+it by name from `ui/index.ts` (keep geometry and mark helpers internal), and:
 
 - give its root element `data-slot="<kebab-name>"`;
 - style it only with token classes: no hex, `rgb()` or `oklch()` literals, and `style={…}`

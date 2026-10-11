@@ -1,8 +1,12 @@
+import type { ReactNode } from "react";
 import {
   FreshnessBadge,
+  Gauge,
   HealthPill,
   RelativeTime,
+  Sparkline,
   StatusBadge,
+  StatusTimeline,
   TONES,
   defineStatusMap,
   type IconName,
@@ -41,6 +45,73 @@ const DEMO_MAP = defineStatusMap<"running" | "stopped" | "unknown">({
   stopped: { tone: "danger", icon: "circle-stop", label: "Stopped" },
   unknown: { tone: "neutral", icon: "circle-help", label: "Unknown" },
 });
+
+// The viz specimens' map: DEMO_MAP plus an outline (hatched/dashed) entry on the same tone as
+// `unknown`, so the two stay distinct without a second shade.
+const VIZ_MAP = defineStatusMap<"running" | "stopped" | "unknown" | "suppressed">({
+  ...DEMO_MAP,
+  suppressed: { tone: "neutral", icon: "eye-off", label: "Suppressed", variant: "outline" },
+});
+
+// Fixed series for the viz specimens.
+const TREND = [12, 14, 13, 18, 22, 21, 25, 24, 30, 28, 33, 35];
+const SAMPLES = [
+  { at: 0, value: 40 },
+  { at: 1, value: 42 },
+  { at: 2, value: 45 },
+  { at: 3, value: null },
+  { at: 4, value: null },
+  { at: 5, value: 38 },
+  { at: 6, value: null },
+  { at: 7, value: 41 },
+  { at: 8, value: 44 },
+  { at: 10, value: 47 },
+];
+const T0 = 0;
+const T1 = 24 * 60;
+const LANES = [
+  {
+    id: "web",
+    label: "web",
+    segments: [
+      { status: "running" as const, start: 0, end: 600 },
+      { status: "stopped" as const, start: 600, end: 690 },
+      { status: "running" as const, start: 690, end: T1 },
+    ],
+  },
+  {
+    id: "api",
+    label: "api",
+    segments: [
+      { status: "running" as const, start: 0, end: 900 },
+      { status: "stopped" as const, start: 900, end: 901 },
+      { status: "running" as const, start: 901, end: 1200 },
+      { status: "suppressed" as const, start: 1200, end: 1320 },
+      { status: "running" as const, start: 1320, end: T1 },
+    ],
+  },
+  {
+    id: "db",
+    label: "db",
+    segments: [
+      { status: "unknown" as const, start: 0, end: 120 },
+      { status: "running" as const, start: 120, end: T1 },
+    ],
+  },
+  { id: "cache", label: "cache", segments: [{ status: "running" as const, start: 0, end: T1 }] },
+];
+const clock = (minutes: number): string =>
+  `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+
+/** A status-bearing chart beside its badge, so the state is read from icon and text, not colour. */
+function WithBadge({ state, children }: { state: keyof typeof VIZ_MAP; children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      {StatusBadge.fromMap(VIZ_MAP, state)}
+      {children}
+    </span>
+  );
+}
 
 function ToneRow({ variant, size }: { variant: "soft" | "outline" | "dot"; size?: "sm" | "md" }) {
   return (
@@ -178,6 +249,37 @@ function Status() {
           count={2}
           href="#status"
         />
+      </Specimen>
+      <Specimen label="Sparkline — plain; status tone beside its badge; outline entry dashed; samples with a gap and an isolated point">
+        <Sparkline values={TREND} ariaLabel="Requests per second, rising" />
+        <WithBadge state="stopped">
+          <Sparkline values={TREND} status={VIZ_MAP.stopped} ariaLabel="Restarts, rising" />
+        </WithBadge>
+        <WithBadge state="suppressed">
+          <Sparkline values={TREND} status={VIZ_MAP.suppressed} ariaLabel="Alerts, rising" />
+        </WithBadge>
+        <WithBadge state="running">
+          <Sparkline samples={SAMPLES} status={VIZ_MAP.running} ariaLabel="Latency with a collection gap" />
+        </WithBadge>
+      </Specimen>
+      <Specimen label="StatusTimeline — lanes of status intervals (24 h): a 1-minute outage at the minimum width, a hatched outline entry">
+        <StatusTimeline
+          lanes={LANES}
+          domainStart={T0}
+          domainEnd={T1}
+          formatTime={clock}
+          statusMap={VIZ_MAP}
+          width={280}
+          ariaLabel="Service state over the last 24 hours"
+        />
+      </Specimen>
+      <Specimen label="Gauge — plain, with a status (tone on the arc, label under the value), outline entry dashed, clamped over max, at zero, unavailable">
+        <Gauge value={42} ariaLabel="Disk usage" label="42%" />
+        <Gauge value={87} ariaLabel="Memory" label="87%" status={VIZ_MAP.stopped} />
+        <Gauge value={35} ariaLabel="Alert load" label="35%" status={VIZ_MAP.suppressed} />
+        <Gauge value={140} max={100} ariaLabel="CPU" label="140%" status={VIZ_MAP.running} />
+        <Gauge value={0} ariaLabel="Swap" label="0%" />
+        <Gauge value={Number.NaN} ariaLabel="GPU" />
       </Specimen>
     </>
   );

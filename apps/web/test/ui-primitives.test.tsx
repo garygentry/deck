@@ -2,7 +2,7 @@
 // Primitives: RadioGroup, Textarea, Kbd, and the Button `loading` state.
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
+import { createRef, useEffect, useState } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { Button, Kbd, KbdGroup, RadioGroup, RadioGroupItem, Textarea } from "@/ui";
 
@@ -127,6 +127,17 @@ describe("Kbd", () => {
     const group = screen.getByTestId("combo");
     expect(group.tagName).toBe("KBD");
     expect(group).toHaveAttribute("data-slot", "kbd-group");
+  });
+
+  it("types KbdGroup as a <kbd>, so an HTMLElement ref fits", () => {
+    // A `div`-typed KbdGroup would reject this ref at typecheck.
+    const ref = createRef<HTMLElement>();
+    render(
+      <KbdGroup ref={ref}>
+        <Kbd>Ctrl</Kbd>
+      </KbdGroup>,
+    );
+    expect(ref.current?.tagName).toBe("KBD");
   });
 });
 

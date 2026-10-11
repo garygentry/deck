@@ -267,7 +267,7 @@ export function TreeView<T>({
               {getLabel(entry.node)}
             </span>
             {hasMeta ? (
-              <span id={metaId} className="contents">
+              <span id={metaId} className="inline-flex shrink-0 items-center gap-1.5">
                 {meta}
               </span>
             ) : null}

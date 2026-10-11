@@ -110,6 +110,12 @@ describe("TreeView semantics", () => {
     expect(item("readme.md")).toHaveAccessibleDescription("file · 9 chars");
     expect(item("guide.md")).toHaveAccessibleDescription("file · 8 chars");
     expect(item("docs")).not.toHaveAttribute("aria-describedby");
+    // The description target is a real box (not `display: contents`, which some engines drop from
+    // the accessibility tree), and resolves to the meta element.
+    const target = document.getElementById(item("readme.md").getAttribute("aria-describedby")!)!;
+    expect(target).toHaveTextContent("file · 9 chars");
+    expect(target.className).not.toMatch(/\bcontents\b/);
+    expect(target).toHaveClass("inline-flex");
     // The meta never joins the accessible name.
     expect(screen.getByRole("treeitem", { name: "readme.md" })).toBeInTheDocument();
   });

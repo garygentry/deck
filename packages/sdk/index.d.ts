@@ -2016,11 +2016,14 @@ interface DisclosureProps {
     /**
      * Optional count shown after the label as a pill (e.g. hidden items), in tabular figures. The
      * pill is decorative: the trigger's accessible name gets a separated phrase instead, so it reads
-     * "Proposals, 3 items" rather than running the number into the label.
+     * exactly "Proposals, 3 items" rather than running the number into the label.
      */
     count?: number;
-    /** The spoken count phrase; default "1 item" / "N items". */
-    countLabel?: (count: number) => string;
+    /**
+     * The spoken count phrase: a string (e.g. "3 open", like `HealthPill.countLabel`) or a function
+     * of the count. Default "1 item" / "N items".
+     */
+    countLabel?: string | ((count: number) => string);
     children: ReactNode;
     defaultOpen?: boolean;
     /** Controlled open state (pair with `onOpenChange`). */
@@ -2121,6 +2124,8 @@ type StatusBadgeMapProps = Omit<StatusBadgeProps, "tone" | "icon" | "label"> & P
 /**
  * Bind a feature's `defineStatusMap` entry to a badge: `StatusBadge.fromMap(MAP, state)`. The
  * entry's tone, icon, label, role and variant apply; `props` win over all but tone and icon.
+ * An explicit `variant: undefined` keeps the entry's variant; `role: undefined` drops the entry's role
+ * (static text that must not be a live region).
  */
 declare function fromMap<S extends string>(map: StatusMap<S>, state: S, props?: StatusBadgeMapProps): ReactElement;
 declare const StatusBadge: typeof StatusBadgeBase & {

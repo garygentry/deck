@@ -420,6 +420,8 @@ describe("useScrollToHash", () => {
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" });
     expect(target).toHaveAttribute("tabindex", "-1");
     expect(document.activeElement).toBe(target);
+    act(() => target.blur());
+    expect(target).not.toHaveAttribute("tabindex"); // the temporary tabindex does not linger
   });
 
   it("only scrolls when focus is off", () => {

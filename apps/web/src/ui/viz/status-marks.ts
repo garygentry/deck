@@ -1,4 +1,4 @@
-import type { StatusPresentation, Tone } from "@/ui/lib/status";
+import type { StatusMap, StatusPresentation, Tone } from "@/ui/lib/status";
 
 /**
  * How a mark is drawn, on top of its tone. Two states can share a tone (e.g. suppressed and
@@ -13,7 +13,7 @@ export interface VizStatusMark {
 }
 
 /** What a mark is drawn from: a status-map entry, or just a tone (and badge variant). */
-export type VizMarkSource = Pick<StatusPresentation, "tone"> & { variant?: "soft" | "outline" | "dot" | undefined };
+export type VizMarkSource = Pick<StatusPresentation, "tone" | "variant">;
 
 /**
  * The mark for a status-map entry: its tone, hatched/dashed when the entry is shown as an
@@ -23,27 +23,19 @@ export function presentationMark(source: VizMarkSource): VizStatusMark {
   return { tone: source.tone, pattern: source.variant === "outline" ? "hatched" : "solid" };
 }
 
+/**
+ * The mark and label for `status` in `map`. A status the map does not cover (a retired state in
+ * old history) falls back to a solid neutral mark labelled with the raw status, never a throw.
+ */
+export function statusMapMark(map: StatusMap<string>, status: string): VizStatusMark & { label: string } {
+  const entry = Object.hasOwn(map, status) ? map[status] : undefined;
+  return entry !== undefined
+    ? { ...presentationMark(entry), label: entry.label }
+    : { tone: "neutral", pattern: "solid", label: status };
+}
+
 /** Line dash for a pattern (SVG `stroke-dasharray`). */
 export const MARK_DASH: Readonly<Record<VizMarkPattern, readonly number[] | null>> = {
   solid: null,
   hatched: [4, 3],
-};
-
-/** Tone utility classes, spelled out so Tailwind's source scan finds every one. */
-export const TONE_FILL: Readonly<Record<Tone, string>> = {
-  ok: "fill-status-ok-fg",
-  warn: "fill-status-warn-fg",
-  danger: "fill-status-danger-fg",
-  info: "fill-status-info-fg",
-  pending: "fill-status-pending-fg",
-  neutral: "fill-status-neutral-fg",
-};
-
-export const TONE_STROKE: Readonly<Record<Tone, string>> = {
-  ok: "stroke-status-ok-fg",
-  warn: "stroke-status-warn-fg",
-  danger: "stroke-status-danger-fg",
-  info: "stroke-status-info-fg",
-  pending: "stroke-status-pending-fg",
-  neutral: "stroke-status-neutral-fg",
 };

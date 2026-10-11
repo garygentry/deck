@@ -1,10 +1,14 @@
 import type { StatusPresentation } from "@/ui/lib/status";
+import { TONE_SVG_STROKE } from "@/ui/lib/tone";
 import { cn } from "@/ui/lib/utils";
-import { MARK_DASH, TONE_STROKE, presentationMark, type VizMarkSource } from "@/ui/viz/status-marks";
+import { clamp, round2 } from "@/ui/viz/geometry";
+import { MARK_DASH, presentationMark, type VizMarkSource } from "@/ui/viz/status-marks";
 
-/** A single-value 270° radial gauge. */
+/** A single-value 270° radial gauge, exposed as a `meter`. */
 export interface GaugeProps {
-  /** Current value; clamped to [min, max] for the arc. */
+  /** Names what is measured (the meter's accessible name), e.g. "Disk usage". */
+  ariaLabel: string;
+  /** Current value; clamped to [min, max] for the arc. A non-finite value shows as unavailable. */
   value: number;
   /** Domain lower bound. Default 0. */
   min?: number;
@@ -21,8 +25,6 @@ export interface GaugeProps {
   thickness?: number;
   /** Centre label. Default: the rounded value. */
   label?: string;
-  /** Accessible label. Default: the centre label, followed by the status label when `status` is set. */
-  ariaLabel?: string;
   className?: string;
 }
 
@@ -30,9 +32,8 @@ export interface GaugeProps {
 export const GAUGE_START_ANGLE = 135;
 export const GAUGE_SWEEP = 270;
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
+/** Shown in place of the value when it is not a finite number. */
+export const GAUGE_UNAVAILABLE = "–";
 
 /** Point on a circle; `angleDeg` clockwise from +x, SVG y-down. */
 export function polarToCartesian(
@@ -59,13 +60,31 @@ export function arcPath(
   return `M ${start.x},${start.y} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x},${end.y}`;
 }
 
-/** The value arc's end angle; a degenerate domain (max === min) yields the start angle. */
+/** The filled share of the sweep, in [0, 1]; 0 for a degenerate domain (max ≤ min). */
+export function gaugeFraction(value: number, min: number, max: number): number {
+  if (!(max > min)) return 0;
+  return clamp((value - min) / (max - min), 0, 1);
+}
+
+/** The value arc's end angle; a degenerate domain (max ≤ min) yields the start angle. */
 export function gaugeValueAngle(value: number, min: number, max: number): number {
-  const fraction = Math.max(0, Math.min((value - min) / (max - min || 1), 1));
-  return GAUGE_START_ANGLE + fraction * GAUGE_SWEEP;
+  return GAUGE_START_ANGLE + gaugeFraction(value, min, max) * GAUGE_SWEEP;
+}
+
+/**
+ * `aria-valuetext`: the shown value ("unavailable" for a non-finite one), the status label, and
+ * a note when the arc is clamped, so a reading over the maximum is not announced as in range.
+ */
+function gaugeValueText(text: string, value: number, min: number, max: number, statusLabel?: string): string {
+  if (!Number.isFinite(value)) return statusLabel !== undefined ? `unavailable, ${statusLabel}` : "unavailable";
+  const parts = statusLabel !== undefined ? [text, statusLabel] : [text];
+  if (value > max) parts.push(`above the maximum of ${max}`);
+  else if (value < min) parts.push(`below the minimum of ${min}`);
+  return parts.join(", ");
 }
 
 export function Gauge({
+  ariaLabel,
   value,
   min = 0,
   max = 100,
@@ -73,24 +92,28 @@ export function Gauge({
   size = 96,
   thickness = 8,
   label,
-  ariaLabel,
   className,
 }: GaugeProps) {
-  const text = label ?? String(Math.round(value));
+  const available = Number.isFinite(value);
+  const text = !available ? GAUGE_UNAVAILABLE : (label ?? String(Math.round(value)));
   const mark = status !== undefined ? presentationMark(status) : null;
   const dash = mark !== null ? MARK_DASH[mark.pattern] : null;
+  const fraction = available ? gaugeFraction(value, min, max) : 0;
 
   const cx = size / 2;
   const cy = size / 2;
   const r = (size - thickness) / 2;
   const trackPath = arcPath(cx, cy, r, GAUGE_START_ANGLE, GAUGE_START_ANGLE + GAUGE_SWEEP);
-  const valuePath = arcPath(cx, cy, r, GAUGE_START_ANGLE, gaugeValueAngle(value, min, max));
 
   return (
     <svg
       data-slot="gauge"
-      role="img"
-      aria-label={ariaLabel ?? (status !== undefined ? `${text}, ${status.label}` : text)}
+      role="meter"
+      aria-label={ariaLabel}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={available ? clamp(value, min, max) : min}
+      aria-valuetext={gaugeValueText(text, value, min, max, status?.label)}
       viewBox={`0 0 ${size} ${size}`}
       width={size}
       height={size}
@@ -104,17 +127,19 @@ export function Gauge({
         strokeLinecap="round"
         className="stroke-muted"
       />
-      <path
-        data-slot="gauge-value"
-        data-tone={mark?.tone}
-        data-mark={mark?.pattern}
-        d={valuePath}
-        fill="none"
-        strokeWidth={thickness}
-        strokeLinecap={dash !== null ? "butt" : "round"}
-        strokeDasharray={dash?.join(" ")}
-        className={mark !== null ? TONE_STROKE[mark.tone] : "stroke-foreground"}
-      />
+      {fraction > 0 ? (
+        <path
+          data-slot="gauge-value"
+          data-tone={mark?.tone}
+          data-mark={mark?.pattern}
+          d={arcPath(cx, cy, r, GAUGE_START_ANGLE, GAUGE_START_ANGLE + fraction * GAUGE_SWEEP)}
+          fill="none"
+          strokeWidth={thickness}
+          strokeLinecap={dash !== null ? "butt" : "round"}
+          strokeDasharray={dash?.join(" ")}
+          className={mark !== null ? TONE_SVG_STROKE[mark.tone] : "stroke-foreground"}
+        />
+      ) : null}
       <text
         data-slot="gauge-label"
         x={cx}

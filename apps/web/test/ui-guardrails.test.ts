@@ -12,6 +12,7 @@ import {
   legacyTokens,
   offScaleRadii,
   patternsWithoutDataSlot,
+  radixUmbrellaImports,
   type Offence,
 } from "@deck/sdk/lint";
 import { Scanner } from "@tailwindcss/oxide";
@@ -111,6 +112,46 @@ describe("scope", () => {
 describe("imports: features use the @/ui barrel", () => {
   it("never deep-imports @/ui/* outside the library without a justification", () => {
     expect(shown(deepUiImports(files.filter(({ rel }) => !inLibrary(rel))))).toEqual([]);
+  });
+});
+
+/**
+ * Every version of each `@radix-ui/*` package that a pnpm lockfile `text` resolves (package →
+ * versions). The scoped packages share internals (react-dismissable-layer's layer stack,
+ * react-presence, react-focus-scope) that only work as one copy, so they are updated together.
+ */
+function radixVersions(text: string): Map<string, Set<string>> {
+  const versions = new Map<string, Set<string>>();
+  for (const [, name, version] of text.matchAll(/^ {2}'?(@radix-ui\/[^@'\s]+)@([^('\s:]+)/gm)) {
+    versions.set(name!, (versions.get(name!) ?? new Set()).add(version!));
+  }
+  return versions;
+}
+
+const duplicated = (versions: Map<string, Set<string>>): string[] =>
+  [...versions].filter(([, set]) => set.size > 1).map(([name, set]) => `${name}@${[...set].sort().join(",")}`);
+
+describe("imports: Radix through its scoped packages", () => {
+  it('no module imports the "radix-ui" umbrella (use "@radix-ui/react-*")', () => {
+    expect(shown(radixUmbrellaImports(files))).toEqual([]);
+  });
+
+  it("resolves every @radix-ui/* package to a single version in the lockfile", () => {
+    const versions = radixVersions(readFileSync(join(REPO_ROOT, "pnpm-lock.yaml"), "utf8"));
+    expect(versions.has("@radix-ui/react-dismissable-layer")).toBe(true);
+    expect(duplicated(versions)).toEqual([]);
+  });
+
+  it("would catch a second copy of a Radix package in the lockfile", () => {
+    const lock = [
+      "packages:",
+      "  '@radix-ui/react-dismissable-layer@1.1.19':",
+      "  '@radix-ui/react-dismissable-layer@1.1.20':",
+      "snapshots:",
+      "  '@radix-ui/react-dismissable-layer@1.1.19(@types/react@19.3.0)(react@19.3.0)':",
+      "  '@radix-ui/react-slot@1.3.3(react@19.3.0)':",
+    ].join("\n");
+    expect(duplicated(radixVersions(lock))).toEqual(["@radix-ui/react-dismissable-layer@1.1.19,1.1.20"]);
   });
 });
 

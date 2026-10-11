@@ -34,6 +34,7 @@ export type RuleId =
   | "data-icon"
   | "legacy-token"
   | "legacy-stylesheet"
+  | "radix-umbrella"
   | "module-import"
   | "module-css-import"
   | "module-css-selector"
@@ -311,6 +312,24 @@ export const moduleImports = (scripts: readonly LintFile[]): Offence[] =>
       return message === undefined ? [] : [{ rule: "module-import" as const, file: file.rel, line: site.line, message }];
     }),
   );
+
+/** The `radix-ui` umbrella package, or a subpath of it. */
+const RADIX_UMBRELLA = /^radix-ui(?:\/.*)?$/;
+
+/**
+ * Imports of the `radix-ui` umbrella (static, re-export, dynamic or `require()`): the web app
+ * imports each Radix package from its scoped `@radix-ui/react-*` package, so its dependency list
+ * says which Radix packages a primitive needs and a bundler that does not tree-shake the
+ * umbrella's re-exports does not pull in every Radix package used anywhere.
+ */
+export const radixUmbrellaImports = (scripts: readonly LintFile[]): Offence[] =>
+  scripts
+    .filter(({ rel }) => SCRIPT.test(rel))
+    .flatMap((file) =>
+      importSites(file)
+        .filter(({ specifier }) => RADIX_UMBRELLA.test(specifier))
+        .map(({ specifier, line }) => ({ rule: "radix-umbrella" as const, file: file.rel, line, message: `import Radix from its scoped @radix-ui/react-* package, not ${specifier}` })),
+    );
 
 /**
  * A module's Tailwind prefix: its id, lowercased, with every character that is not a letter

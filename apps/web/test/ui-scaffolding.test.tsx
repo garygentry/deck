@@ -340,8 +340,12 @@ describe("PageErrorBoundary", () => {
     expect(screen.getByRole("heading", { level, name: "This page could not be displayed" })).toHaveFocus();
   });
 
-  /** Throws once, then suspends on `gate` until it resolves (a page loading behind a Suspense). */
-  function deferredPage() {
+  /**
+   * Throws once, then suspends on `gate` until it resolves (a page loading behind a Suspense), then
+   * renders, or throws again with `failAfterLoad`. `ui(key, aside)` adds an outer h1 and, while
+   * `aside` is true, a sibling right before the boundary.
+   */
+  function deferredPage({ failAfterLoad = false } = {}) {
     let failing = true;
     let loaded = false;
     let open = (): void => {};
@@ -353,16 +357,25 @@ describe("PageErrorBoundary", () => {
     function Page() {
       if (failing) throw new Error("boom");
       if (!loaded) throw gate;
+      if (failAfterLoad) throw new Error("boom again");
       return (
         <div data-slot="hosts-page">
           <h1>Hosts</h1>
         </div>
       );
     }
-    const ui = (resetKey: string) => (
+    const ui = (resetKey: string, aside?: boolean) => (
       <main tabIndex={-1}>
+        {aside !== undefined && <h1>Outer page</h1>}
+        {aside === true && <p>Aside</p>}
         <PageErrorBoundary resetKey={resetKey}>
-          <Suspense fallback={<p>Loading page</p>}>
+          <Suspense
+            fallback={
+              <p role="status" aria-busy="true">
+                Loading page
+              </p>
+            }
+          >
             <Page />
           </Suspense>
         </PageErrorBoundary>
@@ -407,6 +420,28 @@ describe("PageErrorBoundary", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Hosts" })).not.toHaveFocus();
   });
 
+  it("focuses the fallback's heading when the content fails after its Suspense resolves", async () => {
+    const page = deferredPage({ failAfterLoad: true });
+    render(page.ui("/hosts"));
+    page.recover();
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(screen.getByRole("main")).toHaveFocus();
+    await page.resolve();
+    expect(await screen.findByRole("heading", { level: 1, name: "This page could not be displayed" })).toHaveFocus();
+  });
+
+  it("never widens its search when a sibling it was bounded by leaves the host", async () => {
+    const page = deferredPage();
+    const { rerender } = render(page.ui("/hosts", true));
+    page.recover();
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    rerender(page.ui("/hosts", false)); // the sibling right before the boundary goes away
+    await page.resolve();
+    await screen.findByRole("heading", { level: 1, name: "Hosts" });
+    expect(screen.getByRole("heading", { level: 1, name: "Outer page" })).not.toHaveFocus();
+    expect(screen.getByRole("main")).toHaveFocus(); // the range is unknown: the host keeps focus
+  });
+
   it("searches only its own content: a sibling h1 is never the target", async () => {
     let failing = true;
     function Section() {
@@ -429,6 +464,30 @@ describe("PageErrorBoundary", () => {
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(screen.getByRole("heading", { level: 1, name: "Outer page" })).not.toHaveFocus();
     expect(document.querySelector('[data-slot="detail-page"]')).toHaveFocus();
+  });
+
+  it("stops waiting once recovered content commits with no target: a late h1 does not take focus", async () => {
+    let failing = true;
+    let showHeading = (): void => {};
+    function Content() {
+      const [heading, setHeading] = useState(false);
+      showHeading = () => setHeading(true);
+      if (failing) throw new Error("boom");
+      return <div>{heading ? <h1>Late</h1> : <p>Body</p>}</div>;
+    }
+    render(
+      <main tabIndex={-1}>
+        <PageErrorBoundary>
+          <Content />
+        </PageErrorBoundary>
+      </main>,
+    );
+    failing = false;
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(screen.getByRole("main")).toHaveFocus();
+    await act(async () => showHeading()); // lets a MutationObserver callback run
+    expect(screen.getByRole("heading", { level: 1, name: "Late" })).not.toHaveFocus();
+    expect(screen.getByRole("main")).toHaveFocus();
   });
 
   it("falls back to a focusable host when the content has no h1 or page root (not a breadcrumb-page)", async () => {

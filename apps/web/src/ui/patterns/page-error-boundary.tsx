@@ -30,6 +30,7 @@ export interface PageErrorBoundaryProps {
 }
 
 const DEFAULT_TITLE = "This page could not be displayed";
+const BUSY = '[aria-busy="true"]';
 
 /** Where the fallback sat when Retry was pressed: the recovered content renders between `before` and `after`. */
 interface PendingFocus {
@@ -41,11 +42,14 @@ interface PendingFocus {
 
 /**
  * The element to focus in the recovered content: its first h1, else its page root (a top-level
- * `…-page` slot). Only the nodes the boundary rendered are searched, never the host's other children.
+ * `…-page` slot). `"wait"` while that content is still loading (`aria-busy`, e.g. a Suspense
+ * `LoadingState`); null when it has none, or when a saved sibling has left the host so the
+ * range is no longer known. Only the nodes the boundary rendered are searched, never wider.
  */
-function recoveredTarget({ host, before, after }: PendingFocus): HTMLElement | null {
+function recoveredTarget({ host, before, after }: PendingFocus): HTMLElement | "wait" | null {
+  if ((before !== null && before.parentNode !== host) || (after !== null && after.parentNode !== host)) return null;
   const nodes: HTMLElement[] = [];
-  let node = before !== null && before.parentNode === host ? before.nextSibling : host.firstChild;
+  let node = before !== null ? before.nextSibling : host.firstChild;
   for (; node !== null && node !== after; node = node.nextSibling) {
     if (node instanceof HTMLElement) nodes.push(node);
   }
@@ -53,7 +57,18 @@ function recoveredTarget({ host, before, after }: PendingFocus): HTMLElement | n
     const h1 = el.matches("h1") ? el : el.querySelector<HTMLElement>("h1");
     if (h1 !== null) return h1;
   }
-  return nodes.find((el) => el.dataset.slot?.endsWith("-page") === true) ?? null;
+  const root = nodes.find((el) => el.dataset.slot?.endsWith("-page") === true);
+  if (root !== undefined) return root;
+  return nodes.some((el) => el.matches(BUSY) || el.querySelector(BUSY) !== null) ? "wait" : null;
+}
+
+/** Focus is still ours to move: lost to <body>, or parked on the host while waiting. */
+function focusIsOurs({ host }: PendingFocus): boolean {
+  return focusIsLost() || document.activeElement === host;
+}
+
+function focusHost(host: HTMLElement): void {
+  if (host.hasAttribute("tabindex") && document.activeElement !== host) host.focus({ preventScroll: true });
 }
 
 interface PageErrorBoundaryState {
@@ -115,28 +130,27 @@ export class PageErrorBoundary extends Component<PageErrorBoundaryProps, PageErr
 
   /**
    * After Retry, move focus off <body> (where it falls with the Retry button): to the fallback's
-   * heading if the content failed again, else to the recovered content's h1 or page root. If the
-   * content is not there yet (a descendant Suspense is loading it), focus the host when it is
-   * focusable and wait for the content to commit. The wait ends on unmount, a reset, a new error,
-   * or when the user moves focus themselves.
+   * heading if the content fails again, else to the recovered content's h1 or page root, else to
+   * the host when it is focusable. While the content is still loading (a descendant Suspense),
+   * the host holds focus and an observer waits for the content to commit. The wait ends on
+   * unmount, a reset, or when the user moves focus themselves; a failure during it focuses the
+   * fallback's heading.
    */
   componentDidUpdate(prevProps: PageErrorBoundaryProps): void {
-    if (this.retrying) {
-      this.retrying = false;
-      if (this.state.failed) {
-        this.cancelFocus();
-        const heading = this.fallbackEl?.querySelector<HTMLElement>(`#${cssEscape(this.headingId())}`);
-        if (heading) focusElement(heading);
-        return;
-      }
-      const pending = this.pending;
-      if (pending === null || this.focusRecovered()) return;
-      if (pending.host.hasAttribute("tabindex")) pending.host.focus({ preventScroll: true });
+    const retried = this.retrying;
+    this.retrying = false;
+    const pending = this.pending;
+    if (pending === null) return;
+    if (this.state.failed) {
+      this.cancelFocus();
+      const heading = this.fallbackEl?.querySelector<HTMLElement>(`#${cssEscape(this.headingId())}`);
+      if (heading && focusIsOurs(pending)) focusElement(heading);
+    } else if (prevProps.resetKey !== this.props.resetKey) {
+      this.cancelFocus();
+    } else if (retried && !this.focusRecovered()) {
       pending.observer = new MutationObserver(() => this.focusRecovered());
       pending.observer.observe(pending.host, { childList: true, subtree: true });
-      return;
     }
-    if (this.state.failed || prevProps.resetKey !== this.props.resetKey) this.cancelFocus();
   }
 
   componentWillUnmount(): void {
@@ -147,14 +161,18 @@ export class PageErrorBoundary extends Component<PageErrorBoundaryProps, PageErr
   private focusRecovered(): boolean {
     const pending = this.pending;
     if (pending === null) return true;
-    if (!focusIsLost() && document.activeElement !== pending.host) {
+    if (!focusIsOurs(pending)) {
       this.cancelFocus(); // the user has moved focus on purpose
       return true;
     }
     const target = recoveredTarget(pending);
-    if (target === null) return false;
+    if (target === "wait") {
+      focusHost(pending.host);
+      return false;
+    }
     this.cancelFocus();
-    focusElement(target);
+    if (target === null) focusHost(pending.host);
+    else focusElement(target);
     return true;
   }
 

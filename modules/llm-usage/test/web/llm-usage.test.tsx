@@ -117,7 +117,8 @@ describe("LlmUsagePage", () => {
 
   it("lists every source with its state in a collapsed diagnostics disclosure", () => {
     render(<LlmUsagePage store={staticStore(ready(response()))} now={NOW} />);
-    const toggle = screen.getByRole("button", { name: /Sources and polling/ });
+    // The count means "sources needing attention", and the name says so (not "1 item").
+    const toggle = screen.getByRole("button", { name: "Sources and polling, 1 needs attention" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle).toHaveTextContent("1"); // one stale source needs attention
     fireEvent.click(toggle);

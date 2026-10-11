@@ -248,6 +248,7 @@ describe("StatusTimeline", () => {
         statusMap={HEALTH}
         domainStart={0}
         domainEnd={100}
+        formatTime={(t) => `t${t}`}
       />,
     );
     const root = screen.getByRole("group", { name: "status timeline" });
@@ -309,6 +310,7 @@ describe("StatusTimeline", () => {
         domainStart={0}
         domainEnd={86_400}
         width={280}
+        formatTime={(t) => `t${t}`}
       />,
     );
     const down = container.querySelector('rect[data-status="down"]')!;
@@ -336,6 +338,7 @@ describe("StatusTimeline", () => {
         statusMap={HEALTH}
         domainStart={0}
         domainEnd={100}
+        formatTime={(t) => `t${t}`}
       />,
     );
     const unknown = container.querySelector('rect[data-status="unknown"]')!;
@@ -364,16 +367,94 @@ describe("StatusTimeline", () => {
         statusMap={HEALTH}
         domainStart={0}
         domainEnd={100}
+        formatTime={(t) => `t${t}`}
       />,
     );
     const rect = container.querySelector('rect[data-status="retired"]')!;
     expect(rect).toHaveAttribute("data-tone", "neutral");
     expect(rect.querySelector("title")).toHaveTextContent("retired");
-    expect(within(screen.getByRole("list", { name: "a" })).getByRole("listitem")).toHaveTextContent("retired, 0 to 100");
+    expect(within(screen.getByRole("list", { name: "a" })).getByRole("listitem")).toHaveTextContent("retired, t0 to t100");
+  });
+
+  const DAY = { domainStart: 0, domainEnd: 86_400, width: 280, formatTime: (t: number) => `t${t}` };
+  const drawn = (container: HTMLElement) =>
+    [...container.querySelectorAll('[data-lane="host-a"] rect[data-status]')].map((r) => ({
+      status: r.getAttribute("data-status"),
+      x: Number(r.getAttribute("x")),
+      width: Number(r.getAttribute("width")),
+      title: r.querySelector("title")!.textContent,
+    }));
+
+  it("merges colliding short intervals into one rect in the worst tone (down then up, mid-domain)", () => {
+    const { container } = render(
+      <StatusTimeline
+        lanes={lane([
+          { status: "up", start: 0, end: 43_200 },
+          { status: "down", start: 43_200, end: 43_230 },
+          { status: "up", start: 43_230, end: 43_260 },
+          { status: "up", start: 43_260, end: 86_400 },
+        ])}
+        statusMap={HEALTH}
+        {...DAY}
+      />,
+    );
+    const short = drawn(container).filter((r) => r.width < 10);
+    expect(short).toHaveLength(1);
+    expect(short[0]).toMatchObject({ status: "down", title: "Down / Up" });
+    expect(short[0]!.width).toBeGreaterThanOrEqual(2);
+    // The text alternative still lists every interval.
+    expect(within(screen.getByRole("list", { name: "host-a" })).getAllByRole("listitem")).toHaveLength(4);
+  });
+
+  it("keeps a short outage visible where edge clamping gives two short intervals the same rect", () => {
+    const { container } = render(
+      <StatusTimeline
+        lanes={lane([
+          { status: "up", start: 0, end: 86_340 },
+          { status: "down", start: 86_340, end: 86_370 },
+          { status: "up", start: 86_370, end: 86_400 },
+        ])}
+        statusMap={HEALTH}
+        {...DAY}
+      />,
+    );
+    const rects = drawn(container);
+    const top = rects[rects.length - 1]!;
+    expect(top).toMatchObject({ status: "down", x: 278, width: 2 });
+    expect(rects.filter((r) => r.x === 278 && r.status === "up")).toHaveLength(0);
+  });
+
+  it("draws a flapping down/up/down run as one danger rect", () => {
+    const { container } = render(
+      <StatusTimeline
+        lanes={lane([
+          { status: "up", start: 0, end: 40_000 },
+          { status: "down", start: 40_000, end: 40_020 },
+          { status: "up", start: 40_020, end: 40_040 },
+          { status: "down", start: 40_040, end: 40_060 },
+          { status: "up", start: 40_060, end: 86_400 },
+        ])}
+        statusMap={HEALTH}
+        {...DAY}
+      />,
+    );
+    const short = drawn(container).filter((r) => r.width < 10);
+    expect(short).toHaveLength(1);
+    expect(short[0]).toMatchObject({ status: "down", title: "Down / Up" });
+    expect(container.querySelector('rect[data-status="down"]')).toHaveAttribute("data-tone", "danger");
+  });
+
+  it("names each lane's interval list once, by its visible label", () => {
+    render(<StatusTimeline lanes={lane([{ status: "up", start: 0, end: 100 }])} statusMap={HEALTH} domainStart={0} domainEnd={100} formatTime={(t) => `t${t}`} />);
+    const list = screen.getByRole("list", { name: "host-a" });
+    expect(list).not.toHaveAttribute("aria-label");
+    const labelId = list.getAttribute("aria-labelledby")!;
+    expect(document.getElementById(labelId)).toHaveTextContent("host-a");
+    expect(list.parentElement!.textContent!.match(/host-a/g)).toHaveLength(1);
   });
 
   it("renders an empty chart for no lanes", () => {
-    const { container } = render(<StatusTimeline lanes={[]} statusMap={HEALTH} domainStart={0} domainEnd={100} />);
+    const { container } = render(<StatusTimeline lanes={[]} statusMap={HEALTH} domainStart={0} domainEnd={100} formatTime={String} />);
     expect(screen.getByRole("group", { name: "status timeline" })).toBeInTheDocument();
     expect(container.querySelector("svg")).toHaveAttribute("viewBox", "0 0 320 0");
     expect(container.querySelectorAll("rect")).toHaveLength(0);

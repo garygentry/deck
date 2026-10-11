@@ -3,7 +3,7 @@ import type { StatusMap, Tone } from "@/ui/lib/status";
 import { TONE_SVG_FILL, TONE_SVG_STROKE } from "@/ui/lib/tone";
 import { cn } from "@/ui/lib/utils";
 import { clamp, round2 } from "@/ui/viz/geometry";
-import { statusMapMark, type VizStatusMark } from "@/ui/viz/status-marks";
+import { statusMapMark, toneSeverity, type VizStatusMark } from "@/ui/viz/status-marks";
 
 /**
  * One status interval within a lane, in the timeline's domain units (e.g. unix seconds). `S` is the
@@ -39,8 +39,11 @@ export interface StatusTimelineProps<S extends string> {
   domainStart: number;
   /** End of the shared time domain (x = width); must be ≥ `domainStart`. */
   domainEnd: number;
-  /** Formats a domain time for the text alternative (e.g. a clock time). Default: `String`. */
-  formatTime?: (t: number) => string;
+  /**
+   * Formats a domain time for the text alternative (e.g. a clock time), so assistive technology
+   * never reads raw epoch numbers.
+   */
+  formatTime: (t: number) => string;
   /** SVG width in px. Default 320. */
   width?: number;
   /** Per-lane bar height in px. Default 16. */
@@ -108,7 +111,7 @@ export function timelineHeight(laneCount: number, laneHeight: number, laneGap: n
   return laneCount * (laneHeight + laneGap);
 }
 
-interface LaneItem {
+export interface LaneItem {
   key: number;
   status: string;
   rect: TimelineRect;
@@ -142,6 +145,35 @@ function laneItems(lane: TimelineLane<string>, laneIndex: number, opts: Timeline
 }
 
 /**
+ * Widened (short) intervals whose drawn rects overlap or coincide, merged into one rect over their
+ * union with the most severe mark, so a short non-ok interval is never painted over by a short ok
+ * one (two short intervals near a domain edge can clamp to the same rect). The merged rect's
+ * title lists every state it covers; the text alternative still lists each interval.
+ */
+export function mergeWidened(items: readonly LaneItem[]): LaneItem[] {
+  const groups: { item: LaneItem; labels: string[] }[] = [];
+  for (const item of [...items].sort((a, b) => a.rect.x - b.rect.x)) {
+    const last = groups[groups.length - 1];
+    if (last === undefined || item.rect.x >= last.item.rect.x + last.item.rect.width) {
+      groups.push({ item, labels: [item.mark.label] });
+      continue;
+    }
+    const { rect } = last.item;
+    const right = Math.max(rect.x + rect.width, item.rect.x + item.rect.width);
+    const worst = toneSeverity(item.mark.tone) > toneSeverity(last.item.mark.tone) ? item : last.item;
+    if (!last.labels.includes(item.mark.label)) last.labels.push(item.mark.label);
+    last.item = {
+      ...worst,
+      key: last.item.key,
+      rect: { ...rect, width: round2(right - rect.x) },
+      start: Math.min(last.item.start, item.start),
+      end: Math.max(last.item.end, item.end),
+    };
+  }
+  return groups.map(({ item, labels }) => ({ ...item, mark: { ...item.mark, label: labels.join(" / ") } }));
+}
+
+/**
  * A chart of status intervals: one lane per subject, one rectangle per interval, coloured by
  * the status map's tone (hatched in that tone for an outline entry). The drawing is hidden from
  * assistive technology; a visually hidden list carries the same reading as text (each lane, and
@@ -151,7 +183,7 @@ export function StatusTimeline<S extends string>({
   lanes,
   domainStart,
   domainEnd,
-  formatTime = String,
+  formatTime,
   width = 320,
   laneHeight = 16,
   laneGap = 2,
@@ -228,15 +260,15 @@ export function StatusTimeline<S extends string>({
                 />
               ))}
             {/* Widened (short) intervals last, so a neighbour never covers them. */}
-            {items.filter((it) => it.rect.widened).map(segmentRect)}
+            {mergeWidened(items.filter((it) => it.rect.widened)).map(segmentRect)}
           </g>
         ))}
       </svg>
       <ul data-slot="status-timeline-text" className="sr-only">
-        {rows.map(({ lane, items }) => (
+        {rows.map(({ lane, items }, laneIndex) => (
           <li key={lane.id}>
-            {lane.label}
-            <ul aria-label={lane.label}>
+            <span id={`${baseId}-lane-${laneIndex}`}>{lane.label}</span>
+            <ul aria-labelledby={`${baseId}-lane-${laneIndex}`}>
               {items.length === 0 ? <li>No intervals</li> : null}
               {items.map((it) => (
                 <li key={it.key}>

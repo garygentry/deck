@@ -39,3 +39,11 @@ export const MARK_DASH: Readonly<Record<VizMarkPattern, readonly number[] | null
   solid: null,
   hatched: [4, 3],
 };
+
+/** Tones from least to most severe: where marks collide, the most severe one is drawn. */
+const TONE_SEVERITY: readonly Tone[] = ["ok", "neutral", "info", "pending", "warn", "danger"];
+
+/** A tone's rank in `TONE_SEVERITY` (higher is more severe). */
+export function toneSeverity(tone: Tone): number {
+  return TONE_SEVERITY.indexOf(tone);
+}

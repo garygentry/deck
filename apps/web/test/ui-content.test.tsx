@@ -281,11 +281,6 @@ describe("Prose", () => {
 });
 
 describe("Disclosure", () => {
-  // The visually hidden ", 3 items" is absolutely positioned (sr-only), so name computation (Chromium
-  // and dom-accessibility-api alike) treats it as non-inline and may put a space before the comma
-  // ("Waivers , 3 items"); speech is the same. Allow that one space, and no more.
-  const named = (label: string, count: string): RegExp => new RegExp(`^${label} ?, ${count}$`);
-
   it("speaks a singular count, a custom count phrase, and no separator without a count", () => {
     render(
       <>
@@ -295,13 +290,18 @@ describe("Disclosure", () => {
         <Disclosure label="Findings" count={0} countLabel={(n) => `${n} open`}>
           <p>None</p>
         </Disclosure>
+        <Disclosure label="Proposals" count={4} countLabel="4 pending">
+          <p>Four</p>
+        </Disclosure>
         <Disclosure label="Details">
           <p>Body</p>
         </Disclosure>
       </>,
     );
-    expect(screen.getByRole("button", { name: named("Waivers", "1 item") })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: named("Findings", "0 open") })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Waivers, 1 item" })).toBeInTheDocument();
+    // countLabel as a function of the count, or as a plain string (like HealthPill.countLabel).
+    expect(screen.getByRole("button", { name: "Findings, 0 open" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Proposals, 4 pending" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Details$/ })).toBeInTheDocument();
   });
 
@@ -312,7 +312,10 @@ describe("Disclosure", () => {
         <p>Three waived findings</p>
       </Disclosure>,
     );
-    const trigger = screen.getByRole("button", { name: named("Waivers", "3 items") });
+    // Exactly "Waivers, 3 items": no stray space before the comma.
+    const trigger = screen.getByRole("button", { name: "Waivers, 3 items" });
+    // Named explicitly, so every engine computes the same string.
+    expect(trigger).toHaveAttribute("aria-label", "Waivers, 3 items");
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("Three waived findings")).toBeNull();
 
@@ -330,6 +333,24 @@ describe("Disclosure", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     await user.keyboard(" ");
     expect(trigger).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("names a ReactNode label by its rendered text plus the count, exactly", () => {
+    render(
+      <Disclosure
+        label={
+          <>
+            Waivers <em>for docs</em>
+          </>
+        }
+        count={2}
+      >
+        <p>Body</p>
+      </Disclosure>,
+    );
+    const trigger = screen.getByRole("button", { name: "Waivers for docs, 2 items" });
+    expect(trigger).toHaveAttribute("aria-label", "Waivers for docs, 2 items");
+    expect(within(trigger).getByText("for docs").tagName).toBe("EM");
   });
 
   it("starts open with defaultOpen", () => {

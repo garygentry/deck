@@ -1,7 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/ui/lib/utils";
 import { Icon } from "@/ui/patterns/icon";
-import { VisuallyHidden } from "@/ui/patterns/visually-hidden";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/primitives/collapsible";
 
 export interface DisclosureProps {
@@ -10,11 +9,14 @@ export interface DisclosureProps {
   /**
    * Optional count shown after the label as a pill (e.g. hidden items), in tabular figures. The
    * pill is decorative: the trigger's accessible name gets a separated phrase instead, so it reads
-   * "Proposals, 3 items" rather than running the number into the label.
+   * exactly "Proposals, 3 items" rather than running the number into the label.
    */
   count?: number;
-  /** The spoken count phrase; default "1 item" / "N items". */
-  countLabel?: (count: number) => string;
+  /**
+   * The spoken count phrase: a string (e.g. "3 open", like `HealthPill.countLabel`) or a function
+   * of the count. Default "1 item" / "N items".
+   */
+  countLabel?: string | ((count: number) => string);
   children: ReactNode;
   defaultOpen?: boolean;
   /** Controlled open state (pair with `onOpenChange`). */
@@ -42,7 +44,7 @@ function defaultCountLabel(count: number): string {
 export function Disclosure({
   label,
   count,
-  countLabel = defaultCountLabel,
+  countLabel,
   children,
   defaultOpen = false,
   open: openProp,
@@ -56,6 +58,27 @@ export function Disclosure({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const lastFocusedInside = useRef<Element | null>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
+
+  // With a count, the trigger is named explicitly ("Waivers, 3 items"): a visually hidden suffix
+  // would be out of flow, and name computation would put a stray space before its comma. A string
+  // label is used as is; any other node is named by its rendered text.
+  const plainLabel = typeof label === "string" || typeof label === "number" ? String(label) : null;
+  const [renderedLabel, setRenderedLabel] = useState<string | null>(null);
+  useLayoutEffect(() => {
+    if (plainLabel !== null || count === undefined) return;
+    const text = (labelRef.current?.textContent ?? "").replace(/\s+/g, " ").trim();
+    setRenderedLabel((prev) => (prev === text ? prev : text));
+  });
+  const labelText = plainLabel ?? renderedLabel;
+  const countPhrase =
+    count === undefined
+      ? undefined
+      : typeof countLabel === "string"
+        ? countLabel
+        : (countLabel ?? defaultCountLabel)(count);
+  const accessibleName =
+    countPhrase === undefined || labelText === null ? undefined : `${labelText}, ${countPhrase}`;
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
@@ -88,16 +111,14 @@ export function Disclosure({
     >
       <CollapsibleTrigger
         ref={triggerRef}
+        aria-label={accessibleName}
         className="group inline-flex w-fit items-center gap-1.5 rounded-md py-1 pr-2 text-sm font-medium text-foreground outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50"
       >
         <Icon
           name="chevron-right"
           className="text-muted-foreground transition-transform group-data-[state=open]:rotate-90"
         />
-        <span>
-          {label}
-          {count !== undefined ? <VisuallyHidden>{`, ${countLabel(count)}`}</VisuallyHidden> : null}
-        </span>
+        <span ref={labelRef}>{label}</span>
         {count !== undefined ? (
           <span aria-hidden="true" className="rounded-full bg-muted px-1.5 text-xs text-muted-foreground tabular-nums">
             {count}

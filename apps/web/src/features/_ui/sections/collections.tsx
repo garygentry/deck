@@ -198,7 +198,7 @@ function VirtualizedDemo() {
   return (
     <div className="flex w-full min-w-0 flex-col gap-2">
       <div>
-        <Button variant="outline" size="sm" onClick={() => tableRef.current?.scrollToIndex(899, { align: "center" })}>
+        <Button variant="outline" size="sm" onClick={() => void tableRef.current?.scrollToIndex(899, { align: "center" })}>
           Scroll to event 900
         </Button>
       </div>

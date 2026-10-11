@@ -39,6 +39,13 @@ export interface UseListNavigationOptions {
   onExpand?: (item: HTMLElement, index: number) => void;
   onCollapse?: (item: HTMLElement, index: number) => void;
   onToggle?: (item: HTMLElement, index: number) => void;
+  /**
+   * Home/End (and vim `gg`/`G`) call this instead of focusing the first or last of
+   * `getItems()`. For a list that renders only a window of its items, such as a virtualized
+   * `DataTable`, whose first and last items are not in the DOM:
+   * `focusEdge: (edge) => void tableRef.current?.focusIndex(edge === "first" ? 0 : data.length - 1)`.
+   */
+  focusEdge?: (edge: "first" | "last") => void;
   /** Turn the listener off without unmounting. Default `true`. */
   enabled?: boolean;
 }
@@ -164,14 +171,23 @@ function apply(
       return onItem(opts.onCollapse);
     case "toggle":
       return opts.onToggle !== undefined ? onItem(opts.onToggle) : index >= 0 && activate(index);
-    default: {
-      const raw = opts.grid?.columns ?? 1;
-      const columns = typeof raw === "function" ? raw() : raw;
-      const next = nextListIndex(index, intent, items.length, columns);
-      const item = next >= 0 ? items[next] : undefined;
-      if (item === undefined) return false;
-      item.focus();
+    case "move-first":
+    case "move-last":
+      if (opts.focusEdge === undefined) return moveTo(intent, opts, items, index);
+      opts.focusEdge(intent === "move-first" ? "first" : "last");
       return true;
-    }
+    default:
+      return moveTo(intent, opts, items, index);
   }
+}
+
+/** Focus the item `intent` moves to. Returns whether there was one. */
+function moveTo(intent: ListNavIntent, opts: UseListNavigationOptions, items: ArrayLike<HTMLElement>, index: number): boolean {
+  const raw = opts.grid?.columns ?? 1;
+  const columns = typeof raw === "function" ? raw() : raw;
+  const next = nextListIndex(index, intent, items.length, columns);
+  const item = next >= 0 ? items[next] : undefined;
+  if (item === undefined) return false;
+  item.focus();
+  return true;
 }

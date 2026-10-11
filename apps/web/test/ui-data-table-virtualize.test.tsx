@@ -3,13 +3,22 @@
 //
 // jsdom has no layout: the viewport's geometry is stubbed (offsetHeight/clientHeight/scrollHeight,
 // which the virtualizer reads), each data row's `getBoundingClientRect().height` (which it measures)
-// is 36px or, for a "Tall" row, TALL_ROW_HEIGHT, and `scrollTo` fires `scroll` on the next task, as a browser does.
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+// is 36px or, for a "Tall" row, TALL_ROW_HEIGHT, the header is `theadHeight` tall, and `scrollTo`
+// fires `scroll` on the next task, as a browser does. No test waits on wall-clock time: a
+// `scrollToIndex` promise resolves once the row is rendered and in place.
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createRef } from "react";
+import { createRef, useRef } from "react";
 
-import { DataTable, ROW_LINK_SELECTOR, type ColumnDef, type DataTableHandle } from "@/ui";
+import {
+  DataTable,
+  ROW_LINK_SELECTOR,
+  useListNavigation,
+  type ColumnDef,
+  type DataTableHandle,
+  type DataTableVirtualizeOptions,
+} from "@/ui";
 
 
 interface Host {
@@ -25,10 +34,14 @@ const COLUMNS: ColumnDef<Host>[] = [
 const hosts = (count: number): Host[] =>
   Array.from({ length: count }, (_, i) => ({ key: `host-${i}`, kind: i % 2 === 0 ? "VM" : "Bare metal" }));
 
-/** Viewport height in px: 10 rows of the default 36px compact row height. */
+/** Viewport height in px: 10 rendered (36px) rows. */
 const VIEWPORT_HEIGHT = 360;
 /** The stubbed height of a row whose kind is "Tall" (a second line of text). */
 const TALL_ROW_HEIGHT = 56;
+/** The estimate for a row not yet measured: theme.css's compact cell height (no stylesheet in jsdom). */
+const COMPACT_ESTIMATE = 32;
+/** The stubbed height of the table header (0 unless a test sets it). */
+let theadHeight = 0;
 
 /** A body row's stubbed layout height: a spacer's inline height, a data row's measured height. */
 function bodyRowHeight(tr: Element): number {
@@ -55,8 +68,9 @@ describe("@/ui DataTable virtualize", () => {
   const undo: (() => void)[] = [];
 
   beforeEach(() => {
+    theadHeight = 0;
     const proto = (globalThis as unknown as { HTMLElement: { prototype: HTMLElement } }).HTMLElement.prototype;
-    const isViewport = (el: HTMLElement) => el.getAttribute("data-slot") === "data-table-viewport";
+    const isViewport = (el: HTMLElement) => el.getAttribute("data-slot") === "data-table" && el.hasAttribute("data-virtualized");
     const isDataRow = (el: HTMLElement) => el.tagName === "TR" && el.hasAttribute("data-row-index");
     const stubs: Record<string, (el: HTMLElement) => number | undefined> = {
       offsetHeight: (el) => (isViewport(el) ? VIEWPORT_HEIGHT : undefined),
@@ -103,8 +117,9 @@ describe("@/ui DataTable virtualize", () => {
     const getRect = proto.getBoundingClientRect;
     proto.getBoundingClientRect = function (this: HTMLElement) {
       const rect = getRect.call(this);
-      if (!isDataRow(this)) return rect;
-      const height = bodyRowHeight(this);
+      const header = this.tagName === "THEAD" && theadHeight > 0;
+      if (!header && !isDataRow(this)) return rect;
+      const height = header ? theadHeight : bodyRowHeight(this);
       const { x, y, top, left, right, width } = rect;
       return { x, y, top, left, right, width, height, bottom: top + height, toJSON: () => ({}) } as DOMRect;
     };
@@ -140,7 +155,34 @@ describe("@/ui DataTable virtualize", () => {
 
   const dataRows = () => screen.getAllByRole("row").filter((row) => row.closest("tbody") !== null);
   const rowIndexes = () => dataRows().map((row) => Number(row.getAttribute("aria-rowindex")));
-  const viewport = () => document.querySelector<HTMLElement>('[data-slot="data-table-viewport"]')!;
+  const viewport = () => document.querySelector<HTMLElement>('[data-slot="data-table"][data-virtualized]')!;
+  const isVirtualized = (container: HTMLElement) => container.querySelector("[data-virtualized]") !== null;
+  /** Lets queued tasks (scroll events, first ResizeObserver reports) run. */
+  const flushTasks = () =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  /**
+   * Calls the handle as an event handler does: React commits the updates the call schedules
+   * when the handler returns (here, the `act` scope), then the caller awaits the promise.
+   */
+  async function viaHandle<R>(call: () => Promise<R>): Promise<R> {
+    let pending!: Promise<R>;
+    act(() => {
+      pending = call();
+    });
+    let value!: R;
+    await act(async () => {
+      value = await pending;
+    });
+    return value;
+  }
+  const linkProps = {
+    caption: "Hosts",
+    columns: COLUMNS,
+    getRowId: (r: Host) => r.key,
+    rowLink: (r: Host) => `/hosts/${r.key}`,
+  } as const;
 
   it("renders exactly as an unvirtualized table below the threshold", () => {
     const data = hosts(50);
@@ -149,7 +191,7 @@ describe("@/ui DataTable virtualize", () => {
     const html = (el: HTMLElement) => el.innerHTML.replace(/id="[^"]*"|aria-labelledby="[^"]*"/g, "");
     expect(html(virtual.container)).toBe(html(plain.container));
     expect(within(virtual.container).getAllByRole("row")).toHaveLength(51);
-    expect(virtual.container.querySelector('[data-slot="data-table-viewport"]')).toBeNull();
+    expect(isVirtualized(virtual.container)).toBe(false);
     expect(virtual.container.querySelector("[aria-rowcount]")).toBeNull();
   });
 
@@ -181,109 +223,268 @@ describe("@/ui DataTable virtualize", () => {
     expect(vp.querySelectorAll('[data-slot="data-table-spacer"]')).toHaveLength(1);
   });
 
-  it("scrollToIndex renders a far row inside the window", async () => {
-    const ref = createRef<DataTableHandle>();
-    render(<DataTable ref={ref} caption="Hosts" columns={COLUMNS} data={hosts(1000)} getRowId={(r) => r.key} virtualize />);
+  describe("scrollToIndex and focusIndex", () => {
+    it("resolves once a far row is rendered inside the window", async () => {
+      const ref = createRef<DataTableHandle>();
+      render(<DataTable ref={ref} caption="Hosts" columns={COLUMNS} data={hosts(1000)} getRowId={(r) => r.key} virtualize />);
 
-    act(() => ref.current!.scrollToIndex(900));
+      // The caller's own sequence: await the call, then use the row (no polling).
+      await viaHandle(() => ref.current!.scrollToIndex(900));
 
-    await waitFor(() => expect(screen.getByRole("rowheader", { name: "host-900" })).toBeInTheDocument());
-    expect(screen.getByRole("rowheader", { name: "host-900" }).closest("tr")).toHaveAttribute("aria-rowindex", "902");
-    expect(screen.queryByRole("rowheader", { name: "host-0" })).toBeNull();
-    expect(viewport().scrollTop).toBeGreaterThan(0);
-    expect(rowIndexes().length).toBeLessThan(40);
-    // Spacers above and below the window.
-    expect(viewport().querySelectorAll('[data-slot="data-table-spacer"]')).toHaveLength(2);
+      expect(screen.getByRole("rowheader", { name: "host-900" }).closest("tr")).toHaveAttribute("aria-rowindex", "902");
+      expect(screen.queryByRole("rowheader", { name: "host-0" })).toBeNull();
+      expect(viewport().scrollTop).toBeGreaterThan(0);
+      expect(rowIndexes().length).toBeLessThan(40);
+      // Spacers above and below the window.
+      expect(viewport().querySelectorAll('[data-slot="data-table-spacer"]')).toHaveLength(2);
+    });
+
+    it("focusIndex focuses a far row's link, virtualized and plain", async () => {
+      const ref = createRef<DataTableHandle>();
+      const { rerender } = render(<DataTable ref={ref} {...linkProps} data={hosts(1000)} virtualize />);
+
+      expect(await viaHandle(() => ref.current!.focusIndex(900))).toBe(true);
+      expect(document.activeElement).toHaveAttribute("data-row-link", "host-900");
+
+      rerender(<DataTable ref={ref} {...linkProps} data={hosts(20)} virtualize />);
+      expect(await viaHandle(() => ref.current!.focusIndex(12))).toBe(true);
+      expect(document.activeElement).toHaveAttribute("data-row-link", "host-12");
+      expect(await viaHandle(() => ref.current!.focusIndex(50))).toBe(false);
+    });
+
+    it("settles in commits, not wall-clock time (no timer or scroll event needed)", async () => {
+      vi.useFakeTimers();
+      try {
+        const ref = createRef<DataTableHandle>();
+        // Every row is tall: the estimate puts the target far too high, so it must re-aim.
+        const tall = Array.from({ length: 1000 }, (_, i) => ({ key: `host-${i}`, kind: "Tall" }));
+        render(<DataTable ref={ref} caption="Hosts" columns={COLUMNS} data={tall} getRowId={(r) => r.key} virtualize />);
+
+        await viaHandle(() => ref.current!.scrollToIndex(500, { align: "end" }));
+
+        const target = screen.getByRole("rowheader", { name: "host-500" }).closest("tr")!;
+        expect(bodyOffset(target) + bodyRowHeight(target)).toBe(viewport().scrollTop + VIEWPORT_HEIGHT);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("reserves the header height only when the header is sticky", async () => {
+      theadHeight = 36;
+      const ref = createRef<DataTableHandle>();
+      const props = { caption: "Hosts", columns: COLUMNS, getRowId: (r: Host) => r.key, virtualize: true, captionHidden: true } as const;
+      const { rerender } = render(<DataTable ref={ref} {...props} data={hosts(1000)} />);
+      // The header's height reaches the virtualizer in a layout effect.
+      await flushTasks();
+
+      await viaHandle(() => ref.current!.scrollToIndex(500, { align: "start" }));
+      const row = () => screen.getByRole("rowheader", { name: "host-500" }).closest("tr")!;
+      // Sticky: the row starts right below the header, which covers the top 36px.
+      expect(viewport().scrollTop).toBe(theadHeight + bodyOffset(row()) - theadHeight);
+
+      cleanup();
+      render(<DataTable ref={ref} {...props} stickyHeader={false} data={hosts(1000)} />);
+      await flushTasks();
+      await viaHandle(() => ref.current!.scrollToIndex(500, { align: "start" }));
+      // Not sticky: the header scrolled away, so the row starts at the very top.
+      expect(viewport().scrollTop).toBe(theadHeight + bodyOffset(row()));
+      void rerender;
+    });
+
+    it("scrolls only a plain table's own region, clear of its sticky header", () => {
+      theadHeight = 36;
+      const ref = createRef<DataTableHandle>();
+      const pageScroll = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+      const props = { caption: "Hosts", columns: COLUMNS, getRowId: (r: Host) => r.key, captionHidden: true } as const;
+      const { rerender } = render(<DataTable ref={ref} {...props} data={hosts(20)} />);
+      const root = document.querySelector<HTMLElement>('[data-slot="data-table"]')!;
+      Object.defineProperty(root, "clientHeight", { configurable: true, value: 100 });
+      root.getBoundingClientRect = () => ({ top: 0, height: 100 }) as DOMRect;
+      const rootScroll = vi.fn();
+      root.scrollTo = rootScroll as HTMLElement["scrollTo"];
+      // Row 12 sits below the 36px header and twelve 36px rows.
+      const row = screen.getByRole("rowheader", { name: "host-12" }).closest("tr")!;
+      row.getBoundingClientRect = () => ({ top: 36 + 12 * 36, height: 36 }) as DOMRect;
+
+      void ref.current!.scrollToIndex(12, { align: "start" });
+      expect(rootScroll).toHaveBeenLastCalledWith({ top: 12 * 36 });
+      void ref.current!.scrollToIndex(12, { align: "center" });
+      expect(rootScroll).toHaveBeenLastCalledWith({ top: 12 * 36 - (100 - 36 - 36) / 2 });
+      void ref.current!.scrollToIndex(12, { align: "end" });
+      expect(rootScroll).toHaveBeenLastCalledWith({ top: 36 + 13 * 36 - 100 });
+
+      rerender(<DataTable ref={ref} {...props} stickyHeader={false} data={hosts(20)} />);
+      void ref.current!.scrollToIndex(12, { align: "start" });
+      expect(rootScroll).toHaveBeenLastCalledWith({ top: 36 + 12 * 36 });
+      expect(pageScroll).not.toHaveBeenCalled();
+      pageScroll.mockRestore();
+    });
   });
 
-  it("scrollToIndex scrolls the row into view without virtualize", () => {
-    const ref = createRef<DataTableHandle>();
-    render(<DataTable ref={ref} caption="Hosts" columns={COLUMNS} data={hosts(20)} getRowId={(r) => r.key} />);
-    const row = screen.getByRole("rowheader", { name: "host-12" }).closest("tr")!;
-    const scrollIntoView = vi.fn();
-    row.scrollIntoView = scrollIntoView;
+  describe("keyboard across the window", () => {
+    it("keeps the focused row and its neighbours rendered when the window scrolls away", async () => {
+      const ref = createRef<DataTableHandle>();
+      render(<DataTable ref={ref} {...linkProps} data={hosts(1000)} virtualize />);
+      const link = screen.getByRole("link", { name: "host-3" });
+      act(() => link.focus());
 
-    ref.current!.scrollToIndex(12, { align: "center" });
+      await viaHandle(() => ref.current!.scrollToIndex(500, { align: "start" }));
 
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" });
-  });
+      expect(screen.getByRole("link", { name: "host-500" })).toBeInTheDocument();
+      expect(document.activeElement).toBe(link);
+      expect(link.closest("tr")).toHaveAttribute("aria-rowindex", "5");
+      expect(screen.getByRole("link", { name: "host-2" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "host-4" })).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "host-5" })).toBeNull();
 
-  it("Tab across the window boundary scrolls the next row link in", async () => {
-    render(
-      <DataTable
-        caption="Hosts"
-        columns={COLUMNS}
-        data={hosts(1000)}
-        getRowId={(r) => r.key}
-        rowLink={(r) => `/hosts/${r.key}`}
-        virtualize
-      />,
-    );
-    const initialLast = Math.max(...rowIndexes()) - 2;
-    const first = screen.getByRole("link", { name: "host-0" });
-    act(() => first.focus());
-
-    const target = initialLast + 15;
-    for (let i = 1; i <= target; i += 1) {
+      // Tab and Shift+Tab go to the logical neighbours, not into the far window.
       await userEvent.tab();
-      expect(document.activeElement).toHaveAttribute("data-row-link", `host-${i}`);
-    }
+      expect(document.activeElement).toHaveAttribute("data-row-link", "host-4");
+      await userEvent.tab({ shift: true });
+      await userEvent.tab({ shift: true });
+      expect(document.activeElement).toHaveAttribute("data-row-link", "host-2");
+    });
 
-    expect(viewport().scrollTop).toBeGreaterThan(0);
-    expect(screen.queryByRole("link", { name: "host-0" })).toBeNull();
-    // The window moved with focus: the next rows are rendered for the next Tab.
-    expect(screen.getByRole("link", { name: `host-${target + 1}` })).toHaveAttribute("href", `/hosts/host-${target + 1}`);
-    expect(viewport().querySelectorAll(ROW_LINK_SELECTOR).length).toBeLessThan(40);
-  });
+    it.each<[string, DataTableVirtualizeOptions]>([
+      ["the default overscan", {}],
+      ["overscan 0", { overscan: 0 }],
+    ])("Tab and Shift+Tab walk every row across the window edge with %s", async (_, options) => {
+      render(<DataTable {...linkProps} data={hosts(1000)} virtualize={options} />);
+      act(() => screen.getByRole("link", { name: "host-0" }).focus());
 
-  it("keeps the focused row rendered when the window scrolls away from it", async () => {
-    const ref = createRef<DataTableHandle>();
-    render(
-      <DataTable
-        ref={ref}
-        caption="Hosts"
-        columns={COLUMNS}
-        data={hosts(1000)}
-        getRowId={(r) => r.key}
-        rowLink={(r) => `/hosts/${r.key}`}
-        virtualize
-      />,
-    );
-    const link = screen.getByRole("link", { name: "host-3" });
-    act(() => link.focus());
+      for (let i = 1; i <= 30; i += 1) {
+        await userEvent.tab();
+        expect(document.activeElement).toHaveAttribute("data-row-link", `host-${i}`);
+      }
+      expect(viewport().scrollTop).toBeGreaterThan(0);
+      expect(screen.queryByRole("link", { name: "host-0" })).toBeNull();
+      for (let i = 29; i >= 0; i -= 1) {
+        await userEvent.tab({ shift: true });
+        expect(document.activeElement).toHaveAttribute("data-row-link", `host-${i}`);
+      }
+      expect(viewport().querySelectorAll(ROW_LINK_SELECTOR).length).toBeLessThan(40);
+    });
 
-    act(() => ref.current!.scrollToIndex(500, { align: "start" }));
+    it("Tab walks every control of rows with several, at overscan 0", async () => {
+      const columns: ColumnDef<Host>[] = [
+        { accessorKey: "key", header: "Host" },
+        {
+          id: "actions",
+          header: "Actions",
+          cell: ({ row }) => (
+            <>
+              <button type="button">Ping {row.original.key}</button>
+              <button type="button">Restart {row.original.key}</button>
+            </>
+          ),
+        },
+      ];
+      render(<DataTable {...linkProps} columns={columns} data={hosts(1000)} virtualize={{ overscan: 0 }} />);
+      act(() => screen.getByRole("link", { name: "host-0" }).focus());
 
-    await waitFor(() => expect(screen.getByRole("link", { name: "host-500" })).toBeInTheDocument());
-    expect(document.activeElement).toBe(link);
-    expect(link.closest("tr")).toHaveAttribute("aria-rowindex", "5");
-    expect(screen.queryByRole("link", { name: "host-4" })).toBeNull();
-  });
-  it("keeps the focused row rendered and focused when rows are inserted above it", () => {
-    const props = {
-      caption: "Hosts",
-      columns: COLUMNS,
-      getRowId: (r: Host) => r.key,
-      rowLink: (r: Host) => `/hosts/${r.key}`,
-      virtualize: true,
-    } as const;
-    const data = hosts(1000);
-    const { rerender } = render(<DataTable {...props} data={data} />);
-    const link = screen.getByRole("link", { name: "host-3" });
-    act(() => link.focus());
-    expect(document.activeElement).toBe(link);
+      for (let i = 0; i < 15; i += 1) {
+        await userEvent.tab();
+        expect(document.activeElement).toHaveTextContent(`Ping host-${i}`);
+        await userEvent.tab();
+        expect(document.activeElement).toHaveTextContent(`Restart host-${i}`);
+        await userEvent.tab();
+        expect(document.activeElement).toHaveAttribute("data-row-link", `host-${i + 1}`);
+      }
+    });
 
-    // A live re-sort: 200 new rows land above host-3, moving it far past the window.
-    const inserted: Host[] = Array.from({ length: 200 }, (_, i) => ({ key: `new-${i}`, kind: "VM" }));
-    rerender(<DataTable {...props} data={[...inserted, ...data]} />);
+    it("pins the nearest row with a link, past rows without one", async () => {
+      const ref = createRef<DataTableHandle>();
+      // Only every fifth row links.
+      render(
+        <DataTable
+          ref={ref}
+          {...linkProps}
+          rowLink={(r) => (Number(r.key.slice(5)) % 5 === 0 ? `/hosts/${r.key}` : undefined)}
+          data={hosts(1000)}
+          virtualize={{ overscan: 0 }}
+        />,
+      );
+      act(() => screen.getByRole("link", { name: "host-5" }).focus());
+      await viaHandle(() => ref.current!.scrollToIndex(500, { align: "start" }));
 
-    expect(screen.getByRole("link", { name: "host-3" })).toBe(link);
-    expect(link.isConnected).toBe(true);
-    expect(document.activeElement).toBe(link);
-    expect(link.closest("tr")).toHaveAttribute("aria-rowindex", String(1 + 203 + 1));
-    // The row at its old index is the new data, not a stale stand-in for it.
-    expect(screen.getByRole("link", { name: "new-3" })).toBeInTheDocument();
-    expect(rowIndexes().length).toBeLessThan(40);
+      await userEvent.tab();
+      expect(document.activeElement).toHaveAttribute("data-row-link", "host-10");
+    });
+
+    it("useListNavigation reaches the first and last rows through focusEdge and focusIndex", async () => {
+      const data = hosts(1000);
+      function NavigableTable() {
+        const tableRef = useRef<DataTableHandle>(null);
+        const containerRef = useRef<HTMLDivElement>(null);
+        useListNavigation({
+          getItems: () => containerRef.current?.querySelectorAll<HTMLElement>(ROW_LINK_SELECTOR) ?? [],
+          focusEdge: (edge) => void tableRef.current?.focusIndex(edge === "first" ? 0 : data.length - 1),
+        });
+        return (
+          <div ref={containerRef}>
+            <DataTable ref={tableRef} {...linkProps} data={data} virtualize={{ overscan: 0 }} />
+          </div>
+        );
+      }
+      render(<NavigableTable />);
+      act(() => screen.getByRole("link", { name: "host-0" }).focus());
+      const press = async (keys: string) => {
+        await userEvent.keyboard(keys);
+        await flushTasks();
+      };
+
+      await press("{End}");
+      expect(document.activeElement).toHaveAttribute("data-row-link", "host-999");
+      await press("{Home}");
+      expect(document.activeElement).toHaveAttribute("data-row-link", "host-0");
+      await press("G");
+      expect(document.activeElement).toHaveAttribute("data-row-link", "host-999");
+      await press("{ArrowUp}");
+      expect(document.activeElement).toHaveAttribute("data-row-link", "host-998");
+      await press("gg");
+      expect(document.activeElement).toHaveAttribute("data-row-link", "host-0");
+      for (let i = 1; i <= 15; i += 1) {
+        await press("{ArrowDown}");
+        expect(document.activeElement).toHaveAttribute("data-row-link", `host-${i}`);
+      }
+    });
+
+    it("keeps the focused row rendered and focused when rows are inserted above it", () => {
+      const data = hosts(1000);
+      const { rerender } = render(<DataTable {...linkProps} data={data} virtualize />);
+      const link = screen.getByRole("link", { name: "host-3" });
+      act(() => link.focus());
+      expect(document.activeElement).toBe(link);
+
+      // A live re-sort: 200 new rows land above host-3, moving it far past the window.
+      const inserted: Host[] = Array.from({ length: 200 }, (_, i) => ({ key: `new-${i}`, kind: "VM" }));
+      rerender(<DataTable {...linkProps} data={[...inserted, ...data]} virtualize />);
+
+      expect(screen.getByRole("link", { name: "host-3" })).toBe(link);
+      expect(link.isConnected).toBe(true);
+      expect(document.activeElement).toBe(link);
+      expect(link.closest("tr")).toHaveAttribute("aria-rowindex", String(1 + 203 + 1));
+      // The row at its old index is the new data, not a stale stand-in for it.
+      expect(screen.getByRole("link", { name: "new-3" })).toBeInTheDocument();
+      expect(rowIndexes().length).toBeLessThan(40);
+    });
+
+    it("unpins a row that lost focus without a blur (it was removed)", async () => {
+      const ref = createRef<DataTableHandle>();
+      const data = hosts(1000);
+      const { rerender } = render(<DataTable ref={ref} {...linkProps} data={data} virtualize />);
+      act(() => screen.getByRole("link", { name: "host-3" }).focus());
+      await viaHandle(() => ref.current!.scrollToIndex(500, { align: "start" }));
+      expect(screen.getByRole("link", { name: "host-3" })).toBeInTheDocument();
+
+      // Live data drops the focused row, then brings it back.
+      rerender(<DataTable ref={ref} {...linkProps} data={data.filter((r) => r.key !== "host-3")} virtualize />);
+      expect(document.activeElement).not.toHaveAttribute("data-row-link");
+      rerender(<DataTable ref={ref} {...linkProps} data={data} virtualize />);
+
+      expect(screen.queryByRole("link", { name: "host-3" })).toBeNull();
+      expect(screen.getByRole("link", { name: "host-500" })).toBeInTheDocument();
+    });
   });
 
   it("stays virtualized just below the threshold and falls back below the exit bound", () => {
@@ -302,15 +503,112 @@ describe("@/ui DataTable virtualize", () => {
 
     // Below the exit bound: the plain table.
     rerender(<DataTable {...props} data={hosts(239)} />);
-    expect(container.querySelector('[data-slot="data-table-viewport"]')).toBeNull();
+    expect(isVirtualized(container)).toBe(false);
     expect(container.querySelector("[aria-rowcount]")).toBeNull();
     expect(within(container).getAllByRole("row")).toHaveLength(240);
 
     // Back up, but under the threshold: stays plain (no latch).
     rerender(<DataTable {...props} data={hosts(299)} />);
-    expect(container.querySelector('[data-slot="data-table-viewport"]')).toBeNull();
+    expect(isVirtualized(container)).toBe(false);
     rerender(<DataTable {...props} data={hosts(300)} />);
-    expect(container.querySelector('[data-slot="data-table-viewport"]')).not.toBeNull();
+    expect(isVirtualized(container)).toBe(true);
+  });
+
+  it("never virtualizes an empty table: a threshold below 1 still shows the empty state", () => {
+    const props = { caption: "Hosts", columns: COLUMNS, getRowId: (r: Host) => r.key, virtualize: { threshold: 0 } } as const;
+    const { rerender, container } = render(<DataTable {...props} data={[]} empty="No hosts yet" />);
+    expect(isVirtualized(container)).toBe(false);
+    expect(screen.getByText("No hosts yet")).toBeInTheDocument();
+    // The threshold is clamped to 1: one row virtualizes.
+    rerender(<DataTable {...props} data={hosts(1)} empty="No hosts yet" />);
+    expect(isVirtualized(container)).toBe(true);
+  });
+
+  it("puts className on the data-table root, the scroll region, on both paths", () => {
+    const props = { caption: "Hosts", columns: COLUMNS, getRowId: (r: Host) => r.key, className: "col-span-2 max-h-64", virtualize: true } as const;
+    const { rerender, container } = render(<DataTable {...props} data={hosts(20)} />);
+    const plainRoot = container.querySelector('[data-slot="data-table"]')!;
+    expect(plainRoot).toHaveClass("col-span-2", "max-h-64");
+    expect(plainRoot).toBe(screen.getByRole("region", { name: "Hosts" }));
+
+    rerender(<DataTable {...props} data={hosts(400)} />);
+    const root = container.querySelector('[data-slot="data-table"]')!;
+    expect(root).toHaveAttribute("data-virtualized");
+    expect(root).toHaveClass("col-span-2", "max-h-64");
+    // The caller's bound replaces the default one.
+    expect(root).not.toHaveClass("max-h-[70vh]");
+    expect(root).toBe(screen.getByRole("region", { name: "Hosts" }));
+    expect(container.firstElementChild).toBe(root);
+  });
+
+  describe("row height", () => {
+    afterEach(() => {
+      document.documentElement.style.removeProperty("--table-compact-cell-h");
+      document.documentElement.style.removeProperty("--table-cell-h");
+    });
+
+    /**
+     * The height the trailing spacer gives each row below the window: the estimate (within a
+     * pixel: a row measured taller, 36px, and then left behind by the shrinking window counts too).
+     */
+    const trailingEstimate = (count: number) => {
+      const spacers = viewport().querySelectorAll<HTMLElement>('[data-slot="data-table-spacer"] td');
+      const last = Math.max(...rowIndexes()) - 2;
+      return Number.parseFloat(spacers[spacers.length - 1]!.style.height) / (count - last - 1);
+    };
+
+    it.each([
+      ["compact", "--table-compact-cell-h", COMPACT_ESTIMATE],
+      ["comfortable", "--table-cell-h", 44],
+    ] as const)("%s rows follow the density token: no forced height, the token as estimate", (density, token, fallback) => {
+      const props = { caption: "Hosts", columns: COLUMNS, getRowId: (r: Host) => r.key, density, virtualize: true } as const;
+      render(<DataTable {...props} data={hosts(1000)} />);
+      for (const tr of dataRows()) expect(tr.style.height).toBe("");
+      // Without a stylesheet, theme.css's default token value.
+      expect(trailingEstimate(1000)).toBeCloseTo(fallback, 0);
+      cleanup();
+
+      // The operator's compact density tightens the token: the estimate follows it.
+      document.documentElement.style.setProperty(token, "1.75rem");
+      render(<DataTable {...props} data={hosts(1000)} />);
+      for (const tr of dataRows()) expect(tr.style.height).toBe("");
+      expect(trailingEstimate(1000)).toBeCloseTo(28, 0);
+    });
+
+    it("an explicit rowHeight sets each row's height and the estimate", () => {
+      render(
+        <DataTable caption="Hosts" columns={COLUMNS} data={hosts(1000)} getRowId={(r) => r.key} virtualize={{ rowHeight: 40 }} />,
+      );
+      for (const tr of dataRows()) expect(tr.style.height).toBe("40px");
+      expect(trailingEstimate(1000)).toBe(40);
+    });
+  });
+
+  it("scrolling does not rescan every row (stable item keys, indexed row ids)", async () => {
+    const count = 20_000;
+    // Rows measure what they are estimated at, so a scroll changes no size: what is left is
+    // the work done per render.
+    document.documentElement.style.setProperty("--table-compact-cell-h", "36px");
+    render(<DataTable {...linkProps} data={hosts(count)} virtualize />);
+    act(() => screen.getByRole("link", { name: "host-3" }).focus());
+    const lookups = vi.spyOn(Map.prototype, "get");
+    const scans = vi.spyOn(Array.prototype, "findIndex");
+    try {
+      for (let top = 400; top <= 2000; top += 400) {
+        await act(async () => {
+          viewport().scrollTop = top;
+          viewport().dispatchEvent(new Event("scroll"));
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+      }
+      // An unstable key re-measures all 20,000 rows on every scroll render.
+      expect(lookups.mock.calls.length).toBeLessThan(count / 2);
+      expect(scans.mock.contexts.filter((array) => (array as unknown[]).length >= count)).toEqual([]);
+    } finally {
+      document.documentElement.style.removeProperty("--table-compact-cell-h");
+      lookups.mockRestore();
+      scans.mockRestore();
+    }
   });
 
   describe("rows of varying height", () => {
@@ -344,17 +642,16 @@ describe("@/ui DataTable virtualize", () => {
       }
       // The scroll height counts measured rows at their real height and the rest at the estimate.
       const last = Number(rendered.at(-1)!.getAttribute("aria-rowindex")) - 2;
-      expect(bodyHeight(viewport())).toBe(realOffset(last + 1) + (data.length - last - 1) * 36);
+      expect(bodyHeight(viewport())).toBe(realOffset(last + 1) + (data.length - last - 1) * COMPACT_ESTIMATE);
     });
 
     it("scrollToIndex lands a far row at the top, below tall rows", async () => {
       const ref = createRef<DataTableHandle>();
       render(<DataTable ref={ref} caption="Hosts" columns={COLUMNS} data={mixed(1000, 3)} getRowId={(r) => r.key} virtualize />);
 
-      act(() => ref.current!.scrollToIndex(600, { align: "start" }));
+      await viaHandle(() => ref.current!.scrollToIndex(600, { align: "start" }));
 
-      await waitFor(() => expect(screen.getByRole("rowheader", { name: "host-600" })).toBeInTheDocument());
-      await waitFor(() => expect(bodyOffset(row("host-600"))).toBe(viewport().scrollTop));
+      expect(bodyOffset(row("host-600"))).toBe(viewport().scrollTop);
       expect(row("host-600")).toHaveAttribute("aria-rowindex", "602");
       expect(rowIndexes().length).toBeLessThan(40);
     });
@@ -364,13 +661,10 @@ describe("@/ui DataTable virtualize", () => {
       // Every row near the target is tall: the estimate puts the target ~200px too high.
       render(<DataTable ref={ref} caption="Hosts" columns={COLUMNS} data={mixed(1000, 1)} getRowId={(r) => r.key} virtualize />);
 
-      act(() => ref.current!.scrollToIndex(500, { align: "end" }));
+      await viaHandle(() => ref.current!.scrollToIndex(500, { align: "end" }));
 
-      await waitFor(() => expect(screen.getByRole("rowheader", { name: "host-500" })).toBeInTheDocument());
-      await waitFor(() => {
-        const target = row("host-500");
-        expect(bodyOffset(target) + bodyRowHeight(target)).toBe(viewport().scrollTop + VIEWPORT_HEIGHT);
-      });
+      const target = row("host-500");
+      expect(bodyOffset(target) + bodyRowHeight(target)).toBe(viewport().scrollTop + VIEWPORT_HEIGHT);
     });
 
     it("scrollToIndex keeps aiming at the same row when rows are inserted above it meanwhile", async () => {
@@ -379,13 +673,16 @@ describe("@/ui DataTable virtualize", () => {
       const data = mixed(1000, 3);
       const { rerender } = render(<DataTable ref={ref} {...props} data={data} />);
 
-      act(() => ref.current!.scrollToIndex(600, { align: "start" }));
-      // A live update lands 30 rows above the target before the scroll settles.
-      const inserted: Host[] = Array.from({ length: 30 }, (_, i) => ({ key: `new-${i}`, kind: "VM" }));
-      rerender(<DataTable ref={ref} {...props} data={[...inserted, ...data]} />);
+      let scrolled!: Promise<void>;
+      act(() => {
+        scrolled = ref.current!.scrollToIndex(600, { align: "start" });
+        // A live update lands 30 rows above the target before the scroll settles.
+        const inserted: Host[] = Array.from({ length: 30 }, (_, i) => ({ key: `new-${i}`, kind: "VM" }));
+        rerender(<DataTable ref={ref} {...props} data={[...inserted, ...data]} />);
+      });
+      await scrolled;
 
-      await waitFor(() => expect(screen.getByRole("rowheader", { name: "host-600" })).toBeInTheDocument());
-      await waitFor(() => expect(bodyOffset(row("host-600"))).toBe(viewport().scrollTop));
+      expect(bodyOffset(row("host-600"))).toBe(viewport().scrollTop);
       expect(row("host-600")).toHaveAttribute("aria-rowindex", "632");
     });
 
@@ -395,8 +692,9 @@ describe("@/ui DataTable virtualize", () => {
 
       // PageDown right after the call, before the scroll has rendered (and re-aimed): the
       // browser scrolls the viewport by a page from where scrollToIndex put it.
+      let scrolled!: Promise<void>;
       act(() => {
-        ref.current!.scrollToIndex(600, { align: "start" });
+        scrolled = ref.current!.scrollToIndex(600, { align: "start" });
         viewport().focus();
       });
       const userTop = viewport().scrollTop + VIEWPORT_HEIGHT;
@@ -405,24 +703,18 @@ describe("@/ui DataTable virtualize", () => {
         viewport().dispatchEvent(new view.KeyboardEvent("keydown", { key: "PageDown", bubbles: true }));
         viewport().scrollTop = userTop;
         viewport().dispatchEvent(new Event("scroll"));
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        // The cancelled call still resolves.
+        await scrolled;
       });
+      await flushTasks();
+      await flushTasks();
       // Not pulled back up to the target. (It may sit a little lower: rows above the viewport
       // measured taller, and the library shifts the offset to keep the content in place.)
       expect(viewport().scrollTop).toBeGreaterThanOrEqual(userTop);
     });
 
     it("keyboard focus across the window keeps landing on the next tall row", async () => {
-      render(
-        <DataTable
-          caption="Hosts"
-          columns={COLUMNS}
-          data={mixed(1000, 2)}
-          getRowId={(r) => r.key}
-          rowLink={(r) => `/hosts/${r.key}`}
-          virtualize
-        />,
-      );
+      render(<DataTable {...linkProps} data={mixed(1000, 2)} virtualize />);
       act(() => screen.getByRole("link", { name: "host-0" }).focus());
       for (let i = 1; i <= 40; i += 1) {
         await userEvent.tab();
@@ -441,8 +733,8 @@ describe("@/ui DataTable virtualize", () => {
     const { rerender } = render(<DataTable {...props} data={hosts(3)} />);
     expect(screen.getByRole("region", { name: "Hosts" })).not.toHaveAttribute("tabindex");
     rerender(<DataTable {...props} data={hosts(400)} virtualize />);
-    const viewport = screen.getByRole("region", { name: "Hosts" });
-    expect(viewport).toHaveAttribute("data-slot", "data-table-viewport");
-    expect(viewport).not.toHaveAttribute("tabindex");
+    const region = screen.getByRole("region", { name: "Hosts" });
+    expect(region).toHaveAttribute("data-virtualized");
+    expect(region).not.toHaveAttribute("tabindex");
   });
 });

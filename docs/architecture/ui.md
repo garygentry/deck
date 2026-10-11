@@ -509,7 +509,22 @@ renders with external links only.
    paths, and `PageErrorBoundary` around the page.
 3. Map domain states with `defineStatusMap`; render them with `StatusBadge`.
 4. For keyboard list navigation use `useListNavigation`. Its editable-field guard and
-   modifier-key passthrough are built in.
+   modifier-key passthrough are built in. A `DataTable` with `virtualize` renders only a window
+   of its rows (plus the focused row and its neighbours, so single steps and Tab work), so the
+   first and last rows are not in the DOM. Wire Home/End (and vim `gg`/`G`) to the table's
+   handle through `focusEdge`:
+
+   ```tsx
+   const tableRef = useRef<DataTableHandle>(null);
+   useListNavigation({
+     getItems: () => rootRef.current?.querySelectorAll<HTMLElement>(ROW_LINK_SELECTOR) ?? [],
+     focusEdge: (edge) => void tableRef.current?.focusIndex(edge === "first" ? 0 : rows.length - 1),
+   });
+   ```
+
+   The handle's `scrollToIndex` and `focusIndex` return promises that resolve once the row is
+   rendered (and, for `focusIndex`, focused). Await them before reaching for the row's DOM node,
+   and reach rows outside the window this way rather than by `rowDomId`/`getElementById`.
 5. Declare it in the module's manifest (path, title, an `icon` from `ui/lib/icons.ts`, and a nav
    entry with its `group`), and add the component to the table `features/<name>/index.ts`
    registers (lazily via `pages.ts` if it pulls in heavy dependencies).

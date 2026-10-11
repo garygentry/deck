@@ -1,6 +1,7 @@
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/ui/lib/utils";
 import { Icon } from "@/ui/patterns/icon";
+import { VisuallyHidden } from "@/ui/patterns/visually-hidden";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/primitives/collapsible";
 
 export interface DisclosureProps {
@@ -58,27 +59,26 @@ export function Disclosure({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const lastFocusedInside = useRef<Element | null>(null);
-  const labelRef = useRef<HTMLSpanElement>(null);
+  const labelId = useId();
+  const countId = useId();
 
-  // With a count, the trigger is named explicitly ("Waivers, 3 items"): a visually hidden suffix
-  // would be out of flow, and name computation would put a stray space before its comma. A string
-  // label is used as is; any other node is named by its rendered text.
-  const plainLabel = typeof label === "string" || typeof label === "number" ? String(label) : null;
-  const [renderedLabel, setRenderedLabel] = useState<string | null>(null);
-  useLayoutEffect(() => {
-    if (plainLabel !== null || count === undefined) return;
-    const text = (labelRef.current?.textContent ?? "").replace(/\s+/g, " ").trim();
-    setRenderedLabel((prev) => (prev === text ? prev : text));
-  });
-  const labelText = plainLabel ?? renderedLabel;
   const countPhrase =
     count === undefined
       ? undefined
       : typeof countLabel === "string"
         ? countLabel
         : (countLabel ?? defaultCountLabel)(count);
-  const accessibleName =
-    countPhrase === undefined || labelText === null ? undefined : `${labelText}, ${countPhrase}`;
+  // With a count, a string label names the trigger exactly ("Waivers, 3 items"). Any other node
+  // keeps live browser naming (its descendants' aria-label/alt, minus aria-hidden text) via
+  // aria-labelledby: the label plus a visually hidden ", 3 items" (engines may put a space
+  // before the comma there).
+  const plainLabel = typeof label === "string" || typeof label === "number" ? String(label) : null;
+  const naming =
+    countPhrase === undefined
+      ? {}
+      : plainLabel !== null
+        ? { "aria-label": `${plainLabel}, ${countPhrase}` }
+        : { "aria-labelledby": `${labelId} ${countId}` };
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
@@ -111,14 +111,17 @@ export function Disclosure({
     >
       <CollapsibleTrigger
         ref={triggerRef}
-        aria-label={accessibleName}
+        {...naming}
         className="group inline-flex w-fit items-center gap-1.5 rounded-md py-1 pr-2 text-sm font-medium text-foreground outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50"
       >
         <Icon
           name="chevron-right"
           className="text-muted-foreground transition-transform group-data-[state=open]:rotate-90"
         />
-        <span ref={labelRef}>{label}</span>
+        <span id={labelId}>{label}</span>
+        {countPhrase !== undefined && plainLabel === null ? (
+          <VisuallyHidden id={countId}>{`, ${countPhrase}`}</VisuallyHidden>
+        ) : null}
         {count !== undefined ? (
           <span aria-hidden="true" className="rounded-full bg-muted px-1.5 text-xs text-muted-foreground tabular-nums">
             {count}

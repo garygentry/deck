@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { useState } from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -335,12 +336,19 @@ describe("Disclosure", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("names a ReactNode label by its rendered text plus the count, exactly", () => {
+  // A ReactNode label keeps live browser naming (aria-labelledby: the label span plus a visually
+  // hidden ", N items"); an engine may put one space before the comma there.
+  const nodeNamed = (label: string, count: string): RegExp => new RegExp(`^${label} ?, ${count}$`);
+
+  it("names a ReactNode label live: descendant aria-label counts, aria-hidden text does not", () => {
     render(
       <Disclosure
         label={
           <>
-            Waivers <em>for docs</em>
+            <span role="img" aria-label="Warnings">
+              ⚠
+            </span>
+            <span aria-hidden="true"> (decorative)</span>
           </>
         }
         count={2}
@@ -348,9 +356,27 @@ describe("Disclosure", () => {
         <p>Body</p>
       </Disclosure>,
     );
-    const trigger = screen.getByRole("button", { name: "Waivers for docs, 2 items" });
-    expect(trigger).toHaveAttribute("aria-label", "Waivers for docs, 2 items");
-    expect(within(trigger).getByText("for docs").tagName).toBe("EM");
+    const trigger = screen.getByRole("button", { name: nodeNamed("Warnings", "2 items") });
+    expect(trigger).not.toHaveAttribute("aria-label");
+    expect(trigger.getAttribute("aria-labelledby")?.split(" ")).toHaveLength(2);
+    expect(trigger).not.toHaveAccessibleName(/⚠|decorative/);
+  });
+
+  it("follows a label component that updates its own text without Disclosure rerendering", () => {
+    let rename: (text: string) => void = () => {};
+    function LiveLabel() {
+      const [text, setText] = useState("Waivers");
+      rename = setText;
+      return <em>{text}</em>;
+    }
+    render(
+      <Disclosure label={<LiveLabel />} count={3}>
+        <p>Body</p>
+      </Disclosure>,
+    );
+    expect(screen.getByRole("button", { name: nodeNamed("Waivers", "3 items") })).toBeInTheDocument();
+    act(() => rename("Exceptions"));
+    expect(screen.getByRole("button", { name: nodeNamed("Exceptions", "3 items") })).toBeInTheDocument();
   });
 
   it("starts open with defaultOpen", () => {

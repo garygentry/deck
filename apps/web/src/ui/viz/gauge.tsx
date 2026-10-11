@@ -12,7 +12,7 @@ export interface GaugeProps {
   value: number;
   /** Domain lower bound. Default 0. */
   min?: number;
-  /** Domain upper bound. Default 100. */
+  /** Domain upper bound. Default 100. A bound ≤ `min` is a degenerate domain: no arc. */
   max?: number;
   /**
    * A status-map entry (`MAP[state]`): tints the value arc with its tone (dashed for an outline
@@ -73,13 +73,14 @@ export function gaugeValueAngle(value: number, min: number, max: number): number
 
 /**
  * `aria-valuetext`: the shown value ("unavailable" for a non-finite one), the status label, and
- * a note when the arc is clamped, so a reading over the maximum is not announced as in range.
+ * a note when the arc is clamped, so a reading over the maximum is not announced as in range. A
+ * degenerate domain (max ≤ min) has no range to be outside of, so it gets no note.
  */
 function gaugeValueText(text: string, value: number, min: number, max: number, statusLabel?: string): string {
   if (!Number.isFinite(value)) return statusLabel !== undefined ? `unavailable, ${statusLabel}` : "unavailable";
   const parts = statusLabel !== undefined ? [text, statusLabel] : [text];
-  if (value > max) parts.push(`above the maximum of ${max}`);
-  else if (value < min) parts.push(`below the minimum of ${min}`);
+  if (max > min && value > max) parts.push(`above the maximum of ${max}`);
+  else if (max > min && value < min) parts.push(`below the minimum of ${min}`);
   return parts.join(", ");
 }
 
@@ -95,6 +96,8 @@ export function Gauge({
   className,
 }: GaugeProps) {
   const available = Number.isFinite(value);
+  // max ≤ min: no arc, and ARIA reports the single point `min` (never valuemin > valuemax).
+  const degenerate = !(max > min);
   const text = !available ? GAUGE_UNAVAILABLE : (label ?? String(Math.round(value)));
   const mark = status !== undefined ? presentationMark(status) : null;
   const dash = mark !== null ? MARK_DASH[mark.pattern] : null;
@@ -111,8 +114,8 @@ export function Gauge({
       role="meter"
       aria-label={ariaLabel}
       aria-valuemin={min}
-      aria-valuemax={max}
-      aria-valuenow={available ? clamp(value, min, max) : min}
+      aria-valuemax={degenerate ? min : max}
+      aria-valuenow={available && !degenerate ? clamp(value, min, max) : min}
       aria-valuetext={gaugeValueText(text, value, min, max, status?.label)}
       viewBox={`0 0 ${size} ${size}`}
       width={size}

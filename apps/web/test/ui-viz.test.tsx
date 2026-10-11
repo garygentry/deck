@@ -517,6 +517,25 @@ describe("Gauge", () => {
     expect(meter.outerHTML).not.toContain("NaN");
   });
 
+  it.each([
+    [5, 5],
+    [10, 0],
+  ])("a degenerate domain (min %d, max %d) never reports valuemin > valuemax", (min, max) => {
+    render(<Gauge ariaLabel="Load" value={7} min={min} max={max} label="7" />);
+    const meter = screen.getByRole("meter");
+    expect(meter).toHaveAttribute("aria-valuemin", String(min));
+    expect(meter).toHaveAttribute("aria-valuemax", String(min));
+    expect(meter).toHaveAttribute("aria-valuenow", String(min));
+    expect(meter).toHaveAttribute("aria-valuetext", "7");
+    expect(meter.querySelector('[data-slot="gauge-value"]')).toBeNull();
+  });
+
+  it("reversed bounds yield the start angle", () => {
+    expect(gaugeValueAngle(5, 10, 0)).toBe(GAUGE_START_ANGLE);
+    expect(gaugeValueAngle(-5, 10, 0)).toBe(GAUGE_START_ANGLE);
+    expect(gaugeValueAngle(15, 10, 0)).toBe(GAUGE_START_ANGLE);
+  });
+
   it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])("shows %d as unavailable", (value) => {
     render(<Gauge ariaLabel="Disk usage" value={value} label={`${value}%`} status={HEALTH.unknown} />);
     const meter = screen.getByRole("meter", { name: "Disk usage" });

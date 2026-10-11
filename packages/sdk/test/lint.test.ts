@@ -22,6 +22,7 @@ import {
   modulePrefix,
   moduleWebSources,
   offScaleRadii,
+  radixUmbrellaImports,
   stripComments,
   type LintFile,
   type Offence,
@@ -88,6 +89,23 @@ describe("the guardrail rules", () => {
       file("src/a.tsx", 'import { x } from "@/ui/patterns/x";\n// ui-deep-import: needs the internal\nimport { y } from "@/ui/lib/y";\nimport { z } from "@/ui";'),
     ]);
     expect(where(offences)).toEqual(["ui-deep-import src/a.tsx:1"]);
+  });
+
+  it("finds imports of the radix-ui umbrella, in any form, and ignores scoped packages and prose", () => {
+    const source = [
+      'import { Dialog as DialogPrimitive } from "radix-ui";',
+      'export { Slot } from "radix-ui";',
+      "import 'radix-ui/internal';",
+      'const a = await import("radix-ui");',
+      "const b = await import(`radix-ui`);",
+      'const c = require("radix-ui");',
+      'import * as DialogPrimitive from "@radix-ui/react-dialog";',
+      '// was: import { Slot } from "radix-ui"',
+      'const prose = "import { Slot } from \'radix-ui\'";',
+      'const d = await import("radix-ui-extra");',
+    ].join("\n");
+    expect(where(radixUmbrellaImports([file("src/ui/primitives/demo.tsx", source)]))).toEqual([1, 2, 3, 4, 5, 6].map((line) => `radix-umbrella src/ui/primitives/demo.tsx:${line}`));
+    expect(radixUmbrellaImports([file("src/notes.css", '@import "radix-ui";')])).toEqual([]);
   });
 });
 

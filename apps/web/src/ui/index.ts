@@ -34,8 +34,10 @@ export * from "./primitives/command";
 export * from "./primitives/dialog";
 export * from "./primitives/dropdown-menu";
 export * from "./primitives/input";
+export * from "./primitives/kbd";
 export * from "./primitives/label";
 export * from "./primitives/popover";
+export * from "./primitives/radio-group";
 export * from "./primitives/scroll-area";
 export * from "./primitives/select";
 export * from "./primitives/separator";
@@ -44,6 +46,7 @@ export * from "./primitives/sidebar";
 export * from "./primitives/skeleton";
 export * from "./primitives/table";
 export * from "./primitives/tabs";
+export * from "./primitives/textarea";
 export * from "./primitives/toggle-group";
 export * from "./primitives/toggle";
 export * from "./primitives/tooltip";
@@ -141,10 +144,14 @@ export { HealthPill, type HealthPillProps } from "./patterns/health-pill";
 
 // Collections
 export {
+  DATA_TABLE_VIRTUALIZE_DEFAULTS,
   DataTable,
   ROW_LINK_ATTRIBUTE,
   ROW_LINK_SELECTOR,
+  type DataTableHandle,
   type DataTableProps,
+  type DataTableScrollAlign,
+  type DataTableVirtualizeOptions,
 } from "./patterns/data-table";
 export type { ColumnDef } from "@tanstack/react-table";
 export {
@@ -212,3 +219,13 @@ export {
   type SegmentedControlProps,
   type SegmentedOption,
 } from "./patterns/segmented-control";
+
+// Viz: dependency-free SVG charts
+export { Gauge, type GaugeProps } from "./viz/gauge";
+export { Sparkline, type SparklineProps, type SparklineSample } from "./viz/sparkline";
+export {
+  StatusTimeline,
+  type StatusTimelineProps,
+  type TimelineLane,
+  type TimelineSegment,
+} from "./viz/status-timeline";

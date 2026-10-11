@@ -12,6 +12,7 @@ import {
   legacyTokens,
   offScaleRadii,
   patternsWithoutDataSlot,
+  radixUmbrellaImports,
   type Offence,
 } from "@deck/sdk/lint";
 import { Scanner } from "@tailwindcss/oxide";
@@ -114,6 +115,46 @@ describe("imports: features use the @/ui barrel", () => {
   });
 });
 
+/**
+ * Every version of each `@radix-ui/*` package that a pnpm lockfile `text` resolves (package →
+ * versions). The scoped packages share internals (react-dismissable-layer's layer stack,
+ * react-presence, react-focus-scope) that only work as one copy, so they are updated together.
+ */
+function radixVersions(text: string): Map<string, Set<string>> {
+  const versions = new Map<string, Set<string>>();
+  for (const [, name, version] of text.matchAll(/^ {2}'?(@radix-ui\/[^@'\s]+)@([^('\s:]+)/gm)) {
+    versions.set(name!, (versions.get(name!) ?? new Set()).add(version!));
+  }
+  return versions;
+}
+
+const duplicated = (versions: Map<string, Set<string>>): string[] =>
+  [...versions].filter(([, set]) => set.size > 1).map(([name, set]) => `${name}@${[...set].sort().join(",")}`);
+
+describe("imports: Radix through its scoped packages", () => {
+  it('no module imports the "radix-ui" umbrella (use "@radix-ui/react-*")', () => {
+    expect(shown(radixUmbrellaImports(files))).toEqual([]);
+  });
+
+  it("resolves every @radix-ui/* package to a single version in the lockfile", () => {
+    const versions = radixVersions(readFileSync(join(REPO_ROOT, "pnpm-lock.yaml"), "utf8"));
+    expect(versions.has("@radix-ui/react-dismissable-layer")).toBe(true);
+    expect(duplicated(versions)).toEqual([]);
+  });
+
+  it("would catch a second copy of a Radix package in the lockfile", () => {
+    const lock = [
+      "packages:",
+      "  '@radix-ui/react-dismissable-layer@1.1.19':",
+      "  '@radix-ui/react-dismissable-layer@1.1.20':",
+      "snapshots:",
+      "  '@radix-ui/react-dismissable-layer@1.1.19(@types/react@19.3.0)(react@19.3.0)':",
+      "  '@radix-ui/react-slot@1.3.3(react@19.3.0)':",
+    ].join("\n");
+    expect(duplicated(radixVersions(lock))).toEqual(["@radix-ui/react-dismissable-layer@1.1.19,1.1.20"]);
+  });
+});
+
 describe("styling: tokens, not literals", () => {
   it("has no hex, rgb() or oklch() colour literals in TSX", () => {
     expect(shown(colourLiterals(tsx))).toEqual([]);
@@ -128,6 +169,7 @@ describe("styling: tokens, not literals", () => {
     "src/ui/primitives/sidebar.tsx": "vendored shadcn: sidebar width CSS vars",
     "src/ui/primitives/toggle-group.tsx": "vendored shadcn: --gap CSS var",
     "src/ui/patterns/code-block.tsx": "maxHeight prop (dynamic geometry)",
+    "src/ui/patterns/data-table.tsx": "virtualized row min-height and spacer heights (dynamic geometry)",
     "src/ui/patterns/log-output.tsx": "maxHeight prop (dynamic geometry)",
     "src/ui/patterns/meter.tsx": "fill width from the value (dynamic geometry)",
     "src/ui/patterns/tree-view.tsx": "--tree-depth CSS var per row (indentation geometry)",
@@ -139,8 +181,10 @@ describe("styling: tokens, not literals", () => {
 });
 
 describe("library components", () => {
-  it("roots every pattern in a data-slot", () => {
-    expect(shown(patternsWithoutDataSlot(tsx.filter(({ rel }) => rel.startsWith("src/ui/patterns/"))))).toEqual([]);
+  it("roots every pattern and chart in a data-slot", () => {
+    const components = tsx.filter(({ rel }) => rel.startsWith("src/ui/patterns/") || rel.startsWith("src/ui/viz/"));
+    expect(components.some(({ rel }) => rel.startsWith("src/ui/viz/"))).toBe(true);
+    expect(shown(patternsWithoutDataSlot(components))).toEqual([]);
   });
 
   it("never sets data-icon (the legacy icon masks are gone; use <Icon>)", () => {

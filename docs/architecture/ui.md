@@ -15,6 +15,7 @@ apps/web/src/
   ui/
     primitives/   vendored shadcn/ui source (Radix-based): Button, Table, Sidebar, Tooltip, …
     patterns/     deck composites: StatusBadge, DataTable, FilterBar, TreeView, PageHeader, …
+    viz/          dependency-free SVG charts coloured by tone: Sparkline, StatusTimeline, Gauge
     hooks/        useListNavigation, useFacetFilters, useScrollToHash, useDocumentTitle, …
     lib/          cn(), icons.ts (curated Lucide set), status.ts (tones), format.ts, filters.ts,
                   markdown.ts + highlight.ts (the markdown pipeline; deep-imported, not in the barrel)
@@ -33,9 +34,22 @@ modules/<id>/web/ a co-located built-in module's web half, compiled into the app
 
 - **Primitives** are shadcn/ui components, copied into the repo rather than installed. They
   belong to deck and may be edited; each local edit is noted in a comment at the top of the file.
+  Radix comes from its scoped packages (`import * as DialogPrimitive from "@radix-ui/react-dialog"`,
+  `import * as Slot from "@radix-ui/react-slot"`), never the `radix-ui` umbrella that the shadcn CLI
+  writes: rewrite the import after `shadcn add` and add the scoped package to `package.json`. The
+  umbrella hides which Radix packages a primitive needs, and a bundler that does not tree-shake
+  its re-exports puts every Radix package used anywhere on the initial route. The guardrail test
+  forbids it. Update the Radix packages together, so the lockfile keeps one version of each: they
+  share internals such as `react-dismissable-layer`, whose layer stack breaks nested overlays when
+  two copies are installed. The guardrail test checks this too.
 - **Patterns** are deck's own components built on the primitives. They carry the product's
   decisions: never colour-only status, a labelled region for every scrolling table, one `h1` per
   page, and so on.
+- **Viz** components are deck's charts: small SVG components with no charting dependency,
+  coloured only by status tone (`TONE_SVG_FILL`/`TONE_SVG_STROKE` in `lib/tone.ts`). A status
+  mark takes a status-map entry, and an `outline` entry draws hatched or dashed, so two states on
+  one tone stay distinct. A chart never carries state by colour alone: it is a `meter`, has a
+  text alternative, or sits beside a `StatusBadge`.
 - **Hooks and lib** hold behaviour that has no markup: keyboard navigation, filter state, time
   formatting, and the tone vocabulary.
 - **Features** compose patterns and hold domain logic. A feature imports UI only from the barrel.
@@ -501,7 +515,26 @@ renders with external links only.
    paths, and `PageErrorBoundary` around the page.
 3. Map domain states with `defineStatusMap`; render them with `StatusBadge`.
 4. For keyboard list navigation use `useListNavigation`. Its editable-field guard and
-   modifier-key passthrough are built in.
+   modifier-key passthrough are built in. A `DataTable` with `virtualize` renders only a window
+   of its rows (plus the focused row and its neighbours, so single steps and Tab work), so the
+   first and last rows are not in the DOM. "Neighbours" are the nearest rows with a focus stop:
+   by default rows with a row link (or every row, without `rowLink`). When cell controls are
+   sparse (a button only some rows have), say which rows hold one with
+   `virtualize={{ isNavigable: (row) => … }}`, or Tab can jump across the window. Wire Home/End (and vim `gg`/`G`) to the table's
+   handle through `focusEdge`:
+
+   ```tsx
+   const tableRef = useRef<DataTableHandle>(null);
+   useListNavigation({
+     getItems: () => rootRef.current?.querySelectorAll<HTMLElement>(ROW_LINK_SELECTOR) ?? [],
+     focusEdge: (edge) => void tableRef.current?.focusIndex(edge === "first" ? 0 : rows.length - 1),
+   });
+   ```
+
+   The handle's `scrollToIndex` and `focusIndex` return promises that resolve once the row is
+   rendered (and, for `focusIndex`, focused and visible on the page). `focusIndex` resolves
+   `false` without focusing when a user scroll or a newer handle call cancelled it. Await them before reaching for the row's DOM node,
+   and reach rows outside the window this way rather than by `rowDomId`/`getElementById`.
 5. Declare it in the module's manifest (path, title, an `icon` from `ui/lib/icons.ts`, and a nav
    entry with its `group`), and add the component to the table `features/<name>/index.ts`
    registers (lazily via `pages.ts` if it pulls in heavy dependencies).
@@ -510,7 +543,8 @@ renders with external links only.
 
 ## Adding a pattern
 
-Put it in `ui/patterns/<kebab-name>.tsx`, export it from `ui/index.ts`, and:
+Put it in `ui/patterns/<kebab-name>.tsx` (a chart goes in `ui/viz/<kebab-name>.tsx`), export
+it by name from `ui/index.ts` (keep geometry and mark helpers internal), and:
 
 - give its root element `data-slot="<kebab-name>"`;
 - style it only with token classes: no hex, `rgb()` or `oklch()` literals, and `style={…}`

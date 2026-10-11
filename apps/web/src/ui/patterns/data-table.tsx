@@ -55,22 +55,26 @@ export type DataTableScrollAlign = "start" | "center" | "end" | "auto";
 /** The imperative handle a `DataTable` exposes through its `ref`. */
 export interface DataTableHandle {
   /**
-   * Scroll the row at `index` (into `data`) into view, inside the table's own scroll region
-   * (never the page), clear of a sticky header. The promise resolves once the row is rendered
-   * and in place: at once on a plain table; on a virtualized one after the window has moved
-   * to it and its rows are measured. It also resolves, with the row possibly not rendered,
-   * when a user scroll or a newer call takes over, or the row leaves `data`.
+   * Scroll the row at `index` (into `data`) into view, clear of a sticky header: inside the
+   * table's own scroll region when it has one, else (a plain table as tall as its rows) by
+   * scrolling the row into the page. The promise resolves once the row is rendered and in
+   * place: at once on a plain table; on a virtualized one after the window has moved to it and
+   * its rows are measured. It also resolves, with the row possibly not rendered, when a user
+   * scroll or a newer call takes over, or the row leaves `data`.
    */
   scrollToIndex: (index: number, options?: { align?: DataTableScrollAlign }) => Promise<void>;
   /**
    * `scrollToIndex`, then focus the row's link (or the row itself, when `rowDomId` makes it
-   * focusable). Resolves `true` once it has focus. This is how keyboard navigation reaches
-   * row 0 or the last row of a virtualized table, whose far rows are not in the DOM.
+   * focusable) and make sure it is visible on the page. Resolves `true` once it has focus, and
+   * `false` without focusing when the scroll was cancelled (a user scroll, or a newer
+   * `scrollToIndex`/`focusIndex` call took over) or the row has nothing to focus. This is how
+   * keyboard navigation reaches row 0 or the last row of a virtualized table, whose far rows
+   * are not in the DOM.
    */
   focusIndex: (index: number, options?: { align?: DataTableScrollAlign }) => Promise<boolean>;
 }
 
-export interface DataTableVirtualizeOptions {
+export interface DataTableVirtualizeOptions<T = unknown> {
   /** Virtualize when there are at least this many rows (at least 1). Default 300. */
   threshold?: number;
   /** Rows rendered beyond each edge of the viewport. Default 8. */
@@ -82,6 +86,14 @@ export interface DataTableVirtualizeOptions {
    * too, so offsets stay exact.
    */
   rowHeight?: number;
+  /**
+   * Whether a row holds a keyboard focus stop. The focused row's previous and next rows for
+   * which this is true stay rendered, so Tab and Shift+Tab reach them from anywhere in the
+   * table. Default: rows with a row link when `rowLink` is set, else every row. Pass it when
+   * focusable controls are sparse, e.g. `(row) => row.canRestart` for a Restart button that
+   * only some rows have (or `hasLink(row) || hasAction(row)` for mixed rows).
+   */
+  isNavigable?: (row: T) => boolean;
 }
 
 /** A virtualized table falls back to a plain one below `floor(threshold * this)` rows. */
@@ -146,8 +158,9 @@ export interface DataTableProps<T> {
    * of varying height keep the spacers, scrollbar and `scrollToIndex` exact; the
    * table carries `aria-rowcount` and each row `aria-rowindex`.
    *
-   * Keyboard: the focused row and its previous and next navigable rows (the nearest
-   * with a row link, when `rowLink` is set) stay rendered whatever the scroll position
+   * Keyboard: the focused row, its adjacent rows and its previous and next navigable
+   * rows (`isNavigable`: by default the nearest with a row link when `rowLink` is set;
+   * pass it when cell controls are sparse) stay rendered whatever the scroll position
    * or `overscan`, tracked by row id (so they survive rows inserted or re-sorted above
    * them), and a focused row is scrolled into view. Tab, Shift+Tab and arrow keys
    * therefore move row by row across the rendered window. The first and last rows are
@@ -161,25 +174,27 @@ export interface DataTableProps<T> {
    * focus) on every crossing. A table that has never virtualized renders the plain
    * (non-virtualized) table.
    */
-  virtualize?: boolean | DataTableVirtualizeOptions;
+  virtualize?: boolean | DataTableVirtualizeOptions<T>;
   /** Imperative handle (`scrollToIndex`, `focusIndex`); works with and without `virtualize`. */
   ref?: Ref<DataTableHandle>;
 }
 
-interface VirtualConfig {
+interface VirtualConfig<T> {
   threshold: number;
   overscan: number;
   /** An explicit fixed row height, or `undefined` for token-height measured rows. */
   rowHeight: number | undefined;
+  isNavigable: ((row: T) => boolean) | undefined;
 }
 
-function virtualConfig(virtualize: DataTableProps<unknown>["virtualize"]): VirtualConfig | null {
+function virtualConfig<T>(virtualize: DataTableProps<T>["virtualize"]): VirtualConfig<T> | null {
   if (virtualize === undefined || virtualize === false) return null;
   const options = virtualize === true ? {} : virtualize;
   return {
     threshold: Math.max(1, options.threshold ?? DATA_TABLE_VIRTUALIZE_DEFAULTS.threshold),
     overscan: Math.max(0, options.overscan ?? DATA_TABLE_VIRTUALIZE_DEFAULTS.overscan),
     rowHeight: options.rowHeight,
+    isNavigable: options.isNavigable,
   };
 }
 
@@ -215,14 +230,30 @@ function findRow(root: HTMLElement | null, id: string): HTMLElement | null {
   return null;
 }
 
-/** Focus a rendered row's link, or the row itself when it is focusable. */
+/** A row's own controls, for a row with no row link that is not focusable itself. */
+const ROW_CONTROL_SELECTOR = "a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]";
+
+/**
+ * Focus a rendered row's link, else the row itself when it is focusable, else its first
+ * control. The row is already aimed inside the table: focus without the browser's own scroll
+ * (which ignores the sticky header), then bring it into the page if it is outside it.
+ */
 function focusRow(root: HTMLElement | null, id: string): boolean {
   const row = findRow(root, id);
-  const target = row?.querySelector<HTMLElement>(ROW_LINK_SELECTOR) ?? (row?.hasAttribute("tabindex") ? row : null);
-  if (target === null || target === undefined) return false;
+  if (row === null) return false;
+  const target =
+    row.querySelector<HTMLElement>(ROW_LINK_SELECTOR) ??
+    (row.hasAttribute("tabindex") ? row : row.querySelector<HTMLElement>(ROW_CONTROL_SELECTOR));
+  if (target === null) return false;
   target.focus({ preventScroll: true });
+  target.scrollIntoView?.({ block: "nearest" });
   return target.ownerDocument.activeElement === target;
 }
+
+/** Whether the root scrolls vertically (it has a bounded height), or grows with its rows. */
+const scrollsVertically = (root: HTMLElement): boolean => root.scrollHeight > root.clientHeight;
+
+const scrollBlock = (align: DataTableScrollAlign): ScrollLogicalPosition => (align === "auto" ? "nearest" : align);
 
 /**
  * Scroll a plain table's root (only the root, never the page) so `row` sits at `align`,
@@ -315,7 +346,7 @@ export function DataTable<T>({
       ? "h-(--table-compact-cell-h) px-(--table-compact-cell-px) py-(--table-compact-cell-py)"
       : "h-(--table-cell-h) px-(--table-cell-px) py-(--table-cell-py)";
   const rows = table.getRowModel().rows;
-  const virtual = virtualConfig(virtualize);
+  const virtual = virtualConfig<T>(virtualize);
   // Hysteresis (see `virtualize`): stay virtualized down to the exit bound once on. The
   // threshold and exit bound are at least 1, so an empty table is never virtualized.
   const [wasVirtualized, setWasVirtualized] = useState(false);
@@ -331,24 +362,36 @@ export function DataTable<T>({
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
   const virtualScrollRef = useRef<VirtualScroll | null>(null);
+  // Each handle call takes a new token: a `focusIndex` focuses only while it is still the
+  // latest call, so it never undoes a newer scroll.
+  const requestRef = useRef(0);
   useImperativeHandle(ref, () => {
-    const scrollToIndex: DataTableHandle["scrollToIndex"] = (index, options) => {
-      const align = options?.align ?? "auto";
+    /** Scroll to the row; resolves whether the scroll completed (not cancelled or superseded). */
+    const scroll = (index: number, align: DataTableScrollAlign): Promise<boolean> => {
       if (virtualScrollRef.current !== null) return virtualScrollRef.current(index, align);
       const root = rootRef.current;
       const row = root?.querySelector("tbody")?.children[index];
-      if (root && row instanceof HTMLElement && row.hasAttribute("data-row-id")) {
+      if (!root || !(row instanceof HTMLElement) || !row.hasAttribute("data-row-id")) return Promise.resolve(false);
+      if (scrollsVertically(root)) {
         const header = stickyHeader ? (root.querySelector("thead")?.getBoundingClientRect().height ?? 0) : 0;
         scrollPlainRow(root, row, align, header);
+      } else {
+        // A table as tall as its rows does not scroll itself: the page (or an ancestor) does.
+        row.scrollIntoView?.({ block: scrollBlock(align) });
       }
-      return Promise.resolve();
+      return Promise.resolve(true);
     };
     return {
-      scrollToIndex,
+      async scrollToIndex(index, options) {
+        requestRef.current += 1;
+        await scroll(index, options?.align ?? "auto");
+      },
       async focusIndex(index, options) {
+        const token = (requestRef.current += 1);
         const id = rowsRef.current[index]?.id;
         if (id === undefined) return false;
-        await scrollToIndex(index, options);
+        const completed = await scroll(index, options?.align ?? "auto");
+        if (!completed || requestRef.current !== token) return false;
         return focusRow(rootRef.current, id);
       },
     };
@@ -449,7 +492,11 @@ export function DataTable<T>({
         config={virtual}
         rows={rows}
         renderRow={renderRow}
-        isNavigable={(row) => rowLink === undefined || rowLink(row.original) !== undefined}
+        isNavigable={(row) =>
+          virtual.isNavigable !== undefined
+            ? virtual.isNavigable(row.original)
+            : rowLink === undefined || rowLink(row.original) !== undefined
+        }
         headerRows={headerGroups.map((group, g) => (
           <TableRow key={group.id} aria-rowindex={g + 1} className="hover:bg-transparent">
             {group.headers.map((header) => renderHeader(header, g))}
@@ -530,7 +577,8 @@ interface VirtualRowPosition {
 }
 
 /** The virtualized table's `scrollToIndex`. */
-type VirtualScroll = (index: number, align: DataTableScrollAlign) => Promise<void>;
+/** The virtualized table's scroll to a row: resolves whether it completed (not cancelled). */
+type VirtualScroll = (index: number, align: DataTableScrollAlign) => Promise<boolean>;
 
 /**
  * After `scrollToIndex`, how many further commits may re-aim at the row (or re-render the
@@ -553,10 +601,10 @@ const SCROLL_KEYS: ReadonlySet<string> = new Set([
 interface VirtualizedTableProps<T> {
   rootRef: RefObject<HTMLDivElement | null>;
   scrollRef: { current: VirtualScroll | null };
-  config: VirtualConfig;
+  config: VirtualConfig<T>;
   rows: Row<T>[];
   renderRow: (row: Row<T>, position: VirtualRowPosition) => ReactElement;
-  /** Whether a row holds the focus stop keyboard users move between (its row link). */
+  /** Whether a row holds a keyboard focus stop (see `DataTableVirtualizeOptions.isNavigable`). */
   isNavigable: (row: Row<T>) => boolean;
   headerRows: ReactElement[];
   colgroups: ReactNode;
@@ -719,18 +767,20 @@ function VirtualizedTable<T>({
     id: string;
     align: DataTableScrollAlign;
     passes: number;
-    resolve: () => void;
+    resolve: (completed: boolean) => void;
   } | null>(null);
-  const settlePendingScroll = () => {
+  /** Ends the pending scroll: `completed` when it reached the row, else cancelled or superseded. */
+  const settlePendingScroll = (completed = false) => {
     const pending = pendingScrollRef.current;
     pendingScrollRef.current = null;
-    pending?.resolve();
+    pending?.resolve(completed);
   };
-  const scrollToRow = (index: number, align: DataTableScrollAlign, flush = false): Promise<void> => {
-    settlePendingScroll();
+  const cancelPendingScroll = () => settlePendingScroll(false);
+  const scrollToRow = (index: number, align: DataTableScrollAlign, flush = false): Promise<boolean> => {
+    cancelPendingScroll();
     const id = rows[index]?.id;
     const target = virtualizer.getOffsetForIndex(index, align);
-    if (id === undefined || target === undefined) return Promise.resolve();
+    if (id === undefined || target === undefined) return Promise.resolve(false);
     return new Promise((resolve) => {
       pendingScrollRef.current = { id, align, passes: SCROLL_CORRECTION_PASSES, resolve };
       if (target[0] !== virtualizer.scrollOffset) virtualizer.scrollToOffset(target[0], { align: "start" });
@@ -749,11 +799,12 @@ function VirtualizedTable<T>({
     if (pending === null || viewport === null) return;
     const index = indexById.get(pending.id);
     const target = index === undefined ? undefined : virtualizer.getOffsetForIndex(index, pending.align);
-    if (target === undefined) return settlePendingScroll();
+    if (target === undefined) return cancelPendingScroll();
     const reachable = Math.min(target[0], viewport.scrollHeight - viewport.clientHeight);
     const rendered = virtualizer.getVirtualItems().some((item) => item.index === index);
     const aimed = Math.abs(viewport.scrollTop - reachable) <= 1;
-    if ((rendered && aimed) || pending.passes <= 0) return settlePendingScroll();
+    // Out of passes, it settles where it is: complete if the row is at least rendered.
+    if ((rendered && aimed) || pending.passes <= 0) return settlePendingScroll(rendered);
     pending.passes -= 1;
     if (!aimed) virtualizer.scrollToOffset(reachable, { align: "start" });
     syncOffset(false);
@@ -763,7 +814,7 @@ function VirtualizedTable<T>({
   // A key the browser turns into a scroll of the viewport. Keys a handler already took
   // (list navigation prevents the default and moves focus, which re-aims) do not cancel.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!event.defaultPrevented && SCROLL_KEYS.has(event.key)) settlePendingScroll();
+    if (!event.defaultPrevented && SCROLL_KEYS.has(event.key)) cancelPendingScroll();
   };
 
   useLayoutEffect(() => {
@@ -773,7 +824,7 @@ function VirtualizedTable<T>({
     };
   });
   // An unmount mid-scroll still resolves the caller's promise.
-  useLayoutEffect(() => settlePendingScroll, []);
+  useLayoutEffect(() => cancelPendingScroll, []);
 
   const onFocus = (event: FocusEvent<HTMLDivElement>) => {
     const row = (event.target as Element).closest(`[${ROW_INDEX_ATTRIBUTE}]`);
@@ -820,9 +871,9 @@ function VirtualizedTable<T>({
       tabIndex={focusable ? 0 : undefined}
       onFocus={onFocus}
       onBlur={onBlur}
-      onWheel={settlePendingScroll}
-      onTouchStart={settlePendingScroll}
-      onPointerDown={settlePendingScroll}
+      onWheel={cancelPendingScroll}
+      onTouchStart={cancelPendingScroll}
+      onPointerDown={cancelPendingScroll}
       onKeyDown={onKeyDown}
       className={cn(ROOT_CLASS, "max-h-[70vh]", className)}
     >

@@ -298,7 +298,9 @@ describe("@/ui DataTable virtualize", () => {
       const props = { caption: "Hosts", columns: COLUMNS, getRowId: (r: Host) => r.key, captionHidden: true } as const;
       const { rerender } = render(<DataTable ref={ref} {...props} data={hosts(20)} />);
       const root = document.querySelector<HTMLElement>('[data-slot="data-table"]')!;
+      // A bounded root: 100px tall over 20 rows.
       Object.defineProperty(root, "clientHeight", { configurable: true, value: 100 });
+      Object.defineProperty(root, "scrollHeight", { configurable: true, value: 36 + 20 * 36 });
       root.getBoundingClientRect = () => ({ top: 0, height: 100 }) as DOMRect;
       const rootScroll = vi.fn();
       root.scrollTo = rootScroll as HTMLElement["scrollTo"];
@@ -318,6 +320,170 @@ describe("@/ui DataTable virtualize", () => {
       expect(rootScroll).toHaveBeenLastCalledWith({ top: 36 + 12 * 36 });
       expect(pageScroll).not.toHaveBeenCalled();
       pageScroll.mockRestore();
+    });
+
+    describe("on a plain table as tall as its rows (not a scroll container)", () => {
+      const intoView = vi.fn();
+      const proto = (globalThis as unknown as { HTMLElement: { prototype: HTMLElement } }).HTMLElement.prototype;
+      let original: HTMLElement["scrollIntoView"] | undefined;
+      beforeEach(() => {
+        intoView.mockClear();
+        original = proto.scrollIntoView;
+        proto.scrollIntoView = intoView as HTMLElement["scrollIntoView"];
+      });
+      afterEach(() => {
+        if (original === undefined) delete (proto as Partial<HTMLElement>).scrollIntoView;
+        else proto.scrollIntoView = original;
+      });
+
+      it("scrollToIndex scrolls the row into the page instead of the root", async () => {
+        const ref = createRef<DataTableHandle>();
+        render(<DataTable ref={ref} {...linkProps} data={hosts(20)} />);
+        const root = document.querySelector<HTMLElement>('[data-slot="data-table"]')!;
+        const rootScroll = vi.fn();
+        root.scrollTo = rootScroll as HTMLElement["scrollTo"];
+        // jsdom: scrollHeight == clientHeight, as for an unbounded root.
+        expect(root.scrollHeight).toBe(root.clientHeight);
+
+        await viaHandle(() => ref.current!.scrollToIndex(12, { align: "start" }));
+
+        expect(intoView).toHaveBeenCalledWith({ block: "start" });
+        expect(intoView.mock.contexts.at(-1)).toBe(screen.getByRole("rowheader", { name: "host-12" }).closest("tr"));
+        expect(rootScroll).not.toHaveBeenCalled();
+      });
+
+      it("focusIndex leaves the focused link visible", async () => {
+        const ref = createRef<DataTableHandle>();
+        render(<DataTable ref={ref} {...linkProps} data={hosts(20)} />);
+
+        expect(await viaHandle(() => ref.current!.focusIndex(19))).toBe(true);
+
+        const link = screen.getByRole("link", { name: "host-19" });
+        expect(document.activeElement).toBe(link);
+        expect(intoView.mock.contexts).toContain(link);
+        expect(intoView).toHaveBeenLastCalledWith({ block: "nearest" });
+      });
+    });
+
+    it("focusIndex does not focus when a newer call supersedes its scroll", async () => {
+      const ref = createRef<DataTableHandle>();
+      render(<DataTable ref={ref} {...linkProps} data={hosts(1000)} virtualize />);
+      const link = screen.getByRole("link", { name: "host-3" });
+      act(() => link.focus());
+
+      let focused!: Promise<boolean>;
+      let scrolled!: Promise<void>;
+      act(() => {
+        // host-4 stays rendered (the focused row's neighbour), so a stale focus would land.
+        focused = ref.current!.focusIndex(4);
+        scrolled = ref.current!.scrollToIndex(900, { align: "start" });
+      });
+      let result: boolean | undefined;
+      await act(async () => {
+        result = await focused;
+        await scrolled;
+      });
+
+      expect(result).toBe(false);
+      expect(document.activeElement).toBe(link);
+      // The newer scroll stands.
+      const target = screen.getByRole("link", { name: "host-900" }).closest("tr")!;
+      expect(bodyOffset(target)).toBe(viewport().scrollTop);
+    });
+
+    it("focusIndex does not focus when a user scroll cancels it", async () => {
+      const ref = createRef<DataTableHandle>();
+      render(<DataTable ref={ref} {...linkProps} data={hosts(1000)} virtualize />);
+      const link = screen.getByRole("link", { name: "host-3" });
+      act(() => link.focus());
+
+      let focused!: Promise<boolean>;
+      act(() => {
+        focused = ref.current!.focusIndex(900);
+        // A wheel gesture before the scroll settled.
+        viewport().dispatchEvent(new Event("wheel", { bubbles: true }));
+      });
+      let result: boolean | undefined;
+      await act(async () => {
+        result = await focused;
+      });
+
+      expect(result).toBe(false);
+      expect(document.activeElement).toBe(link);
+    });
+  });
+
+  describe("keyboard with sparse cell controls (isNavigable)", () => {
+    const at = (r: Host) => Number(r.key.slice("host-".length));
+    const pingColumns: ColumnDef<Host>[] = [
+      { accessorKey: "key", header: "Host" },
+      {
+        id: "actions",
+        header: "Actions",
+        cell: ({ row }) => (at(row.original) % 5 === 0 ? <button type="button">Ping {row.original.key}</button> : null),
+      },
+    ];
+
+    it("Tab and Shift+Tab reach the next and previous row with a control, outside the window", async () => {
+      const ref = createRef<DataTableHandle>();
+      render(
+        <DataTable
+          ref={ref}
+          caption="Hosts"
+          columns={pingColumns}
+          getRowId={(r) => r.key}
+          data={hosts(1000)}
+          virtualize={{ overscan: 0, isNavigable: (r) => at(r) % 5 === 0 }}
+        />,
+      );
+      act(() => screen.getByRole("button", { name: "Ping host-5" }).focus());
+      await viaHandle(() => ref.current!.scrollToIndex(500, { align: "start" }));
+
+      await userEvent.tab();
+      expect(document.activeElement).toHaveTextContent("Ping host-10");
+
+      await viaHandle(() => ref.current!.scrollToIndex(500, { align: "start" }));
+      await userEvent.tab({ shift: true });
+      expect(document.activeElement).toHaveTextContent("Ping host-5");
+    });
+
+    it("mixed rows: links on some, actions on others", async () => {
+      const ref = createRef<DataTableHandle>();
+      const hasLink = (r: Host) => at(r) % 10 === 0;
+      const hasAction = (r: Host) => at(r) % 10 === 5;
+      const columns: ColumnDef<Host>[] = [
+        { accessorKey: "key", header: "Host" },
+        {
+          id: "actions",
+          header: "Actions",
+          cell: ({ row }) => (hasAction(row.original) ? <button type="button">Restart {row.original.key}</button> : null),
+        },
+      ];
+      render(
+        <DataTable
+          ref={ref}
+          {...linkProps}
+          columns={columns}
+          rowLink={(r) => (hasLink(r) ? `/hosts/${r.key}` : undefined)}
+          data={hosts(1000)}
+          virtualize={{ overscan: 0, isNavigable: (r) => hasLink(r) || hasAction(r) }}
+        />,
+      );
+      act(() => screen.getByRole("link", { name: "host-0" }).focus());
+      await viaHandle(() => ref.current!.scrollToIndex(500, { align: "start" }));
+
+      await userEvent.tab();
+      expect(document.activeElement).toHaveTextContent("Restart host-5");
+      await viaHandle(() => ref.current!.scrollToIndex(500, { align: "start" }));
+      await userEvent.tab();
+      expect(document.activeElement).toHaveAttribute("data-row-link", "host-10");
+      await viaHandle(() => ref.current!.scrollToIndex(500, { align: "start" }));
+      await userEvent.tab({ shift: true });
+      expect(document.activeElement).toHaveTextContent("Restart host-5");
+
+      // focusIndex on a row without a link focuses its control.
+      expect(await viaHandle(() => ref.current!.focusIndex(15))).toBe(true);
+      expect(document.activeElement).toHaveTextContent("Restart host-15");
     });
   });
 

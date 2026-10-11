@@ -180,8 +180,10 @@ describe("styling: tokens, not literals", () => {
 });
 
 describe("library components", () => {
-  it("roots every pattern in a data-slot", () => {
-    expect(shown(patternsWithoutDataSlot(tsx.filter(({ rel }) => rel.startsWith("src/ui/patterns/"))))).toEqual([]);
+  it("roots every pattern and chart in a data-slot", () => {
+    const components = tsx.filter(({ rel }) => rel.startsWith("src/ui/patterns/") || rel.startsWith("src/ui/viz/"));
+    expect(components.some(({ rel }) => rel.startsWith("src/ui/viz/"))).toBe(true);
+    expect(shown(patternsWithoutDataSlot(components))).toEqual([]);
   });
 
   it("never sets data-icon (the legacy icon masks are gone; use <Icon>)", () => {

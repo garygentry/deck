@@ -209,3 +209,13 @@ export {
   type SegmentedControlProps,
   type SegmentedOption,
 } from "./patterns/segmented-control";
+
+// Viz: dependency-free SVG charts
+export { Gauge, type GaugeProps } from "./viz/gauge";
+export { Sparkline, type SparklineProps, type SparklineSample } from "./viz/sparkline";
+export {
+  StatusTimeline,
+  type StatusTimelineProps,
+  type TimelineLane,
+  type TimelineSegment,
+} from "./viz/status-timeline";

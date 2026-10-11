@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   Button,
@@ -324,18 +324,138 @@ describe("PageErrorBoundary", () => {
     const heading = screen.getByRole("heading", { level: 1, name: "Hosts" });
     expect(heading).toHaveFocus();
     expect(heading).toHaveAttribute("tabindex", "-1");
+    act(() => heading.blur());
+    expect(heading).not.toHaveAttribute("tabindex");
   });
 
-  it("refocuses the fallback's heading when Retry fails again", async () => {
+  it.each([1, 2, 3] as const)("refocuses the level-%i fallback heading when Retry fails again", async (level) => {
+    render(
+      <div>
+        <PageErrorBoundary level={level}>
+          <Throws />
+        </PageErrorBoundary>
+      </div>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(screen.getByRole("heading", { level, name: "This page could not be displayed" })).toHaveFocus();
+  });
+
+  /** Throws once, then suspends on `gate` until it resolves (a page loading behind a Suspense). */
+  function deferredPage() {
+    let failing = true;
+    let loaded = false;
+    let open = (): void => {};
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    }).then(() => {
+      loaded = true;
+    });
+    function Page() {
+      if (failing) throw new Error("boom");
+      if (!loaded) throw gate;
+      return (
+        <div data-slot="hosts-page">
+          <h1>Hosts</h1>
+        </div>
+      );
+    }
+    const ui = (resetKey: string) => (
+      <main tabIndex={-1}>
+        <PageErrorBoundary resetKey={resetKey}>
+          <Suspense fallback={<p>Loading page</p>}>
+            <Page />
+          </Suspense>
+        </PageErrorBoundary>
+      </main>
+    );
+    return { ui, recover: () => (failing = false), resolve: () => act(async () => open()) };
+  }
+
+  it("focuses the recovered h1 once a descendant Suspense resolves after Retry", async () => {
+    const page = deferredPage();
+    render(page.ui("/hosts"));
+    page.recover();
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(screen.getByText("Loading page")).toBeInTheDocument();
+    expect(screen.getByRole("main")).toHaveFocus(); // the focusable host holds focus meanwhile
+    await page.resolve();
+    expect(await screen.findByRole("heading", { level: 1, name: "Hosts" })).toHaveFocus();
+  });
+
+  it("drops the pending focus when the user moves focus or the route changes", async () => {
+    const moved = deferredPage();
+    const { unmount } = render(
+      <>
+        {moved.ui("/hosts")}
+        <button type="button">Elsewhere</button>
+      </>,
+    );
+    moved.recover();
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    act(() => screen.getByRole("button", { name: "Elsewhere" }).focus());
+    await moved.resolve();
+    await screen.findByRole("heading", { level: 1, name: "Hosts" });
+    expect(screen.getByRole("button", { name: "Elsewhere" })).toHaveFocus();
+    unmount();
+
+    const navigated = deferredPage();
+    const { rerender } = render(navigated.ui("/hosts"));
+    navigated.recover();
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    rerender(navigated.ui("/alerts"));
+    await navigated.resolve();
+    expect(await screen.findByRole("heading", { level: 1, name: "Hosts" })).not.toHaveFocus();
+  });
+
+  it("searches only its own content: a sibling h1 is never the target", async () => {
+    let failing = true;
+    function Section() {
+      if (failing) throw new Error("boom");
+      return (
+        <div data-slot="detail-page">
+          <h2>Detail</h2>
+        </div>
+      );
+    }
     render(
       <main>
-        <PageErrorBoundary>
-          <Throws />
+        <h1>Outer page</h1>
+        <PageErrorBoundary level={2}>
+          <Section />
         </PageErrorBoundary>
       </main>,
     );
+    failing = false;
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(screen.getByRole("heading", { level: 1, name: "This page could not be displayed" })).toHaveFocus();
+    expect(screen.getByRole("heading", { level: 1, name: "Outer page" })).not.toHaveFocus();
+    expect(document.querySelector('[data-slot="detail-page"]')).toHaveFocus();
+  });
+
+  it("falls back to a focusable host when the content has no h1 or page root (not a breadcrumb-page)", async () => {
+    let failing = true;
+    function Content() {
+      if (failing) throw new Error("boom");
+      return (
+        <div>
+          <nav aria-label="Breadcrumb">
+            <span data-slot="breadcrumb-page">Crumb</span>
+          </nav>
+          <h2>Section</h2>
+        </div>
+      );
+    }
+    render(
+      <main tabIndex={-1}>
+        <PageErrorBoundary>
+          <Content />
+        </PageErrorBoundary>
+      </main>,
+    );
+    failing = false;
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(screen.getByText("Crumb")).not.toHaveFocus();
+    expect(screen.getByText("Crumb")).not.toHaveAttribute("tabindex");
+    expect(screen.getByRole("main")).toHaveFocus();
   });
 });
 

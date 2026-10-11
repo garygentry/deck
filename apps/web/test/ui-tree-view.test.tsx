@@ -115,7 +115,7 @@ describe("TreeView semantics", () => {
     const target = document.getElementById(item("readme.md").getAttribute("aria-describedby")!)!;
     expect(target).toHaveTextContent("file · 9 chars");
     expect(target.className).not.toMatch(/\bcontents\b/);
-    expect(target).toHaveClass("inline-flex");
+    expect(target).toHaveClass("inline-flex", "min-w-0"); // long meta text can shrink, not overflow
     // The meta never joins the accessible name.
     expect(screen.getByRole("treeitem", { name: "readme.md" })).toBeInTheDocument();
   });

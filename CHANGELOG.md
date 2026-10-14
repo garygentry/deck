@@ -14,8 +14,8 @@ not ship. It is drafted as two releases:
   config-driven UI, dashboards and widgets (#15–#30, #40, #41, #43, #44). It is the history up
   to the merge of #44.
 - **0.5.0**: the external extension tiers (sidecars, runtime modules, the module template), the
-  browser security pass, and the move of the built-in modules into `modules/<id>/` (#39,
-  #45–#49, #55–#73, #76).
+  browser security pass, the move of the built-in modules into `modules/<id>/` (#39,
+  #45–#49, #55–#73, #76), and new `@/ui` patterns and primitives (#31–#38).
 
 Whether these ship as two tags or as one release is the maintainer's call. For one release,
 merge the two sections, including both Migration sections: the framing changes in 0.5.0's
@@ -219,6 +219,19 @@ Migration below).
   findings are now read inside its guard, so a malformed one disables only that module (#78).
 - **A shared provider timing rule** in `@deck/module-sdk` (`timingProblem`, `clampTiming`): whole
   milliseconds up to 2147483647, a poll interval of at least 1000 ms (#78).
+- **UI primitives:** `RadioGroup`, `Textarea`, `Kbd` and `KbdGroup`, and a `loading` state on
+  `Button` that shows a spinner, sets `aria-busy` and keeps the button's accessible name (#33).
+- **Charts:** `Sparkline`, `StatusTimeline` and `Gauge` in `@/ui`. `Gauge` is a labelled
+  `meter`, and `StatusTimeline` has a screen-reader list of its intervals. They are not yet in
+  `@deck/sdk` (#35; issue #80).
+- **`CommandPalette`** pattern: a searchable command dialog with groups and keyboard navigation
+  (#38).
+- **`DataTable` row virtualization** (opt-in `virtualize`), with a `scrollToIndex` /
+  `focusIndex` handle that keeps keyboard navigation working across rows that are not rendered.
+  Its types are exported from `@deck/sdk` (#34).
+- **`Disclosure`** takes a `countLabel` (a phrase or a function of the count), and its trigger's
+  accessible name is its label plus that count, even when the label is not plain text.
+  `FreshnessBadge` takes a `variant` (#31).
 
 #### Changed
 
@@ -255,9 +268,13 @@ Migration below).
   loopback, link-local or unspecified address is refused; hostnames are not resolved, so trust
   the upstream you opt in for. An authenticated poll never follows such a redirect, and
   `deck validate` warns when the two are combined (`HTTP_JSON_REDIRECT_OPT_IN_IGNORED`) (#50).
+- **Radix** is imported from the scoped `@radix-ui/react-*` packages instead of the `radix-ui`
+  umbrella; a `radix-umbrella` rule in `@deck/sdk/lint` keeps deck's own UI on them (#32).
 
 #### Fixed
 
+- **A page that crashed and is retried** gets keyboard focus back on its content once it has
+  loaded again, instead of losing it to the document body (#36).
 - **`prometheus`:** a query error shows as that summary in error, with the provider still
   healthy, instead of reporting the endpoint as unreachable. A query error is a 400 (PromQL that
   does not parse), a 422 (a query that cannot execute), or a 4xx carrying Prometheus's error

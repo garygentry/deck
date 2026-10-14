@@ -6,28 +6,195 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-The extensibility work: deck becomes a small kernel plus modules on one public contract, the UI
-becomes a config-driven tree of extensions, and there are supported ways to add what deck does
-not ship. It is drafted as two releases:
+## [0.5.0] - 2026-10-14
 
-- **0.4.0** (breaking): the module contract, schemaVersion 2 with `deck config migrate`,
-  config-driven UI, dashboards and widgets (#15–#30, #40, #41, #43, #44). It is the history up
-  to the merge of #44.
-- **0.5.0**: the external extension tiers (sidecars, runtime modules, the module template), the
-  browser security pass, and the move of the built-in modules into `modules/<id>/` (#39,
-  #45–#49, #55–#73, #76).
+Upgrading from 0.3.x: apply 0.4.0's Migration (schemaVersion 2 via `deck config migrate`) and then
+this release's. The framing changes below are breaking too.
 
-Whether these ship as two tags or as one release is the maintainer's call. For one release,
-merge the two sections, including both Migration sections: the framing changes in 0.5.0's
-Migration are breaking too.
+Graded ways to extend deck beyond config: a sidecar in any language, a runtime module dropped
+into a directory, and a template to start one from. Browsers now get an enforced
+Content-Security-Policy, and framing deck from another origin is refused unless configured (see
+Migration below).
 
-### 0.4.0
+### Added
+
+- **Remote sidecars** (`remote` integration kind, protocol v1): deck polls
+  `<url>/deck/v1/data` and asks `<url>/deck/v1/describe` for the declarative widgets, links and
+  nav the sidecar contributes, validated against the same widget schemas and shown on the
+  sidecar's own page. Each sidecar has its own health entry. See
+  `docs/reference/remote-provider-protocol.md`, `docs/guides/write-a-sidecar-module.md` and the
+  NUT UPS example in `examples/sidecars/nut-ups/` (#45, #46).
+- **Runtime modules** (`DECK_MODULES_DIR`): a directory of modules, each with a
+  `deck-module.json`, loaded under the same lifecycle as the built-ins. Off unless
+  `DECK_MODULES_ENABLED=true`; while it is off deck reads their manifests and imports no code. A
+  module that fails to load is disabled with `MODULE_LOAD_FAILED` and boot continues, unless its
+  config section is present and invalid (#39).
+- **Integrity pins** (`moduleIntegrity.<id>`) and **`deck module digest <dir>`**, which prints
+  the `sha256-…` pin of a module directory. A module that does not match its pin is not
+  imported (#39).
+- **Web halves of runtime modules**, served at `/modules/<id>/web.js` and `web.css` and loaded
+  through an import map. They build against **`@deck/sdk`**, the curated `@/ui` patterns,
+  `Icon` (including module-contributed SVG icons), tones and data hooks. An incompatible or
+  failing module shows a tile instead of breaking the page (#47).
+- **Module template** in `examples/modules/hello/`, with a Vite library build, the
+  `@deck/sdk/tailwind` preset, and **`deck-module lint`**, which checks a module against deck's
+  UI rules (#49). See `docs/guides/runtime-modules.md` and `docs/guides/write-a-module.md`.
+- **`ui.frameAncestors`** and **`ui.frameSources`** (see Migration) (#48).
+- Architecture decisions ADR-005 (module contract and kernel), ADR-006 (config-driven UI) and
+  ADR-007 (extension tiers and trust), the explanation "Kernel and modules", and references for
+  the module manifest and widget types (#56).
+- **`validateBinding`** on a module's provider-kind handler: a config check over each host or
+  service binding of a bindable kind, as `validate` is for integration instances. A kind rule's
+  findings are now read inside its guard, so a malformed one disables only that module (#78).
+- **A shared provider timing rule** in `@deck/module-sdk` (`timingProblem`, `clampTiming`): whole
+  milliseconds up to 2147483647, a poll interval of at least 1000 ms (#78).
+- **UI primitives:** `RadioGroup`, `Textarea`, `Kbd` and `KbdGroup`, and a `loading` state on
+  `Button` that shows a spinner, sets `aria-busy` and keeps the button's accessible name (#33).
+- **Charts:** `Sparkline`, `StatusTimeline` and `Gauge` in `@/ui`. `Gauge` is a labelled
+  `meter`, and `StatusTimeline` has a screen-reader list of its intervals. They are not yet in
+  `@deck/sdk` (#35; issue #80).
+- **`CommandPalette`** pattern: a searchable command dialog with groups and keyboard navigation
+  (#38).
+- **`DataTable` row virtualization** (opt-in `virtualize`), with a `scrollToIndex` /
+  `focusIndex` handle that keeps keyboard navigation working across rows that are not rendered.
+  Its types are exported from `@deck/sdk` (#34).
+- **`Disclosure`** takes a `countLabel` (a phrase or a function of the count), and its trigger's
+  accessible name is its label plus that count, even when the label is not plain text.
+  `FreshnessBadge` takes a `variant` (#31).
+
+### Changed
+
+- **Browser security policy** (#48): the web shell is served with an enforced
+  Content-Security-Policy (scripts from deck's origin with a per-response nonce, `fetch` to deck
+  only, frames limited to the `core/embed` origins in the config), and every response carries
+  `frame-ancestors` and `X-Content-Type-Options: nosniff`, plus `X-Frame-Options: SAMEORIGIN`
+  unless `ui.frameAncestors` lists other origins. `docs/security.md` gains the trust model for
+  each extension tier.
+- **Reserved provider ids:** an integration, source or binding that takes a fixed provider id
+  registered by another kind (`prometheus` beside a `prometheus` integration, or `snapshot` while
+  `DECK_SNAPSHOT_SOURCE` is set) is reported by `deck validate` as `PROVIDER_ID_RESERVED`
+  (error), since boot would fail on it with `PROVIDER_DUPLICATE_ID` (#48).
+- A built-in module whose manifest or schema is unusable now stops boot
+  (`MODULE_MANIFEST_INVALID`) instead of being switched off silently (#48).
+- A `remote` sidecar can no longer redirect deck to another origin (#48).
+- **Sources are stricter about what they serve** (#76):
+  - `include` and `exclude` now apply to every read (file, raw, search and the tree), not only
+    the tree listing. An excluded path answers 404 `PATH_NOT_FOUND`, like a missing file.
+  - They match a symlink's real target as well as its own path, so a symlink to a file that is
+    not included, or is excluded, is neither listed nor served.
+  - `exclude` matches regardless of case: `build/**` also hides `Build/`.
+  - `/api/sources/<id>/raw` serves only files in the tree, or images under an `include` glob's
+    base. The file name, the real path and the file's bytes must agree on the image type. Raw
+    responses carry `Content-Security-Policy: sandbox; default-src 'none'` (plus inline styles)
+    and `nosniff`, so a script in an SVG opened by its raw URL does not run.
+- Every built-in module now lives in its own `modules/<id>/` workspace package, with its schema,
+  server half, web half and tests. Behaviour is unchanged (#55, #57, #58, #59, #63, #64, #65,
+  #66, #68, #69, #71, #73).
+- **Behaviour change: an `http-json` poll no longer follows a redirect to another origin** by
+  default, credential or not, so an endpoint cannot steer deck's poll to another host on its
+  network (see Migration). An unauthenticated instance can opt back in with
+  `followCrossOriginRedirects: true`. Even with the opt-in, a redirect to `localhost` or a literal
+  loopback, link-local or unspecified address is refused; hostnames are not resolved, so trust
+  the upstream you opt in for. An authenticated poll never follows such a redirect, and
+  `deck validate` warns when the two are combined (`HTTP_JSON_REDIRECT_OPT_IN_IGNORED`) (#50).
+- **Radix** is imported from the scoped `@radix-ui/react-*` packages instead of the `radix-ui`
+  umbrella; a `radix-umbrella` rule in `@deck/sdk/lint` keeps deck's own UI on them (#32).
+
+### Fixed
+
+- **A page that crashed and is retried** gets keyboard focus back on its content once it has
+  loaded again, instead of losing it to the document body (#36).
+- **`prometheus`:** a query error shows as that summary in error, with the provider still
+  healthy, instead of reporting the endpoint as unreachable. A query error is a 400 (PromQL that
+  does not parse), a 422 (a query that cannot execute), or a 4xx carrying Prometheus's error
+  document. A typo in one query is therefore no longer reported as an outage. A connection
+  failure, a 5xx, or a refusal of the endpoint itself (401, 403, 404, 407, 429) still makes the
+  query unreachable. When every query fails that way, the provider's health now names the
+  refusal (`Prometheus authentication refused (401)`, say) (#70).
+- **`alertmanager`:** when the alerts or the silences request fails, the other request is
+  cancelled and its response body released, instead of being left open (#70).
+- **Unsafe link targets are refused** (#78, fixes issue #61). A link `href` that is not an
+  `http(s)://` URL or an absolute path in deck (`javascript:`, `data:`, `//host`, a relative path)
+  fails `deck validate` and boot, and is never rendered as a link:
+  - a `link` binding's: `LINK_HREF_UNSAFE`, or `LINK_HREF_MISSING` without one; the binding
+    registers no provider;
+  - a host's or service's `links[]`: `ENTITY_LINK_HREF_UNSAFE`; inventory shows its title as text;
+  - a portal link item's: `PORTAL_LINK_HREF_UNSAFE`; the portal card (also a service card's first
+    link) is a plain tile.
+
+  **Behaviour change:** see Migration.
+- **`http-health` probes** (#78, fixes issue #60): a probe is aborted when its poll times out,
+  and a superseded probe never writes health; the response body is cancelled unread, so
+  connections are released. **Behaviour changes:** redirects are no longer followed, so a 3xx
+  answer counts as up (as documented: 200–399 is up); and a `timing` that is not an object of
+  timing fields in range (0, negative, a fraction, `.nan`, `.inf`, 3e9, an unknown key) is
+  `HTTP_HEALTH_TIMING_INVALID` (error) instead of reaching the scheduler (a `pollIntervalMs: 0`
+  polled continuously). See Migration.
+- **Provider timing is bounded for every kind** (#78): the scheduler rounds and clamps a poll
+  interval into 1000–2147483647 ms and the other timing fields into 1–2147483647 ms, logging a
+  `provider.timing-adjusted` warning. A value past 2147483647 used to fire every millisecond.
+
+### Migration
+
+1. **Framing deck from another origin is refused by default.** A page on another origin that
+   shows deck in a frame (a Home Assistant panel, say) stops showing it. List that origin in the
+   overlay layer:
+
+   ```yaml
+   ui:
+     frameAncestors: [https://ha.example.net]
+   ```
+
+2. **Embeds that redirect to another origin need `ui.frameSources`.** With
+   `ui.allowUnsafeEmbeds`, a framed page may load only from its embed URL's own origin. One that
+   redirects elsewhere (single sign-on or forward-auth such as Authelia or Authentik, or an
+   `http`→`https` redirect that also changes the port) needs that origin listed. A plain upgrade
+   to `https` on the default port needs nothing.
+
+   ```yaml
+   ui:
+     frameSources: [https://auth.example.net]
+   ```
+
+3. **Injected inline and cross-origin scripts no longer run.** The shell's
+   Content-Security-Policy allows scripts from deck's origin and inline scripts carrying the
+   response's nonce. An inline script a reverse proxy injects into deck's HTML (it has no nonce),
+   or a script from another origin, is refused. A script tag pointing at a path on deck's own
+   origin still runs.
+4. **Some embed URLs cannot be framed.** While embeds are on, an embed URL whose origin the
+   Content-Security-Policy cannot name (an IPv6 literal, or a hostname with `_`) is
+   `UI_EMBED_NOT_FRAMEABLE` (warning), and the widget says it can't be embedded. `frameSources`
+   does not help: give the service a DNS-style hostname, or link to it instead.
+5. **Sources: symlinks, excludes and raw files.** A repository that symlinks a file from outside
+   its `include` globs into an included directory, or that relied on `exclude` being
+   case-sensitive, loses those files: the symlinked ones are no longer listed or served, and a
+   differently-cased path that an `exclude` matches is now hidden. Copy the file into an included
+   path, widen `include`, or narrow the `exclude` glob. `/raw` likewise no longer serves a file
+   that is outside the tree and not an image under an `include` glob's base, nor an image whose
+   name and bytes disagree on its type (a `.png` that is really a JPEG, say): rename or re-save
+   it.
+6. **Link hrefs and `http-health` timing are checked.** A link whose `href` is not an
+   `http(s)://` URL or a path starting with a single `/` now fails `deck validate` and boot: in a
+   `link` binding (`LINK_HREF_UNSAFE`), a host's or service's `links` (`ENTITY_LINK_HREF_UNSAFE`)
+   or a portal link item (`PORTAL_LINK_HREF_UNSAFE`). A `mailto:` or relative link must become a
+   full URL. An `http-health` `timing` value that is not a whole number of milliseconds in range
+   (a poll interval under 1000, say) fails the same way (`HTTP_HEALTH_TIMING_INVALID`): fix or
+   remove it.
+7. **`http-health` no longer follows redirects.** A URL that answers 3xx now counts as up, even
+   when the redirect's target would answer 5xx. To probe the target, point `url` at it.
+8. **`http-json` integrations whose URL redirects to another origin.** Such a poll now fails
+   with `cross-origin redirect refused`. That includes an `http://` URL upgraded to `https://`,
+   since the scheme is part of the origin. Set `url` to the address the API finally answers on.
+   For an unauthenticated API that really is served from elsewhere (a CDN or an object store),
+   set `followCrossOriginRedirects: true` on the integration instead.
+
+## [0.4.0] - 2026-10-14
 
 The configuration format changes: deck accepts only `schemaVersion: 2`. Run
 `deck config migrate` on your config directory before upgrading (see Migration below). The HTTP
 API paths of 0.3.2 keep working; `/api/config` returns the config in its new shape.
 
-#### Added
+### Added
 
 - **Modules.** Every feature is now a module on one contract (`@deck/module-sdk`): it declares
   its config section, provider kinds, routes, health, findings and UI contributions in a
@@ -83,7 +250,7 @@ API paths of 0.3.2 keep working; `/api/config` returns the config in its new sha
 - **Snapshot content-age metrics** on `/metrics`: `deck_snapshot_generated_age_seconds` and
   `deck_snapshot_generated_timestamp_seconds`, from the snapshot's `generatedAt` (#24).
 
-#### Changed
+### Changed
 
 - **The portal is a dashboard.** Its page is `page:portal/overview` at `/portal`, and `/` still
   renders it while it is the home page. Card status now works for any status-capable binding:
@@ -105,7 +272,7 @@ API paths of 0.3.2 keep working; `/api/config` returns the config in its new sha
 - **Runtime image:** Bun 1.4.2 (was 1.3.9), pinned in `.bun-version` for the image and CI
   (#40).
 
-#### Migration
+### Migration
 
 1. **Migrate the config to schemaVersion 2.** deck 0.4.0 refuses a version 1 config with
    `CONFIG_MIGRATION_REQUIRED` (exit 2), at boot and in `deck validate`. Preview, apply, then
@@ -179,168 +346,6 @@ re-pin `0.3.2`:
 ```sh
 cp -aL /path/to/your/estate.v1-backup/. /path/to/your/estate/
 ```
-
-### 0.5.0
-
-Graded ways to extend deck beyond config: a sidecar in any language, a runtime module dropped
-into a directory, and a template to start one from. Browsers now get an enforced
-Content-Security-Policy, and framing deck from another origin is refused unless configured (see
-Migration below).
-
-#### Added
-
-- **Remote sidecars** (`remote` integration kind, protocol v1): deck polls
-  `<url>/deck/v1/data` and asks `<url>/deck/v1/describe` for the declarative widgets, links and
-  nav the sidecar contributes, validated against the same widget schemas and shown on the
-  sidecar's own page. Each sidecar has its own health entry. See
-  `docs/reference/remote-provider-protocol.md`, `docs/guides/write-a-sidecar-module.md` and the
-  NUT UPS example in `examples/sidecars/nut-ups/` (#45, #46).
-- **Runtime modules** (`DECK_MODULES_DIR`): a directory of modules, each with a
-  `deck-module.json`, loaded under the same lifecycle as the built-ins. Off unless
-  `DECK_MODULES_ENABLED=true`; while it is off deck reads their manifests and imports no code. A
-  module that fails to load is disabled with `MODULE_LOAD_FAILED` and boot continues, unless its
-  config section is present and invalid (#39).
-- **Integrity pins** (`moduleIntegrity.<id>`) and **`deck module digest <dir>`**, which prints
-  the `sha256-…` pin of a module directory. A module that does not match its pin is not
-  imported (#39).
-- **Web halves of runtime modules**, served at `/modules/<id>/web.js` and `web.css` and loaded
-  through an import map. They build against **`@deck/sdk`**, the curated `@/ui` patterns,
-  `Icon` (including module-contributed SVG icons), tones and data hooks. An incompatible or
-  failing module shows a tile instead of breaking the page (#47).
-- **Module template** in `examples/modules/hello/`, with a Vite library build, the
-  `@deck/sdk/tailwind` preset, and **`deck-module lint`**, which checks a module against deck's
-  UI rules (#49). See `docs/guides/runtime-modules.md` and `docs/guides/write-a-module.md`.
-- **`ui.frameAncestors`** and **`ui.frameSources`** (see Migration) (#48).
-- Architecture decisions ADR-005 (module contract and kernel), ADR-006 (config-driven UI) and
-  ADR-007 (extension tiers and trust), the explanation "Kernel and modules", and references for
-  the module manifest and widget types (#56).
-- **`validateBinding`** on a module's provider-kind handler: a config check over each host or
-  service binding of a bindable kind, as `validate` is for integration instances. A kind rule's
-  findings are now read inside its guard, so a malformed one disables only that module (#78).
-- **A shared provider timing rule** in `@deck/module-sdk` (`timingProblem`, `clampTiming`): whole
-  milliseconds up to 2147483647, a poll interval of at least 1000 ms (#78).
-
-#### Changed
-
-- **Browser security policy** (#48): the web shell is served with an enforced
-  Content-Security-Policy (scripts from deck's origin with a per-response nonce, `fetch` to deck
-  only, frames limited to the `core/embed` origins in the config), and every response carries
-  `frame-ancestors` and `X-Content-Type-Options: nosniff`, plus `X-Frame-Options: SAMEORIGIN`
-  unless `ui.frameAncestors` lists other origins. `docs/security.md` gains the trust model for
-  each extension tier.
-- **Reserved provider ids:** an integration, source or binding that takes a fixed provider id
-  registered by another kind (`prometheus` beside a `prometheus` integration, or `snapshot` while
-  `DECK_SNAPSHOT_SOURCE` is set) is reported by `deck validate` as `PROVIDER_ID_RESERVED`
-  (error), since boot would fail on it with `PROVIDER_DUPLICATE_ID` (#48).
-- A built-in module whose manifest or schema is unusable now stops boot
-  (`MODULE_MANIFEST_INVALID`) instead of being switched off silently (#48).
-- A `remote` sidecar can no longer redirect deck to another origin (#48).
-- **Sources are stricter about what they serve** (#76):
-  - `include` and `exclude` now apply to every read (file, raw, search and the tree), not only
-    the tree listing. An excluded path answers 404 `PATH_NOT_FOUND`, like a missing file.
-  - They match a symlink's real target as well as its own path, so a symlink to a file that is
-    not included, or is excluded, is neither listed nor served.
-  - `exclude` matches regardless of case: `build/**` also hides `Build/`.
-  - `/api/sources/<id>/raw` serves only files in the tree, or images under an `include` glob's
-    base. The file name, the real path and the file's bytes must agree on the image type. Raw
-    responses carry `Content-Security-Policy: sandbox; default-src 'none'` (plus inline styles)
-    and `nosniff`, so a script in an SVG opened by its raw URL does not run.
-- Every built-in module now lives in its own `modules/<id>/` workspace package, with its schema,
-  server half, web half and tests. Behaviour is unchanged (#55, #57, #58, #59, #63, #64, #65,
-  #66, #68, #69, #71, #73).
-- **Behaviour change: an `http-json` poll no longer follows a redirect to another origin** by
-  default, credential or not, so an endpoint cannot steer deck's poll to another host on its
-  network (see Migration). An unauthenticated instance can opt back in with
-  `followCrossOriginRedirects: true`. Even with the opt-in, a redirect to `localhost` or a literal
-  loopback, link-local or unspecified address is refused; hostnames are not resolved, so trust
-  the upstream you opt in for. An authenticated poll never follows such a redirect, and
-  `deck validate` warns when the two are combined (`HTTP_JSON_REDIRECT_OPT_IN_IGNORED`) (#50).
-
-#### Fixed
-
-- **`prometheus`:** a query error shows as that summary in error, with the provider still
-  healthy, instead of reporting the endpoint as unreachable. A query error is a 400 (PromQL that
-  does not parse), a 422 (a query that cannot execute), or a 4xx carrying Prometheus's error
-  document. A typo in one query is therefore no longer reported as an outage. A connection
-  failure, a 5xx, or a refusal of the endpoint itself (401, 403, 404, 407, 429) still makes the
-  query unreachable. When every query fails that way, the provider's health now names the
-  refusal (`Prometheus authentication refused (401)`, say) (#70).
-- **`alertmanager`:** when the alerts or the silences request fails, the other request is
-  cancelled and its response body released, instead of being left open (#70).
-- **Unsafe link targets are refused** (#78, fixes issue #61). A link `href` that is not an
-  `http(s)://` URL or an absolute path in deck (`javascript:`, `data:`, `//host`, a relative path)
-  fails `deck validate` and boot, and is never rendered as a link:
-  - a `link` binding's: `LINK_HREF_UNSAFE`, or `LINK_HREF_MISSING` without one; the binding
-    registers no provider;
-  - a host's or service's `links[]`: `ENTITY_LINK_HREF_UNSAFE`; inventory shows its title as text;
-  - a portal link item's: `PORTAL_LINK_HREF_UNSAFE`; the portal card (also a service card's first
-    link) is a plain tile.
-
-  **Behaviour change:** see Migration.
-- **`http-health` probes** (#78, fixes issue #60): a probe is aborted when its poll times out,
-  and a superseded probe never writes health; the response body is cancelled unread, so
-  connections are released. **Behaviour changes:** redirects are no longer followed, so a 3xx
-  answer counts as up (as documented: 200–399 is up); and a `timing` that is not an object of
-  timing fields in range (0, negative, a fraction, `.nan`, `.inf`, 3e9, an unknown key) is
-  `HTTP_HEALTH_TIMING_INVALID` (error) instead of reaching the scheduler (a `pollIntervalMs: 0`
-  polled continuously). See Migration.
-- **Provider timing is bounded for every kind** (#78): the scheduler rounds and clamps a poll
-  interval into 1000–2147483647 ms and the other timing fields into 1–2147483647 ms, logging a
-  `provider.timing-adjusted` warning. A value past 2147483647 used to fire every millisecond.
-
-#### Migration
-
-1. **Framing deck from another origin is refused by default.** A page on another origin that
-   shows deck in a frame (a Home Assistant panel, say) stops showing it. List that origin in the
-   overlay layer:
-
-   ```yaml
-   ui:
-     frameAncestors: [https://ha.example.net]
-   ```
-
-2. **Embeds that redirect to another origin need `ui.frameSources`.** With
-   `ui.allowUnsafeEmbeds`, a framed page may load only from its embed URL's own origin. One that
-   redirects elsewhere (single sign-on or forward-auth such as Authelia or Authentik, or an
-   `http`→`https` redirect that also changes the port) needs that origin listed. A plain upgrade
-   to `https` on the default port needs nothing.
-
-   ```yaml
-   ui:
-     frameSources: [https://auth.example.net]
-   ```
-
-3. **Injected inline and cross-origin scripts no longer run.** The shell's
-   Content-Security-Policy allows scripts from deck's origin and inline scripts carrying the
-   response's nonce. An inline script a reverse proxy injects into deck's HTML (it has no nonce),
-   or a script from another origin, is refused. A script tag pointing at a path on deck's own
-   origin still runs.
-4. **Some embed URLs cannot be framed.** While embeds are on, an embed URL whose origin the
-   Content-Security-Policy cannot name (an IPv6 literal, or a hostname with `_`) is
-   `UI_EMBED_NOT_FRAMEABLE` (warning), and the widget says it can't be embedded. `frameSources`
-   does not help: give the service a DNS-style hostname, or link to it instead.
-5. **Sources: symlinks, excludes and raw files.** A repository that symlinks a file from outside
-   its `include` globs into an included directory, or that relied on `exclude` being
-   case-sensitive, loses those files: the symlinked ones are no longer listed or served, and a
-   differently-cased path that an `exclude` matches is now hidden. Copy the file into an included
-   path, widen `include`, or narrow the `exclude` glob. `/raw` likewise no longer serves a file
-   that is outside the tree and not an image under an `include` glob's base, nor an image whose
-   name and bytes disagree on its type (a `.png` that is really a JPEG, say): rename or re-save
-   it.
-6. **Link hrefs and `http-health` timing are checked.** A link whose `href` is not an
-   `http(s)://` URL or a path starting with a single `/` now fails `deck validate` and boot: in a
-   `link` binding (`LINK_HREF_UNSAFE`), a host's or service's `links` (`ENTITY_LINK_HREF_UNSAFE`)
-   or a portal link item (`PORTAL_LINK_HREF_UNSAFE`). A `mailto:` or relative link must become a
-   full URL. An `http-health` `timing` value that is not a whole number of milliseconds in range
-   (a poll interval under 1000, say) fails the same way (`HTTP_HEALTH_TIMING_INVALID`): fix or
-   remove it.
-7. **`http-health` no longer follows redirects.** A URL that answers 3xx now counts as up, even
-   when the redirect's target would answer 5xx. To probe the target, point `url` at it.
-8. **`http-json` integrations whose URL redirects to another origin.** Such a poll now fails
-   with `cross-origin redirect refused`. That includes an `http://` URL upgraded to `https://`,
-   since the scheme is part of the origin. Set `url` to the address the API finally answers on.
-   For an unauthenticated API that really is served from elsewhere (a CDN or an object store),
-   set `followCrossOriginRedirects: true` on the integration instead.
 
 ## [0.3.2] - 2026-09-25
 
@@ -494,7 +499,9 @@ docs/configs — driven entirely by an estate config you author.
 - Source file access is confined to the source root (rejects `..`, absolute paths, NUL bytes,
   and symlink escapes); rendered markdown passes a single DOMPurify sanitize boundary.
 
-[Unreleased]: https://github.com/garygentry/deck/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/garygentry/deck/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/garygentry/deck/releases/tag/v0.5.0
+[0.4.0]: https://github.com/garygentry/deck/releases/tag/v0.4.0
 [0.3.2]: https://github.com/garygentry/deck/releases/tag/v0.3.2
 [0.3.1]: https://github.com/garygentry/deck/releases/tag/v0.3.1
 [0.3.0]: https://github.com/garygentry/deck/releases/tag/v0.3.0

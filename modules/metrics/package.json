@@ -1,6 +1,6 @@
 {
   "name": "@deck/module-metrics",
-  "version": "0.3.2",
+  "version": "0.5.0",
   "private": true,
   "description": "deck's built-in metrics module: deck's own Prometheus exposition at GET /metrics, switched on by DECK_METRICS_ENABLED.",
   "type": "module",

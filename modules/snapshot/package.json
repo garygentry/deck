@@ -1,6 +1,6 @@
 {
   "name": "@deck/module-snapshot",
-  "version": "0.3.2",
+  "version": "0.5.0",
   "private": true,
   "description": "deck's built-in snapshot module: the `snapshot` data source that reads the observed-reality snapshot named by DECK_SNAPSHOT_SOURCE and offers its content age as the `snapshot/content` service.",
   "type": "module",

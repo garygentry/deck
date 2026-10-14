@@ -1,6 +1,6 @@
 {
   "name": "@deck/module-inventory",
-  "version": "0.3.2",
+  "version": "0.5.0",
   "private": true,
   "description": "deck's built-in inventory module: the hosts and services pages, their detail pages and the snapshot store the drift module reads.",
   "type": "module",

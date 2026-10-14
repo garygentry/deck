@@ -1,6 +1,6 @@
 {
   "name": "@deck/module-portal",
-  "version": "0.3.2",
+  "version": "0.5.0",
   "private": true,
   "description": "deck's built-in portal module: the modules.portal groups config, the launch portal page, its groups widget and endpoint summary pill.",
   "type": "module",

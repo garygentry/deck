@@ -1,6 +1,6 @@
 {
   "name": "@deck/module-monitoring",
-  "version": "0.3.2",
+  "version": "0.5.0",
   "private": true,
   "description": "deck's built-in monitoring module: the monitoring page and the alerts and metrics header pills.",
   "type": "module",

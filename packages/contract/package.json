@@ -1,6 +1,6 @@
 {
   "name": "@deck/contract",
-  "version": "0.3.2",
+  "version": "0.5.0",
   "private": true,
   "description": "The contract shared by the deck server and web: provider envelopes, poll defaults, the snapshot payload, the governed-actions parameter validator, and built-in modules' UI contributions.",
   "type": "module",

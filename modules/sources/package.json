@@ -1,6 +1,6 @@
 {
   "name": "@deck/module-sources",
-  "version": "0.3.2",
+  "version": "0.5.0",
   "private": true,
   "description": "deck's built-in sources module: source acquisition, caching and confined browsing, the /api/sources routes, the Docs and Configs pages and the owned-configs sections.",
   "type": "module",

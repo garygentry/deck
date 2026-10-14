@@ -1,6 +1,6 @@
 {
   "name": "@deck/module-remote",
-  "version": "0.3.2",
+  "version": "0.5.0",
   "private": true,
   "description": "deck's built-in remote module: the `remote` data source that polls an out-of-process sidecar's data and describe endpoints and renders its page.",
   "type": "module",

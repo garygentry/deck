@@ -1,6 +1,6 @@
 {
   "name": "@deck/module-alertmanager",
-  "version": "0.3.2",
+  "version": "0.5.0",
   "private": true,
   "description": "deck's built-in alertmanager module: the `alertmanager` data source that reads active alerts and silences.",
   "type": "module",

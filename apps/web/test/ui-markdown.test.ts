@@ -4,6 +4,7 @@
 // this one file runs under vitest's jsdom environment. It exercises the pure markdown.ts
 // string→sanitized-HTML pipeline (the enforced XSS boundary) — it is not a component render test.
 
+import DOMPurify from "dompurify";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -130,6 +131,39 @@ describe("markdown.ts — sanitization — the XSS boundary", () => {
     for (const anchor of doc2.querySelectorAll("a")) {
       expect(anchor.getAttribute("href")?.startsWith("javascript:")).not.toBe(true);
     }
+  });
+
+  it("lets no style attribute reach a parser, and drops <style> elements, which the page's policy would refuse", () => {
+    const doc = [
+      '<p style="color: red">Tinted</p>',
+      "",
+      "<style>p { color: red }</style>",
+      "",
+      'Inline <span title="x"style="color: red">span</span> and <b STYLE = "x">bold</b>.',
+      "",
+      '<svg><rect style="fill: red" width="1" height="1"/></svg>',
+    ].join("\n");
+    const sanitize = vi.spyOn(DOMPurify, "sanitize");
+    try {
+      for (const html of [renderMarkdown(doc, ctx("index.md")), renderMarkdown(doc, undefined, { externalLinksOnly: true })]) {
+        const parsed = parse(html);
+        expect(parsed.querySelector("[style]")).toBeNull();
+        expect(parsed.querySelector("[data-style]")).toBeNull();
+        expect(parsed.querySelector("style")).toBeNull();
+        expect(parsed.body.textContent).toContain("Tinted");
+      }
+      // Parsing markup with a style attribute is itself reported under the policy.
+      for (const [input] of sanitize.mock.calls) expect(String(input)).not.toMatch(/[\s"'/]style\s*=/i);
+    } finally {
+      sanitize.mockRestore();
+    }
+  });
+
+  it("aligns table columns by class, not by a style attribute", () => {
+    const html = renderMarkdown(["| L | C | R | N |", "| :- | :-: | -: | - |", "| 1 | 2 | 3 | 4 |"].join("\n"));
+    const cells = [...parse(html).querySelectorAll("th, td")];
+    expect(cells.map((cell) => cell.getAttribute("class"))).toEqual(["text-left", "text-center", "text-right", null, "text-left", "text-center", "text-right", null]);
+    expect(html).not.toContain("style");
   });
 });
 

@@ -89,6 +89,30 @@ const md: MarkdownIt = new MarkdownIt({
   highlight: highlightFence,
 }).use(taskLists, { enabled: false, label: true });
 
+/**
+ * The page's Content-Security-Policy refuses `style` attributes, and reports one as soon as
+ * markup carrying it is parsed (even into an inert document, as the sanitizer does), so none
+ * reaches a parser:
+ * - a table column's alignment, which markdown-it writes as `style="text-align:…"`, becomes a
+ *   class (`text-left`, `text-center`, `text-right`);
+ * - a `style` attribute in raw HTML is renamed `data-style` before the sanitizer parses it, and
+ *   the sanitizer drops it (no `data-*` attribute survives). Raw HTML this misses (say an
+ *   attribute split by a `>` inside a quoted value) is still sanitized; it only adds a report.
+ */
+const ALIGN_CLASS: Readonly<Record<string, string>> = { left: "text-left", center: "text-center", right: "text-right" };
+md.core.ruler.push("deck_align_classes", (state) => {
+  for (const token of state.tokens) {
+    if (token.type !== "th_open" && token.type !== "td_open") continue;
+    const align = /^text-align:(left|center|right)$/.exec(token.attrGet("style") ?? "")?.[1];
+    token.attrs = (token.attrs ?? []).filter(([name]) => name !== "style");
+    if (align !== undefined) token.attrJoin("class", ALIGN_CLASS[align]!);
+  }
+});
+const renameStyleAttributes = (html: string) => html.replace(/<[a-zA-Z][^>]*>/g, (tag) => tag.replace(/([\s"'/])style(?=[\s=/>])/gi, "$1data-style"));
+for (const rule of ["html_block", "html_inline"] as const) {
+  md.renderer.rules[rule] = (tokens, idx) => renameStyleAttributes(tokens[idx]!.content);
+}
+
 /** markdown-it's per-render `env`: the caller's document context, if any. */
 interface RenderEnv {
   readonly context?: MarkdownRenderContext;
@@ -122,11 +146,12 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
 };
 
 /** DOMPurify config — the XSS boundary. Permit the rewritten link/image attrs; forbid
- *  script/style/embedding tags and event-handler attributes. */
+ *  script/style/embedding tags, event-handler attributes, and `style` attributes (the shell's
+ *  Content-Security-Policy refuses inline style attributes, so they could never apply). */
 const SANITIZE_CONFIG: DOMPurifyConfig = {
   ADD_ATTR: ["target", "rel"],
   FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form"],
-  FORBID_ATTR: ["onerror", "onload", "onclick", "srcdoc"],
+  FORBID_ATTR: ["onerror", "onload", "onclick", "srcdoc", "style"],
   ALLOW_DATA_ATTR: false,
 };
 
@@ -212,7 +237,6 @@ const EXTERNAL_ONLY_FORBIDDEN_TAGS: ReadonlySet<string> = new Set([
 const EXTERNAL_LINKS_ONLY_CONFIG: DOMPurifyConfig = {
   ...SANITIZE_CONFIG,
   FORBID_TAGS: [...EXTERNAL_ONLY_FORBIDDEN_TAGS],
-  FORBID_ATTR: [...(SANITIZE_CONFIG.FORBID_ATTR ?? []), "style"],
 };
 
 /** Attributes that fetch or submit: under the external-only policy each keeps only an absolute http(s) URL. */

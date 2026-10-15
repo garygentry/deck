@@ -14,4 +14,4 @@ export type {
   HostState,
   SnapshotProviderResult,
   SnapshotReadError,
-} from "./snapshot.js";
+} from "../../../modules/snapshot/contract.js";

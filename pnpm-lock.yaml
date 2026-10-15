@@ -332,6 +332,9 @@ importers:
       '@deck/module-sdk':
         specifier: workspace:*
         version: link:../../packages/module-sdk
+      '@deck/module-snapshot':
+        specifier: workspace:*
+        version: link:../snapshot
       '@deck/schema':
         specifier: workspace:*
         version: link:../../packages/schema
@@ -387,6 +390,9 @@ importers:
       '@deck/module-sdk':
         specifier: workspace:*
         version: link:../../packages/module-sdk
+      '@deck/module-snapshot':
+        specifier: workspace:*
+        version: link:../snapshot
       '@deck/schema':
         specifier: workspace:*
         version: link:../../packages/schema
@@ -492,6 +498,9 @@ importers:
       '@deck/module-inventory':
         specifier: workspace:*
         version: link:../inventory
+      '@deck/module-snapshot':
+        specifier: workspace:*
+        version: link:../snapshot
       '@testing-library/react':
         specifier: ^16.3.3
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -662,6 +671,9 @@ importers:
       '@deck/contract':
         specifier: workspace:*
         version: link:../contract
+      '@deck/module-snapshot':
+        specifier: workspace:*
+        version: link:../../modules/snapshot
       '@deck/schema':
         specifier: workspace:*
         version: link:../schema

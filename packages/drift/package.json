@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@deck/contract": "workspace:*",
+    "@deck/module-snapshot": "workspace:*",
     "@deck/schema": "workspace:*"
   },
   "devDependencies": {

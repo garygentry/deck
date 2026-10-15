@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`settlesWithin` and `canonicalJson` in `@deck/module-sdk`**: a bounded wait on a promise
+  that never keeps the process alive, and key-order-insensitive JSON text (#62).
+
+### Changed
+
+- **Module server halves may not load `apps/server/src` at runtime**, by path or through
+  `@deck/server`; a guard test enforces it, with type-only imports and augmentation still
+  allowed (#62).
+
 ## [0.5.0] - 2026-10-14
 
 Upgrading from 0.3.x: apply 0.4.0's Migration (schemaVersion 2 via `deck config migrate`) and then

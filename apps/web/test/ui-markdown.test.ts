@@ -4,6 +4,7 @@
 // this one file runs under vitest's jsdom environment. It exercises the pure markdown.ts
 // string→sanitized-HTML pipeline (the enforced XSS boundary) — it is not a component render test.
 
+import DOMPurify from "dompurify";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -130,6 +131,107 @@ describe("markdown.ts — sanitization — the XSS boundary", () => {
     for (const anchor of doc2.querySelectorAll("a")) {
       expect(anchor.getAttribute("href")?.startsWith("javascript:")).not.toBe(true);
     }
+  });
+
+  it("lets no style attribute reach a parser, and drops <style> elements, which the page's policy would refuse", () => {
+    const doc = [
+      '<p style="color: red">Tinted</p>',
+      "",
+      "<style>p { color: red }</style>",
+      "",
+      'Inline <span title="x"style="color: red">span</span> and <b STYLE = "x">bold</b>.',
+      "",
+      '<svg><rect style="fill: red" width="1" height="1"/></svg>',
+    ].join("\n");
+    const sanitize = vi.spyOn(DOMPurify, "sanitize");
+    try {
+      for (const html of [renderMarkdown(doc, ctx("index.md")), renderMarkdown(doc, undefined, { externalLinksOnly: true })]) {
+        const parsed = parse(html);
+        expect(parsed.querySelector("[style]")).toBeNull();
+        expect(parsed.querySelector("[data-style]")).toBeNull();
+        expect(parsed.querySelector("style")).toBeNull();
+        expect(parsed.body.textContent).toContain("Tinted");
+      }
+      // Parsing markup with a style attribute is itself reported under the policy.
+      for (const [input] of sanitize.mock.calls) expect(String(input)).not.toMatch(/[\s"'/]style\s*=/i);
+    } finally {
+      sanitize.mockRestore();
+    }
+  });
+
+  it("drops only real style attributes and <style> elements: 'style' in values and text survives byte for byte", () => {
+    const doc = [
+      'See [the guide](https://example.org/style/guide "A style guide") and ![a style](https://example.org/style.png).',
+      "",
+      '<a href="https://example.org/style/x?style=1" title=\'style="x"\' style="color: red">raw link</a>',
+      "",
+      '<img src="https://example.org/img/style.png" alt="a style guide > b" style=color:red>',
+      "",
+      "<p data-x='>' style='color:red'>after a quoted &gt;</p>",
+      "",
+      "Inline <span>style</span> words, <style>p { color: red }</style>, and `<b style=\"x\">code</b>`.",
+      "",
+      "<style>",
+      "p { color: red }",
+      "</style>",
+    ].join("\n");
+    for (const external of [false, true]) {
+      const html = external ? renderMarkdown(doc, undefined, { externalLinksOnly: true }) : renderMarkdown(doc, ctx("index.md"));
+      const parsed = parse(html);
+      expect(parsed.querySelector("[style], [data-style], style")).toBeNull();
+      expect(parsed.body.textContent).not.toContain("color: red");
+      const hrefs = [...parsed.querySelectorAll("a")].map((anchor) => anchor.getAttribute("href"));
+      expect(hrefs).toEqual(["https://example.org/style/guide", "https://example.org/style/x?style=1"]);
+      expect(parsed.querySelector('a[title="A style guide"]')).not.toBeNull();
+      expect(parsed.querySelectorAll("a")[1]!.getAttribute("title")).toBe('style="x"');
+      if (!external) {
+        // (The external-only policy renders no image.)
+        expect([...parsed.querySelectorAll("img")].map((image) => image.getAttribute("src"))).toEqual(["https://example.org/style.png", "https://example.org/img/style.png"]);
+        expect(parsed.querySelectorAll("img")[1]!.getAttribute("alt")).toBe("a style guide > b");
+      }
+      expect(parsed.body.textContent).toContain("after a quoted >");
+      expect(parsed.body.textContent).toContain("Inline style words");
+      // Code keeps its text: it is escaped, never markup.
+      expect(parsed.querySelector("code")?.textContent).toBe('<b style="x">code</b>');
+    }
+  });
+
+  it("keeps every word after a <style> it cannot remove whole: SVG <style/>, MathML <style/>, unterminated <style>", () => {
+    const after = "\n\n# Important runbook\n\nDo this next.";
+    for (const head of ["<svg><style /></svg>", "<math><style/></math>", "<style>"]) {
+      for (const external of [false, true]) {
+        const doc = `${head}${after}`;
+        const html = external ? renderMarkdown(doc, undefined, { externalLinksOnly: true }) : renderMarkdown(doc, ctx("index.md"));
+        const text = parse(html).body.textContent ?? "";
+        expect(text, `${head} (external: ${external})`).toContain("Important runbook");
+        expect(text, `${head} (external: ${external})`).toContain("Do this next.");
+        expect(parse(html).querySelector("style, [style]")).toBeNull();
+      }
+    }
+  });
+
+  it("lets no style reach the parser from inside <noscript> (a DOMParser document runs no script)", () => {
+    const parseFromString = vi.spyOn(DOMParser.prototype, "parseFromString");
+    try {
+      const doc = '<noscript><style>p{color:red}</style><p style="color:red">fallback</p></noscript>';
+      for (const html of [renderMarkdown(doc, ctx("index.md")), renderMarkdown(doc, undefined, { externalLinksOnly: true })]) {
+        expect(parse(html).querySelector("style, [style]")).toBeNull();
+      }
+      const inputs = parseFromString.mock.calls.map(([input]) => String(input)).filter((input) => input.includes("fallback"));
+      expect(inputs.length).toBeGreaterThan(0);
+      for (const input of inputs) {
+        expect(input).not.toMatch(/<style|[\s"'/]style\s*=/i);
+      }
+    } finally {
+      parseFromString.mockRestore();
+    }
+  });
+
+  it("aligns table columns by class, not by a style attribute", () => {
+    const html = renderMarkdown(["| L | C | R | N |", "| :- | :-: | -: | - |", "| 1 | 2 | 3 | 4 |"].join("\n"));
+    const cells = [...parse(html).querySelectorAll("th, td")];
+    expect(cells.map((cell) => cell.getAttribute("class"))).toEqual(["text-left", "text-center", "text-right", null, "text-left", "text-center", "text-right", null]);
+    expect(html).not.toContain("style");
   });
 });
 

@@ -49,6 +49,15 @@ All notable changes to this project are documented here. The format is based on
   `max`, `clamp`), `var` or SVG transform functions. If your
   sidecar showed remote badges or screenshots, they now appear as their alt text. Markdown in
   your own config and docs is unchanged (#51).
+- The web shell's Content-Security-Policy no longer allows inline styles: `style-src` is
+  `'self'` plus a per-response style nonce, which the page hands to the `<style>` elements the
+  UI library injects (the scroll lock behind modal overlays, scrollbar rules). Markdown now
+  drops `style` attributes and raw `<style>` blocks, which the policy would refuse anyway. Styles a reverse
+  proxy injects into deck's page (an inline `<style>` or a `style` attribute) no longer apply,
+  and neither do a runtime module's own `<style>` elements or `style` attributes in markup it
+  inserts; put a module's styles in its `web.css` (#53).
+- Every response now carries `X-DNS-Prefetch-Control: off`, so external links (in sidecar
+  markdown, say) no longer trigger DNS prefetch lookups for their hosts.
 
 ## [0.5.0] - 2026-10-14
 

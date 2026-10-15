@@ -75,6 +75,27 @@ describe("sanitizeIconSvg", () => {
     expect(sanitizeIconSvg(markup)).toBeNull();
   });
 
+  it("refuses a style attribute or <style> element before parsing (parsing one is a CSP violation), but not the word in a value", () => {
+    const parse = vi.spyOn(DOMParser.prototype, "parseFromString");
+    try {
+      for (const markup of [
+        svg(`<path style="fill: red" d="M0 0"/>`),
+        svg(`<path d="M0 0" STYLE='fill: red'/>`),
+        svg(`<svg:style>path{fill:red}</svg:style>${PATH}`, ' xmlns:svg="http://www.w3.org/2000/svg"'),
+        svg(`<style/>${PATH}`),
+      ]) {
+        expect(sanitizeIconSvg(markup)).toBeNull();
+      }
+      expect(parse).not.toHaveBeenCalled();
+      // The word inside a value, a comment or a title is not an inline style.
+      const icon = sanitizeIconSvg(svg(`<title>style</title><!-- <p style="x"> --><path id="style" class="a style=b" d="M0 0"/>`));
+      expect(icon).not.toBeNull();
+      expect(parse).toHaveBeenCalledTimes(1);
+    } finally {
+      parse.mockRestore();
+    }
+  });
+
   it("keeps each attribute's allowed values: none, colours, local references and basic transforms", () => {
     const icon = sanitizeIconSvg(
       svg(

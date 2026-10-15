@@ -1,4 +1,5 @@
 import * as React from "react"
+import { styleNonce } from "@/ui/lib/style-nonce"
 import { cn } from "@/ui/lib/utils"
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area"
 
@@ -15,6 +16,7 @@ function ScrollArea({
     >
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
+        nonce={styleNonce()}
         className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
       >
         {children}

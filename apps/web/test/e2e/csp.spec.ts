@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { startSpecApi, stopSpecApi, type SpecApi } from "./spec-api.js";
 
@@ -15,11 +15,15 @@ import { startSpecApi, stopSpecApi, type SpecApi } from "./spec-api.js";
  * page the UI manifest routes, in light and dark, with runtime modules' web halves (loaded
  * through the import map: the maintenance example, and the module template as its build
  * writes it, with its own web.css), framed pages, a markdown image and a brand logo, raises no CSP
- * violation (neither a `securitypolicyviolation` event nor a console report). And the policy
- * holds: a framed page that redirects into deck's own origin is refused.
+ * violation (neither a `securitypolicyviolation` event nor a console report). Every overlay the
+ * UI library has (on the overlay lab page) opens, positions itself and locks the page's scroll
+ * under a style policy with no 'unsafe-inline': the `<style>` elements they inject carry the
+ * page's style nonce. And the policy holds: a framed page that redirects into deck's own origin
+ * is refused, and an inline style without the nonce is refused.
  *
- * The suite's Vite dev server sends no policy, so this spec builds the shell (or reuses the
- * build DECK_E2E_WEB_DIST names) and boots its own API serving it.
+ * The suite's Vite dev server sends no policy, so this spec builds the shell, with the overlay
+ * lab built in (VITE_DECK_OVERLAY_LAB=true), or reuses the build DECK_E2E_WEB_DIST names (which
+ * the overlay test needs built the same way), and boots its own API serving it.
  */
 
 const webDir = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -40,7 +44,7 @@ test.beforeAll(async () => {
   let dist = process.env.DECK_E2E_WEB_DIST;
   if (dist === undefined) {
     builtDist = dist = mkdtempSync(join(tmpdir(), "deck-e2e-csp-dist-"));
-    execFileSync("bunx", ["vite", "build", "--outDir", dist, "--emptyOutDir", "--logLevel", "error"], { cwd: webDir, stdio: "inherit" });
+    execFileSync("bunx", ["vite", "build", "--outDir", dist, "--emptyOutDir", "--logLevel", "error"], { cwd: webDir, stdio: "inherit", env: { ...process.env, VITE_DECK_OVERLAY_LAB: "true" } });
   }
 
   // A modules directory of the spec's own (examples/modules also holds the template's sources):
@@ -62,7 +66,16 @@ test.beforeAll(async () => {
   await new Promise<void>((resolve) => helper.listen(0, "127.0.0.1", resolve));
   helperOrigin = `http://127.0.0.1:${(helper.address() as AddressInfo).port}`;
 
-  const markdown = `Runbook notes.\n\n![status](${helperOrigin}/logo.svg)`;
+  // Raw HTML with a style attribute and a <style> block (both dropped before any parse), an
+  // aligned table column (a class, not a style attribute), and highlighted code.
+  const markdown = [
+    "Runbook notes.",
+    `![status](${helperOrigin}/logo.svg)`,
+    '<p style="color: red">Styled note</p>',
+    "<style>\nmain { outline: 3px solid red; }\n</style>",
+    "| Host | Uptime |\n| - | -: |\n| nas-01 | 42d |",
+    "```js\nconst answer = 42;\n```",
+  ].join("\n\n");
   const ui = {
     brand: { title: "CSP Lab", logoUrl: `${helperOrigin}/logo.svg` },
     allowUnsafeEmbeds: true,
@@ -135,11 +148,16 @@ async function routedPaths(): Promise<string[]> {
   return [...new Set(["/", ...manifest.pages.map((page) => page.path).filter((path) => !path.includes(":"))])].filter((path) => path !== "/escape");
 }
 
-test("serves the shell with an enforced policy and a per-response nonce", async () => {
+test("serves the shell with an enforced policy and per-response nonces", async () => {
   const first = await fetch(`${origin()}/`);
   const second = await fetch(`${origin()}/`);
   const policy = first.headers.get("content-security-policy") ?? "";
   expect(policy).toMatch(/script-src 'self' 'nonce-[^']+'/);
+  // Styles: deck's own, and <style> elements carrying the nonce the page's meta element names.
+  const styleNonce = /style-src 'self' 'nonce-([^']+)';/.exec(policy)?.[1];
+  expect(styleNonce).toBeDefined();
+  expect(policy).not.toContain("unsafe-inline");
+  expect(await first.text()).toContain(`<meta property="csp-nonce" nonce="${styleNonce}" />`);
   expect(policy).toContain(`frame-src ${helperOrigin}`);
   expect(first.headers.get("cache-control")).toBe("no-cache");
   expect(second.headers.get("content-security-policy")).not.toBe(policy);
@@ -165,6 +183,12 @@ for (const colorScheme of ["light", "dark"] as const) {
       await expect(page.locator('[data-slot="prose"] img')).toHaveJSProperty("complete", true);
       expect(await page.locator('[data-slot="prose"] img').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
       expect(await page.locator('[data-brand-mark="logo"]').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+      // Raw HTML keeps its text but not its style attribute, and code is highlighted (by class).
+      await expect(page.locator('[data-slot="prose"]').getByText("Styled note")).toBeVisible();
+      expect(await page.locator('[data-slot="prose"] [style], [data-slot="prose"] style').count()).toBe(0);
+      await expect(page.locator('[data-slot="prose"]')).not.toContainText("outline");
+      await expect(page.locator('[data-slot="prose"] pre [class^="hljs-"]').first()).toBeVisible();
+      await expect(page.locator('[data-slot="prose"] td', { hasText: "42d" })).toHaveCSS("text-align", "right");
       // The runtime module's web half (an import-mapped ESM chunk) rendered its page.
       await page.goto("/maintenance");
       await expect(page.getByText("Patch night")).toBeVisible({ timeout: 30_000 });
@@ -202,6 +226,175 @@ test("refuses a framed page that redirects into deck's own origin, even with a s
     for (const frame of page.frames().slice(1)) {
       expect(await frame.locator("#app").count()).toBe(0);
     }
+  } finally {
+    await context.close();
+  }
+});
+
+type Box = { x: number; y: number; width: number; height: number };
+
+/** `locator`'s box on screen, once it has one. */
+async function boxOf(locator: Locator): Promise<Box> {
+  await expect(locator).toBeVisible();
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  return box!;
+}
+
+/** `content` sits against `trigger` on `side` (within its offset), overlapping it along the other axis. */
+function expectBeside(content: Box, trigger: Box, side: "top" | "bottom") {
+  const gap = side === "bottom" ? content.y - (trigger.y + trigger.height) : trigger.y - (content.y + content.height);
+  expect(gap).toBeGreaterThanOrEqual(-1);
+  expect(gap).toBeLessThanOrEqual(16);
+  expect(content.x).toBeLessThan(trigger.x + trigger.width);
+  expect(content.x + content.width).toBeGreaterThan(trigger.x);
+}
+
+/** Every `<style>` element in the page carries the page's style nonce (read as the browser holds it). */
+async function stylesCarryNonce(page: Page): Promise<{ styles: number; unnonced: number }> {
+  return page.evaluate(() => {
+    const nonce = document.querySelector<HTMLMetaElement>('meta[property="csp-nonce"]')?.nonce ?? "";
+    const styles = [...document.querySelectorAll("style")];
+    return { styles: styles.length, unnonced: nonce === "" ? styles.length : styles.filter((style) => style.nonce !== nonce).length };
+  });
+}
+
+/** Whether the page's scroll is locked (react-remove-scroll's nonce'd `<style>` applied), and the page did not scroll. */
+async function expectScrollLocked(page: Page, locked: boolean) {
+  const body = page.locator("body");
+  if (locked) {
+    await expect(body).toHaveAttribute("data-scroll-locked", /.*/);
+    await expect(body).toHaveCSS("overflow-y", "hidden");
+    expect(await stylesCarryNonce(page)).toMatchObject({ unnonced: 0 });
+    const before = await page.evaluate(() => window.scrollY);
+    await page.mouse.move(5, 300);
+    await page.mouse.wheel(0, 600);
+    await page.waitForTimeout(200);
+    expect(await page.evaluate(() => window.scrollY)).toBe(before);
+  } else {
+    await expect(body).not.toHaveAttribute("data-scroll-locked", /.*/);
+  }
+}
+
+test("opens every overlay on the lab page, positioned and scroll-locking, with no CSP violation", async ({ browser }) => {
+  test.skip(process.env.DECK_E2E_WEB_DIST !== undefined && process.env.VITE_DECK_OVERLAY_LAB !== "true", "DECK_E2E_WEB_DIST was not built with VITE_DECK_OVERLAY_LAB=true");
+  const context = await browser.newContext({ baseURL: origin(), viewport: { width: 1280, height: 800 } });
+  try {
+    const page = await context.newPage();
+    const violations = await watchViolations(page);
+    await page.goto("/_ui/overlays");
+    await expect(page.getByRole("heading", { level: 1, name: "Overlay lab" })).toBeVisible({ timeout: 30_000 });
+    await page.waitForLoadState("networkidle");
+    // The page scrolls, so a lock is observable.
+    await page.evaluate(() => window.scrollTo(0, 120));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    const viewport = page.viewportSize()!;
+
+    // Dialog: centred, modal, scroll locked; released on close.
+    await page.getByRole("button", { name: "Open dialog" }).click();
+    const dialog = page.getByRole("dialog", { name: "Lab dialog" });
+    const dialogBox = await boxOf(dialog);
+    expect(Math.abs(dialogBox.x + dialogBox.width / 2 - viewport.width / 2)).toBeLessThanOrEqual(2);
+    expect(Math.abs(dialogBox.y + dialogBox.height / 2 - viewport.height / 2)).toBeLessThanOrEqual(2);
+    await expectScrollLocked(page, true);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expectScrollLocked(page, false);
+
+    // Alert dialog.
+    await page.getByRole("button", { name: "Open alert dialog" }).click();
+    const alert = page.getByRole("alertdialog", { name: "Lab alert" });
+    await boxOf(alert);
+    await expectScrollLocked(page, true);
+    await alert.getByRole("button", { name: "Cancel" }).click();
+    await expect(alert).toBeHidden();
+
+    // Sheet: full height against the right edge.
+    await page.getByRole("button", { name: "Open sheet" }).click();
+    const sheet = page.getByRole("dialog", { name: "Lab sheet" });
+    await expect.poll(async () => {
+      const box = await sheet.boundingBox();
+      return box === null ? null : [Math.round(box.x + box.width), Math.round(box.y), Math.round(box.height)];
+    }).toEqual([viewport.width, 0, viewport.height]);
+    await expectScrollLocked(page, true);
+    await page.keyboard.press("Escape");
+    await expect(sheet).toBeHidden();
+
+    // Popover and dropdown menu: below their triggers.
+    const popoverTrigger = page.getByRole("button", { name: "Open popover" });
+    await popoverTrigger.click();
+    const popover = page.locator('[data-slot="popover-content"]');
+    await expect(popover).toHaveText("Lab popover");
+    await expect(async () => expectBeside(await boxOf(popover), await boxOf(popoverTrigger), "bottom")).toPass();
+    await page.keyboard.press("Escape");
+    await expect(popover).toBeHidden();
+
+    // A modal menu hides the rest of the page from the accessibility tree: measure its trigger first.
+    const menuTrigger = page.getByRole("button", { name: "Open menu" });
+    const menuTriggerBox = await boxOf(menuTrigger);
+    await menuTrigger.click();
+    const menu = page.getByRole("menu");
+    await expect(menu.getByRole("menuitem")).toHaveCount(2);
+    await expect(async () => expectBeside(await boxOf(menu), menuTriggerBox, "bottom")).toPass();
+    await expectScrollLocked(page, true);
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+
+    // Select: its list over the trigger, its viewport's (nonce'd) scrollbar rule applied, and a pick.
+    const select = page.getByRole("combobox", { name: "Fruit" });
+    const selectBox = await boxOf(select);
+    await select.click();
+    const listbox = page.getByRole("listbox");
+    const listBox = await boxOf(listbox);
+    expect(listBox.y).toBeLessThanOrEqual(selectBox.y + selectBox.height);
+    expect(listBox.y + listBox.height).toBeGreaterThanOrEqual(selectBox.y);
+    await expect(page.locator("[data-radix-select-viewport]")).toHaveCSS("scrollbar-width", "none");
+    await expectScrollLocked(page, true);
+    await listbox.getByRole("option", { name: "Cherry" }).click();
+    await expect(listbox).toBeHidden();
+    await expect(select).toHaveText("Cherry");
+
+    // Tooltip: above its trigger on hover.
+    const tooltipTrigger = page.getByRole("button", { name: "Hover for tooltip" });
+    await tooltipTrigger.hover();
+    const tooltip = page.locator('[data-slot="tooltip-content"]');
+    await expect(tooltip).toContainText("Lab tooltip");
+    await expect(async () => expectBeside(await boxOf(tooltip), await boxOf(tooltipTrigger), "top")).toPass();
+    await page.keyboard.press("Escape");
+    await expect(tooltip).toBeHidden();
+
+    // Command palette: a modal dialog with a filtering list.
+    await page.getByRole("button", { name: "Open command palette" }).click();
+    const palette = page.getByRole("dialog");
+    await expect(palette.getByRole("combobox")).toBeFocused();
+    await expectScrollLocked(page, true);
+    await page.keyboard.type("Fig");
+    await expect(palette.getByRole("option")).toHaveText(["Fig"]);
+    await page.keyboard.press("Enter");
+    await expect(palette).toBeHidden();
+    await expect(page.getByText("Picked: Fig")).toBeVisible();
+    await expectScrollLocked(page, false);
+
+    // Scroll area: its viewport's (nonce'd) rule hides the native scrollbar.
+    await expect(page.locator('[data-slot="scroll-area-viewport"]')).toHaveCSS("scrollbar-width", "none");
+
+    expect(await stylesCarryNonce(page)).toMatchObject({ unnonced: 0 });
+    expect(await violations.events()).toEqual([]);
+    expect(violations.console).toEqual([]);
+
+    // The policy is the one enforced: a <style> without the nonce, and a style attribute set from
+    // markup, are both refused (and would have been reported above).
+    const refused = await page.evaluate(() => {
+      const style = document.createElement("style");
+      style.textContent = "body { outline: 3px solid; }";
+      document.head.append(style);
+      const host = document.createElement("div");
+      host.innerHTML = '<p style="outline: 3px solid">x</p>';
+      document.body.append(host);
+      return [getComputedStyle(document.body).outlineStyle, getComputedStyle(host.firstElementChild!).outlineStyle];
+    });
+    expect(refused).toEqual(["none", "none"]);
+    await expect.poll(async () => (await violations.events()).map((violation) => violation.directive).sort()).toEqual(["style-src-attr", "style-src-elem"]);
   } finally {
     await context.close();
   }

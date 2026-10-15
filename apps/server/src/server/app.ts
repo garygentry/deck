@@ -21,7 +21,7 @@ import { requestLogger, type FrameSourceDroppedEvent } from "../log/logger.js";
 import { etagMatches, etagOf, type LiveUi } from "../ui/live.js";
 import type { RuntimeWebAssets } from "../modules/runtime.js";
 import { deckBootOf, renderIndexHtml } from "./index-html.js";
-import { frameAncestorsOf, frameOriginsFor, requestOrigins, scriptNonce, securityHeaders, shellPolicy } from "./security-headers.js";
+import { cspNonce, frameAncestorsOf, frameOriginsFor, requestOrigins, securityHeaders, shellPolicy } from "./security-headers.js";
 import { mountModuleAssets } from "./module-assets.js";
 import { RESERVED_ROOT_PATHS } from "./reserved-paths.js";
 
@@ -234,17 +234,17 @@ export function createApp(deps: AppDeps): Hono {
       const template = await indexTemplate();
       if (template === undefined) return next();
       // Rendered per request from the current manifest and config: it carries their brand, and
-      // a fresh script nonce its policy names, so a cached copy is always revalidated.
+      // fresh script and style nonces its policy names, so a cached copy is always revalidated.
       context.header("Cache-Control", "no-cache");
       const { ui, config } = current();
-      const nonce = scriptNonce();
+      const nonces = { script: cspNonce(), style: cspNonce() };
       // Never deck's own origin, as this request reached it (directly or through the proxy).
       const { allowed: frameOrigins, dropped } = frameOriginsFor(ui, config, requestOrigins(context.req.url, (name) => context.req.header(name)));
       warnDropped(config, dropped.frameSources);
-      context.header("Content-Security-Policy", shellPolicy({ nonce, frameOrigins }));
+      context.header("Content-Security-Policy", shellPolicy({ nonce: nonces.script, styleNonce: nonces.style, frameOrigins }));
       // `frameSelf`: embeds of deck's own origin, which the widget says deck does not frame.
       const boot = { ...deckBootOf(ui, config), frameOrigins, ...(dropped.embeds.length === 0 ? {} : { frameSelf: dropped.embeds }) };
-      return context.html(renderIndexHtml(template, boot, nonce));
+      return context.html(renderIndexHtml(template, boot, nonces));
     });
   }
 

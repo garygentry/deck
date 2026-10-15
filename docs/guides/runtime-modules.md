@@ -74,7 +74,13 @@ and a built module can inline it.
 origin only (`connect-src 'self'`): for data from anywhere else, read a provider (your server
 half's, or a `remote` or `http-json` integration's) with `useProvider`, or add a route to your
 server half. It cannot add `<script>` elements of its own or use `eval`; import everything it
-needs. Styles and images are not restricted that way.
+needs. Its styles belong in `web.css`, which deck links from its own origin. Inline styles are
+refused: a `<style>` element the module adds, and a `style` attribute in markup it inserts
+(`innerHTML`, `setAttribute("style", …)`), do not apply and are reported as policy violations.
+A `style` prop (React sets it through the CSSOM) does apply, for geometry computed at run time
+(see the `inline-style` rule below). Don't bundle a library that injects its own `<style>`
+elements; deck's patterns, overlays included, already carry the page's style nonce. Images may
+come from any `http(s)` URL.
 
 ```js
 import { jsx } from "react/jsx-runtime";
@@ -122,7 +128,10 @@ wherever an icon goes. A module has at most 64 icons of at most 16 KiB each, and
 
 `deck validate` and boot refuse a manifest whose icons break the plainest of these rules. In
 the browser, deck rebuilds each icon from that allowlist and renders the fallback icon in
-place of any that breaks one. Ids inside an icon are made unique to each place it renders.
+place of any that breaks one. An icon with a `style` attribute or a `<style>` element is
+refused before it is even parsed, since parsing one is a violation of deck's
+Content-Security-Policy; the word "style" in an attribute value, a comment or a `<title>` is
+fine. Ids inside an icon are made unique to each place it renders.
 
 The browser needs JSON module imports for the example's manifest import: Chrome or Edge 123,
 Firefox 138 or Safari 17.2 and later. A module that inlines its manifest needs only import

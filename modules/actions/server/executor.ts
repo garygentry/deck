@@ -10,6 +10,7 @@
  */
 import { randomUUID } from "node:crypto";
 
+import { settlesWithin } from "@deck/module-sdk";
 
 import type {
   AuditEntry,
@@ -22,7 +23,6 @@ import { normalizeActionFailure } from "./errors.js";
 import type { ResolvedParams } from "./validate.js";
 import type { ActionsLogger } from "./runtime.js";
 import type { RunnerSpawner, SpawnedRun } from "./spawn.js";
-import { settlesWithin } from "../../../apps/server/src/server/settle.js";
 
 /**
  * Starts and cancels runs, owns the run registry, and enforces the timeout. It is

@@ -6,8 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`settlesWithin` and `canonicalJson` in `@deck/module-sdk`**: a bounded wait on a promise
+  that never keeps the process alive, and key-order-insensitive JSON text (#62).
+
 ### Changed
 
+- **Module server halves may not load `apps/server/src` at runtime**, by path or through
+  `@deck/server`; a guard test enforces it, with type-only imports and augmentation still
+  allowed (#62).
 - `http-json`: the literal-credential name check reads each name both as written and split at
   camelCase, ignoring case, separators and trailing digits. It now also catches `pwd`, `jwt`,
   `bearer`, session ids (`JSESSIONID`, `PHPSESSID`), `pass` as a whole name or last part (`DB_PASS`,

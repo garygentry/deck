@@ -1,0 +1,52 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { settlesWithin } from "../src/index.js";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("settlesWithin", () => {
+  it("is true for a promise that resolves within the bound", async () => {
+    await expect(settlesWithin(Promise.resolve("done"), 1_000)).resolves.toBe(true);
+  });
+
+  it("is true for a promise that rejects within the bound, and swallows the rejection", async () => {
+    await expect(settlesWithin(Promise.reject(new Error("boom")), 1_000)).resolves.toBe(true);
+  });
+
+  it("is false once the bound passes with the promise still pending", async () => {
+    vi.useFakeTimers();
+    const result = settlesWithin(new Promise(() => {}), 500);
+    await vi.advanceTimersByTimeAsync(499);
+    let settled: boolean | undefined;
+    void result.then((value) => (settled = value));
+    await Promise.resolve();
+    expect(settled).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(result).resolves.toBe(false);
+  });
+
+  it("clears its timer when the promise settles first", async () => {
+    vi.useFakeTimers();
+    let resolve!: () => void;
+    const result = settlesWithin(new Promise<void>((r) => (resolve = r)), 10_000);
+    expect(vi.getTimerCount()).toBe(1);
+    resolve();
+    await expect(result).resolves.toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("unrefs its timer so a pending wait never keeps the process alive", async () => {
+    const timer = { unref: vi.fn() };
+    vi.spyOn(globalThis, "setTimeout").mockReturnValue(timer as unknown as ReturnType<typeof setTimeout>);
+    const cleared = vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => {});
+    try {
+      await expect(settlesWithin(Promise.resolve(), 1_000)).resolves.toBe(true);
+      expect(timer.unref).toHaveBeenCalledTimes(1);
+      expect(cleared).toHaveBeenCalledWith(timer);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+});

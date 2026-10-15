@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { FreshnessStamp } from "@deck/contract";
-import type { DeckConfig } from "@deck/server";
+import type { DeckConfig } from "../../../../apps/server/src/contract/index.js";
 import type { Integration } from "@deck/schema";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,41 +8,41 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AlertsSection,
   groupBySeverity,
-} from "../../../modules/monitoring/web/AlertsSection.js";
+} from "../../web/AlertsSection.js";
 import {
   MetricsSection,
   summaryPageStatus,
-} from "../../../modules/monitoring/web/MetricsSection.js";
+} from "../../web/MetricsSection.js";
 import type {
   ActiveAlert,
   ActiveSilence,
   AlertmanagerData,
-} from "../../../modules/monitoring/web/useAlertmanagerData.js";
+} from "../../web/useAlertmanagerData.js";
 import type {
   PrometheusData,
   SummaryValue,
-} from "../../../modules/monitoring/web/usePrometheusData.js";
-import type { ConfigState } from "../src/data/hooks.js";
+} from "../../web/usePrometheusData.js";
+import type { ConfigState } from "@/data/hooks.js";
 
 // The page sources its data through three hooks. Mocking them yields deterministic flattened views with
 // no poll/timer lifecycle. The prop-driven section tests below never call the hooks, so the mocks are
 // inert there; only the MonitoringPage tests exercise them.
 let alertView: AlertmanagerData;
-vi.mock("../../../modules/monitoring/web/useAlertmanagerData.js", () => ({
+vi.mock("../../web/useAlertmanagerData.js", () => ({
   useAlertmanagerData: () => alertView,
 }));
 let promView: PrometheusData;
-vi.mock("../../../modules/monitoring/web/usePrometheusData.js", () => ({
+vi.mock("../../web/usePrometheusData.js", () => ({
   usePrometheusData: () => promView,
 }));
 let configState: ConfigState;
-vi.mock("../src/data/hooks.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/data/hooks.js")>()),
+vi.mock("@/data/hooks.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/data/hooks.js")>()),
   useConfig: () => configState,
 }));
 
 // eslint-disable-next-line import/first
-import { MonitoringPage } from "../../../modules/monitoring/web/MonitoringPage.js";
+import { MonitoringPage } from "../../web/MonitoringPage.js";
 
 afterEach(() => {
   cleanup();

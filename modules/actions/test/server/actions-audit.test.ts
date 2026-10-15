@@ -12,8 +12,8 @@ import {
   type AuditStore,
   type AuditOutputSink,
   type AuditLogger,
-} from "../../../modules/actions/server/audit.js";
-import { makeDataDir } from "./util/tmp-data.js";
+} from "../../server/audit.js";
+import { makeDataDir } from "../../../../apps/server/test/util/tmp-data.js";
 
 const cleanups: Array<() => void> = [];
 
@@ -91,7 +91,7 @@ describe("append — single-syscall atomic index write", () => {
   it("does not use fs.appendFile (single O_APPEND write invariant)", () => {
     // the implementation must use openSync+writeSync+closeSync, never
     // fs.appendFile (which may split a buffer into multiple interleaving writes).
-    const src = readFileSync(new URL("../../../modules/actions/server/audit.ts", import.meta.url), "utf8");
+    const src = readFileSync(new URL("../../server/audit.ts", import.meta.url), "utf8");
     expect(src).not.toMatch(/appendFile/);
     expect(src).toMatch(/O_APPEND/);
     expect(src).toMatch(/writeSync/);

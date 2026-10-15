@@ -8,27 +8,27 @@
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SourceTreeNode } from "../../../modules/sources/server/types.js";
+import type { SourceTreeNode } from "../../server/types.js";
 
-vi.mock("../../../modules/sources/web/use-source.js", async (importOriginal) => ({
+vi.mock("../../web/use-source.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useManifestLoad: () => {},
   useFileLoad: () => {},
   useSearchLoad: () => {},
 }));
 
-import { SourceBrowserReady } from "../../../modules/sources/web/SourceBrowserPage.js";
-import { fileLoadPath, findNode } from "../../../modules/sources/web/links.js";
-import { FileViewer } from "../../../modules/sources/web/components/FileViewer.js";
-import type { FileState } from "../../../modules/sources/web/client.js";
+import { SourceBrowserReady } from "../../web/SourceBrowserPage.js";
+import { fileLoadPath, findNode } from "../../web/links.js";
+import { FileViewer } from "../../web/components/FileViewer.js";
+import type { FileState } from "../../web/client.js";
 import {
   resetBrowse,
   selectPath,
   selectSource,
   setFile,
   setManifest,
-} from "../../../modules/sources/web/sources-store.js";
-import { dirNode, envelope, fileNode, manifest, sourcesConfig } from "./support/sources.js";
+} from "../../web/sources-store.js";
+import { dirNode, envelope, fileNode, manifest, sourcesConfig } from "@web-test/support/sources.js";
 
 afterEach(() => {
   cleanup();

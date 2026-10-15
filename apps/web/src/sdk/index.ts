@@ -4,7 +4,7 @@
  * module's components share deck's React, query cache, UI manifest and registry.
  *
  * It is a curated surface: the `@/ui` patterns (which carry deck's look and a11y contract),
- * `Icon`, tones and status maps, and the data hooks. It never re-exports the vendored
+ * `Icon`, tones and status maps, the viz charts, and the data hooks. It never re-exports the vendored
  * shadcn/Radix primitives or `cn`: they are implementation detail the host must stay free to
  * change, and a module that styles from them leaks the host's framework into its API. Adding
  * a name here makes it part of the module API (test/sdk.test.ts pins the list).
@@ -77,4 +77,17 @@ export {
   type MeterProps,
   type StatTileProps,
   type StatusBadgeProps,
+} from "@/ui";
+
+// Charts: dependency-free SVG, coloured by status tone.
+export {
+  Gauge,
+  Sparkline,
+  StatusTimeline,
+  type GaugeProps,
+  type SparklineProps,
+  type SparklineSample,
+  type StatusTimelineProps,
+  type TimelineLane,
+  type TimelineSegment,
 } from "@/ui";

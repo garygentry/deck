@@ -20,9 +20,9 @@ const require = createRequire(TEST_FILE_URL);
 /** The SDK's runtime exports: adding one makes it part of the module API, so it is listed here on purpose. */
 const SDK_EXPORTS = [
   "Callout", "CardGrid", "CodeBlock", "DECK_API_VERSION", "DataTable", "Disclosure", "EmptyState", "ErrorState",
-  "ExternalLink", "FragmentBoundary", "FreshnessBadge", "HealthPill", "Icon", "KeyValue", "KeyValueList", "LinkTile",
+  "ExternalLink", "FragmentBoundary", "FreshnessBadge", "Gauge", "HealthPill", "Icon", "KeyValue", "KeyValueList", "LinkTile",
   "List", "ListGroup", "ListItem", "LoadingState", "Meter", "PageHeader", "Prose", "RelativeTime", "SafeRouteLink",
-  "Section", "StatGrid", "StatTile", "StatusBadge", "TONES", "TONE_ICON", "VisuallyHidden", "defineStatusMap",
+  "Section", "Sparkline", "StatGrid", "StatTile", "StatusBadge", "StatusTimeline", "TONES", "TONE_ICON", "VisuallyHidden", "defineStatusMap",
   "defineWebModule", "formatAge", "formatRelative", "formatTimestamp", "satisfiesDeckApi", "statusTone", "useConfig",
   "useProvider", "useProviders", "useUiManifest",
 ];

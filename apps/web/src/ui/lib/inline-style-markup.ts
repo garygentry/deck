@@ -1,42 +1,65 @@
 /**
- * Inline styles in markup, found before it is parsed. The shell's Content-Security-Policy
- * refuses `style` attributes and un-nonced `<style>` elements, and the browser reports one as
- * soon as markup carrying it is parsed, even into an inert document (as a sanitiser does). So
- * untrusted markup is checked or rewritten as a string first, with a tokeniser that reads tags
- * the way a parser does: an attribute's value, quoted (`"…"`, `'…'`) or not, is never mistaken
- * for a name, text outside tags is never touched, and comments, CDATA sections, `<!…>`/`<?…>`
- * declarations and the contents of raw-text elements (`<script>`, `<textarea>`, `<title>`, …)
- * are skipped whole.
+ * Inline styles in untrusted markup, found before it is parsed. The shell's
+ * Content-Security-Policy refuses `style` attributes and un-nonced `<style>` elements, and the
+ * browser reports one as soon as markup carrying it is parsed, even into an inert document (as
+ * a sanitiser's `DOMParser` does). So markup is checked or rewritten as a string first.
+ *
+ * The tag reader approximates the HTML parser of a `DOMParser` document (scripting disabled):
+ * an attribute's value, quoted (`"…"`, `'…'`) or not, is never mistaken for a name; text outside
+ * tags is never touched; comments (`<!--…-->`, `<!-->`, `--!>`), bogus comments (`<!…>`, `<?…>`,
+ * and `<![CDATA[…>` outside SVG and MathML), CDATA sections inside them, and the contents of
+ * raw-text elements (`<script>`, `<textarea>`, `<title>`, … outside SVG and MathML) are skipped.
+ * Inside `<svg>` and `<math>`, `/>` closes an element.
+ *
+ * It is an approximation, so every uncertainty resolves toward keeping content: a style it
+ * misses reaches the sanitiser, which drops it (the policy refuses it anyway, and only a
+ * violation report results), while a `<style>` element is removed only through a matching end
+ * tag with nothing but text before it. Lost content is never an acceptable trade for a report.
  */
 
-/** Elements whose contents a parser reads as text up to their own end tag, never as markup. */
-const RAW_TEXT = new Set(["script", "textarea", "title", "xmp", "noscript", "iframe", "noembed", "noframes", "plaintext"]);
+/** Elements whose contents an HTML parser reads as text up to their own end tag (outside SVG and MathML). */
+const RAW_TEXT = new Set(["script", "textarea", "title", "xmp", "iframe", "noembed", "noframes", "plaintext"]);
+
+/** Start tags that end SVG or MathML content and return to HTML. */
+const BREAKOUT = new Set([
+  "b", "big", "blockquote", "body", "br", "center", "code", "dd", "div", "dl", "dt", "em", "embed", "h1", "h2", "h3", "h4", "h5", "h6",
+  "head", "hr", "i", "img", "li", "listing", "menu", "meta", "nobr", "ol", "p", "pre", "ruby", "s", "small", "span", "strong", "strike",
+  "sub", "sup", "table", "tt", "u", "ul", "var",
+]);
 
 interface Found {
   /** A `style` attribute's name: [start, end) of the name only. */
   readonly attributes: (readonly [number, number])[];
-  /** A `<style>` element, its start tag to the end of its end tag (or of the markup): [start, end). */
+  /** A `<style>` element, or only its start tag: [start, end) of what to remove. */
   readonly elements: (readonly [number, number])[];
 }
 
 const isSpace = (char: string | undefined) => char === " " || char === "\t" || char === "\n" || char === "\r" || char === "\f";
+const isLetter = (char: string | undefined) => char !== undefined && /[A-Za-z]/.test(char);
 
 /** The local name of a tag name (`svg:style` → `style`), lowercased. */
 const localName = (name: string) => name.slice(name.lastIndexOf(":") + 1).toLowerCase();
 
-/** Where the element `name` opened before `from` ends: just past its end tag, or the end of `markup`. */
-function endOfElement(markup: string, name: string, from: number): number {
-  const close = new RegExp(`</${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=[\\s/>])`, "gi");
-  close.lastIndex = from;
-  const match = close.exec(markup);
-  if (match === null) return markup.length;
-  const end = markup.indexOf(">", match.index);
-  return end === -1 ? markup.length : end + 1;
+/** The end of the first match of `pattern` at or after `from`, or -1. */
+function endOf(markup: string, pattern: RegExp, from: number): { index: number; end: number } | null {
+  const search = new RegExp(pattern.source, `${pattern.flags.replace("g", "")}g`);
+  search.lastIndex = from;
+  const match = search.exec(markup);
+  return match === null ? null : { index: match.index, end: match.index + match[0].length };
+}
+
+/** Where `name`'s end tag (`</name` then a space, `/` or `>`) starts and ends, at or after `from`. */
+function endTag(markup: string, name: string, from: number): { index: number; end: number } | null {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const found = endOf(markup, new RegExp(`</${escaped}(?=[\\s/>])`, "i"), from);
+  if (found === null) return null;
+  const close = markup.indexOf(">", found.index);
+  return close === -1 ? null : { index: found.index, end: close + 1 };
 }
 
 /**
  * Read one tag starting at `start` (`markup[start]` is `<`, then a letter, or `/` and a letter):
- * its name, and each attribute name's range. Returns where the tag ends (past `>`).
+ * its name, attributes (each name's range), and where it ends (past `>`, or the end of `markup`).
  */
 function readTag(markup: string, start: number, onAttribute: (name: string, from: number, to: number) => void): { name: string; end: number; selfClosing: boolean } {
   let at = start + 1;
@@ -73,44 +96,81 @@ function readTag(markup: string, start: number, onAttribute: (name: string, from
   }
 }
 
+/** Past the first `>` at or after `from`, or the end of `markup`. */
+function pastGreaterThan(markup: string, from: number): number {
+  const end = markup.indexOf(">", from);
+  return end === -1 ? markup.length : end + 1;
+}
+
 /**
- * Every inline style in `markup`: `style` attribute names and `<style>` elements. As HTML, a
- * start tag's `/>` closes nothing, and raw-text elements' contents are skipped; as XML, `/>`
- * closes the element and every element's contents are markup.
+ * Every inline style in `markup`: `style` attribute names, and `<style>` elements to remove.
+ * `xml` reads an XML document (an SVG icon): every element is foreign, `/>` closes it, and
+ * comments end only at `-->`.
  */
 function findInlineStyles(markup: string, xml: boolean): Found {
   const found: Found = { attributes: [], elements: [] };
+  // The open SVG and MathML elements (HTML mode); in XML everything is foreign.
+  const foreignStack: string[] = [];
+  const inForeign = () => xml || foreignStack.length > 0;
   let at = 0;
   while (at < markup.length) {
     const open = markup.indexOf("<", at);
     if (open === -1) break;
-    const next = markup[open + 1] ?? "";
+    const next = markup[open + 1];
     if (markup.startsWith("<!--", open)) {
-      const end = markup.indexOf("-->", open + 4);
-      at = end === -1 ? markup.length : end + 3;
-    } else if (markup.startsWith("<![CDATA[", open)) {
+      if (xml) {
+        const end = markup.indexOf("-->", open + 4);
+        at = end === -1 ? markup.length : end + 3;
+      } else if (markup.startsWith("<!-->", open)) {
+        at = open + 5;
+      } else if (markup.startsWith("<!--->", open)) {
+        at = open + 6;
+      } else {
+        at = endOf(markup, /--!?>/, open + 4)?.end ?? markup.length;
+      }
+    } else if (markup.startsWith("<![CDATA[", open) && inForeign()) {
       const end = markup.indexOf("]]>", open + 9);
       at = end === -1 ? markup.length : end + 3;
-    } else if (next === "!" || next === "?") {
-      const end = markup.indexOf(">", open + 2);
-      at = end === -1 ? markup.length : end + 1;
-    } else if (/[A-Za-z]/.test(next) || (next === "/" && /[A-Za-z]/.test(markup[open + 2] ?? ""))) {
+    } else if (next === "!" || next === "?" || (next === "/" && !isLetter(markup[open + 2]) && !xml)) {
+      // A bogus comment (a doctype, `<![CDATA[` in HTML, `<?…>`, `</` and no name) ends at the first `>`.
+      at = pastGreaterThan(markup, open + 2);
+    } else if (isLetter(next) || (next === "/" && isLetter(markup[open + 2]))) {
       const closing = next === "/";
       const tag = readTag(markup, open, (name, from, to) => {
         if (!closing && name.toLowerCase() === "style") found.attributes.push([from, to]);
       });
       at = tag.end;
       const local = localName(tag.name);
-      if (closing) continue;
-      if (xml && tag.selfClosing) {
-        if (local === "style") found.elements.push([open, tag.end]);
+      if (closing) {
+        const depth = foreignStack.lastIndexOf(local);
+        if (!xml && depth !== -1) foreignStack.length = depth;
+        continue;
+      }
+      const foreign = inForeign();
+      if (foreign && !xml && BREAKOUT.has(local)) foreignStack.length = 0;
+      if (!xml && (local === "svg" || local === "math") && !tag.selfClosing) {
+        foreignStack.push(local);
         continue;
       }
       if (local === "style") {
-        at = endOfElement(markup, tag.name, tag.end);
-        found.elements.push([open, at]);
-      } else if (!xml && RAW_TEXT.has(local)) {
-        at = local === "plaintext" ? markup.length : endOfElement(markup, tag.name, tag.end);
+        if (inForeign() && tag.selfClosing) {
+          // An empty element: only the tag goes.
+          found.elements.push([open, tag.end]);
+          continue;
+        }
+        // The whole element only when its end tag follows with nothing but text before it (as an
+        // HTML parser's raw text or an SVG style's text ends there); otherwise only its start tag,
+        // and what follows is read on as markup.
+        const close = endTag(markup, tag.name, tag.end);
+        if (close !== null && !markup.slice(tag.end, close.index).includes("<")) {
+          found.elements.push([open, close.end]);
+          at = close.end;
+        } else {
+          found.elements.push([open, tag.end]);
+        }
+      } else if (!inForeign() && RAW_TEXT.has(local)) {
+        // Text to its end tag (or to the end, as the parser reads it): nothing in it is markup.
+        at = local === "plaintext" ? markup.length : (endTag(markup, tag.name, tag.end)?.end ?? markup.length);
       }
     } else {
       at = open + 1;
@@ -126,10 +186,10 @@ export function hasInlineStyle(markup: string): boolean {
 }
 
 /**
- * `html` with no inline style left for a parser to report: each `<style>` element removed whole
- * (its contents are CSS, never text to keep), and each `style` attribute renamed `data-style`,
- * which a sanitiser that keeps no `data-*` attribute then drops. Everything else, attribute
- * values and text included, is kept byte for byte.
+ * `html` with as few inline styles left for a parser to report as can be found safely: each
+ * `<style>` element removed (whole when its extent is certain, else only its start tag), and each
+ * `style` attribute renamed `data-style`, which a sanitiser that keeps no `data-*` attribute then
+ * drops. Everything else, attribute values and text included, is kept byte for byte.
  */
 export function neutralizeInlineStyles(html: string): string {
   const { attributes, elements } = findInlineStyles(html, false);
@@ -137,11 +197,11 @@ export function neutralizeInlineStyles(html: string): string {
   const edits = [
     ...attributes.map(([from, to]) => ({ from, to, text: "data-style" })),
     ...elements.map(([from, to]) => ({ from, to, text: "" })),
-  ].sort((a, b) => a.from - b.from);
+  ].sort((a, b) => a.from - b.from || b.to - a.to);
   let out = "";
   let at = 0;
   for (const edit of edits) {
-    if (edit.from < at) continue; // An attribute inside a removed element.
+    if (edit.from < at) continue; // An attribute inside a removed tag.
     out += html.slice(at, edit.from) + edit.text;
     at = edit.to;
   }

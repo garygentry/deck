@@ -193,6 +193,37 @@ describe("markdown.ts — sanitization — the XSS boundary", () => {
     }
   });
 
+  it("keeps every word after a <style> it cannot remove whole: SVG <style/>, MathML <style/>, unterminated <style>", () => {
+    const after = "\n\n# Important runbook\n\nDo this next.";
+    for (const head of ["<svg><style /></svg>", "<math><style/></math>", "<style>"]) {
+      for (const external of [false, true]) {
+        const doc = `${head}${after}`;
+        const html = external ? renderMarkdown(doc, undefined, { externalLinksOnly: true }) : renderMarkdown(doc, ctx("index.md"));
+        const text = parse(html).body.textContent ?? "";
+        expect(text, `${head} (external: ${external})`).toContain("Important runbook");
+        expect(text, `${head} (external: ${external})`).toContain("Do this next.");
+        expect(parse(html).querySelector("style, [style]")).toBeNull();
+      }
+    }
+  });
+
+  it("lets no style reach the parser from inside <noscript> (a DOMParser document runs no script)", () => {
+    const parseFromString = vi.spyOn(DOMParser.prototype, "parseFromString");
+    try {
+      const doc = '<noscript><style>p{color:red}</style><p style="color:red">fallback</p></noscript>';
+      for (const html of [renderMarkdown(doc, ctx("index.md")), renderMarkdown(doc, undefined, { externalLinksOnly: true })]) {
+        expect(parse(html).querySelector("style, [style]")).toBeNull();
+      }
+      const inputs = parseFromString.mock.calls.map(([input]) => String(input)).filter((input) => input.includes("fallback"));
+      expect(inputs.length).toBeGreaterThan(0);
+      for (const input of inputs) {
+        expect(input).not.toMatch(/<style|[\s"'/]style\s*=/i);
+      }
+    } finally {
+      parseFromString.mockRestore();
+    }
+  });
+
   it("aligns table columns by class, not by a style attribute", () => {
     const html = renderMarkdown(["| L | C | R | N |", "| :- | :-: | -: | - |", "| 1 | 2 | 3 | 4 |"].join("\n"));
     const cells = [...parse(html).querySelectorAll("th, td")];

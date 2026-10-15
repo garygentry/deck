@@ -251,17 +251,23 @@ describe("check-pure-moves", () => {
     const PAD = Array.from({ length: 40 }, (_, index) => `export const padding${index} = "line ${index}".length;`).join("\n");
     const atOld = (path: string) => `../src/${path}`;
     const atNew = (path: string) => `../../../../apps/server/src/${path}`;
+    /** The path helpers every probe may use, imported as the checker requires. */
+    const IMPORTS = [
+      'import { dirname, join, resolve } from "node:path";',
+      'import { fileURLToPath } from "node:url";',
+      'import { createRequire } from "node:module";',
+    ].join("\n");
 
     /** Commit `before` at OLD as the base, move it to NEW as `after`, and check. */
     const probe = (before: string, after: string) => {
       if (existsSync(join(repo, NEW))) git("rm", "-q", NEW);
-      write(OLD, `${before}\n${PAD}\n`);
+      write(OLD, `${before}\n${IMPORTS}\n${PAD}\n`);
       git("add", ".");
       git("commit", "-qm", "probe");
       git("branch", "-f", "base");
       mkdirSync(join(repo, "modules/grow/test/server"), { recursive: true });
       git("mv", OLD, NEW);
-      write(NEW, `${after}\n${PAD}\n`);
+      write(NEW, `${after}\n${IMPORTS}\n${PAD}\n`);
       git("add", "-A");
       git("commit", "-qm", "move probe");
       return check();
@@ -302,6 +308,29 @@ describe("check-pure-moves", () => {
         fails(probe(lines(atOld), lines(atNew)), "import.meta.url");
       });
 
+      it("names the repository root the same way on both sides", () => {
+        // Cross-directory, rewritten to the new depth: with and without a trailing slash.
+        passes(probe('new URL("../../../", import.meta.url);\nnew URL("../../..", import.meta.url);', 'new URL("../../../../", import.meta.url);\nnew URL("../../../..", import.meta.url);'));
+        fails(probe('new URL("../../../", import.meta.url);', 'new URL("../../../", import.meta.url);'), 'URL "../../../" → "../../../" loads modules/, not ./');
+        // A rename within the directory, unchanged.
+        write(OLD, `new URL("../../../", import.meta.url);\n${PAD}\n`);
+        git("rm", "-q", NEW);
+        git("add", ".");
+        git("commit", "-qm", "root");
+        git("branch", "-f", "base");
+        git("mv", OLD, "apps/server/test/rooted.test.ts");
+        git("commit", "-qm", "rename");
+        passes(check());
+      });
+
+      it.each([
+        ["export { HERE }", "export { HERE };"],
+        ["export { HERE as base }", "export { HERE as base };"],
+        ["export default HERE", "export default HERE;"],
+      ])("fails a file-URL const that escapes by %s", (_name, line) => {
+        fails(spelled((at) => `const HERE = import.meta.url;\nnew URL("${at("grow/a.ts")}", HERE);\n${line}`), "HERE (bound to the file's location)");
+      });
+
       it("trusts an unshadowed const, but not a `let` or a destructured `url`", () => {
         passes(spelled((at) => `const HERE = import.meta.url;\nnew URL("${at("grow/a.ts")}", HERE);`));
         fails(spelled((at) => `let HERE = import.meta.url;\nnew URL("${at("grow/a.ts")}", HERE);`), "import.meta.url");
@@ -323,14 +352,30 @@ describe("check-pure-moves", () => {
         fails(probe(`${prelude}join(${anchor}, "${atOld("grow/a.ts")}");`, `${prelude}join(${anchor}, "${atNew("grow/b.ts")}");`));
       });
 
+      it.each([
+        ["a local function", "function join2(base: string, path: string) { return path; }\n", "join2"],
+        ["an unrelated object's method", "const helpers = { join: (base: string, path: string) => path };\n", "helpers.join"],
+        ["an import from another module", 'import { join as pjoin } from "./grow-helpers.js";\n', "pjoin"],
+      ])("gives no path semantics to %s", (_name, prelude, callee) => {
+        // The literal is edited, so only path semantics could excuse it.
+        fails(probe(`${prelude}export const x = ${callee}(import.meta.dirname, "./a.ts");`, `${prelude}export const x = ${callee}(import.meta.dirname, "${atNew("../test/a.ts")}");`), "import.meta.dirname");
+      });
+
+      it("gives no path semantics to a shadowed import", () => {
+        const line = (at: string) => `export function f(join: (a: string, b: string) => string) { return join(import.meta.dirname, "${at}"); }`;
+        fails(probe(line("./a.ts"), line(atNew("../test/a.ts"))), "import.meta.dirname");
+      });
+
+      it("accepts a renamed import, a namespace and a default import of node:path", () => {
+        passes(spelled((at) => `import { join as pjoin } from "node:path";\nimport * as nodePath from "node:path";\nimport path from "path";\npjoin(__dirname, "${at("grow/a.ts")}");\nnodePath.resolve(__dirname, "${at("grow/a.ts")}");\npath.join(__dirname, "${at("grow")}", "a.ts");`));
+      });
+
       it("resolves from import.meta.filename / __filename as the file's own path", () => {
         passes(spelled((at) => `join(import.meta.filename, "..", "${at("grow/a.ts")}");\nresolve(__filename, "../${at("grow/a.ts")}");`));
       });
 
       it("fails the reviewer's probe: unchanged joins from a moved file", () => {
         const probeText = [
-          'import { dirname, join } from "node:path";',
-          'import { fileURLToPath } from "node:url";',
           "const here = dirname(fileURLToPath(import.meta.url));",
           'export const diagnostics = join(here, "../src/grow/a.ts");',
           'export const tokens = join(import.meta.dirname, "../src/shared/helper.ts");',
@@ -349,7 +394,7 @@ describe("check-pure-moves", () => {
 
       it("allows them all in a move within one directory", () => {
         const line = "const here = dirname(fileURLToPath(import.meta.url));\nreaddirSync(here);\nexport const env = import.meta.env;";
-        write(OLD, `${line}\n${PAD}\n`);
+        write(OLD, `${IMPORTS}\n${line}\n${PAD}\n`);
         git("add", ".");
         git("commit", "-qm", "probe");
         git("branch", "-f", "base");

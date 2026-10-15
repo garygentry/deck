@@ -31,6 +31,8 @@
 // Its output is meant to be pasted into the PR body.
 //
 // Usage: node scripts/check-pure-moves.mjs <base-ref> [--worktree] [--allow-empty]
+// Needs Node 22.18 or later (or 23.6 or later), which load the TypeScript module-imports guard it
+// shares by stripping types; or run it with bun.
 // Exit: 0 pure, 1 not pure, 2 usage or git error.
 
 import { execFileSync } from "node:child_process";
@@ -151,6 +153,36 @@ export function sourceLeaves(path, text) {
   // The `import.meta`, `__dirname`/`__filename` and anchor-const reads a recognized form accounts for.
   const consumed = new Set();
   const declared = declarations(file);
+  /**
+   * Whether call `node` is `name` from one of `modules`, by its binding in this file: a named
+   * import (renamed or not) of `name`, or `ns.name` on a namespace or default import (or a named
+   * `posix`/`win32` import of node:path). A local function, another object's method or a
+   * shadowed import of the same name is not, so it gets no path semantics.
+   */
+  const isHelper = (node, name, modules) => {
+    if (!ts.isCallExpression(node)) return false;
+    const importOf = (identifier) => {
+      const bindings = declared.get(identifier.text) ?? [];
+      if (bindings.length !== 1) return undefined;
+      let statement = bindings[0].parent;
+      while (statement !== undefined && !ts.isImportDeclaration(statement)) statement = statement.parent;
+      if (statement === undefined || statement.importClause?.isTypeOnly || !modules.includes(statement.moduleSpecifier.text)) return undefined;
+      return bindings[0].parent;
+    };
+    const callee = node.expression;
+    if (ts.isIdentifier(callee)) {
+      const binding = importOf(callee);
+      return binding !== undefined && ts.isImportSpecifier(binding) && !binding.isTypeOnly && (binding.propertyName ?? binding.name).text === name;
+    }
+    if (ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression) && callee.name.text === name) {
+      const binding = importOf(callee.expression);
+      return binding !== undefined && (ts.isNamespaceImport(binding) || ts.isImportClause(binding)
+        || (ts.isImportSpecifier(binding) && !binding.isTypeOnly && ["posix", "win32"].includes((binding.propertyName ?? binding.name).text)));
+    }
+    return false;
+  };
+  const PATH = ["node:path", "path"];
+  const URL_MODULES = ["node:url", "url"];
   const consume = (node) => {
     const visit = (child) => {
       if (ts.isMetaProperty(child) || ts.isIdentifier(child)) consumed.add(child);
@@ -188,11 +220,11 @@ export function sourceLeaves(path, text) {
       const of = anchorOf(base);
       return (of === "url" || of === "dirurl") && ts.isStringLiteralLike(path) && [".", "./"].includes(path.text) ? "dirurl" : undefined;
     }
-    if (isCallOf(node, "fileURLToPath") && node.arguments.length === 1) {
+    if (isHelper(node, "fileURLToPath", URL_MODULES) && node.arguments.length === 1) {
       const of = anchorOf(node.arguments[0]);
       return of === "url" ? "file" : of === "dirurl" ? "dir" : undefined;
     }
-    if (isCallOf(node, "dirname") && node.arguments.length === 1 && anchorOf(node.arguments[0]) === "file") return "dir";
+    if (isHelper(node, "dirname", PATH) && node.arguments.length === 1 && anchorOf(node.arguments[0]) === "file") return "dir";
     return undefined;
   };
   const collectAnchors = (node) => {
@@ -219,7 +251,7 @@ export function sourceLeaves(path, text) {
   };
   findCreateRequires(file);
   const fileRequires = createRequires.every((call) => {
-    const of = call.arguments.length === 1 ? anchorOf(call.arguments[0]) : undefined;
+    const of = call.arguments.length === 1 && isHelper(call, "createRequire", ["node:module", "module"]) ? anchorOf(call.arguments[0]) : undefined;
     if (of === "url" || of === "file") consume(call.arguments[0]);
     return of === "url" || of === "file";
   });
@@ -250,13 +282,12 @@ export function sourceLeaves(path, text) {
         return;
       }
     }
-    if (ts.isCallExpression(node) && node.arguments.length >= 2 && (isCallOf(node, "join") || isCallOf(node, "resolve"))
-      && !(ts.isPropertyAccessExpression(node.expression) && ["Promise", "require"].includes(node.expression.expression.text))) {
+    if (ts.isCallExpression(node) && node.arguments.length >= 2 && (isHelper(node, "join", PATH) || isHelper(node, "resolve", PATH))) {
       const [first, ...rest] = node.arguments;
       const of = anchorOf(first);
       if (of === "dir" || of === "file") {
         consume(first);
-        const fn = isCallOf(node, "join") ? "join" : "resolve";
+        const fn = isHelper(node, "join", PATH) ? "join" : "resolve";
         if (rest.every((part) => ts.isStringLiteralLike(part))) {
           specifiers.set(rest[0], { form: "path", base: of, fn, parts: rest.map((part) => part.text) });
           for (const part of rest.slice(1)) specifiers.set(part, { form: "part" });
@@ -275,6 +306,9 @@ export function sourceLeaves(path, text) {
   const leftovers = (node) => {
     if (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword && !consumed.has(node)) {
       dynamic.push(ts.isPropertyAccessExpression(node.parent) ? `import.meta.${node.parent.name.text}` : "import.meta");
+    } else if (ts.isExportSpecifier(node) && node.parent.parent.moduleSpecifier === undefined && anchors.has((node.propertyName ?? node.name).text)) {
+      // `export { HERE }` / `export { HERE as base }`: read where this check cannot see it.
+      dynamic.push(`${(node.propertyName ?? node.name).text} (bound to the file's location) exported`);
     } else if (ts.isIdentifier(node) && !consumed.has(node) && isReference(node)) {
       if (anchors.has(node.text)) dynamic.push(`${node.text} (bound to the file's location) used other than as a base`);
       else if (["__dirname", "__filename"].includes(node.text) && !declared.has(node.text)) dynamic.push(node.text);
@@ -562,7 +596,7 @@ export function compareFile({ oldTree, newTree, from, to, renames }) {
     let expected = was;
     if (target.startsWith("file:")) expected = `file:${renames.get(target.slice(5)) ?? target.slice(5)}${query}`;
     else if (target.startsWith("dir:")) {
-      const slash = target.endsWith("/") && target !== "dir:./";
+      const slash = target.endsWith("/");
       const dir = target.slice(4).replace(/\/$/, "") || ".";
       expected = `dir:${renamedDir(oldTree, dir, renames)}${slash ? "/" : ""}`;
     }

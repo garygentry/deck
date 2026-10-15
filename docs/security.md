@@ -108,7 +108,7 @@ choose a tier.
 | Config-driven UI (`ui`: brand, nav, pages, widgets, `select`) | Arrange and relabel deck's own UI, and show provider data through deck's widgets. No code runs. | The `ui` schema; widget options checked against each type's schema; `select` evaluated on the server with step, size and depth budgets; links pass deck's link check; markdown sanitized. | Whoever edits the config chooses what appears and what deck fetches. |
 | `core/embed` | Show another site's page in a sandboxed frame. | Off unless `ui.allowUnsafeEmbeds: true`; `http(s)` only, never deck's own origin; a sandbox from a fixed list; no referrer; the page may frame only those origins (CSP `frame-src`), so a redirect into deck is refused. | Embed only sites you trust: the page runs in each viewer's browser with that browser's cookies for its site. |
 | `http-json` | Poll a URL you name and publish its JSON. | The credential only from `credentialEnv`, never off its origin; redirects only within the URL's origin unless the instance sets `followCrossOriginRedirects` (never with a credential, never to a literal local address; internal hostnames are not checked); size, depth and timeout caps; responses that echo the credential refused. | The URL is reached from deck's network: the config author chooses what deck fetches. |
-| `remote` sidecars | Contribute data, and declarative widgets, links and nav. | Its describe document is **untrusted input**: schema-checked, deck's declarative widget types only (never `core/embed`), bounded strings, `select` limits, link checks, external-only links in its markdown; its widgets read only its own integration; its page path and nav placement come from config; no redirect off its origin. | Run sidecars you trust with the data you give them. |
+| `remote` sidecars | Contribute data, and declarative widgets, links and nav. | Its describe document is **untrusted input**: schema-checked, deck's declarative widget types only (never `core/embed`), bounded strings, `select` limits, link checks, external-only links in its markdown and no images or media in it (an image shows as its alt text); its widgets read only its own integration; its page path and nav placement come from config; no redirect off its origin. | Run sidecars you trust with the data you give them. |
 | Runtime modules (`DECK_MODULES_DIR`) | Anything deck can: the server half runs in the deck process, and `web.js` runs in deck's page as deck. | Off unless `DECK_MODULES_ENABLED`; a `deckApi` check; an optional `moduleIntegrity` pin checked just before each import; load failures shown as fixed categories, never the module's error text; `web.js` served same-origin and loaded under deck's CSP (no `eval`, requests to deck only). | Full trust: install only modules you have reviewed, mount the directory read-only and pin each one. A pin protects the files at rest only: it does not stop someone who can write the directory while deck starts. |
 | Contributed icons | SVG markup in a module's manifest. | Rebuilt through an element and attribute allowlist: no scripts, no `style`, no external references. | — |
 
@@ -136,7 +136,12 @@ The web shell's page carries a Content-Security-Policy that browsers enforce:
   that covers deck is ignored as a whole (and logged), so list hosts.
 - **Styles** may be inline as well as deck's own, and **images** may come from any `http(s)`
   URL (brand logos, images in docs). A sanitized page cannot inject a script, but it can show an
-  image from another site.
+  image from another site. The CSP is not the only limit on that: markdown from a sidecar loads
+  no image, media or other subresource, whatever the CSP allows. Its images show as alt text,
+  and its video and audio as their fallback content. The elements and attributes that load
+  something are removed, and an SVG or MathML attribute (where CSS such as `fill` or `mask` is
+  read) is kept only if it calls nothing but colour, math, `var` and transform functions, with
+  no quote or backslash.
 - No plugins, no `<base>`, and forms post to deck only.
 
 If your reverse proxy sets its own `Content-Security-Policy` or `X-Frame-Options`, the browser

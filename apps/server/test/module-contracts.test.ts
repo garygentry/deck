@@ -73,6 +73,27 @@ function typeOnly(node: ts.Node | undefined, form: string): boolean {
   return false;
 }
 
+/** Names a module-root file may not reference, by why. */
+const FORBIDDEN_NAMES = new Map([
+  ["process", "a server-only global"],
+  ["Bun", "a server-only global"],
+  ["require", "a CommonJS loader"],
+  ["module", "a CommonJS loader"],
+  ["exports", "a CommonJS loader"],
+]);
+
+/** Whether `node` only names a property (`x.module`, `{ module: … }`), not a binding in scope. */
+function isPropertyName(node: ts.Identifier): boolean {
+  const parent = node.parent;
+  if (ts.isPropertyAccessExpression(parent) || ts.isQualifiedName(parent)) return (ts.isPropertyAccessExpression(parent) ? parent.name : parent.right) === node;
+  if (ts.isBindingElement(parent) || ts.isImportSpecifier(parent) || ts.isExportSpecifier(parent)) return parent.propertyName === node;
+  return (
+    (ts.isPropertyAssignment(parent) || ts.isPropertySignature(parent) || ts.isPropertyDeclaration(parent) || ts.isMethodDeclaration(parent) ||
+      ts.isMethodSignature(parent) || ts.isGetAccessorDeclaration(parent) || ts.isSetAccessorDeclaration(parent) || ts.isEnumMember(parent)) &&
+    parent.name === node
+  );
+}
+
 /** Every edge from a module-root file that leaves the allowed set, as `<file>: <specifier> (<why>)`. */
 function moduleRootProblems(repo: string): string[] {
   const roots = moduleRootFiles(repo);
@@ -94,9 +115,15 @@ function moduleRootProblems(repo: string): string[] {
       else if (!TYPE_PACKAGES.test(specifier)) report("a package outside the kernel contract");
       else if (!typeOnly(node, form)) report("loaded at runtime; import its types only");
     }
-    // Server-only globals, read anywhere in the code (comments are not code).
+    // Server-only globals and CommonJS loaders, by name or by a string key (`globalThis["process"]`),
+    // anywhere in the code (comments are not code). A data-only file needs none of them, so any
+    // reference counts, aliased loaders (`const r = module.require`) included.
     const visit = (node: ts.Node): void => {
-      if (ts.isIdentifier(node) && (node.text === "process" || node.text === "Bun")) problems.push(`${file}: ${node.text} (a server-only global)`);
+      if (ts.isIdentifier(node) && FORBIDDEN_NAMES.has(node.text) && !isPropertyName(node)) {
+        problems.push(`${file}: ${node.text} (${FORBIDDEN_NAMES.get(node.text)})`);
+      } else if (ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression) && FORBIDDEN_NAMES.has(node.argumentExpression.text)) {
+        problems.push(`${file}: ["${node.argumentExpression.text}"] (${FORBIDDEN_NAMES.get(node.argumentExpression.text)})`);
+      }
       ts.forEachChild(node, visit);
     };
     visit(parsed);
@@ -245,6 +272,41 @@ describe("the module-root scan (planted files)", () => {
       "modules/user/contract.ts: ./later.js (a import())",
       "modules/user/contract.ts: process (a server-only global)",
       "modules/user/contract.ts: Bun (a server-only global)",
+    ]);
+  });
+
+  it("catches CommonJS loaders, by name, by bracket and aliased, and a property named module is fine", () => {
+    const repo = repoWith({
+      "modules/user/contract.ts": 'export { h } from "./helper.cjs";\nexport const KIND = { module: "user" };\nexport const id = KIND.module;\n',
+      "modules/user/helper.cjs": 'const h = module.require("../../apps/server/src/log/logger.js");\n',
+      "modules/user/bracket.ts": 'export const b = module["require"]("x");\n',
+      "modules/user/aliased.ts": "const r = module.require;\nexport const a = r(\"x\");\n",
+      "modules/user/plain.js": 'exports.p = require("x");\n',
+    });
+    expect(moduleRootProblems(repo)).toEqual([
+      "modules/user/aliased.ts: module (a CommonJS loader)",
+      'modules/user/bracket.ts: ["require"] (a CommonJS loader)',
+      "modules/user/bracket.ts: module (a CommonJS loader)",
+      "modules/user/helper.cjs: module (a CommonJS loader)",
+      "modules/user/plain.js: x (a require())",
+      "modules/user/plain.js: exports (a CommonJS loader)",
+      "modules/user/plain.js: require (a CommonJS loader)",
+    ]);
+  });
+
+  it("catches a server global read by a string key", () => {
+    const repo = repoWith({
+      "modules/user/contract.ts": [
+        'export const a = globalThis["process"];',
+        'export const b = (globalThis as any)["Bun"];',
+        "export const c = self['process'];",
+        "",
+      ].join("\n"),
+    });
+    expect(moduleRootProblems(repo)).toEqual([
+      'modules/user/contract.ts: ["process"] (a server-only global)',
+      'modules/user/contract.ts: ["Bun"] (a server-only global)',
+      'modules/user/contract.ts: ["process"] (a server-only global)',
     ]);
   });
 

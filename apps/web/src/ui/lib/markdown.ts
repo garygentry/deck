@@ -263,15 +263,31 @@ function isHtmlLink(element: Element): boolean {
 }
 
 /**
- * Whether an attribute value could make CSS fetch a resource: a `url(`/`src(` function once CSS
- * escapes (`u\72l(`, `\000075rl(`, `\u`) and comments are resolved, or, on an SVG or MathML
- * element (where presentation attributes such as `fill`, `filter`, `mask` and `cursor` are CSS),
- * any backslash at all, so no escape the decoder misses can spell one.
+ * Whether an attribute value could make CSS fetch a resource. On an SVG or MathML element (whose
+ * presentation attributes such as `fill`, `filter`, `mask` and `cursor` are CSS) this is an
+ * allowlist: the value may hold no backslash and no quote, and every function it calls (once CSS
+ * escapes and comments are resolved) must be one of `CSS_SAFE_FUNCTIONS` (colours, math, `var`,
+ * SVG transforms). Anything else (`url(`, `image-set(`, `image(`, `cross-fade(`, `element(`,
+ * `paint(`, a function CSS adds later) counts. On an HTML element, whose attributes are not CSS
+ * (the policy removes `style`), only a `url(`/`src(` spelling counts.
  */
 function namesCssResource(element: Element, value: string): boolean {
-  if (element.namespaceURI !== XHTML_NAMESPACE && value.includes("\\")) return true;
-  return /(?:url|src)\s*\(/i.test(cssUnescape(value));
+  const unescaped = cssUnescape(value);
+  if (element.namespaceURI === XHTML_NAMESPACE) return /(?:url|src)\s*\(/i.test(unescaped);
+  if (/[\\"']/.test(value) || /["']/.test(unescaped)) return true;
+  for (const [, name] of unescaped.matchAll(/([^\s(),+*/<>=;:{}[\]!]*)\s*\(/g)) {
+    if (name !== "" && !CSS_SAFE_FUNCTIONS.has(name!.toLowerCase())) return true;
+  }
+  return false;
 }
+
+/** The CSS (and SVG transform) functions an SVG or MathML attribute may call under the
+ *  external-only policy: none of them can name a resource. */
+const CSS_SAFE_FUNCTIONS: ReadonlySet<string> = new Set([
+  "rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color", "color-mix",
+  "calc", "min", "max", "clamp", "var",
+  "matrix", "translate", "translatex", "translatey", "scale", "scalex", "scaley", "rotate", "skewx", "skewy",
+]);
 
 /** A CSS value with its comments removed and its escapes (hex, with an optional trailing
  *  whitespace, or any escaped character) resolved. Deliberately loose: it only decides what to drop. */

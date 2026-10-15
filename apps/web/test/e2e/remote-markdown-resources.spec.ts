@@ -31,6 +31,8 @@ function markdown(origin: string): string {
     `<table background="${origin}/table.png"><tr><td>cell</td></tr></table>`,
     "",
     `<svg width="20" height="20"><rect width="20" height="20" fill="u\\72l(${origin}/fill.svg#g)" filter="url(${origin}/filter.svg#f)"></rect><image href="${origin}/svg-image.png" width="20" height="20"></image></svg>`,
+    "",
+    `<svg width="20" height="20"><rect width="20" height="20" mask='image-set("${origin}/mask.png" 1x)'></rect><rect width="20" height="20" mask='-webkit-image-set("${origin}/wmask.png" 1x)'></rect></svg>`,
   ].join("\n");
 }
 
@@ -91,7 +93,8 @@ test.describe("a sidecar's markdown", () => {
     await expect(prose).toContainText("Video fallback");
     await expect(prose.getByRole("link", { name: /download/ })).toHaveAttribute("href", "https://ok.example/v.mp4");
     await expect(prose.locator("img, picture source, video, audio, image")).toHaveCount(0);
-    await expect(prose.locator("rect")).toHaveCount(1);
+    await expect(prose.locator("rect")).toHaveCount(3);
+    await expect(prose.locator("[mask], [fill], [filter]")).toHaveCount(0);
     // Let anything the page might have started arrive before asserting none did.
     await page.waitForLoadState("networkidle");
     expect(pageRequests).toEqual([]);

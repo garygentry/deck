@@ -266,6 +266,47 @@ describe("renderMarkdown: external links only loads no resource", () => {
     }
   });
 
+  // CSS functions other than url( that fetch (image-set takes a bare string), and a quoted string on its own.
+  const functionValues: ReadonlyArray<readonly [string, string]> = [
+    ["image-set", `image-set("https://res.example/a.png" 1x)`],
+    ["-webkit-image-set", `-webkit-image-set("https://res.example/b.png" 1x)`],
+    ["image()", `image("https://res.example/c.png")`],
+    ["cross-fade()", `cross-fade(50% image-set("https://res.example/d.png"), red)`],
+    ["element()", `element(#res-example)`],
+    ["paint()", `paint(res-example)`],
+    ["image-set, unquoted with a nested function", `IMAGE-SET(rgb(0 0 0) 1x, image(res-example))`],
+    ["a quoted string on its own", `"https://res.example/e.png"`],
+  ];
+  const functionVectors = ["mask", "filter", "fill", "stroke"].flatMap((attribute) =>
+    functionValues.map(([name, value]) => [`${attribute}: ${name}`, attribute, value] as const),
+  );
+
+  it.each(functionVectors)("drops an SVG attribute calling a CSS function off the allowlist: %s", (_name, attribute, value) => {
+    const element = document.createElement("div");
+    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    rect.setAttribute(attribute, value);
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.append(rect);
+    element.append(svg);
+    const html = external(element.innerHTML);
+    expect(html).not.toContain("res.example");
+    expect(html).not.toContain("res-example");
+    expect(parse(html).querySelector("rect")?.hasAttribute(attribute)).toBe(false);
+  });
+
+  it("keeps SVG attributes that call only allowlisted functions", () => {
+    const html = external(
+      '<svg><rect width="1" height="1" fill="rgb(1 2 3)" stroke="OKLCH(70% 0.1 200)" stroke-width="calc(1px + 2px)" transform="rotate(45) translate(1, 2) scale(2)"></rect>' +
+        '<path d="M0 0 L1 1" fill="oklch(62.8% 0.25 29.23 / 0.5)" opacity="0.5"></path></svg>',
+    );
+    const doc = parse(html);
+    expect(doc.querySelector("rect")?.getAttribute("fill")).toBe("rgb(1 2 3)");
+    expect(doc.querySelector("rect")?.getAttribute("stroke")).toBe("OKLCH(70% 0.1 200)");
+    expect(doc.querySelector("rect")?.getAttribute("transform")).toBe("rotate(45) translate(1, 2) scale(2)");
+    expect(doc.querySelector("path")?.getAttribute("fill")).toBe("oklch(62.8% 0.25 29.23 / 0.5)");
+    expect(doc.querySelector("path")?.getAttribute("d")).toBe("M0 0 L1 1");
+  });
+
   it("keeps a video's and an audio's fallback content: text, links, and images as alt text", () => {
     const html = external(
       '<video src="https://res.example/v.mp4" poster="https://res.example/p.png">Download the <a href="https://ok.example/v.mp4">recording</a> <img src="https://res.example/i.png" alt="still frame"></video>' +

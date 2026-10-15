@@ -94,3 +94,21 @@ export function resolvePointer(value: unknown, pointer: JsonPointer): unknown {
   }
   return current;
 }
+
+/**
+ * `value` as canonical JSON text: object keys sorted at every depth, two-space indent and a
+ * trailing newline. Two values that differ only in key order give the same text.
+ */
+export function canonicalJson(value: JsonValue): string {
+  return `${JSON.stringify(sortKeys(value), null, 2)}\n`;
+}
+
+function sortKeys(value: JsonValue): JsonValue {
+  if (Array.isArray(value)) return value.map(sortKeys);
+  if (value !== null && typeof value === "object") {
+    const sorted: JsonObject = {};
+    for (const key of Object.keys(value).sort()) sorted[key] = sortKeys(value[key]!);
+    return sorted;
+  }
+  return value;
+}

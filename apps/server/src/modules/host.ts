@@ -16,6 +16,7 @@ import {
   type ServerModule,
   type ServiceOffer,
   type TaskHandle,
+  settlesWithin,
 } from "@deck/module-sdk";
 import { MODULE_HOST_FINDING_CATALOG, type Finding, type ModuleHostFindingCode } from "@deck/schema";
 import { Hono } from "hono";
@@ -27,7 +28,6 @@ import { KERNEL_FEATURES } from "../ui/kernel-features.js";
 import { RESERVED_MODULE_IDS, uiContributionProblem } from "../ui/validate.js";
 import { logger as kernelLogger, type ModuleDisabledEvent, type ModuleInitEvent, type ModuleStopEvent } from "../log/logger.js";
 import { listStats, register as registryRegister } from "../providers/registry.js";
-import { settlesWithin } from "../server/settle.js";
 import { ServiceRegistry } from "./services.js";
 import type { RuntimeModulePlan } from "./runtime.js";
 import {

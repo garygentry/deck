@@ -295,9 +295,11 @@ describe("core/markdown from a sidecar (linkPolicy external)", () => {
       ].join(""),
     });
     expect(container.querySelector("area")?.hasAttribute("href")).toBe(false);
-    expect(container.querySelector('img[alt="internal"]')?.hasAttribute("src")).toBe(false);
-    expect(container.querySelector('img[alt="external"]')?.getAttribute("src")).toBe("https://cdn.example/x.png");
-    expect(container.querySelector('img[alt="external"]')?.hasAttribute("srcset")).toBe(false);
+    // Images load nothing, from deck or anywhere else: each shows as its alt text.
+    expect(container.querySelector("img")).toBeNull();
+    expect(container).toHaveTextContent("internal");
+    expect(container).toHaveTextContent("external");
+    expect(container.innerHTML).not.toContain("cdn.example");
     expect(container.innerHTML).not.toContain("/api/");
   });
 

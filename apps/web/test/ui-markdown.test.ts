@@ -202,3 +202,75 @@ describe("renderMarkdown: external links only, checked as the page parses it", (
     expect(html).not.toContain("/api/x");
   });
 });
+
+describe("renderMarkdown: external links only loads no resource", () => {
+  const external = (markdown: string): string => renderMarkdown(markdown, undefined, { externalLinksOnly: true });
+
+  it("shows a markdown image as its alt text, loading nothing (an image link keeps its name)", () => {
+    const html = external('![build status](https://res.example/badge.png) and [![docs badge](https://res.example/d.svg)](https://ok.example/) and <img src="https://res.example/r.png" alt="raw <alt>">');
+    const doc = parse(html);
+    expect(doc.querySelector("img")).toBeNull();
+    expect(doc.body.textContent).toContain("build status");
+    expect(doc.body.textContent).toContain("raw <alt>");
+    expect(doc.querySelector('a[href="https://ok.example/"]')?.textContent).toContain("docs badge");
+    expect(html).not.toContain("res.example");
+  });
+
+  it("leaves nothing for an image with no alt text", () => {
+    const html = external('before<img src="https://res.example/pixel.gif">after');
+    expect(parse(html).body.textContent?.trim()).toBe("beforeafter");
+  });
+
+  // Every way markdown's raw HTML could make the page fetch on render; each names res.example.
+  const vectors: ReadonlyArray<readonly [string, string]> = [
+    ["img src/srcset/lowsrc", '<img src="https://res.example/a.png" srcset="https://res.example/b.png 2x" lowsrc="https://res.example/c.png" alt="a">'],
+    ["picture/source", '<picture><source srcset="https://res.example/a.webp" type="image/webp"><img src="https://res.example/a.png" alt="p"></picture>'],
+    ["video src/poster/source/track", '<video src="https://res.example/v.mp4" poster="https://res.example/p.png"><source src="https://res.example/v.webm"><track src="https://res.example/t.vtt">fallback</video>'],
+    ["audio src/source", '<audio src="https://res.example/a.mp3"><source src="https://res.example/a.ogg"></audio>'],
+    ["input type=image", '<input type="image" src="https://res.example/i.png" alt="go">'],
+    ["background attributes", '<table background="https://res.example/t.png"><tr><td background="https://res.example/td.png">x</td></tr></table>'],
+    ["style attribute url()", '<p style="background-image:url(https://res.example/s.png)">s</p>'],
+    ["style element", "<style>@import url(https://res.example/s.css); p{background:url(https://res.example/s.png)}</style>"],
+    ["link/meta/base", '<link rel="stylesheet" href="https://res.example/l.css"><link rel="preload" as="image" href="https://res.example/l.png"><meta http-equiv="refresh" content="0;url=https://res.example/"><base href="https://res.example/">'],
+    ["svg image href/xlink:href", '<svg><image href="https://res.example/a.svg"></image><image xlink:href="https://res.example/b.svg"></image></svg>'],
+    ["svg feImage/use/pattern/textPath", '<svg><filter><feImage href="https://res.example/f.png"></feImage></filter><use href="https://res.example/u.svg#i"></use><pattern href="https://res.example/p.svg#p"></pattern><text><textPath href="https://res.example/t.svg#p">t</textPath></text></svg>'],
+    ["svg style and url() reference", '<svg><style>@import url(https://res.example/s.css);</style><rect fill="url(https://res.example/g.svg#g)"></rect></svg>'],
+    ["embedding elements", '<iframe src="https://res.example/f.html"></iframe><object data="https://res.example/o.swf"></object><embed src="https://res.example/e.swf">'],
+  ];
+
+  it.each(vectors)("drops %s", (_name, raw) => {
+    const html = external(raw);
+    expect(html).not.toContain("res.example");
+    const doc = parse(html);
+    expect(doc.querySelector("img, picture source, video, audio, track, image, link, meta, base, style, iframe, object, embed, [src], [srcset], [poster], [background], [style]")).toBeNull();
+  });
+
+  it("keeps an image input's alt, with nothing to load", () => {
+    const doc = parse(external(vectors[4][1]));
+    expect(doc.querySelector('input[type="image"]')?.getAttribute("alt")).toBe("go");
+  });
+
+  it("re-checks the page's parse for an attribute that fetches", async () => {
+    const DOMPurify = (await import("dompurify")).default;
+    const real = DOMPurify.sanitize.bind(DOMPurify);
+    // Stand in for a parser difference: the policy pass keeps returning an element that fetches.
+    const spy = vi.spyOn(DOMPurify, "sanitize").mockImplementation(((html: string, config?: { ALLOWED_TAGS?: unknown }) =>
+      Array.isArray(config?.ALLOWED_TAGS) && config.ALLOWED_TAGS.length === 0 ? real(html, config as never) : '<input type="image" src="https://res.example/i.png" alt="go">') as never);
+    try {
+      expect(external("x")).toBe("");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("leaves operator markdown's images and media exactly as before", () => {
+    const html = renderMarkdown(
+      '![ext](https://cdn.example.com/a.png)\n\n<img src="https://cdn.example.com/b.png" srcset="https://cdn.example.com/b2.png 2x" alt="b">\n\n<video src="https://cdn.example.com/v.mp4" poster="https://cdn.example.com/p.png"></video>',
+      ctx("index.md"),
+    );
+    expect(attr(html, "p > img", "src")).toBe("https://cdn.example.com/a.png");
+    expect(attr(html, 'img[alt="b"]', "srcset")).toBe("https://cdn.example.com/b2.png 2x");
+    expect(attr(html, "video", "poster")).toBe("https://cdn.example.com/p.png");
+    expect(attr(renderMarkdown("![logo](img/logo.png)", ctx("guides/index.md")), "img", "src")).toBe("/asset/guides/img/logo.png");
+  });
+});

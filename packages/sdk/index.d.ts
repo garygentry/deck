@@ -669,7 +669,7 @@ interface UiFinding {
  * The kernel's module API version. Modules declare a compatible range in `deckApi`.
  * It stays at 0.x until the contract freezes; on 0.x every minor bump may break.
  */
-declare const DECK_API_VERSION = "0.1.0";
+declare const DECK_API_VERSION = "0.1.1";
 /**
  * Whether `version` (default: the kernel's) satisfies a module's `deckApi` range.
  * Caret ranges follow npm semantics: `^1.2` allows `>=1.2.0 <2.0.0`; on 0.x the minor is the
@@ -2459,8 +2459,11 @@ interface CardGridProps {
 /** A responsive auto-fill grid of cards (`minmax(16rem, 1fr)`), as a list, with an optional heading. */
 declare function CardGrid({ heading, level, count, description, navigable, id, className, children, ...labelling }: CardGridProps): React.JSX.Element;
 
-/** What a mark is drawn from: a status-map entry, or just a tone (and badge variant). */
-type VizMarkSource = Pick<StatusPresentation, "tone" | "variant">;
+/**
+ * A chart's `status` prop, what a mark is drawn from: a status-map entry (`MAP[state]`), or just
+ * a tone (and badge variant).
+ */
+type ChartStatus = Pick<StatusPresentation, "tone" | "variant">;
 
 /** A single-value 270° radial gauge, exposed as a `meter`. */
 interface GaugeProps {
@@ -2476,7 +2479,7 @@ interface GaugeProps {
      * A status-map entry (`MAP[state]`): tints the value arc with its tone (dashed for an outline
      * entry) and shows its label under the value, so the reading never depends on colour.
      */
-    status?: VizMarkSource & Pick<StatusPresentation, "label">;
+    status?: ChartStatus & Pick<StatusPresentation, "label">;
     /** Square size in px. Default 96. */
     size?: number;
     /** Arc thickness in px. Default 8. */
@@ -2492,15 +2495,21 @@ interface SparklineSample {
     readonly at: number;
     readonly value: number | null;
 }
-/** A compact, dependency-free SVG trend line, coloured by status tone. */
-interface SparklineProps {
+/** What a Sparkline plots: plain `values` or timestamped `samples`, never both. */
+type SparklineData = {
     /**
-     * Values ordered oldest → newest, one per evenly spaced slot. A non-finite value is a gap, as
-     * a null sample is. Do not combine with `samples`.
+     * Values ordered oldest → newest, one per evenly spaced slot. A non-finite value is a gap,
+     * as a null sample is.
      */
-    values?: readonly number[];
-    /** Timestamped input with explicit gaps. Do not combine with `values`. */
-    samples?: readonly SparklineSample[];
+    values: readonly number[];
+    samples?: never;
+} | {
+    /** Timestamped input with explicit gaps. */
+    samples: readonly SparklineSample[];
+    values?: never;
+};
+/** A compact, dependency-free SVG trend line, coloured by status tone. */
+type SparklineProps = SparklineData & {
     width?: number;
     height?: number;
     /** Domain lower bound; lower values are drawn on the bottom edge. Default: the data minimum. */
@@ -2513,10 +2522,11 @@ interface SparklineProps {
      * dashed. The line is decorative next to the state's text: say the state in `ariaLabel` or
      * beside the chart, never by colour alone.
      */
-    status?: VizMarkSource;
-    ariaLabel?: string;
+    status?: ChartStatus;
+    /** The image's accessible name: what the trend shows, and its state (e.g. "Latency, degraded"). */
+    ariaLabel: string;
     className?: string;
-}
+};
 declare function Sparkline({ values, samples, width, height, min, max, strokeWidth, status, ariaLabel, className, }: SparklineProps): React.JSX.Element;
 
 /**
@@ -2544,7 +2554,7 @@ interface TimelineLane<S extends string = string> {
  * Lanes of status intervals over a shared time domain. Segments are drawn from `statusMap` (the
  * entry's tone, hatched for an outline entry).
  */
-interface StatusTimelineProps<S extends string> {
+interface StatusTimelineProps<S extends string = string> {
     /** Rows, top → bottom. Empty renders an empty chart. */
     lanes: readonly TimelineLane<S>[];
     /** Start of the shared time domain (x = 0). */
@@ -2577,4 +2587,4 @@ interface StatusTimelineProps<S extends string> {
 declare function StatusTimeline<S extends string>({ lanes, domainStart, domainEnd, formatTime, width, laneHeight, laneGap, ariaLabel, className, statusMap, }: StatusTimelineProps<S>): React.JSX.Element;
 
 export { Callout, CardGrid, CodeBlock, DECK_API_VERSION, DataTable, Disclosure, EmptyState, ErrorState, ExternalLink, FragmentBoundary, FreshnessBadge, Gauge, HealthPill, Icon, KeyValue, KeyValueList, LinkTile, List, ListGroup, ListItem, LoadingState, Meter, PageHeader, Prose, RelativeTime, SafeRouteLink, Section, Sparkline, StatGrid, StatTile, StatusBadge, StatusTimeline, TONES, TONE_ICON, VisuallyHidden, defineStatusMap, defineWebModule, formatAge, formatRelative, formatTimestamp, satisfiesDeckApi, statusTone, useConfig, useProvider, useProviders, useUiManifest };
-export type { CalloutProps, DataTableHandle, DataTableProps, DataTableScrollAlign, DataTableVirtualizeOptions, EmptyStateProps, ErrorStateProps, GaugeProps, HealthPillProps, IconProps, KeyValueItem, KeyValueListProps, LoadingStateProps, MeterProps, PageHeaderProps, SectionProps, SparklineProps, SparklineSample, StatTileProps, StatusBadgeProps, StatusMap, StatusMapData, StatusPresentation, StatusTimelineProps, TimelineLane, TimelineSegment, Tone, WebModule, WebModuleManifest };
+export type { CalloutProps, ChartStatus, DataTableHandle, DataTableProps, DataTableScrollAlign, DataTableVirtualizeOptions, EmptyStateProps, ErrorStateProps, GaugeProps, HealthPillProps, IconProps, KeyValueItem, KeyValueListProps, LoadingStateProps, MeterProps, PageHeaderProps, SectionProps, SparklineData, SparklineProps, SparklineSample, StatTileProps, StatusBadgeProps, StatusMap, StatusMapData, StatusPresentation, StatusTimelineProps, TimelineLane, TimelineSegment, Tone, WebModule, WebModuleManifest };

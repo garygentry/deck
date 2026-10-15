@@ -137,9 +137,11 @@ The web shell's page carries a Content-Security-Policy that browsers enforce:
 - **Styles** may be inline as well as deck's own, and **images** may come from any `http(s)`
   URL (brand logos, images in docs). A sanitized page cannot inject a script, but it can show an
   image from another site. The CSP is not the only limit on that: markdown from a sidecar loads
-  no image, media or other subresource at all, whatever the CSP allows. Its images show as alt
-  text, its video and audio as their fallback content, and anything else that would load
-  something is removed before the page sees it.
+  no image, media or other subresource, whatever the CSP allows. Its images show as alt text,
+  and its video and audio as their fallback content. The elements and attributes that load
+  something are removed, and an SVG or MathML attribute (where CSS such as `fill` or `mask` is
+  read) is kept only if it calls nothing but colour, math, `var` and transform functions, with
+  no quote or backslash.
 - No plugins, no `<base>`, and forms post to deck only.
 
 If your reverse proxy sets its own `Content-Security-Policy` or `X-Frame-Options`, the browser

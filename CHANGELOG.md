@@ -11,10 +11,13 @@ All notable changes to this project are documented here. The format is based on
 - **Sidecar markdown loads no images or media** (`core/markdown` from a `remote` sidecar, under
   its external-only link policy). Until now its images, and other elements and attributes that
   load something (`picture`/`source`, `video`/`audio` sources and posters, `input type=image`,
-  `background`, SVG `image` and CSS `url()` references, escaped or not), could still load from
-  any `http(s)` URL as the page rendered. That told the image's host each viewer's IP address and
-  when they looked, and could show content the sidecar does not control. Now an image shows as
-  its alt text, a video or audio shows its fallback content, and the rest is removed. If your
+  `background`, SVG `image`, and CSS references such as `url()` or `image-set()` in SVG
+  attributes), could still load from any `http(s)` URL as the page rendered. That told the
+  image's host each viewer's IP address and when they looked, and could show content the
+  sidecar does not control. Now an image shows as its alt text, and a video or audio shows its
+  fallback content. Those elements and attributes are removed. An SVG or MathML attribute keeps
+  its value only when it has no quote or backslash and calls only colour, math (`calc`, `min`,
+  `max`, `clamp`), `var` or SVG transform functions. If your
   sidecar showed remote badges or screenshots, they now appear as their alt text. Markdown in
   your own config and docs is unchanged (#51).
 

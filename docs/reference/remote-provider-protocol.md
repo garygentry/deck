@@ -121,9 +121,13 @@ Beyond the schema, deck checks what a schema cannot say:
   other subresource, even from an absolute `http(s)` URL that passes the early check. An image
   (markdown or a raw `<img>`) shows as its alt text, so give your images alt text. A `<video>` or
   `<audio>` is removed, and its fallback content (text, links) stays. `<picture>` sources,
-  `<input type="image">` sources, posters, `background` attributes and CSS `url()` references
-  (in SVG presentation attributes such as `fill` or `filter`, escaped or not) are removed. To
-  show an image, link to it. Markdown in your own `ui.pages` and docs still shows its images.
+  `<input type="image">` sources, posters and `background` attributes are removed. An SVG or
+  MathML attribute (such as `fill`, `filter` or `mask`) is removed unless it is free of quotes
+  and backslashes and calls only these functions: `rgb`, `rgba`, `hsl`, `hsla`, `hwb`, `lab`,
+  `lch`, `oklab`, `oklch`, `color`, `color-mix`, `calc`, `min`, `max`, `clamp`, `var`,
+  `matrix`, `translate`, `translateX`, `translateY`, `scale`, `scaleX`, `scaleY`, `rotate`,
+  `skewX` and `skewY`. So `url()`, `image-set()` and the like are removed. To show an image,
+  link to it. Markdown in your own `ui.pages` and docs still shows its images.
 - **Links:** a link's `href` is an `http(s)` URL or an absolute path in deck, and must pass
   deck's link check (no control characters, whitespace or backslashes, no protocol-relative
   `//host`, nothing that resolves off deck's origin). An `http(s)` URL always opens in a new tab

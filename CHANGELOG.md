@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Security
+
+- The web shell's Content-Security-Policy no longer allows inline styles: `style-src` is
+  `'self'` plus a per-response style nonce, which the page hands to the `<style>` elements the
+  UI library injects (the scroll lock behind modal overlays, scrollbar rules). The Markdown
+  sanitizer now drops `style` attributes, which the policy would refuse anyway. Styles a reverse
+  proxy injects into deck's page (an inline `<style>` or a `style` attribute) no longer apply,
+  and neither do a runtime module's own `<style>` elements or `style` attributes in markup it
+  inserts; put a module's styles in its `web.css` (#53).
+- Every response now carries `X-DNS-Prefetch-Control: off`, so external links (in sidecar
+  markdown, say) no longer trigger DNS prefetch lookups for their hosts.
+
 ## [0.5.0] - 2026-10-14
 
 Upgrading from 0.3.x: apply 0.4.0's Migration (schemaVersion 2 via `deck config migrate`) and then

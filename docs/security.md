@@ -114,8 +114,9 @@ choose a tier.
 
 ## Browser policy
 
-Every response carries `frame-ancestors` in a `Content-Security-Policy` of its own, and
-`X-Content-Type-Options: nosniff`. A policy a module's route sets applies beside it, never in
+Every response carries `frame-ancestors` in a `Content-Security-Policy` of its own,
+`X-Content-Type-Options: nosniff`, and `X-DNS-Prefetch-Control: off`, so the browser makes no
+speculative DNS lookups for the hosts that links on deck's pages (sidecar markdown, docs) name. A policy a module's route sets applies beside it, never in
 place of it. By default only deck's own origin may frame deck, and
 `X-Frame-Options: SAMEORIGIN` says so to older browsers too. To show deck inside another app,
 such as a Home Assistant panel, list that app's origin in `ui.frameAncestors`. deck then omits
@@ -134,13 +135,20 @@ The web shell's page carries a Content-Security-Policy that browsers enforce:
   origin each request reached it on, and, behind the reverse proxy, the one `X-Forwarded-Host`
   and `X-Forwarded-Proto` name, so have the proxy send them. A `ui.frameSources` wildcard
   that covers deck is ignored as a whole (and logged), so list hosts.
-- **Styles** may be inline as well as deck's own, and **images** may come from any `http(s)`
-  URL (brand logos, images in docs). A sanitized page cannot inject a script, but it can show an
-  image from another site.
+- **Styles** come from deck's origin (the app's stylesheets and runtime modules' `web.css`).
+  The only inline styles allowed are the `<style>` elements the UI library injects (the scroll
+  lock behind a modal overlay, scrollbar rules), which carry a second nonce, also new on every
+  response, that the page hands to them. No `style` attribute in markup applies: the Markdown
+  sanitizer drops them, and contributed icons refuse them. Styles set from script through the
+  CSSOM (`element.style`), as React and overlay positioning do, are not restricted.
+- **Images** may come from any `http(s)` URL (brand logos, images in docs). A sanitized page
+  cannot inject a script or a style, but it can show an image from another site.
 - No plugins, no `<base>`, and forms post to deck only.
 
 If your reverse proxy sets its own `Content-Security-Policy` or `X-Frame-Options`, the browser
-applies both policies; keep the proxy's at least as permissive as deck's, or drop them.
+applies both policies; keep the proxy's at least as permissive as deck's, or drop them. A proxy
+that injects markup into deck's page (a banner, an inline `<style>` or `style` attribute, an
+inline script) has it refused: the page's policy allows only deck's own nonce'd inline code.
 
 ## Operator responsibilities
 

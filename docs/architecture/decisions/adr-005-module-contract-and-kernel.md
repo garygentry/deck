@@ -154,7 +154,8 @@ manifest as JSON (`deck-module.json`).
 - **v0.4.0 is breaking.** Every estate needs `deck config migrate` once.
 - **Module config still needs a restart.** Only the `ui` section reloads live (ADR-006):
   re-initialising a module in place is out of scope.
-- **The contract is pre-1.0.** `DECK_API_VERSION` is `0.1.0`, so a minor bump may break modules.
+- **The contract is pre-1.0.** `DECK_API_VERSION` started at `0.1.0` (patch releases add to it; see
+  docs/reference/module-manifest.md for the current version), so a minor bump may break modules.
   `ctx.http` exposes Hono's own type, which is provisional until `deckApi` 1.0.
 
 ## Related

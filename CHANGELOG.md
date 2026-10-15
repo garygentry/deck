@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Charts in `@deck/sdk`**: runtime modules can use `Sparkline`, `StatusTimeline` and `Gauge`, with
+  their prop types (`ChartStatus`, `SparklineData`, `TimelineLane` and so on). The module API
+  (`DECK_API_VERSION`) is now `0.1.1`, an additive bump: a module that uses the charts declares
+  `deckApi: "^0.1.1"`, and `^0.1` modules still load (#80).
 - **`settlesWithin` and `canonicalJson` in `@deck/module-sdk`**: a bounded wait on a promise
   that never keeps the process alive, and key-order-insensitive JSON text (#62).
 

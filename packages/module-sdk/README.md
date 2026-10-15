@@ -376,5 +376,7 @@ ranges:
 - an exact version, `M.m.p`;
 - `^M`, `^M.m` and `^M.m.p`.
 
-On `0.x`, a minor bump is breaking, so `^0.1` matches `0.1.*` only. On `0.0.x` every
+On `0.x`, a minor bump is breaking, so `^0.1` matches `0.1.*` only. A patch bump only adds to
+the API: `0.1.1` added the viz charts to `@deck/sdk`, so a module that uses them declares
+`^0.1.1`, and a `^0.1` module keeps loading. On `0.0.x` every
 release is breaking, so `^0.0.3` matches `0.0.3` only.

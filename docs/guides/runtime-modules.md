@@ -95,7 +95,7 @@ import map, so a module renders with deck's React and reads deck's data:
 | Specifier | What it is |
 | --- | --- |
 | `react`, `react-dom`, `react/jsx-runtime` | The React deck runs. A module must never bundle its own. |
-| `@deck/sdk` | deck's module API: `defineWebModule`; the data hooks `useProvider`, `useProviders`, `useConfig` and `useUiManifest`; `Icon`, the tones (`TONES`, `defineStatusMap`, `statusTone`); and deck's display patterns (`PageHeader`, `Section`, `KeyValueList`, `DataTable`, `StatusBadge`, `HealthPill`, `EmptyState`, `ErrorState`, `LoadingState` and the like). |
+| `@deck/sdk` | deck's module API: `defineWebModule`; the data hooks `useProvider`, `useProviders`, `useConfig` and `useUiManifest`; `Icon`, the tones (`TONES`, `defineStatusMap`, `statusTone`); and deck's display patterns (`PageHeader`, `Section`, `KeyValueList`, `DataTable`, `StatusBadge`, `HealthPill`, `EmptyState`, `ErrorState`, `LoadingState` and the like); and deck's charts (`Sparkline`, `StatusTimeline`, `Gauge`). |
 
 `@deck/sdk` does not export deck's low-level UI primitives (its buttons, dialogs, menus and
 so on): build from the patterns, which carry deck's look and accessibility. For a module's own
@@ -224,6 +224,47 @@ name. They are generated from deck's own SDK, so `tsc` and your editor check eve
 props, the tones and the icon names. The server half takes `ServerModule`, the `ctx` it is
 given (`ServerModuleContext`) and the rest from `@deck/module-sdk`, with `import type`.
 
+### Draw charts
+
+`@deck/sdk` has deck's charts: `Sparkline`, `StatusTimeline` and `Gauge`. They came with
+module API `0.1.1`, so a module that uses them declares `deckApi: "^0.1.1"` (a deck that
+lacks them then disables the module instead of failing to link its web half). Each takes a
+status-map entry (`StatusTimeline` takes the map) and draws in its tone with deck's own
+classes, so it needs nothing from the module's stylesheet. Each carries its reading as text:
+`Gauge` is a meter named by `ariaLabel`, `Sparkline` is an image named by `ariaLabel` (say the
+state there or beside it), and `StatusTimeline` lists its intervals, with times written by
+`formatTime`.
+
+```tsx
+import { defineStatusMap, Gauge, Section, Sparkline, StatusTimeline, type TimelineLane } from "@deck/sdk";
+
+type Health = "up" | "down";
+const HEALTH = defineStatusMap<Health>({
+  up: { tone: "ok", icon: "circle-check", label: "Up" },
+  down: { tone: "danger", icon: "circle-x", label: "Down" },
+});
+
+// Stand-ins for what the module reads from its provider.
+const state: Health = "up";
+const diskUsed = 72;
+const latencies = [120, 135, 128, 160, 142];
+const from = 1_760_000_000;
+const to = from + 3600;
+const lanes: TimelineLane<Health>[] = [
+  { id: "web", label: "web", segments: [{ status: "up", start: from, end: from + 3000 }, { status: "down", start: from + 3000, end: to }] },
+];
+
+export function HealthCharts() {
+  return (
+    <Section title="Health">
+      <Gauge ariaLabel="Disk usage" value={diskUsed} status={HEALTH[state]} />
+      <Sparkline values={latencies} status={HEALTH[state]} ariaLabel={`Latency, ${HEALTH[state].label}`} />
+      <StatusTimeline lanes={lanes} statusMap={HEALTH} domainStart={from} domainEnd={to} formatTime={(t) => new Date(t * 1000).toLocaleTimeString()} />
+    </Section>
+  );
+}
+```
+
 ### Style with deck's tokens
 
 Build from `@deck/sdk`'s patterns first: they need no styles of your own. For the layout they
@@ -298,7 +339,7 @@ will serve. To let a file set an inline style
 (a width computed from a value, say), allowlist it in the module's `package.json`:
 
 ```json
-"deckModule": { "lint": { "styleAllowlist": { "src/web/Gauge.tsx": "fill width from the value" } } }
+"deckModule": { "lint": { "styleAllowlist": { "src/web/Bar.tsx": "fill width from the value" } } }
 ```
 
 The lint checks what can be read off the source. It does not replace looking at the page in

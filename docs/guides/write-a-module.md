@@ -251,6 +251,12 @@ data-source modules under `modules/`: `modules/docker` (integration instances wi
   augmentation are fine: they are erased before the code runs. The guard is a review aid for
   first-party modules, not a security boundary. `bun scripts/module-boundary.ts` lists any
   offender.
+- **Other modules' code:** a built-in may import another built-in only through its public
+  entry, `web/public.ts` or `server/public.ts`, which exports exactly what other modules may
+  use, and declares the edge as a dependency on `@deck/module-<id>` in its `package.json` (add
+  the id to `dependsOn` too when your module cannot run without the other).
+  `apps/server/test/module-imports.test.ts` checks every cross-module import, type-only ones
+  included; `bun scripts/module-imports.ts` lists any offender.
 
 ## Check it runs
 

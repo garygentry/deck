@@ -130,6 +130,120 @@ describe("check-pure-moves", () => {
     });
   });
 
+  describe("vitest module paths and file URLs are specifiers", () => {
+    /** A test file whose paths are all spelled by `spell`, padded so git pairs the move. */
+    const mocks = (spell: (path: string) => string) => [
+      'import { vi } from "vitest";',
+      `vi.mock("${spell("grow/a.js")}");`,
+      `vi.doMock("${spell("grow/b.js")}", () => ({ b: 2 }));`,
+      `vitest.unmock("${spell("grow/b.js")}");`,
+      `vi.doUnmock("${spell("grow/b.js")}");`,
+      `export const real = vi.importActual("${spell("grow/auth.js")}");`,
+      `export const fake = vitest.importMock("${spell("shared/helper.js")}");`,
+      'export const tool = vi.importMock("@x/lib/tool");',
+      'const HERE = import.meta.url;',
+      `export const source = new URL("${spell("grow/a.ts")}", import.meta.url);`,
+      `export const dir = new URL("${spell("shared/")}", HERE);`,
+      ...Array.from({ length: 40 }, (_, index) => `export const padding${index} = "line ${index}".length;`),
+      "",
+    ].join("\n");
+    const atOld = (path: string) => `../src/${path}`;
+    const atNew = (path: string) => `../../../../apps/server/src/${path}`;
+
+    beforeEach(() => {
+      write("apps/server/test/grow.test.ts", mocks(atOld));
+      git("add", ".");
+      git("commit", "-qm", "grow test");
+      git("branch", "-f", "base");
+    });
+
+    const moveTest = (text: string) => {
+      mkdirSync(join(repo, "modules/grow/test/server"), { recursive: true });
+      git("mv", "apps/server/test/grow.test.ts", "modules/grow/test/server/grow.test.ts");
+      write("modules/grow/test/server/grow.test.ts", text);
+      git("add", "-A");
+      git("commit", "-qm", "move grow test");
+    };
+
+    it("passes when each still names the same module, file or directory", () => {
+      moveTest(mocks(atNew));
+      const result = check();
+      expect(result.status, result.stdout).toBe(0);
+      expect(result.stdout).toMatch(/ok\s+apps\/server\/test\/grow\.test\.ts -> modules\/grow\/test\/server\/grow\.test\.ts \(.*8 specifier\(s\) rewritten, same module\)/);
+    });
+
+    it("fails a byte-identical move, whose paths now name nothing", () => {
+      moveTest(mocks(atOld));
+      const result = check();
+      expect(result.status, result.stdout).toBe(1);
+      expect(result.stdout).toContain('specifier "../src/grow/a.js" → "../src/grow/a.js" loads modules/grow/test/src/grow/a.js, not apps/server/src/grow/a.ts');
+    });
+
+    it.each([
+      ["vi.mock", '"../../../../apps/server/src/grow/a.js");', '"../../../../apps/server/src/grow/auth-noop.js");'],
+      ["vi.doMock", 'vi.doMock("../../../../apps/server/src/grow/b.js"', 'vi.doMock("../../../../apps/server/src/grow/a.js"'],
+      ["vitest.unmock", 'vitest.unmock("../../../../apps/server/src/grow/b.js"', 'vitest.unmock("../../../../apps/server/src/grow/a.js"'],
+      ["vi.doUnmock", 'vi.doUnmock("../../../../apps/server/src/grow/b.js"', 'vi.doUnmock("../../../../apps/server/src/grow/a.js"'],
+      ["vi.importActual", "src/grow/auth.js", "src/grow/auth-noop.js"],
+      ["vitest.importMock", "src/shared/helper.js", "src/grow/a.js"],
+      ["a file URL to another file", "src/grow/a.ts", "src/grow/b.ts"],
+      ["a file URL with an extension it did not have", 'new URL("../../../../apps/server/src/grow/a.ts"', 'new URL("../../../../apps/server/src/grow/a"'],
+      ["a file URL to another directory", 'src/shared/", HERE', 'src/grow/", HERE'],
+    ])("fails %s retargeted to another path", (_name, from, to) => {
+      const text = mocks(atNew);
+      expect(text).toContain(from);
+      moveTest(text.replace(from, to));
+      const result = check();
+      expect(result.status, result.stdout).toBe(1);
+      expect(result.stdout).toMatch(/NOT PURE\s+apps\/server\/test\/grow\.test\.ts/);
+    });
+
+    it("follows a directory whose files all moved with it", () => {
+      git("mv", "apps/server/src/shared", "apps/server/src/common");
+      moveTest(mocks(atNew).replaceAll("src/shared/", "src/common/"));
+      const result = check();
+      expect(result.status, result.stdout).toBe(0);
+    });
+
+    it.each([
+      ["vi.doMock", 'const P = "../src/grow/a.js";\nvi.doMock(P);\n'],
+      ["vi.mock", "vi.mock(`../src/${'grow'}/a.js`);\n"],
+      ["new URL", 'new URL(name, import.meta.url);\n'],
+      ["import()", "await import(name);\n"],
+    ])("fails a %s path that is not a literal, once the directory changes", (name, line) => {
+      write("apps/server/test/grow.test.ts", line + mocks(atOld));
+      git("add", ".");
+      git("commit", "-qm", "dynamic");
+      git("branch", "-f", "base");
+      moveTest(line + mocks(atNew));
+      const result = check();
+      expect(result.status, result.stdout).toBe(1);
+      expect(result.stdout).toContain(`${name}`);
+      expect(result.stdout).toContain("with a non-literal path: cannot check that it loads the same file from the new directory");
+    });
+
+    it("passes a non-literal path when the file stays in its directory", () => {
+      write("apps/server/test/grow.test.ts", 'vi.doMock(P);\n' + mocks(atOld));
+      git("add", ".");
+      git("commit", "-qm", "dynamic");
+      git("branch", "-f", "base");
+      git("mv", "apps/server/test/grow.test.ts", "apps/server/test/grown.test.ts");
+      git("commit", "-qm", "rename");
+      const result = check();
+      expect(result.status, result.stdout).toBe(0);
+    });
+
+    it("leaves a URL against another base, or an absolute one, to the token comparison", () => {
+      const extra = 'new URL("../x", "http://example.invalid/a/");\nnew URL("http://example.invalid/");\n';
+      write("apps/server/test/grow.test.ts", extra + mocks(atOld));
+      git("add", ".");
+      git("commit", "-qm", "urls");
+      git("branch", "-f", "base");
+      moveTest(extra + mocks(atNew));
+      expect(check().status).toBe(0);
+    });
+  });
+
   describe("a byte-identical move still resolves its specifiers", () => {
     /** Move only uses-a.ts (an unchanged `./a.js` import), plus `also` (git mv pairs) and `add` (new files). */
     const moveUsesA = (also: string[], add: Record<string, string> = {}) => {

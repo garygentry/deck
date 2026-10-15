@@ -9,11 +9,15 @@
 //     streams (tree shape, tokens, directive comments such as `// @ts-expect-error`) must be
 //     equal, even for a byte-identical file. Other comments and whitespace may change. A module
 //     specifier (`import`/`export … from`, `import()`, `require()`, `import("…")` types,
-//     `declare module`) may change only when it resolves, from the file's new path, to the
-//     module the old one resolved to from the old path (through the renames): the same file,
-//     or the same external package. Resolution follows relative paths, the web app's tsconfig
-//     path aliases and workspace packages' `exports`. JSON compares as data; any other file
-//     must be byte-identical.
+//     `declare module`, vitest's `vi.mock`/`doMock`/`unmock`/`doUnmock`/`importActual`/
+//     `importMock`, also as `vitest.…`) may change only when it resolves, from the file's new
+//     path, to the module the old one resolved to from the old path (through the renames): the
+//     same file, or the same external package. Resolution follows relative paths, the web app's
+//     tsconfig path aliases and workspace packages' `exports`. The path in
+//     `new URL("…", import.meta.url)` (or a const bound to `import.meta.url`) follows the same
+//     rule as a file URL: the same file or directory, with no extension added. Any of these
+//     whose path is not a literal fails a move to another directory, since it cannot be
+//     checked. JSON compares as data; any other file must be byte-identical.
 //   - a deleted file whose content reappears in an added file is a move git did not detect as
 //     a rename (so `git log --follow` would lose its history): not pure. So is any other deleted
 //     source under apps/*/src or apps/*/test, which no rename accounts for.
@@ -60,23 +64,73 @@ const SOURCE = /\.(?:[cm]?[jt]sx?)$/;
  */
 export const DIRECTIVE = /^\s*(?:\/\/\/\s*<|\/\/\s*[@#]|\/\*\*?\s*[@#])/;
 
+/** Vitest's module-path APIs: the first argument is a specifier, resolved as an import's. */
+export const VI_MODULE_CALLS = new Set(["mock", "doMock", "unmock", "doUnmock", "importActual", "importMock"]);
+
+/** `vi.mock`, `vitest.doMock`, …: a call whose first argument names a module. */
+function isViModuleCall(callee) {
+  return ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression) && (callee.expression.text === "vi" || callee.expression.text === "vitest")
+    && ts.isIdentifier(callee.name) && VI_MODULE_CALLS.has(callee.name.text);
+}
+
+/** `import.meta.url`. */
+function isImportMetaUrl(node) {
+  return ts.isPropertyAccessExpression(node) && ts.isMetaProperty(node.expression) && node.expression.keywordToken === ts.SyntaxKind.ImportKeyword && node.name.text === "url";
+}
+
+/** Names the file binds to `import.meta.url` (`const TEST_FILE_URL = import.meta.url`). */
+function fileUrlNames(file) {
+  const names = new Set();
+  const visit = (node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer !== undefined && isImportMetaUrl(node.initializer)
+      && ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const) !== 0) names.add(node.name.text);
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return names;
+}
+
+/** `new URL(path, import.meta.url)` (or a const bound to it): a path relative to the file. */
+function isFileUrl(node, names) {
+  if (!ts.isIdentifier(node.expression) || node.expression.text !== "URL" || node.arguments?.length !== 2) return false;
+  const base = node.arguments[1];
+  return isImportMetaUrl(base) || (ts.isIdentifier(base) && names.has(base.text));
+}
+
 /**
  * The source of `text` as a stream to compare: every node's kind and child count (so the tree's
  * shape, which line breaks can change through ASI, is part of it), every leaf (a token,
  * identifier or literal) with its text, and every directive comment. Other comments and
- * whitespace are left out. Module specifiers stand as `{ specifier }` entries.
+ * whitespace are left out. Module specifiers stand as `{ specifier, form }` entries: `form` is
+ * "module" for an import's (`import`/`export … from`, `import()`, `require()`, `import("…")`
+ * types, `declare module`, and vitest's `vi.mock`/`doMock`/`unmock`/`doUnmock`/`importActual`/
+ * `importMock`, also spelled `vitest.`) and "url" for the path in `new URL("…", import.meta.url)`.
+ * `dynamic` lists the forms whose path argument is not a literal, so cannot be resolved.
  */
 export function sourceLeaves(path, text) {
   const kind = /\.tsx$/.test(path) ? ts.ScriptKind.TSX : /\.jsx$/.test(path) ? ts.ScriptKind.JSX : /\.[cm]?js$/.test(path) ? ts.ScriptKind.JS : ts.ScriptKind.TS;
   const file = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, kind);
-  const specifiers = new Set();
-  const mark = (node) => {
-    if (node !== undefined && ts.isStringLiteralLike(node)) specifiers.add(node);
+  // Each specifier node, mapped to its form: "module" (loaded as a module) or "url" (a file URL).
+  const specifiers = new Map();
+  // Forms whose argument is a path the file names, but not as a literal: they cannot be checked.
+  const dynamic = [];
+  const mark = (node, form = "module") => {
+    if (node !== undefined && ts.isStringLiteralLike(node)) specifiers.set(node, form);
   };
+  /** `node` in a specifier position: a literal is a specifier, anything else (but `import()`) is dynamic. */
+  const argument = (node, form, use) => {
+    if (node === undefined) return;
+    if (ts.isStringLiteralLike(node)) mark(node, form);
+    else if (!(ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword)) dynamic.push(use);
+  };
+  const fileUrls = fileUrlNames(file);
   const find = (node) => {
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) mark(node.moduleSpecifier);
     else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) mark(node.moduleReference.expression);
-    else if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === "require"))) mark(node.arguments[0]);
+    else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) argument(node.arguments[0], "module", "import()");
+    else if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "require") argument(node.arguments[0], "module", "require()");
+    else if (ts.isCallExpression(node) && isViModuleCall(node.expression)) argument(node.arguments[0], "module", `${node.expression.expression.text}.${node.expression.name.text}()`);
+    else if (ts.isNewExpression(node) && isFileUrl(node, fileUrls)) argument(node.arguments[0], "url", "new URL(…, import.meta.url)");
     else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) mark(node.argument.literal);
     else if (ts.isModuleDeclaration(node) && ts.isStringLiteral(node.name)) mark(node.name);
     ts.forEachChild(node, find);
@@ -95,7 +149,7 @@ export function sourceLeaves(path, text) {
     if (children.length === 0) {
       // A leaf owns the comments before it (from the line after the previous token) and after it on its line.
       directives(ts.getLeadingCommentRanges(text, node.pos));
-      if (specifiers.has(node)) leaves.push({ specifier: node.text });
+      if (specifiers.has(node)) leaves.push({ specifier: node.text, form: specifiers.get(node) });
       else if (node.kind !== ts.SyntaxKind.EndOfFileToken) leaves.push({ kind: node.kind, text: node.getText(file) });
       directives(ts.getTrailingCommentRanges(text, node.end));
       return;
@@ -104,7 +158,7 @@ export function sourceLeaves(path, text) {
     for (const child of children) walk(child);
   };
   walk(file);
-  return { leaves, parseErrors: file.parseDiagnostics?.length ?? 0 };
+  return { leaves, dynamic, parseErrors: file.parseDiagnostics?.length ?? 0 };
 }
 
 /** A package `exports` map's target for `subpath` (exact keys and `*` patterns, string targets). */
@@ -200,6 +254,39 @@ export class Tree {
     const file = this.file(base);
     return file === undefined ? `unresolved:${base}` : `file:${file}`;
   }
+
+  /**
+   * What `new URL(path, import.meta.url)` names from `from`: `file:<path>` (exactly that file, no
+   * extension added), `dir:<path>` (a directory holding tracked files), `url:<href>` for an
+   * absolute URL, or `unresolved:<path>`.
+   */
+  resolveUrl(path, from) {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(path) || path.startsWith("/")) return `url:${path}`;
+    const base = posix.normalize(posix.join(posix.dirname(from), path)).replace(/\/$/, "");
+    if (this.files.has(base)) return `file:${base}`;
+    const prefix = base === "." ? "" : `${base}/`;
+    for (const file of this.files) if (file.startsWith(prefix)) return `dir:${base}`;
+    return `unresolved:${base}`;
+  }
+}
+
+/**
+ * Where directory `dir` is after the renames: the directory its files all moved to, keeping
+ * their paths under it, or `dir` itself when they did not all move together.
+ */
+function renamedDir(oldTree, dir, renames) {
+  const prefix = dir === "." ? "" : `${dir}/`;
+  let moved;
+  for (const file of oldTree.files) {
+    if (!file.startsWith(prefix)) continue;
+    const to = renames.get(file);
+    const rest = file.slice(prefix.length);
+    if (to === undefined || !to.endsWith(`/${rest}`)) return dir;
+    const target = to.slice(0, -rest.length - 1);
+    if (moved !== undefined && moved !== target) return dir;
+    moved = target;
+  }
+  return moved ?? dir;
 }
 
 /** Deep equality of two parsed JSON values. */
@@ -238,6 +325,10 @@ export function compareFile({ oldTree, newTree, from, to, renames }) {
   const problems = [];
   if (a.parseErrors !== b.parseErrors) problems.push(`parse errors differ (${a.parseErrors} → ${b.parseErrors})`);
   if (a.leaves.length !== b.leaves.length) problems.push(`token count differs (${a.leaves.length} → ${b.leaves.length})`);
+  // A path that is not a literal resolves from the file's directory too, but cannot be checked.
+  if (posix.dirname(from) !== posix.dirname(to)) {
+    for (const use of new Set([...a.dynamic, ...b.dynamic])) problems.push(`${use} with a non-literal path: cannot check that it loads the same file from the new directory`);
+  }
   let specifiers = 0;
   for (let index = 0; index < Math.min(a.leaves.length, b.leaves.length) && problems.length < 20; index++) {
     const [x, y] = [a.leaves[index], b.leaves[index]];
@@ -249,11 +340,18 @@ export function compareFile({ oldTree, newTree, from, to, renames }) {
       problems.push(`token ${index}: ${show(x)} → ${show(y)}`);
       continue;
     }
-    const was = oldTree.resolve(x.specifier, from);
-    const now = newTree.resolve(y.specifier, to);
-    const at = was.indexOf("?");
+    if (x.form !== y.form) {
+      problems.push(`token ${index}: ${show(x)} → ${show(y)}`);
+      continue;
+    }
+    const url = x.form === "url";
+    const was = url ? oldTree.resolveUrl(x.specifier, from) : oldTree.resolve(x.specifier, from);
+    const now = url ? newTree.resolveUrl(y.specifier, to) : newTree.resolve(y.specifier, to);
+    const at = url ? -1 : was.indexOf("?");
     const [target, query] = at < 0 ? [was, ""] : [was.slice(0, at), was.slice(at)];
-    const expected = target.startsWith("file:") ? `file:${renames.get(target.slice(5)) ?? target.slice(5)}${query}` : was;
+    const expected = target.startsWith("file:")
+      ? `file:${renames.get(target.slice(5)) ?? target.slice(5)}${query}`
+      : target.startsWith("dir:") ? `dir:${renamedDir(oldTree, target.slice(4), renames)}` : was;
     if (was.startsWith("unresolved:") || now !== expected) {
       problems.push(`specifier "${x.specifier}" → "${y.specifier}" loads ${now.replace(/^\w+:/, "")}, not ${expected.replace(/^\w+:/, "")}`);
     } else if (x.specifier !== y.specifier) {

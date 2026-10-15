@@ -142,5 +142,8 @@ deck.your-lan.example {
 ```
 
 Do not expose the container port directly to an untrusted network.
+Pass deck's page through unchanged: its Content-Security-Policy allows only deck's own inline
+scripts and styles, so anything a proxy injects into the page (an inline `<style>`, a `style`
+attribute, a script) is refused by the browser.
 See [Access and security model](../security.md) for the full posture — what deck protects, and
 what it leaves to you.

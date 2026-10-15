@@ -16,8 +16,8 @@ const golden = JSON.parse(
   ),
 ) as UiManifest;
 
-/** Web-only registrations the server does not list: the dev workbench. */
-const WEB_ONLY = new Set(["page:ui-workbench/overview"]);
+/** Web-only registrations the server does not list: the dev workbench and its overlay lab. */
+const WEB_ONLY = new Set(["page:ui-workbench/overview", "page:ui-workbench/overlays"]);
 
 async function webExtensions() {
   vi.resetModules();

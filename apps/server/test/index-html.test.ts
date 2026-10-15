@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { readDeckBoot } from "@deck/contract";
+import { readDeckBoot, readStyleNonce } from "@deck/contract";
 import type { UiManifest } from "@deck/module-sdk";
 import type { Context, Next } from "hono";
 import type { Logger } from "pino";
@@ -88,6 +88,19 @@ describe("the served index.html", () => {
     expect(deckBootOf(undefined, { ui: { theme } }).theme).toEqual(theme);
     expect(bootIn(renderIndexHtml(TEMPLATE, deckBootOf(manifest("Lab"), { ui: { theme } }))).theme).toEqual(theme);
     expect(deckBootOf(undefined, { ui: { theme: { preset: "#00ff00", density: "cosy", radius: 4 } } }).theme).toEqual({});
+  });
+
+  it("writes the style nonce into a meta element the web reads, and the script nonce onto every script", () => {
+    const html = renderIndexHtml(TEMPLATE, deckBootOf(manifest("Lab"), {}), { script: "c2NyaXB0", style: 'a"b' });
+    expect(html).toMatch(/<head>\n {4}<meta property="csp-nonce" nonce="a&#34;b" \/>/);
+    for (const tag of html.match(/<script\b[^>]*>/g) ?? []) expect(tag).toContain('nonce="c2NyaXB0"');
+    // As the browser reads it: the attribute is hidden once in the page, the property is not.
+    const meta = { nonce: "s", getAttribute: () => "" };
+    expect(readStyleNonce({ querySelector: (selector) => (selector === 'meta[property="csp-nonce"]' ? meta : null) })).toBe("s");
+    expect(readStyleNonce({ querySelector: () => ({ getAttribute: () => "t" }) })).toBe("t");
+    expect(readStyleNonce({ querySelector: () => null })).toBeUndefined();
+    // Without nonces (no policy), the page carries neither.
+    expect(renderIndexHtml(TEMPLATE, deckBootOf(manifest("Lab"), {}))).not.toMatch(/nonce|csp-nonce/);
   });
 
   it("serves a template without the boot element as it is, but titled", () => {

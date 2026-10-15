@@ -150,6 +150,9 @@ importers:
       dompurify:
         specifier: ^3.2.4
         version: 3.4.15
+      get-nonce:
+        specifier: ^1.0.1
+        version: 1.0.1
       highlight.js:
         specifier: ^11.10.0
         version: 11.12.0

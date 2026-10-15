@@ -4,7 +4,7 @@
  * the browser bundle can import it at runtime.
  */
 export {
-  BOOT_ELEMENT_ID, deckBootTheme, readDeckBoot, serializeDeckBoot, THEME_DENSITIES, THEME_MODES, THEME_PRESETS, THEME_RADII,
+  BOOT_ELEMENT_ID, deckBootTheme, readDeckBoot, readStyleNonce, serializeDeckBoot, STYLE_NONCE_PROPERTY, THEME_DENSITIES, THEME_MODES, THEME_PRESETS, THEME_RADII,
 } from "./boot.js";
 export type { DeckBoot, DeckBootTheme, ThemeDensity, ThemeMode, ThemePreset, ThemeRadius } from "./boot.js";
 export type { FreshnessStamp, FreshnessState, ProviderEnvelope, ProviderProjection } from "./freshness.js";

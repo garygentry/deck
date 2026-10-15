@@ -44,6 +44,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "dompurify": "^3.2.4",
+    "get-nonce": "^1.0.1",
     "highlight.js": "^11.10.0",
     "lucide-react": "^1.47.0",
     "markdown-it": "^14.1.0",

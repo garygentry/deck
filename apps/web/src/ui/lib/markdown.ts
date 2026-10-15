@@ -18,6 +18,7 @@ import MarkdownIt from "markdown-it";
 import taskLists from "markdown-it-task-lists";
 
 import { highlightCode } from "./highlight.js";
+import { neutralizeInlineStyles } from "./inline-style-markup.js";
 
 /** Context the renderer needs to rewrite relative links/images against the current doc. */
 export interface MarkdownRenderContext {
@@ -89,6 +90,27 @@ const md: MarkdownIt = new MarkdownIt({
   highlight: highlightFence,
 }).use(taskLists, { enabled: false, label: true });
 
+/**
+ * The page's Content-Security-Policy refuses `style` attributes, and reports one as soon as
+ * markup carrying it is parsed (even into an inert document, as the sanitizer does), so none
+ * reaches a parser:
+ * - a table column's alignment, which markdown-it writes as `style="text-align:…"`, becomes a
+ *   class (`text-left`, `text-center`, `text-right`);
+ * - in the rendered HTML, before anything parses it, raw HTML's `style` attributes are renamed
+ *   `data-style` (the sanitizer then drops them: no `data-*` attribute survives) and raw
+ *   `<style>` elements are removed whole (`neutralizeInlineStyles`, which reads tags as a parser
+ *   does, so attribute values and text are kept byte for byte).
+ */
+const ALIGN_CLASS: Readonly<Record<string, string>> = { left: "text-left", center: "text-center", right: "text-right" };
+md.core.ruler.push("deck_align_classes", (state) => {
+  for (const token of state.tokens) {
+    if (token.type !== "th_open" && token.type !== "td_open") continue;
+    const align = /^text-align:(left|center|right)$/.exec(token.attrGet("style") ?? "")?.[1];
+    token.attrs = (token.attrs ?? []).filter(([name]) => name !== "style");
+    if (align !== undefined) token.attrJoin("class", ALIGN_CLASS[align]!);
+  }
+});
+
 /** markdown-it's per-render `env`: the caller's document context, if any. */
 interface RenderEnv {
   readonly context?: MarkdownRenderContext;
@@ -126,11 +148,12 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
 };
 
 /** DOMPurify config — the XSS boundary. Permit the rewritten link/image attrs; forbid
- *  script/style/embedding tags and event-handler attributes. */
+ *  script/style/embedding tags, event-handler attributes, and `style` attributes (the shell's
+ *  Content-Security-Policy refuses inline style attributes, so they could never apply). */
 const SANITIZE_CONFIG: DOMPurifyConfig = {
   ADD_ATTR: ["target", "rel"],
   FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form"],
-  FORBID_ATTR: ["onerror", "onload", "onclick", "srcdoc"],
+  FORBID_ATTR: ["onerror", "onload", "onclick", "srcdoc", "style"],
   ALLOW_DATA_ATTR: false,
 };
 
@@ -158,7 +181,7 @@ export function renderMarkdown(
     ...(context === undefined ? {} : { context }),
     ...(options.externalLinksOnly === true ? { externalLinksOnly: true } : {}),
   };
-  const rendered = md.render(markdown, env);
+  const rendered = neutralizeInlineStyles(md.render(markdown, env));
   const html = options.headingOffset === undefined ? rendered : demoteHeadings(rendered, options.headingOffset);
   // The sanitiser runs last: nothing parses, changes or re-serialises its output. The link
   // policy runs inside it, on the very nodes it returns, for this call only (it is synchronous).
@@ -302,7 +325,6 @@ function cssUnescape(value: string): string {
 const EXTERNAL_LINKS_ONLY_CONFIG: DOMPurifyConfig = {
   ...SANITIZE_CONFIG,
   FORBID_TAGS: [...EXTERNAL_ONLY_FORBIDDEN_TAGS],
-  FORBID_ATTR: [...(SANITIZE_CONFIG.FORBID_ATTR ?? []), "style"],
 };
 
 /** Attributes that fetch when the page renders the element: the external-only policy removes each, whatever its URL. */

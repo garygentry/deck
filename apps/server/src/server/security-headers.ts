@@ -6,8 +6,9 @@ import type { MiddlewareHandler } from "hono";
 
 /**
  * The browser policy deck sends. Every response carries its own `frame-ancestors` policy (who may
- * frame deck), `X-Frame-Options` while only deck may, and `nosniff`; the web shell's page also
- * carries the full Content-Security-Policy, whose script nonce is fresh per response.
+ * frame deck), `X-Frame-Options` while only deck may, `nosniff` and `X-DNS-Prefetch-Control:
+ * off`; the web shell's page also carries the full Content-Security-Policy, whose script and
+ * style nonces are fresh per response.
  */
 
 /** What `ui.frameAncestors` and `ui.frameSources` accept (the config schema's pattern). */
@@ -131,8 +132,8 @@ export function requestOrigins(url: string, header: (name: string) => string | u
   return [...origins];
 }
 
-/** A fresh script nonce: 128 random bits, base64. */
-export function scriptNonce(): string {
+/** A fresh CSP nonce: 128 random bits, base64. The shell draws one for scripts and one for styles. */
+export function cspNonce(): string {
   return randomBytes(16).toString("base64");
 }
 
@@ -142,18 +143,22 @@ export function scriptNonce(): string {
  * - scripts from deck's origin (the app, `@deck/sdk` and runtime modules' `/modules/<id>/web.js`)
  *   and the page's own inline scripts carrying `nonce` (the import map and the pre-paint theme);
  *   no `eval`;
- * - styles from deck's origin, and inline ones (the UI library and sanitized markup set them);
+ * - styles from deck's origin, and `<style>` elements carrying `styleNonce` (the ones the UI
+ *   library injects: the scroll lock behind modal overlays, the scroll area's and the select
+ *   list's scrollbar rules; the page hands the nonce to them, see `renderIndexHtml`); no
+ *   `style` attributes in markup (sanitized markup carries none), while styles set through the
+ *   CSSOM (`element.style`, as React and the overlay positioning do) are not a CSP matter;
  * - images from anywhere over http(s), `data:` and `blob:` (brand logos, markdown images);
  * - requests (`fetch`) to deck's origin only;
  * - frames of `frameOrigins` only (never deck's own origin), so a framed page that redirects
  *   or navigates into deck is refused;
  * - no plugins, no `<base>`, and forms posting to deck only.
  */
-export function shellPolicy(options: { nonce: string; frameOrigins: readonly string[] }): string {
+export function shellPolicy(options: { nonce: string; styleNonce: string; frameOrigins: readonly string[] }): string {
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${options.nonce}'`,
-    "style-src 'self' 'unsafe-inline'",
+    `style-src 'self' 'nonce-${options.styleNonce}'`,
     "img-src 'self' data: blob: http: https:",
     "font-src 'self' data:",
     "connect-src 'self'",
@@ -184,8 +189,9 @@ export function mutableCopy(response: Response): Response {
  * hot reload applies at once). It is a Content-Security-Policy of its own, appended, so any
  * other policy a route sets (the shell's, a module's) still applies beside it, and a looser
  * one cannot relax it. `X-Frame-Options: SAMEORIGIN` goes with it while only deck may frame
- * itself, and is never sent otherwise (it cannot name another origin). Also `nosniff`. A
- * response whose headers are immutable (a `fetch()` result, `Response.redirect`) is copied first.
+ * itself, and is never sent otherwise (it cannot name another origin). Also `nosniff`, and
+ * `X-DNS-Prefetch-Control: off`. A response whose headers are immutable (a `fetch()` result,
+ * `Response.redirect`) is copied first.
  */
 export function securityHeaders(frameAncestors: () => readonly string[]): MiddlewareHandler {
   return async (context, next) => {
@@ -196,6 +202,8 @@ export function securityHeaders(frameAncestors: () => readonly string[]): Middle
       if (extra.length === 0) headers.set("X-Frame-Options", "SAMEORIGIN");
       else headers.delete("X-Frame-Options");
       headers.set("X-Content-Type-Options", "nosniff");
+      // No speculative DNS lookups for the hosts of links on deck's pages (sidecar markdown, docs).
+      headers.set("X-DNS-Prefetch-Control", "off");
     };
     try {
       apply(context.res.headers);

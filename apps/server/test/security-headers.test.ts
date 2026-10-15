@@ -101,15 +101,20 @@ describe("the web shell's Content-Security-Policy", () => {
       const scripts = html.match(/<script\b[^>]*>/g) ?? [];
       expect(scripts).toHaveLength(4);
       for (const tag of scripts) expect(tag).toContain(`nonce="${nonce}"`);
+      // A style nonce of its own, which the page hands to the UI library in a meta element.
+      const styleNonce = /^'self' 'nonce-([A-Za-z0-9+/]{22}==)'$/.exec(policy["style-src"]!)?.[1];
+      expect(styleNonce, path).toBeDefined();
+      expect(styleNonce).not.toBe(nonce);
+      seen.add(styleNonce!);
+      expect(html.match(/<meta property="csp-nonce"[^>]*>/g)).toEqual([`<meta property="csp-nonce" nonce="${styleNonce}" />`]);
     }
-    expect(seen.size).toBe(5);
+    expect(seen.size).toBe(10);
   });
 
   it("allows deck's own scripts, styles and requests, images over http(s), and nothing else by default", async () => {
     const policy = directives((await appWith().request("/")).headers.get("content-security-policy"));
     expect(policy).toMatchObject({
       "default-src": "'self'",
-      "style-src": "'self' 'unsafe-inline'",
       "img-src": "'self' data: blob: http: https:",
       "font-src": "'self' data:",
       "connect-src": "'self'",
@@ -120,6 +125,9 @@ describe("the web shell's Content-Security-Policy", () => {
     });
     expect(ancestors((await appWith().request("/")).headers.get("content-security-policy"))).toEqual(["'self'"]);
     expect(policy["script-src"]).not.toMatch(/unsafe|strict-dynamic|\*/);
+    // No inline style but the nonce'd elements: no 'unsafe-inline', so no style attributes either.
+    expect(policy["style-src"]).toMatch(/^'self' 'nonce-[^']+'$/);
+    expect(Object.keys(policy).filter((name) => name.startsWith("style-src-"))).toEqual([]);
   });
 
   it("frames only the core/embed origins of the manifest while it allows embeds, never deck's own", async () => {
@@ -137,8 +145,8 @@ describe("the web shell's Content-Security-Policy", () => {
   });
 
   it("builds the same policy from its parts", () => {
-    expect(shellPolicy({ nonce: "n", frameOrigins: ["https://a.example"] })).toBe(
-      "default-src 'self'; script-src 'self' 'nonce-n'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http: https:; font-src 'self' data:; connect-src 'self'; frame-src https://a.example; object-src 'none'; base-uri 'none'; form-action 'self'",
+    expect(shellPolicy({ nonce: "n", styleNonce: "s", frameOrigins: ["https://a.example"] })).toBe(
+      "default-src 'self'; script-src 'self' 'nonce-n'; style-src 'self' 'nonce-s'; img-src 'self' data: blob: http: https:; font-src 'self' data:; connect-src 'self'; frame-src https://a.example; object-src 'none'; base-uri 'none'; form-action 'self'",
     );
     expect(embedOriginsOf(undefined)).toEqual([]);
   });
@@ -228,11 +236,12 @@ describe("the web shell's Content-Security-Policy", () => {
 describe("frame-ancestors on every response", () => {
   const paths = ["/", "/assets/app.js", "/api/health", "/api/nope", "/modules/x/web.js", "/nope.png"];
 
-  it.each(paths)("by default, %s may be framed by deck's own origin only (with X-Frame-Options and nosniff)", async (path) => {
+  it.each(paths)("by default, %s may be framed by deck's own origin only (with X-Frame-Options, nosniff and no DNS prefetch)", async (path) => {
     const response = await appWith().request(path);
     expect(ancestors(response.headers.get("content-security-policy"))).toEqual(["'self'"]);
     expect(response.headers.get("x-frame-options")).toBe("SAMEORIGIN");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("x-dns-prefetch-control")).toBe("off");
   });
 
   it.each(paths)("with ui.frameAncestors, %s may be framed by those origins too, and X-Frame-Options is not sent", async (path) => {
@@ -317,6 +326,7 @@ describe("frame-ancestors on every response", () => {
     expect(ancestors(response.headers.get("content-security-policy"))).toEqual(["'self'"]);
     expect(response.headers.get("x-frame-options")).toBe("SAMEORIGIN");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("x-dns-prefetch-control")).toBe("off");
     if (path === "/redirect") expect(response.headers.get("location")).toBe("https://deck.example.net/elsewhere");
     else {
       expect(response.headers.get("x-upstream")).toBe("yes");

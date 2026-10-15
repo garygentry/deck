@@ -9,6 +9,7 @@
     "@deck/drift": "workspace:*",
     "@deck/module-inventory": "workspace:*",
     "@deck/module-sdk": "workspace:*",
+    "@deck/module-snapshot": "workspace:*",
     "@deck/schema": "workspace:*"
   },
   "peerDependencies": {

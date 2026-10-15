@@ -3,16 +3,8 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-// `../src/index.js` and `../src/actions.js` are the package's `.` and `./actions` exports.
-import { validateActionParams } from "../src/actions.js";
+// `../src/index.js` is the package's `.` export.
 import { POLL_DEFAULTS } from "../src/index.js";
-import { ACTIONS_UI } from "../src/modules/actions.js";
-import { DRIFT_UI } from "../src/modules/drift.js";
-import { INVENTORY_UI } from "../src/modules/inventory.js";
-import { LLM_USAGE_UI } from "../src/modules/llm-usage.js";
-import { MONITORING_UI } from "../src/modules/monitoring.js";
-import { PORTAL_UI } from "../src/modules/portal.js";
-import { SOURCES_UI } from "../src/modules/sources.js";
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "../src");
 const MODULE_SDK = resolve(dirname(fileURLToPath(import.meta.url)), "../../module-sdk");
@@ -34,12 +26,6 @@ describe("@deck/contract", () => {
     expect(POLL_DEFAULTS).toEqual({ pollIntervalMs: 30_000, ttlMs: 30_000, unreachableAfterMs: 90_000, timeoutMs: 5_000 });
   });
 
-  it("serves the actions parameter validator from its subpath", () => {
-    const action = { params: [{ name: "n", type: "number" as const, required: true }] };
-    expect(validateActionParams(action, { n: "3" })).toEqual({ ok: true, values: { n: 3 } });
-    expect(validateActionParams(action, {})).toEqual({ ok: false, errors: [{ name: "n", message: '"n" is required.' }] });
-  });
-
   it("loads no other module at runtime, so it is safe in the browser bundle", () => {
     for (const path of walk(SRC)) {
       const file = relative(SRC, path);
@@ -53,27 +39,16 @@ describe("@deck/contract", () => {
     }
   });
 
-  it("serves built-in modules' UI contributions from its modules subpath, as plain JSON", () => {
-    expect(LLM_USAGE_UI.id).toBe("llm-usage");
-    expect(JSON.parse(JSON.stringify(LLM_USAGE_UI))).toEqual(LLM_USAGE_UI);
-    expect(MONITORING_UI.id).toBe("monitoring");
-    expect(JSON.parse(JSON.stringify(MONITORING_UI))).toEqual(MONITORING_UI);
-    expect(ACTIONS_UI.id).toBe("actions");
-    expect(JSON.parse(JSON.stringify(ACTIONS_UI))).toEqual(ACTIONS_UI);
-    expect(PORTAL_UI.id).toBe("portal");
-    expect(JSON.parse(JSON.stringify(PORTAL_UI))).toEqual(PORTAL_UI);
-    expect(SOURCES_UI.id).toBe("sources");
-    expect(JSON.parse(JSON.stringify(SOURCES_UI))).toEqual(SOURCES_UI);
+  it("serves the kernel's UI contract (core slots and widget types) as plain JSON", async () => {
+    const { CORE_WIDGET_TYPES, SHELL_SLOTS } = await import("../src/core.js");
+    expect(JSON.parse(JSON.stringify(SHELL_SLOTS))).toEqual(SHELL_SLOTS);
+    expect(JSON.parse(JSON.stringify(CORE_WIDGET_TYPES))).toEqual(CORE_WIDGET_TYPES);
   });
 
-  it("serves the drift module's UI contributions as plain JSON", () => {
-    expect(DRIFT_UI.id).toBe("drift");
-    expect(JSON.parse(JSON.stringify(DRIFT_UI))).toEqual(DRIFT_UI);
-  });
-
-  it("serves the inventory module's UI contributions as plain JSON", () => {
-    expect(INVENTORY_UI.id).toBe("inventory");
-    expect(JSON.parse(JSON.stringify(INVENTORY_UI))).toEqual(INVENTORY_UI);
+  it("holds no built-in module's contract (each lives in its module) and exports only kernel entries", () => {
+    const manifest = JSON.parse(readFileSync(resolve(SRC, "../package.json"), "utf8")) as { exports: Record<string, string> };
+    expect(Object.keys(manifest.exports).sort()).toEqual([".", "./core", "./widgets"]);
+    expect(walk(SRC).map((path) => relative(SRC, path)).filter((file) => file.includes("/"))).toEqual([]);
   });
 
   it("depends on the module SDK for types only, and the SDK depends on no deck package, so there is no cycle", () => {
@@ -105,7 +80,7 @@ describe("core/embed's url check", () => {
   ];
 
   it("is the schema library's one rule (the contract's options pattern equals it), then the URL parser", async () => {
-    const { CORE_WIDGET_TYPE_SCHEMAS } = await import("../src/modules/widgets.js");
+    const { CORE_WIDGET_TYPE_SCHEMAS } = await import("../src/widgets.js");
     const { EMBED_URL_PATTERN, embedUrlProblem } = await import("@deck/schema/embed");
     const embedType = CORE_WIDGET_TYPE_SCHEMAS.find(({ type }) => type === "core/embed");
     expect((embedType?.optionsSchema as { properties: { url: { pattern: string } } }).properties.url.pattern).toBe(EMBED_URL_PATTERN);

@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { SOURCES_UI } from "@deck/contract/modules/sources";
+import { SOURCES_UI } from "../../../modules/sources/contract.js";
 import type { ModuleManifest } from "@deck/module-sdk";
 import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
 

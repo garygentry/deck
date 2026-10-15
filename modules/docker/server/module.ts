@@ -1,4 +1,4 @@
-import { DOCKER_STATUS } from "@deck/contract/modules/data-sources";
+import { DOCKER_STATUS_KIND } from "../contract.js";
 import { defineServerModule, type JsonSchema, type ModuleManifest } from "@deck/module-sdk";
 
 import { DockerProvider } from "./index.js";
@@ -13,7 +13,7 @@ export const DOCKER_MANIFEST: ModuleManifest = {
   id: "docker",
   version: "1.0.0",
   deckApi: "^0.1",
-  providerKinds: [{ kind: "docker", fixedId: "docker", instanceSchema: instanceSchema as JsonSchema, bindable: true, statusCapable: true, status: DOCKER_STATUS }],
+  providerKinds: [{ kind: DOCKER_STATUS_KIND.kind, fixedId: DOCKER_STATUS_KIND.fixedId, instanceSchema: instanceSchema as JsonSchema, bindable: true, statusCapable: true, status: DOCKER_STATUS_KIND.status }],
 };
 
 export const dockerModule = defineServerModule(DOCKER_MANIFEST, () => {}, {

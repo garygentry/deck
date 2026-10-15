@@ -8,14 +8,15 @@ Actions page. It is off unless `DECK_ACTIONS_ENABLED` is true. The operator guid
 | Path | Holds |
 |---|---|
 | `schema.json` | the `modules.actions` config section schema (`server/config.generated.ts` is generated from it: `pnpm --filter @deck/server gen:module-types`) |
+| `contract.ts` | the data half of its manifest (the Actions page and its nav entry), which `server/module.ts` spreads in and `web/index.ts` registers against; data only, so the web bundle loads it too |
+| `params.ts` | the governed-actions parameter validator, shared by both halves (`server/validate.ts` re-exports it) |
 | `server/` | the server half; `server/module.ts` is what `apps/server/src/modules/builtin.ts` lists |
 | `web/` | the web half; `web/index.ts` registers it, discovered by `apps/web/src/registry/discover.ts` |
 | `test/server/`, `test/web/` | unit tests, run by `@deck/server` and `@deck/web`'s test suites |
 
 There is no `module.json`: a built-in's manifest is TypeScript. Its data half (the Actions page
-and its nav entry) is `@deck/contract/modules/actions`, which the web loads too, and
-`server/module.ts` spreads it into the server manifest. The parameter validator the server and
-the web share is `@deck/contract/actions`. There is no build or test script here: each half
+and its nav entry) is `contract.ts`, which the web loads too, and `server/module.ts` spreads it
+into the server manifest. The parameter validator the server and the web share is `params.ts`. There is no build or test script here: each half
 compiles and is tested inside its host app. React, react-dom and vitest are peer dependencies
 (with dev dependencies for the tests): the app and its modules share one instance of each. Tests
 that drive the module through the kernel (the module host, the app, the config pipeline,

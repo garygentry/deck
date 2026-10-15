@@ -10,7 +10,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { PORTAL_UI } from "@deck/contract/modules/portal";
+import { PORTAL_UI } from "../../../modules/portal/contract.js";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { composeDefault, FINDING_CATALOG, merge, resolveOwner, validate, type JsonObject } from "@deck/schema";

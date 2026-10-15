@@ -1,5 +1,5 @@
 import type { ProviderEnvelope } from "@deck/contract";
-import { PORTAL_UI } from "@deck/contract/modules/portal";
+import { PORTAL_UI } from "../contract.js";
 import type { JSX } from "react";
 import { useProvider } from "@/data/index.js";
 import { HealthSummaryPill } from "@/shell/health-header/HealthSummaryPill.js";

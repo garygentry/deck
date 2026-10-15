@@ -105,8 +105,10 @@ describe("the web bundle", () => {
     // The walk starts from the built-in modules' web halves too.
     expect(graph.has(join(repoRoot, "modules/llm-usage/web/index.ts"))).toBe(true);
     expect(workspace.has("@deck/module-llm-usage")).toBe(true);
+    // And into the files a module's halves share at its root (its contract).
+    expect(graph.has(join(repoRoot, "modules/llm-usage/contract.ts"))).toBe(true);
     // The walk does reach into the workspace packages.
-    expect(graph.has(join(repoRoot, "packages/contract/src/modules/core.ts"))).toBe(true);
+    expect(graph.has(join(repoRoot, "packages/contract/src/core.ts"))).toBe(true);
     expect(graph.has(join(repoRoot, "packages/module-sdk/src/index.ts"))).toBe(true);
   });
 

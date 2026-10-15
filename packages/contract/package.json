@@ -2,12 +2,12 @@
   "name": "@deck/contract",
   "version": "0.5.0",
   "private": true,
-  "description": "The contract shared by the deck server and web: provider envelopes, poll defaults, the snapshot payload, the governed-actions parameter validator, and built-in modules' UI contributions.",
+  "description": "The kernel's contract shared by the deck server and web: provider envelopes, poll defaults, the boot payload, and the core slots and widget types. Each built-in module's own contract lives in its module (modules/<id>/contract.ts).",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./actions": "./src/actions.ts",
-    "./modules/*": "./src/modules/*.ts"
+    "./core": "./src/core.ts",
+    "./widgets": "./src/widgets.ts"
   },
   "files": [
     "src"

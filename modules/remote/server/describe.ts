@@ -1,5 +1,5 @@
 import { isExternalHref, isSafeHref, type JsonObject } from "@deck/module-sdk";
-import { CORE_WIDGET_TYPES } from "@deck/contract/modules/core";
+import { CORE_WIDGET_TYPES } from "@deck/contract/core";
 import { compileWidgetOptions, createAjv, remoteDescribeSchema, type SchemaProblem } from "@deck/schema";
 import { selectProblem } from "@deck/schema/select";
 import MarkdownIt from "markdown-it";

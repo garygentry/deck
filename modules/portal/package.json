@@ -6,6 +6,9 @@
   "type": "module",
   "dependencies": {
     "@deck/contract": "workspace:*",
+    "@deck/module-docker": "workspace:*",
+    "@deck/module-gatus": "workspace:*",
+    "@deck/module-http-health": "workspace:*",
     "@deck/module-sdk": "workspace:*",
     "@deck/schema": "workspace:*"
   },

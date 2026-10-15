@@ -1,4 +1,4 @@
-import { MONITORING_UI } from "@deck/contract/modules/monitoring";
+import { MONITORING_UI } from "../../../modules/monitoring/contract.js";
 import { describe, expect, it } from "vitest";
 
 import { METRICS_MANIFEST } from "../../../modules/metrics/server/module.js";

@@ -1,4 +1,4 @@
-import { SHELL_SLOTS as SHARED_SHELL_SLOTS } from "@deck/contract/modules/core";
+import { SHELL_SLOTS as SHARED_SHELL_SLOTS } from "@deck/contract/core";
 import { isKernelSlot, type ModuleManifest } from "@deck/module-sdk";
 import { describe, expect, it } from "vitest";
 

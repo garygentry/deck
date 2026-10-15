@@ -6,7 +6,8 @@ import type {
   ObservedService,
   Service,
 } from "@deck/schema";
-import type { HostState, ProviderEnvelope, SnapshotProviderResult } from "@deck/contract";
+import type { ProviderEnvelope } from "@deck/contract";
+import type { HostState, SnapshotProviderResult } from "../../../modules/snapshot/contract.js";
 // Built-in modules' web tests use this harness too, so it reaches inventory through its public entry.
 import {
   buildInventoryModel,

@@ -1,4 +1,4 @@
-import { PORTAL_UI } from "@deck/contract/modules/portal";
+import { PORTAL_UI } from "../contract.js";
 import { defineServerModule, isSafeHref, type ConfigLayer, type ConfigRuleFinding, type JsonSchema, type ModuleManifest } from "@deck/module-sdk";
 
 import type { PortalModuleConfig } from "./config.generated.js";

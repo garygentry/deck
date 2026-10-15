@@ -8,12 +8,13 @@ and contributes the LLM usage page, its header pill and its portal card. The ope
 | Path | Holds |
 |---|---|
 | `schema.json` | the `modules.llm-usage` config section schema (`server/config.generated.ts` is generated from it: `pnpm --filter @deck/server gen:module-types`) |
+| `contract.ts` | the data half of its manifest (pages, pill, card), which `server/module.ts` spreads in and `web/index.ts` registers against; data only, so the web bundle loads it too |
 | `server/` | the server half; `server/module.ts` is what `apps/server/src/modules/builtin.ts` lists |
 | `web/` | the web half; `web/index.ts` registers it, discovered by `apps/web/src/registry/discover.ts` |
 | `test/server/`, `test/web/` | unit tests, run by `@deck/server` and `@deck/web`'s test suites |
 
 There is no `module.json`: a built-in's manifest is TypeScript. Its data half (pages, pill, card)
-is `@deck/contract/modules/llm-usage`, which the web loads too, and `server/module.ts` spreads it
+is `contract.ts`, which the web loads too, and `server/module.ts` spreads it
 into the server manifest. There is no build or test script here: each half compiles and is tested
 inside its host app. React, react-dom, react-query and vitest are peer dependencies (with dev
 dependencies for the tests): the app and its modules share one instance of each. Tests that drive

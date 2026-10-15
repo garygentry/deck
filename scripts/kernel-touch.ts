@@ -32,13 +32,11 @@ export const KERNEL_PATHS: readonly string[] = [
   "packages/schema/scripts/**",
   // The module SDK.
   "packages/module-sdk/**",
-  // The wire contract shared by server and web. `actions.ts` is the actions module's code,
-  // housed there until that module has a shared half of its own.
+  // The kernel's wire contract shared by server and web: every file of @deck/contract (its
+  // index, boot payload, freshness, poll timing, core slots and widget types). Each built-in
+  // module's own contract lives in its module (`modules/<id>/contract.ts`), outside the kernel.
   "packages/contract/package.json",
-  "packages/contract/src/index.ts",
-  "packages/contract/src/freshness.ts",
-  "packages/contract/src/poll.ts",
-  "packages/contract/src/snapshot.ts",
+  "packages/contract/src/**",
   // Server: config load/merge/validate, CLI, contract, app skeleton and boot, logging.
   "apps/server/src/config/**",
   "apps/server/src/cli/**",

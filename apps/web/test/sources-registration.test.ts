@@ -8,7 +8,7 @@ async function loadFreshFeature() {
   vi.resetModules();
   const feature = await import("../../../modules/sources/web/index.js");
   const registry = await import("../src/registry/registry.js");
-  const { SOURCES_UI } = await import("@deck/contract/modules/sources");
+  const { SOURCES_UI } = await import("../../../modules/sources/contract.js");
   return { feature, registry, SOURCES_UI };
 }
 

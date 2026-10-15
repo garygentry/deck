@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ResolvedParams } from "@deck/contract/actions";
+import type { ResolvedParams } from "../../params.js";
 import type { Action } from "../../server/types.js";
 
 import {

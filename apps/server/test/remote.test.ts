@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { CORE_WIDGET_TYPES } from "@deck/contract/modules/core";
+import { CORE_WIDGET_TYPES } from "@deck/contract/core";
 import type { UiManifest } from "@deck/module-sdk";
 import type { Logger } from "pino";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";

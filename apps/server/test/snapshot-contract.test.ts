@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import * as contractBarrel from "../src/contract/index.js";
-import type {
-  HostCollectionState,
-  HostState,
-  SnapshotProviderResult,
-  SnapshotReadError,
-} from "@deck/contract";
+import type { HostCollectionState, HostState, SnapshotProviderResult, SnapshotReadError } from "../../../modules/snapshot/contract.js";
 import type { SnapshotReadEvent } from "../src/log/logger.js";
 import {
   SNAPSHOT_READ_ERROR_CODES,

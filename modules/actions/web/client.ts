@@ -9,7 +9,7 @@
  * `getReader()` + newline-split approach is the specified mechanism.
  */
 
-import type { ParamError } from "@deck/contract/actions";
+import type { ParamError } from "../params.js";
 import type {
   Action,
   ActionRunEvent,

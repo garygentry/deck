@@ -1,4 +1,4 @@
-import { DRIFT_UI } from "@deck/contract/modules/drift";
+import { DRIFT_UI } from "../contract.js";
 import { defineServerModule, type ModuleManifest } from "@deck/module-sdk";
 
 /**

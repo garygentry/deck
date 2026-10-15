@@ -110,10 +110,10 @@ describe("moduleReferences", () => {
 });
 
 describe("isPublicEntry", () => {
-  it.each(["web/public.js", "web/public.ts", "web/public", "server/public.js"])("accepts %s", (path) => {
+  it.each(["web/public.js", "web/public.ts", "web/public", "server/public.js", "contract.js", "contract.ts"])("accepts %s", (path) => {
     expect(isPublicEntry(path)).toBe(true);
   });
-  it.each(["", "web/model.js", "web/public/index.js", "public.js", "test/web/public.js", "web/components/public.js"])(
+  it.each(["", "web/model.js", "web/public/index.js", "public.js", "test/web/public.js", "web/components/public.js", "web/contract.js", "server/contract.js"])(
     "rejects %s",
     (path) => {
       expect(isPublicEntry(path)).toBe(false);
@@ -152,6 +152,9 @@ describe("cross-module imports go through a public entry and a declared dependen
       "modules/user/web/b.ts": 'export const b = 1;\nexport type { X } from "../../owner/server/public.js";\n',
       "modules/user/test/web/a.test.ts": 'import { model } from "../../../owner/web/public.js";\nimport { b } from "../../web/b.js";\n',
       "modules/owner/web/consumer.ts": 'import { model } from "./model.js";\n',
+      "modules/owner/contract.ts": "export const SHARED = 1;\n",
+      "modules/user/contract.ts": 'export { SHARED } from "../owner/contract.js";\n',
+      "modules/user/server/c.ts": 'import { SHARED } from "../../owner/contract.js";\n',
     });
     expect(moduleImportViolations(repo)).toEqual([]);
   });

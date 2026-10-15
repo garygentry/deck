@@ -10,7 +10,7 @@ async function loadFreshFeature() {
   await import("../../../modules/monitoring/web/index.js");
   const registry = await import("../src/registry/registry.js");
   const { HealthHeaderSlot } = await import("../src/shell/health-header/slot.js");
-  const { MONITORING_UI } = await import("@deck/contract/modules/monitoring");
+  const { MONITORING_UI } = await import("../../../modules/monitoring/contract.js");
   const { MonitoringPage } = await import("../../../modules/monitoring/web/MonitoringPage.js");
   const { AlertsSummary } = await import("../../../modules/monitoring/web/AlertsSummary.js");
   const { MetricsSummary } = await import("../../../modules/monitoring/web/MetricsSummary.js");

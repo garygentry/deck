@@ -3,10 +3,11 @@
 // declared dependencies.
 //
 // A built-in module (modules/<id>/) is one workspace package. Another module may use only what
-// it exports from its public entry, `web/public.ts` for its web half or `server/public.ts` for
-// its server half, and the importing module declares the edge as a dependency on the other's
-// package (`@deck/module-<id>`) in its package.json. Its manifest `dependsOn` is a separate,
-// runtime choice: it is added when the importer cannot run without the other module.
+// it exports from its public entry, `web/public.ts` for its web half, `server/public.ts` for
+// its server half or `contract.ts` for the data both halves share, and the importing module
+// declares the edge as a dependency on the other's package (`@deck/module-<id>`) in its
+// package.json. Its manifest `dependsOn` is a separate, runtime choice: it is added when the
+// importer cannot run without the other module.
 //
 // Every form that ties one file to another counts, type-only ones included (a type is coupling
 // too): imports and re-exports, `import x = require(…)`, `import()`, `require()` and
@@ -33,7 +34,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import ts from "typescript";
 
 /** The files of a module that other modules may import, relative to its directory, without extension. */
-export const PUBLIC_ENTRIES: readonly string[] = ["web/public", "server/public"];
+export const PUBLIC_ENTRIES: readonly string[] = ["web/public", "server/public", "contract"];
 
 /** Shared test helpers (repo-relative) whose own edges count for the module that imports them. */
 export const HELPER_ROOTS: readonly string[] = ["apps/web/test", "apps/server/test"];
@@ -475,7 +476,7 @@ export function main(): number {
   for (const v of violations) {
     const why =
       v.problem === "not-public"
-        ? `reaches past module "${v.target}"'s public entry (${PUBLIC_ENTRIES.map((entry) => `${entry}.ts`).join(" or ")})`
+        ? `reaches past module "${v.target}"'s public entry (${PUBLIC_ENTRIES.map((entry) => `${entry}.ts`).join(", ")})`
         : v.problem === "undeclared"
           ? `imports module "${v.target}" without declaring it in package.json`
           : "is a load whose target cannot be read statically";

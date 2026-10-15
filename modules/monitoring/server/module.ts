@@ -1,4 +1,4 @@
-import { MONITORING_UI } from "@deck/contract/modules/monitoring";
+import { MONITORING_UI } from "../contract.js";
 import { defineServerModule, type ModuleManifest } from "@deck/module-sdk";
 
 /**

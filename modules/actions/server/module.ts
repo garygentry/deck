@@ -1,4 +1,4 @@
-import { ACTIONS_UI } from "@deck/contract/modules/actions";
+import { ACTIONS_UI } from "../contract.js";
 import { defineServerModule, type JsonSchema, type ModuleManifest } from "@deck/module-sdk";
 
 import { openAuditStore } from "./audit.js";

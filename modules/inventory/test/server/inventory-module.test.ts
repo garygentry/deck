@@ -3,7 +3,7 @@
  * half registers against.
  */
 
-import { INVENTORY_UI } from "@deck/contract/modules/inventory";
+import { INVENTORY_UI } from "../../contract.js";
 import { describe, expect, it } from "vitest";
 
 import { INVENTORY_MANIFEST } from "../../server/module.js";

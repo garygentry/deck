@@ -10,7 +10,7 @@ import type { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BUILTIN_CONTRIBUTIONS, composeDefault, validate } from "@deck/schema";
-import { CORE_WIDGET_TYPES } from "@deck/contract/modules/core";
+import { CORE_WIDGET_TYPES } from "@deck/contract/core";
 import { compileSelect } from "@deck/schema/select";
 
 import { BUILTIN_MODULES } from "../src/modules/builtin.js";

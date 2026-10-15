@@ -1,4 +1,4 @@
-import type { HostCollectionState } from "@deck/contract";
+import type { HostCollectionState } from "../../../modules/snapshot/contract.js";
 import type { CoverageRow, DriftFindingProjection, DriftSeverity, WaiverState } from "./types.js";
 
 /** Fixed release behavior; no config/schema/environment setting is added. */

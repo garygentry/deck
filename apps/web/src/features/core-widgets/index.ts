@@ -1,4 +1,4 @@
-import { CORE_WIDGET_TYPES } from "@deck/contract/modules/core";
+import { CORE_WIDGET_TYPES } from "@deck/contract/core";
 import { DECK_API_VERSION, defineWebModule } from "@deck/module-sdk";
 import { lazy } from "react";
 

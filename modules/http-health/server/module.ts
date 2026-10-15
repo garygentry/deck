@@ -1,4 +1,4 @@
-import { HTTP_HEALTH_STATUS } from "@deck/contract/modules/data-sources";
+import { HTTP_HEALTH_STATUS_KIND } from "../contract.js";
 import {
   defineServerModule,
   TIMING_FIELDS,
@@ -21,10 +21,10 @@ export const HTTP_HEALTH_MANIFEST: ModuleManifest = {
   deckApi: "^0.1",
   providerKinds: [
     {
-      kind: "http-health",
+      kind: HTTP_HEALTH_STATUS_KIND.kind,
       bindable: true,
       statusCapable: true,
-      status: HTTP_HEALTH_STATUS,
+      status: HTTP_HEALTH_STATUS_KIND.status,
       findings: [
         {
           code: "HTTP_HEALTH_TIMING_INVALID",

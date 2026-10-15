@@ -1,4 +1,4 @@
-import { SHELL_SLOTS } from "@deck/contract/modules/core";
+import { SHELL_SLOTS } from "@deck/contract/core";
 import {
   entitySectionName,
   entitySectionProblem,

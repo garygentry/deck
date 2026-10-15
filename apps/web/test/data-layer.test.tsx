@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { POLL_DEFAULTS } from "@deck/contract";
-import { BUILTIN_STATUS_KINDS } from "@deck/contract/modules/data-sources";
+import { BUILTIN_STATUS_KINDS } from "../../../modules/portal/status-kinds.js";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

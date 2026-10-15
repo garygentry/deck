@@ -3,7 +3,7 @@ import { EMBED_URL_PATTERN } from "./embed.js";
 /**
  * Deck's own widget types (`core/…`), which config pages place like any module's: each type and
  * the JSON Schema of its `options`. The library's composition includes them
- * ({@link BUILTIN_CONTRIBUTIONS}). Deck's UI contract (`@deck/contract/modules/core`) declares
+ * ({@link BUILTIN_CONTRIBUTIONS}). Deck's UI contract (`@deck/contract/core`) declares
  * the same types with their components, from its own copy of these schemas; deck's tests keep
  * the two equal.
  *

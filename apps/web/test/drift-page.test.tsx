@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { deriveDriftProjection } from "@deck/drift";
-import type { SnapshotProviderResult } from "@deck/contract";
+import type { SnapshotProviderResult } from "../../../modules/snapshot/contract.js";
 import {
   act,
   cleanup,

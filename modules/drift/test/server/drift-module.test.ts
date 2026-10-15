@@ -3,7 +3,7 @@
  * registers against.
  */
 
-import { DRIFT_UI } from "@deck/contract/modules/drift";
+import { DRIFT_UI } from "../../contract.js";
 import { describe, expect, it } from "vitest";
 
 import { DRIFT_MANIFEST } from "../../server/module.js";

@@ -53,7 +53,7 @@ import type {
   ObservedService,
   Service,
 } from "@deck/schema";
-import type { HostState, SnapshotProviderResult } from "@deck/contract";
+import type { HostState, SnapshotProviderResult } from "../../../modules/snapshot/contract.js";
 import type { DeckConfig } from "@deck/server";
 
 // ---------------------------------------------------------------------------

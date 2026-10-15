@@ -11,13 +11,14 @@ and in `package.json`.
 
 | Path | Holds |
 |---|---|
+| `contract.ts` | the data half of its manifest (page, nav entry, pill, sections), which `server/module.ts` spreads in and `web/index.ts` registers against; data only, so the web bundle loads it too |
 | `server/` | the server half; `server/module.ts` is what `apps/server/src/modules/builtin.ts` lists |
 | `web/` | the web half; `web/index.ts` registers it, discovered by `apps/web/src/registry/discover.ts` |
 | `test/server/`, `test/web/` | unit tests, run by `@deck/server` and `@deck/web`'s test suites |
 
 There is no `schema.json` (drift has no `modules.drift` section) and no `module.json`: a built-in's
 manifest is TypeScript. Its data half (page, nav entry, pill, sections) is
-`@deck/contract/modules/drift`, which the web loads too, and `server/module.ts` spreads it into the
+`contract.ts`, which the web loads too, and `server/module.ts` spreads it into the
 server manifest, adding `dependsOn: ["snapshot", "inventory"]`. There is no build or test script here: each half
 compiles and is tested inside its host app. React and vitest are peer dependencies (with dev
 dependencies for the tests): the app and its modules share one instance of each. Tests that drive

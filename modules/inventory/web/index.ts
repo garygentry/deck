@@ -1,4 +1,4 @@
-import { INVENTORY_UI } from "@deck/contract/modules/inventory";
+import { INVENTORY_UI } from "../contract.js";
 import { defineWebModule } from "@deck/module-sdk";
 
 import { registerWebModule } from "@/registry/web-module.js";

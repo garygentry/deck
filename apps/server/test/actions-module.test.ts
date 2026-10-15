@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ACTIONS_UI } from "@deck/contract/modules/actions";
+import { ACTIONS_UI } from "../../../modules/actions/contract.js";
 import { defineServerModule, type ServerModuleContext } from "@deck/module-sdk";
 import { composeDefault } from "@deck/schema";
 import { Hono } from "hono";

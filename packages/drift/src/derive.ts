@@ -1,10 +1,5 @@
-import type {
-  FreshnessStamp,
-  HostCollectionState,
-  ProviderEnvelope,
-  SnapshotProviderResult,
-  SnapshotReadError,
-} from "@deck/contract";
+import type { FreshnessStamp, ProviderEnvelope } from "@deck/contract";
+import type { HostCollectionState, SnapshotProviderResult, SnapshotReadError } from "../../../modules/snapshot/contract.js";
 import type { DriftFinding, JsonValue, ObservedHost, Waiver } from "@deck/schema";
 import { compareCoverageRows, compareDriftFindings, COVERAGE_STATE_ORDER } from "./ordering.js";
 import type {

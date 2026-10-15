@@ -97,12 +97,13 @@ matches boot.
 directories in each app into one workspace package each, `modules/<id>/`:
 
 - `schema.json`;
+- `contract.ts` (the data both halves share, such as its UI contributions);
 - `server/` (its `module.ts` is what the built-in list imports);
 - `web/` (discovered by the web registry);
 - `test/server/` and `test/web/`.
 
 Built-ins have no `module.json`. Their manifest is TypeScript, and the UI part of it is shared
-with the web as data from `@deck/contract/modules/<id>`. Only a runtime module ships its
+with the web as data from the module's `contract.ts`. Only a runtime module ships its
 manifest as JSON (`deck-module.json`).
 
 ## Consequences

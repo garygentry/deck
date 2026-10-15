@@ -1,4 +1,4 @@
-import { CORE_WIDGET_TYPES, SHELL_SLOTS } from "@deck/contract/modules/core";
+import { CORE_WIDGET_TYPES, SHELL_SLOTS } from "@deck/contract/core";
 import { DECK_API_VERSION, type ModuleManifest } from "@deck/module-sdk";
 
 /**

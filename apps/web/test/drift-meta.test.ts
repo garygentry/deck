@@ -334,7 +334,7 @@ describe("6. no forbidden endpoint, schema-deep import, or sibling dependency", 
     ]) {
       expect(caught).toMatch(MONITORING_IMPLEMENTATION_IMPORT);
     }
-    expect('import { MONITORING_UI } from "@deck/contract/modules/monitoring";').not.toMatch(
+    expect('import { MONITORING_UI } from "../../monitoring/contract.js";').not.toMatch(
       MONITORING_IMPLEMENTATION_IMPORT,
     );
   });

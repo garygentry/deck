@@ -1,4 +1,4 @@
-import { LLM_USAGE_UI } from "@deck/contract/modules/llm-usage";
+import { LLM_USAGE_UI } from "../contract.js";
 import { defineWebModule } from "@deck/module-sdk";
 
 import { registerWebModule } from "@/registry/web-module.js";

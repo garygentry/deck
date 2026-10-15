@@ -223,7 +223,7 @@ describe("extension model", () => {
 
   it("declares every core slot the server's UI manifest lists, from the registry alone", async () => {
     const registry = await import("../src/registry/registry.js");
-    const { SHELL_SLOTS } = await import("@deck/contract/modules/core");
+    const { SHELL_SLOTS } = await import("@deck/contract/core");
     // The top bar's slots included: no shell module has to load first.
     expect(SHELL_SLOTS.map(({ id }) => id)).toEqual(expect.arrayContaining(["app/topbar.status", "app/topbar.actions"]));
     for (const { id, accepts } of SHELL_SLOTS) expect(registry.getSlot(id), id).toEqual({ id, accepts, module: "core" });

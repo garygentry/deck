@@ -5,7 +5,7 @@
  * It never synthesizes or displays a shell command — deck does not know it.
  */
 
-import type { ResolvedParams } from "@deck/contract/actions";
+import type { ResolvedParams } from "../../params.js";
 import type { Action } from "../../server/types.js";
 import type { JSX, KeyboardEvent } from "react";
 import { Button, Callout, Icon, Input, KeyValue, KeyValueList, Label } from "@/ui";

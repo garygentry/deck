@@ -6,16 +6,16 @@
  * component takes NO props. Composes the five presentational components
  * (ActionList, ParamForm, ConfirmStep, RunOutput, AuditHistory) with the
  * singleton run store (via `useRun`) and the shared `validateActionParams`.
- * Every type resolves from `@deck/server`, `@deck/contract/actions` and the feature's own modules — never
+ * Every type resolves from `@deck/server`, the module's `params.ts` and the feature's own modules — never
  * `@deck/schema`.
  */
 
 import type { ReactNode, JSX } from "react";
 import { useEffect, useState } from "react";
-import type { ResolvedParams } from "@deck/contract/actions";
+import type { ResolvedParams } from "../params.js";
 import type { DeckConfig } from "../../../apps/server/src/contract/index.js";
 import type { Action } from "../server/types.js";
-import { validateActionParams } from "@deck/contract/actions";
+import { validateActionParams } from "../params.js";
 import { Callout, ConfigGate, PageErrorBoundary } from "@/ui";
 import { ActionList } from "./components/ActionList.js";
 import { ParamForm, initialParamValues } from "./components/ParamForm.js";

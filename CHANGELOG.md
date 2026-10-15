@@ -16,6 +16,20 @@ All notable changes to this project are documented here. The format is based on
 - **Module server halves may not load `apps/server/src` at runtime**, by path or through
   `@deck/server`; a guard test enforces it, with type-only imports and augmentation still
   allowed (#62).
+- `http-json`: the literal-credential name check reads each name both as written and split at
+  camelCase, ignoring case, separators and trailing digits. It now also catches `pwd`, `jwt`,
+  `bearer`, session ids (`JSESSIONID`, `PHPSESSID`), `pass` as a whole name or last part (`DB_PASS`,
+  `X-Pass`) or run-together ending (`userpass`), names ending in `token`, `secret(s)`,
+  `password(s)`, `passwd` or `pwd` (`apitoken`, `dbpassword`, `userpwd`), and qualified keys with
+  any prefix (`access_key`, `xapikey`, `AWS_ACCESS_KEY_ID`, `app_key`, `hmac_key`,
+  `X-Gotify-Key`, `Ocp-Apim-Subscription-Key`). A name made only of pagination cursor words
+  (`pageToken`, `next_token`, `syncToken`) is no longer refused, and a body key whose value is a
+  boolean or null (`show_passwords: true`) is not a credential. An estate config that wrote a
+  newly covered name as a literal header, query parameter or body value
+  now fails validation and boot with `HTTP_JSON_LITERAL_CREDENTIAL`: move the value to
+  `credentialEnv` with `auth`. (#52)
+  **Upgrading:** run `deck validate` with the new version against your estate config before
+  re-pinning.
 
 ## [0.5.0] - 2026-10-14
 

@@ -105,7 +105,7 @@ describe("core/embed's url check", () => {
   ];
 
   it("is the schema library's one rule (the contract's options pattern equals it), then the URL parser", async () => {
-    const { CORE_WIDGET_TYPE_SCHEMAS } = await import("../src/modules/widgets.js");
+    const { CORE_WIDGET_TYPE_SCHEMAS } = await import("../src/widgets.js");
     const { EMBED_URL_PATTERN, embedUrlProblem } = await import("@deck/schema/embed");
     const embedType = CORE_WIDGET_TYPE_SCHEMAS.find(({ type }) => type === "core/embed");
     expect((embedType?.optionsSchema as { properties: { url: { pattern: string } } }).properties.url.pattern).toBe(EMBED_URL_PATTERN);

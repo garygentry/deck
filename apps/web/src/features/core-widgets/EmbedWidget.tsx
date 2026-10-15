@@ -1,4 +1,4 @@
-import { EMBED_SANDBOX } from "@deck/contract/modules/widgets";
+import { EMBED_SANDBOX } from "@deck/contract/widgets";
 // The one url rule (dependency-free), which config validation runs too.
 import { embedUrlProblem, frameOriginOf } from "@deck/schema/embed";
 import { Button, EmptyState, ErrorState, ExternalLink, Icon, LoadingState, cn } from "@/ui";

@@ -17,7 +17,7 @@ import {
   type ModuleManifest,
 } from "@deck/module-sdk";
 
-import { CORE_WIDGET_TYPES } from "@deck/contract/modules/core";
+import { CORE_WIDGET_TYPES } from "@deck/contract/core";
 import { widgetOptionsProblem } from "@deck/schema";
 
 import { RESERVED_ROOT_PATHS } from "../server/reserved-paths.js";

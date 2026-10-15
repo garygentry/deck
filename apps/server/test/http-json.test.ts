@@ -744,21 +744,25 @@ describe("the http-json kind in an estate", () => {
     "Cookie", "Set-Cookie", "credential", "credentials", "passphrase", "sig", "signature",
     "session", "sessionId", "sessionid", "JSESSIONID", "PHPSESSID", "X-Session-Token",
     // Endings, including plurals and run-together names.
-    "token", "tokens", "apitoken", "authtoken", "csrftoken", "X-Auth-Token", "x_auth_token", "access_token", "accessToken",
-    "refreshToken", "api_tokens", "secret", "secrets", "api_secret", "apisecret", "client_secret", "clientSecret",
+    "token", "apitoken", "authtoken", "csrftoken", "X-Auth-Token", "x_auth_token", "access_token", "accessToken",
+    "refreshToken", "api_tokens", "accessTokens", "secret", "secrets", "api_secret", "apisecret", "client_secret", "clientSecret",
     "clientsecret", "myclientsecret", "client_secrets", "password", "Password", "PassWord", "passwords", "db_password",
     "dbPassword", "dbpassword", "passwd", "pwd", "PWD", "dbpwd", "userpwd", "user_pwd",
     // Trailing digits.
     "password1", "secret2", "token2", "apiKey2", "api_key2",
     // pass: whole name, last part, or a run-together ending.
-    "pass", "X-Pass", "db_pass", "DB_PASS", "smtp_pass", "userpass", "keypass", "storepass",
+    "pass", "X-Pass", "db_pass", "DB_PASS", "smtp_pass", "userpass", "keypass", "storepass", "pass_word", "PASS_WORD",
+    // Credential evidence beside cursor words.
+    "auth-sync-token", "X-Auth-SyncToken", "refresh_nexttoken", "api_key_pagetoken", "apikeypagetoken", "bearer_next_token",
+    "X-Session-Sync-Token", "secret_continuation_token", "Authorization-Cursor-Token", "password-cursortoken",
+    "X-Auth-ContinuationToken",
     // Qualified keys, split or run together, with any prefix.
     "apikey", "APIKey", "api_key", "API-KEY", "X-Api-Key", "X-API-Key", "X_API_KEY", "x.api.key", "xapikey",
     "access_key", "accessKey", "AccessKey", "accesskey", "access-key", "access.key", "aCcess_kEy", "AWS_ACCESS_KEY_ID", "awsaccesskey",
     "secret_key", "secretKey", "private_key", "privatekey", "PRIVATE-KEY",
     "Ocp-Apim-Subscription-Key", "Ocp-Apim-SubScription-Key", "ocp_apim_subscription_key", "subscription-key", "xsubscriptionkey",
     "app_key", "appKey", "application_key", "DD-APPLICATION-KEY", "consumer_key", "hmac_key", "ssh_key", "x-function-key",
-    "x-functions-key", "X-Gotify-Key", "account_key", "master_key", "license_key", "signing_key",
+    "x-functions-key", "function_key", "X-Gotify-Key", "account_key", "master_key", "license_key", "signing_key",
     // A bare key.
     "key", "KEY",
   ])("treats %s as a credential name", (name) => {
@@ -768,10 +772,11 @@ describe("the http-json kind in an estate", () => {
   it.each([
     "author", "Authors", "au_th", "keys", "key_id", "sort_key", "sortKey", "primary_key", "foreign-key", "keyword", "X-Key-Id",
     "monkey", "hotkey", "turnkey", "passed", "passive", "passport", "Passport", "bypass", "compass", "pass_through",
-    "passThrough", "pass_word", "tokenizer", "secretary", "sessions", "signal", "pwdx", "jwtish",
+    "passThrough", "lowpass", "highpass", "low_pass", "first_pass", "second_pass", "firstPass", "tokenizer", "tokens",
+    "max_tokens", "maxTokens", "max_completion_tokens", "input_tokens", "output_tokens", "secretary", "sessions", "signal", "pwdx", "jwtish",
     // Pagination and sync cursors.
     "pageToken", "page_token", "nextPageToken", "nextpagetoken", "next_token", "NextToken", "syncToken", "synctoken",
-    "continuationToken", "cursor_token",
+    "continuationToken", "continuation-token", "cursorToken", "cursor_token",
     "Accept", "Content-Type", "X-Client", "client_id", "User-Agent", "X-Request-Id",
   ])("does not treat %s as a credential name", (name) => {
     expect(isCredentialName(name)).toBe(false);
@@ -785,24 +790,72 @@ describe("the http-json kind in an estate", () => {
     ["pwd", { url: "http://ups.lan/s?pwd=abc" }, "/integrations/0/url"],
     ["DB_PASS", { method: "POST", body: { DB_PASS: "abc" } }, "/integrations/0/body"],
     ["jwt", { method: "POST", body: { jwt: "abc" } }, "/integrations/0/body"],
+    ["X-Auth-SyncToken", { headers: { "X-Auth-SyncToken": "abc" } }, "/integrations/0/headers/X-Auth-SyncToken"],
+    ["Authorization-Cursor-Token", { headers: { "Authorization-Cursor-Token": "abc" } }, "/integrations/0/headers/Authorization-Cursor-Token"],
+    ["api_key_pagetoken", { url: "http://ups.lan/s?api_key_pagetoken=abc" }, "/integrations/0/url"],
+    ["refresh_nexttoken", { url: "http://ups.lan/s?refresh_nexttoken=abc" }, "/integrations/0/url"],
+    ["secret_continuation_token", { method: "POST", body: { secret_continuation_token: "abc" } }, "/integrations/0/body"],
+    ["password-cursortoken", { method: "POST", body: { "password-cursortoken": "abc" } }, "/integrations/0/body"],
   ])("refuses the newly covered credential name %s in config", (_name, extra, path) => {
     expect(validate([instance(extra)]).findings).toContainEqual(expect.objectContaining({ code: "HTTP_JSON_LITERAL_CREDENTIAL", severity: "error", path }));
   });
 
-  it("accepts pagination cursors named like tokens in config", () => {
-    const result = validate([instance({ url: "http://ups.lan/s?pageToken=abc&next_token=b" })]);
+  it("accepts pagination cursors and token counts in config", () => {
+    const result = validate([instance({
+      url: "http://ups.lan/s?pageToken=abc&next_token=b",
+      headers: { "Next-Page-Token": "c" },
+      method: "POST",
+      body: { nextPageToken: "d", max_tokens: 64 },
+    })]);
     expect(result.findings.filter((finding) => finding.code === "HTTP_JSON_LITERAL_CREDENTIAL")).toEqual([]);
+  });
+
+  it("accepts a credential-like body key whose value is a number, boolean or null", () => {
+    const result = validate([instance({ method: "POST", body: { show_passwords: true, num_secrets: 3, options: { password: null } } })]);
+    expect(result.findings.filter((finding) => finding.code === "HTTP_JSON_LITERAL_CREDENTIAL")).toEqual([]);
+    expect(credentialBodyKeys({ show_passwords: true, num_secrets: 3, password: null })).toEqual([]);
+  });
+
+  it("still refuses a credential-like body key whose value is a string, object or array", () => {
+    expect(credentialBodyKeys({ password: "abc", auth: { user: "u" }, secrets: ["s"] }).sort()).toEqual(["auth", "password", "secrets"]);
+  });
+
+  it("still refuses a numeric-looking credential in a header or query, which are always strings", () => {
+    const findings = validate([instance({ url: "http://ups.lan/s?pin_password=1234", headers: { "X-Api-Key": "1234" } })]).findings;
+    expect(findings.filter((finding) => finding.code === "HTTP_JSON_LITERAL_CREDENTIAL").map((finding) => finding.path)).toEqual([
+      "/integrations/0/headers/X-Api-Key",
+      "/integrations/0/url",
+    ]);
   });
 
   it.each([
     ["header Ocp-Apim-SubScription-Key", "/ok", { "Ocp-Apim-SubScription-Key": "abc" }],
     ["header aCcess_kEy", "/ok", { aCcess_kEy: "abc" }],
     ["query aCcess_kEy", "/ok?aCcess_kEy=abc", undefined],
-  ])("refuses the mixed-case %s at the request boundary, before any request", async (_name, path, headers) => {
+    ["header X-Auth-SyncToken", "/ok", { "X-Auth-SyncToken": "abc" }],
+    ["header X-Auth-ContinuationToken", "/ok", { "X-Auth-ContinuationToken": "abc" }],
+    ["query api_key_pagetoken", "/ok?api_key_pagetoken=abc", undefined],
+    ["query bearer_next_token", "/ok?bearer_next_token=abc", undefined],
+  ])("refuses %s at the request boundary, before any request", async (_name, path, headers) => {
     const error = await failure(new HttpJsonProvider("l", { url: fixture.url(path), ...(headers ? { headers } : {}) }));
     expect(error).toMatchObject({ code: "credential" });
     expect(error.message).not.toContain("abc");
     expect(fixture.seen).toEqual([]);
+  });
+
+  it.each(["X-Session-Sync-Token", "apikeypagetoken", "auth-sync-token"])(
+    "refuses the body key %s at the request boundary, before any request",
+    async (name) => {
+      const error = await failure(new HttpJsonProvider("l", { url: fixture.url("/echo"), method: "POST", body: { [name]: "abc" } }));
+      expect(error).toMatchObject({ code: "credential", message: `body key ${name} looks like a credential; credentials come from credentialEnv` });
+      expect(fixture.seen).toEqual([]);
+    },
+  );
+
+  it("sends a body whose credential-like keys hold only numbers, booleans or null", async () => {
+    const provider = new HttpJsonProvider("l", { url: fixture.url("/echo"), method: "POST", body: { max_tokens: 64, show_passwords: true, num_secrets: 3 } });
+    await provider.fetch();
+    expect(fixture.seen).toHaveLength(1);
   });
 
   it("refuses a literal credential at the request boundary too, before any request", async () => {

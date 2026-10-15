@@ -12,34 +12,44 @@
  * plain spellings. Within a reading, a name is a credential when:
  * - a part is a credential word (`CREDENTIAL_WORDS`);
  * - a part ends in a credential ending (`CREDENTIAL_SUFFIXES`: `apitoken`, `dbpassword`, `userpwd`);
- * - the parts up to some part, run together, end in a qualified key (`CREDENTIAL_COMPOUNDS`:
- *   `api_key`, `X-Api-Key`, `xapikey`, `AWS_ACCESS_KEY_ID`, `Ocp-Apim-Subscription-Key`);
- * - `pass` is the whole name or its last part (`X-Pass`, `DB_PASS`), or a part ends in `pass`
- *   other than a word like `bypass` or `compass` (`userpass`, `storepass`);
+ * - the parts up to some part, run together, end in a compound (`CREDENTIAL_COMPOUNDS`: `api_key`,
+ *   `X-Api-Key`, `xapikey`, `AWS_ACCESS_KEY_ID`, `Ocp-Apim-Subscription-Key`, `api_tokens`,
+ *   `pass_word`). Only compounds are tested on joined parts, so `au_th` is not `auth`;
+ * - `pass` is the whole name or its last part (`X-Pass`, `DB_PASS`) unless a filter or ordinal
+ *   qualifies it (`low_pass`, `first_pass`), or a part ends in `pass` other than a word like
+ *   `bypass`, `compass` or `highpass` (`userpass`, `storepass`);
  * - the whole name is `key`.
- * A pagination or sync cursor (`CURSOR_ENDINGS`: `pageToken`, `next_token`, `syncToken`) is not
- * a credential. Whole parts only, so `author`, `keys`, `sort_key`, `monkey`, `passed`, `passport`,
- * `pass_through`, `tokenizer` and the arbitrary splits `au_th` and `pass_word` are not credentials.
+ * The one exception is a pagination or sync cursor: a name made only of cursor words
+ * (`pageToken`, `next_token`, `nextPageToken`, `syncToken`, `continuation-token`). Any other part
+ * keeps the normal rules, so `X-Auth-SyncToken` and `api_key_pagetoken` are credentials. Whole
+ * parts only, so `author`, `keys`, `sort_key`, `monkey`, `passed`, `passport`, `pass_through`,
+ * `tokenizer` and `max_tokens` are not credentials.
  */
 const CREDENTIAL_WORDS: ReadonlySet<string> = new Set([
   "auth", "authorization", "bearer", "cookie", "credential", "credentials", "jwt", "passphrase",
   "session", "sessionid", "jsessionid", "phpsessid", "sig", "signature",
 ]);
-/** Endings that make a part a credential. Not `key`: `monkey`, `hotkey` and `turnkey` are not credentials. */
-const CREDENTIAL_SUFFIXES: readonly string[] = [
-  "token", "tokens", "secret", "secrets", "password", "passwords", "passwd", "pwd",
-];
-/** Keys qualified by what they are; matched at the end of the parts run together up to a part boundary. */
+/**
+ * Endings that make a part a credential. Not `key` (`monkey`, `hotkey`) and not `tokens`
+ * (`max_tokens`, `input_tokens` are counts).
+ */
+const CREDENTIAL_SUFFIXES: readonly string[] = ["token", "secret", "secrets", "password", "passwords", "passwd", "pwd"];
+/** Compounds; matched at the end of the parts run together up to a part boundary. */
 const CREDENTIAL_COMPOUNDS: readonly string[] = [
   "accesskey", "accountkey", "apikey", "appkey", "applicationkey", "authkey", "clientkey",
   "consumerkey", "encryptionkey", "functionkey", "functionskey", "gotifykey", "hmackey",
   "licensekey", "masterkey", "privatekey", "secretkey", "sharedkey", "signingkey", "sshkey",
-  "subscriptionkey",
+  "subscriptionkey", "apitokens", "accesstokens", "authtokens", "password",
 ];
 /** Words ending in `pass` that are not a password. */
-const PASS_WORDS: ReadonlySet<string> = new Set(["bypass", "compass", "encompass", "overpass", "surpass", "trespass", "underpass"]);
-/** Whole-name endings (run together) of pagination and sync cursors, which are not credentials. */
-const CURSOR_ENDINGS: readonly string[] = ["pagetoken", "nexttoken", "synctoken", "continuationtoken", "cursortoken"];
+const PASS_WORDS: ReadonlySet<string> = new Set([
+  "bypass", "compass", "encompass", "overpass", "surpass", "trespass", "underpass",
+  "lowpass", "highpass", "bandpass", "firstpass", "secondpass", "thirdpass", "finalpass",
+]);
+/** Words before a last part `pass` that make it a filter or a pass number, not a password. */
+const PASS_QUALIFIERS: ReadonlySet<string> = new Set(["low", "high", "band", "first", "second", "third", "final"]);
+/** A part made only of pagination and sync cursor words. */
+const CURSOR_PART = /^(?:page|next|sync|continuation|cursor|token)+$/;
 
 /** The lowercase parts of `name`: split at separators, optionally at camelCase, and between letters and digits. */
 function parts(name: string, camel: boolean): string[] {
@@ -54,7 +64,7 @@ function parts(name: string, camel: boolean): string[] {
 
 function matches(words: string[]): boolean {
   if (words.length === 1 && words[0] === "key") return true;
-  if (words.at(-1) === "pass") return true;
+  if (words.at(-1) === "pass" && !PASS_QUALIFIERS.has(words.at(-2) ?? "")) return true;
   let joined = "";
   return words.some((word) => {
     joined += word;
@@ -67,11 +77,21 @@ function matches(words: string[]): boolean {
   });
 }
 
+/**
+ * Whether every part of both readings is cursor vocabulary, with at least one cursor word
+ * besides `token` (a bare `token` is a credential).
+ */
+function isCursor(plain: string[], camel: string[]): boolean {
+  const all = [...plain, ...camel];
+  return all.length > 0 && all.every((part) => CURSOR_PART.test(part)) && plain.join("").replaceAll("token", "") !== "";
+}
+
 /** Whether a header, query parameter or body key name suggests a credential; the rule is above. */
 export function isCredentialName(name: string): boolean {
   const plain = parts(name, false);
-  if (CURSOR_ENDINGS.some((ending) => plain.join("").endsWith(ending))) return false;
-  return matches(plain) || matches(parts(name, true));
+  const camel = parts(name, true);
+  if (isCursor(plain, camel)) return false;
+  return matches(plain) || matches(camel);
 }
 
 /** Why `url` is not a pollable http(s) URL for the runtime's parser, or null. */
@@ -104,7 +124,14 @@ export function credentialHeaderNames(headers: unknown): string[] {
   return Object.keys(headers).filter(isCredentialName);
 }
 
-/** The keys anywhere in a JSON body that look like credentials, once each. Iterative. */
+function isLiteralValue(value: unknown): boolean {
+  return value !== null && typeof value !== "number" && typeof value !== "boolean";
+}
+
+/**
+ * The keys anywhere in a JSON body that look like credentials and hold a string, object or
+ * array (not a number, boolean or null), once each. Iterative.
+ */
 export function credentialBodyKeys(body: unknown): string[] {
   const found = new Set<string>();
   const pending: unknown[] = [body];
@@ -115,7 +142,8 @@ export function credentialBodyKeys(body: unknown): string[] {
       for (const item of value) pending.push(item);
     } else if (value !== null && typeof value === "object") {
       for (const [key, child] of Object.entries(value)) {
-        if (isCredentialName(key)) found.add(key);
+        // A credential is a string: a number, boolean or null (`num_secrets: 3`) is not one.
+        if (isLiteralValue(child) && isCredentialName(key)) found.add(key);
         pending.push(child);
       }
     }

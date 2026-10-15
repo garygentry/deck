@@ -5,7 +5,6 @@
  */
 import {
   defineStatusMap,
-  Section,
   type ChartStatus,
   Gauge,
   Sparkline,
@@ -55,31 +54,3 @@ export const unformatted = <StatusTimeline lanes={lanes} domainStart={0} domainE
 export const unnamedSparkline = <Sparkline values={[1, 2]} />;
 // @ts-expect-error: a Sparkline plots values or samples, never both.
 export const both = <Sparkline values={[1, 2]} samples={samples} ariaLabel="Latency" />;
-
-// The guide's example (docs/guides/runtime-modules.md, "Draw charts"), with its map and lanes
-// renamed to sit beside the cases above: it must compile as written.
-type GuideHealth = "up" | "down";
-const GUIDE_HEALTH = defineStatusMap<GuideHealth>({
-  up: { tone: "ok", icon: "circle-check", label: "Up" },
-  down: { tone: "danger", icon: "circle-x", label: "Down" },
-});
-
-// Stand-ins for what the module reads from its provider.
-const state: GuideHealth = "up";
-const diskUsed = 72;
-const latencies = [120, 135, 128, 160, 142];
-const from = 1_760_000_000;
-const to = from + 3600;
-const guideLanes: TimelineLane<GuideHealth>[] = [
-  { id: "web", label: "web", segments: [{ status: "up", start: from, end: from + 3000 }, { status: "down", start: from + 3000, end: to }] },
-];
-
-export function HealthCharts() {
-  return (
-    <Section title="Health">
-      <Gauge ariaLabel="Disk usage" value={diskUsed} status={GUIDE_HEALTH[state]} />
-      <Sparkline values={latencies} status={GUIDE_HEALTH[state]} ariaLabel={`Latency, ${GUIDE_HEALTH[state].label}`} />
-      <StatusTimeline lanes={guideLanes} statusMap={GUIDE_HEALTH} domainStart={from} domainEnd={to} formatTime={(t) => new Date(t * 1000).toLocaleTimeString()} />
-    </Section>
-  );
-}

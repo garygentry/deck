@@ -1,17 +1,18 @@
 import { vi } from "vitest";
 import type {
+  DeckConfigDocument as DeckConfig,
   Host,
   ObservedHost,
   ObservedService,
   Service,
 } from "@deck/schema";
 import type { HostState, ProviderEnvelope, SnapshotProviderResult } from "@deck/contract";
-import type { DeckConfig } from "@deck/server";
-import type {
-  InventoryData,
-  SnapshotClientState,
-} from "../../../modules/inventory/web/use-inventory-data.js";
-import { buildInventoryModel } from "../../../modules/inventory/web/model.js";
+// Built-in modules' web tests use this harness too, so it reaches inventory through its public entry.
+import {
+  buildInventoryModel,
+  type InventoryData,
+  type SnapshotClientState,
+} from "../../../modules/inventory/web/public.js";
 import { resetQueryClient } from "../src/data/query-client.js";
 import { mount } from "./support/render.js";
 

@@ -1,4 +1,4 @@
-import { DOCKER_STATUS } from "../../portal/status-kinds.js";
+import { DOCKER_STATUS } from "../contract.js";
 import { defineServerModule, type JsonSchema, type ModuleManifest } from "@deck/module-sdk";
 
 import { DockerProvider } from "./index.js";

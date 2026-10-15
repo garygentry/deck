@@ -1,4 +1,4 @@
-import { HTTP_HEALTH_STATUS } from "../../portal/status-kinds.js";
+import { HTTP_HEALTH_STATUS } from "../contract.js";
 import {
   defineServerModule,
   TIMING_FIELDS,

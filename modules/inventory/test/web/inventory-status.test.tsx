@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import type { Finding } from "@deck/schema";
-import type { HostState, ProviderEnvelope, SnapshotProviderResult } from "@deck/contract";
+import type { ProviderEnvelope } from "@deck/contract";
+import type { HostState, SnapshotProviderResult } from "../../../snapshot/contract.js";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";

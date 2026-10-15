@@ -1,4 +1,5 @@
-import type { FreshnessStamp, HostCollectionState, SnapshotReadError } from "@deck/contract";
+import type { FreshnessStamp } from "@deck/contract";
+import type { HostCollectionState, SnapshotReadError } from "../../../modules/snapshot/contract.js";
 import type { JsonValue, Waiver } from "@deck/schema";
 
 /** Closed severity vocabulary published by snapshot.schema.json. */

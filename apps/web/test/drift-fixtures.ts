@@ -8,12 +8,8 @@ import type {
   Service,
   Waiver,
 } from "@deck/schema";
-import type {
-  HostCollectionState,
-  HostState,
-  ProviderEnvelope,
-  SnapshotProviderResult,
-} from "@deck/contract";
+import type { ProviderEnvelope } from "@deck/contract";
+import type { HostCollectionState, HostState, SnapshotProviderResult } from "../../../modules/snapshot/contract.js";
 
 /**
  * Deterministic invented scale factories for the drift-and-coverage performance

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { DeckConfigDocument, ObservedHost, SnapshotDocument } from "@deck/schema";
 
-import type { HostState } from "@deck/contract";
+import type { HostState } from "../../contract.js";
 import { SnapshotReadFailure } from "../../server/errors.js";
 import {
   DEFAULT_SNAPSHOT_STALE_AFTER,

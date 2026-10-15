@@ -1,5 +1,5 @@
 import { DRIFT_UI_DEFAULTS } from "@deck/drift";
-import type { HostCollectionState } from "@deck/contract";
+import type { HostCollectionState } from "../../snapshot/contract.js";
 import type { DriftSeverity, WaiverState } from "@deck/drift";
 import { defineStatusMap, type StatusPresentation } from "@/ui";
 

@@ -5,7 +5,7 @@ import { URL } from "node:url";
 // URL under the jsdom (web) transform; resolving against a plain const avoids that.
 const TEST_FILE_URL = import.meta.url;
 import { deriveDriftProjection } from "@deck/drift";
-import type { SnapshotProviderResult } from "@deck/contract";
+import type { SnapshotProviderResult } from "../../../modules/snapshot/contract.js";
 import type { JSX } from "react";
 import {
   act,

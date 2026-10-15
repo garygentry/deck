@@ -1,4 +1,4 @@
-import type { SnapshotReadError } from "@deck/contract";
+import type { SnapshotReadError } from "../contract.js";
 
 export const SNAPSHOT_READ_ERROR_CODES = [
   "SOURCE_PROTOCOL_UNSUPPORTED",

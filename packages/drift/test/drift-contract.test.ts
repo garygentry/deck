@@ -36,11 +36,8 @@ import type {
   FindingSubgroup,
   WaiverState,
 } from "../src/index.js";
-import type {
-  HostCollectionState,
-  ProviderEnvelope,
-  SnapshotProviderResult,
-} from "@deck/contract";
+import type { ProviderEnvelope } from "@deck/contract";
+import type { HostCollectionState, SnapshotProviderResult } from "../../../modules/snapshot/contract.js";
 import type { JsonValue, Waiver } from "@deck/schema";
 
 const NOW = new Date("2032-03-01T00:00:00.000Z");

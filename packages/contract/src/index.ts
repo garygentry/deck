@@ -1,6 +1,7 @@
 /**
  * The wire contract the server serves and the web reads: provider envelopes and freshness,
- * the default poll timing, and the snapshot provider's payload. It loads no server code, so
+ * the default poll timing and the boot payload (the snapshot provider's payload is the snapshot
+ * module's, in `modules/snapshot/contract.ts`). It loads no server code, so
  * the browser bundle can import it at runtime.
  */
 export {
@@ -9,9 +10,3 @@ export {
 export type { DeckBoot, DeckBootTheme, ThemeDensity, ThemeMode, ThemePreset, ThemeRadius } from "./boot.js";
 export type { FreshnessStamp, FreshnessState, ProviderEnvelope, ProviderProjection } from "./freshness.js";
 export { POLL_DEFAULTS } from "./poll.js";
-export type {
-  HostCollectionState,
-  HostState,
-  SnapshotProviderResult,
-  SnapshotReadError,
-} from "../../../modules/snapshot/contract.js";

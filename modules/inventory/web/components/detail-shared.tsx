@@ -1,6 +1,6 @@
 import { isSafeHref } from "@deck/module-sdk";
 import type { Backup } from "@deck/schema";
-import type { HostState } from "@deck/contract";
+import type { HostState } from "../../../snapshot/contract.js";
 import type { JSX, ReactNode } from "react";
 import {
   ComparisonGrid,

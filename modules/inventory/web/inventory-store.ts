@@ -1,5 +1,6 @@
 import { POLL_DEFAULTS } from "@deck/contract";
-import type { ProviderEnvelope, SnapshotProviderResult } from "@deck/contract";
+import type { ProviderEnvelope } from "@deck/contract";
+import type { SnapshotProviderResult } from "../../snapshot/contract.js";
 import type { DeckConfigDocument as DeckConfig } from "@deck/schema";
 import {
   configQuery,

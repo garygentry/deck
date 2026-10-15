@@ -12,10 +12,8 @@ import type {
   DriftProjection,
   FilteredDriftProjection,
 } from "../src/index.js";
-import type {
-  ProviderEnvelope,
-  SnapshotProviderResult,
-} from "@deck/contract";
+import type { ProviderEnvelope } from "@deck/contract";
+import type { SnapshotProviderResult } from "../../../modules/snapshot/contract.js";
 
 const NOW = new Date("2030-06-01T00:00:00.000Z");
 

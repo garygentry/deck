@@ -10,12 +10,8 @@ import type {
   DriftFilters,
   DriftProjection,
 } from "../src/index.js";
-import type {
-  HostCollectionState,
-  HostState,
-  ProviderEnvelope,
-  SnapshotProviderResult,
-} from "@deck/contract";
+import type { ProviderEnvelope } from "@deck/contract";
+import type { HostCollectionState, HostState, SnapshotProviderResult } from "../../../modules/snapshot/contract.js";
 import type { DriftFinding, ObservedHost, SnapshotDocument, Waiver } from "@deck/schema";
 
 // This suite mirrors the deterministic scale factory published for the web

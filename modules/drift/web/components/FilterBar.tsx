@@ -1,5 +1,5 @@
 import { driftServiceFacetKey } from "@deck/drift";
-import type { HostCollectionState } from "@deck/contract";
+import type { HostCollectionState } from "../../../snapshot/contract.js";
 import type { DriftFilters, DriftSeverity, WaiverState } from "@deck/drift";
 import type { JSX } from "react";
 import {

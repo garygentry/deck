@@ -3,7 +3,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import type { SnapshotProviderResult } from "@deck/contract";
+import type { SnapshotProviderResult } from "../../../modules/snapshot/contract.js";
 
 import { hostHref, serviceHref } from "../../../modules/inventory/web/model.js";
 import { INVENTORY_ENDPOINTS } from "../../../modules/inventory/web/use-inventory-data.js";

@@ -245,6 +245,58 @@ describe("renderMarkdown: external links only loads no resource", () => {
     expect(doc.querySelector("img, picture source, video, audio, track, image, link, meta, base, style, iframe, object, embed, [src], [srcset], [poster], [background], [style]")).toBeNull();
   });
 
+  // CSS escapes and comments that spell url( in an SVG presentation attribute (CSS reads `u\72l(` as `url(`).
+  const escaped: ReadonlyArray<readonly [string, string]> = [
+    ["filter, hex escape", String.raw`<svg><rect width="1" height="1" filter="u\72l(/api/config#x)"></rect></svg>`],
+    ["filter, six-digit escape and space", String.raw`<svg><rect width="1" height="1" filter="\000075rl(https://res.example/f.svg#x)"></rect></svg>`],
+    ["fill, escaped plain characters", String.raw`<svg><rect width="1" height="1" fill="\u\r\l(https://res.example/g.svg#g)"></rect></svg>`],
+    ["fill, escaped parenthesis", String.raw`<svg><rect width="1" height="1" fill="url\28 https://res.example/g.svg#g)"></rect></svg>`],
+    ["mask, escape and comment", String.raw`<svg><rect width="1" height="1" mask="U\52 L/**/(/api/config#m)"></rect></svg>`],
+    ["stroke, clip-path, markers and cursor", String.raw`<svg><path d="M0 0" stroke="u\rl(/api/a)" clip-path="u\rl(/api/b)" marker-start="u\rl(/api/c)" marker-mid="u\rl(/api/d)" marker-end="u\rl(/api/e)" cursor="u\rl(/api/f), auto"></path></svg>`],
+  ];
+
+  it.each(escaped)("drops a CSS resource reference spelled with escapes: %s", (_name, raw) => {
+    const html = external(raw);
+    expect(html).not.toMatch(/res\.example|\/api\//);
+    expect(html).not.toContain("\\");
+    const shape = parse(html).querySelector("rect, path");
+    expect(shape, "the shape itself stays").not.toBeNull();
+    for (const attribute of ["filter", "fill", "mask", "stroke", "clip-path", "marker-start", "marker-mid", "marker-end", "cursor"]) {
+      expect(shape?.hasAttribute(attribute), attribute).toBe(false);
+    }
+  });
+
+  it("keeps a video's and an audio's fallback content: text, links, and images as alt text", () => {
+    const html = external(
+      '<video src="https://res.example/v.mp4" poster="https://res.example/p.png">Download the <a href="https://ok.example/v.mp4">recording</a> <img src="https://res.example/i.png" alt="still frame"></video>' +
+        '<audio src="https://res.example/a.mp3"><source src="https://res.example/a.ogg">Listen <em>elsewhere</em></audio>',
+    );
+    const doc = parse(html);
+    expect(doc.querySelector("video, audio, source, img")).toBeNull();
+    expect(doc.body.textContent).toContain("Download the");
+    expect(doc.body.textContent).toContain("still frame");
+    expect(doc.querySelector('a[href="https://ok.example/v.mp4"]')?.textContent).toContain("recording");
+    expect(doc.querySelector("em")?.textContent).toBe("elsewhere");
+    expect(html).not.toContain("res.example");
+  });
+
+  it("keeps an href only on an HTML link, so no unnamed link is left focusable", () => {
+    const html = external(
+      '<svg><a href="https://ok.example/"><image href="https://res.example/i.svg"></image></a><a xlink:href="https://ok.example/x"><rect width="1" height="1"></rect></a></svg>' +
+        '[named](https://ok.example/n)',
+    );
+    const doc = parse(html);
+    expect(doc.querySelector("svg [href], svg [*|href]")).toBeNull();
+    const links = [...doc.querySelectorAll("a[href], area[href]")];
+    expect(links.map((link) => link.getAttribute("href"))).toEqual(["https://ok.example/n"]);
+    for (const link of links) expect(link.textContent?.trim()).not.toBe("");
+  });
+
+  it("does not take a link's href for a CSS reference", () => {
+    const html = external("[changelog](https://ok.example/src(1)/url(2))");
+    expect(attr(html, "a", "href")).toBe("https://ok.example/src(1)/url(2)");
+  });
+
   it("keeps an image input's alt, with nothing to load", () => {
     const doc = parse(external(vectors[4][1]));
     expect(doc.querySelector('input[type="image"]')?.getAttribute("alt")).toBe("go");

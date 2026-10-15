@@ -173,33 +173,43 @@ export function renderMarkdown(
 }
 
 function sanitizeExternalLinksOnly(html: string): string {
-  DOMPurify.addHook("uponSanitizeElement", imageToAltText);
+  DOMPurify.addHook("uponSanitizeElement", externalOnlyElement);
   DOMPurify.addHook("afterSanitizeAttributes", externalLinksOnly);
   try {
     return DOMPurify.sanitize(html, EXTERNAL_LINKS_ONLY_CONFIG) as string;
   } finally {
     DOMPurify.removeHook("afterSanitizeAttributes", externalLinksOnly);
-    DOMPurify.removeHook("uponSanitizeElement", imageToAltText);
+    DOMPurify.removeHook("uponSanitizeElement", externalOnlyElement);
   }
 }
 
 /**
- * Under the external-only policy an image loads nothing (a remote image is a tracking beacon and
- * can show anything): a markdown image renders as its alt text, and for an `img` in raw HTML the
- * sanitiser removes the element after this hook puts its alt text in its place as plain text, so what the image stood for still reads (and an image link keeps
- * its name). An image with no alt text (decorative) leaves nothing.
+ * Under the external-only policy, before the sanitiser removes an element that loads media (a
+ * remote image is a tracking beacon and can show anything):
+ * - an `img` leaves its alt text in its place, as plain text, so what it stood for still reads
+ *   and an image link keeps its name (a markdown image renders as its alt text to begin with).
+ *   One with no alt text (decorative) leaves nothing.
+ * - a `video` or `audio` leaves its fallback content (text, links, images as alt text): its
+ *   children move to just after it, where the sanitiser walks and sanitises them next, as it
+ *   does for the content of any element it removes and keeps the content of.
  */
-function imageToAltText(node: Node, data: { tagName: string }): void {
-  if (data.tagName !== "img") return;
-  const alt = (node as Element).getAttribute("alt") ?? "";
-  if (alt !== "") node.parentNode?.insertBefore(node.ownerDocument!.createTextNode(alt), node);
+function externalOnlyElement(node: Node, data: { tagName: string }): void {
+  if (data.tagName === "img") {
+    const alt = (node as Element).getAttribute("alt") ?? "";
+    if (alt !== "") node.parentNode?.insertBefore(node.ownerDocument!.createTextNode(alt), node);
+  } else if (MEDIA_ELEMENTS.has(data.tagName) && node.parentNode !== null) {
+    (node as Element).after(...node.childNodes);
+  }
 }
+
+/** Media elements whose fallback content stays under the external-only policy (the element goes). */
+const MEDIA_ELEMENTS: ReadonlySet<string> = new Set(["video", "audio"]);
 
 /**
  * Whether sanitised HTML, parsed as the page parses it (into an element, as `innerHTML` does),
- * holds anything the external-only policy removes: a forbidden element, an inline style, a
- * `url()`, an attribute that fetches on render, a link on an element that is not a link, or a
- * link or submit attribute that is not an absolute http(s) URL.
+ * holds anything the external-only policy removes: a forbidden element, an inline style, a CSS
+ * resource reference, an attribute that fetches on render, a link on an element that is not an
+ * HTML link, or a link or submit attribute that is not an absolute http(s) URL.
  */
 function breaksExternalLinksOnly(html: string): boolean {
   // A div's innerHTML, as the page sets it, in a document with no browsing context: it runs no
@@ -209,8 +219,9 @@ function breaksExternalLinksOnly(html: string): boolean {
   for (const element of host.querySelectorAll("*")) {
     if (EXTERNAL_ONLY_FORBIDDEN_TAGS.has(element.nodeName.toLowerCase())) return true;
     for (const { name, value } of element.attributes) {
-      if (name === "style" || name === "ping" || (FETCH_ATTRIBUTES as readonly string[]).includes(name) || /url\s*\(/i.test(value)) return true;
-      if ((name === "href" || name === "xlink:href") && !LINK_ELEMENTS.has(element.nodeName.toLowerCase())) return true;
+      if (name === "style" || name === "ping" || (FETCH_ATTRIBUTES as readonly string[]).includes(name)) return true;
+      if (!(name === "href" && isHtmlLink(element)) && namesCssResource(element, value)) return true;
+      if ((name === "href" || name === "xlink:href") && !isHtmlLink(element)) return true;
       if ((name === "href" || name === "xlink:href" || (RESOURCE_ATTRIBUTES as readonly string[]).includes(name)) && !isExternalOnly(value)) return true;
     }
   }
@@ -221,9 +232,8 @@ function breaksExternalLinksOnly(html: string): boolean {
  * The sanitiser config under the external-only policy: also no inline `style` (CSS `url()`
  * fetches), none of the SVG elements that set a link or fetch by reference rather than through
  * an attribute the policy checks (animations that rewrite `href`, `use`, `feImage`), and no
- * element that exists to load media: `img` (its alt text stays, see `imageToAltText`), SVG
- * `image`, `video`, `audio`, `source` and `track` (a media element's fallback content stays).
- * Nothing the policy keeps fetches anything when the page renders it.
+ * element that exists to load media: `img` (its alt text stays), SVG `image`, `video`, `audio`
+ * (their fallback content stays), `source` and `track`. See `externalOnlyElement`.
  */
 const EXTERNAL_ONLY_FORBIDDEN_TAGS: ReadonlySet<string> = new Set([
   ...(SANITIZE_CONFIG.FORBID_TAGS ?? []),
@@ -241,8 +251,37 @@ const EXTERNAL_ONLY_FORBIDDEN_TAGS: ReadonlySet<string> = new Set([
   "track",
 ]);
 
-/** The elements that may keep an `href` under the external-only policy: links, which navigate only when followed. */
-const LINK_ELEMENTS: ReadonlySet<string> = new Set(["a", "area"]);
+const XHTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
+
+/** Whether an element may keep an `href` under the external-only policy: an HTML link (`a`,
+ *  `area`), which navigates only when followed and has a name to announce. An SVG `a` does not
+ *  qualify: its content may be only a shape (or an image the policy removes), leaving an unnamed
+ *  focusable link. */
+function isHtmlLink(element: Element): boolean {
+  const name = element.nodeName.toLowerCase();
+  return (name === "a" || name === "area") && element.namespaceURI === XHTML_NAMESPACE;
+}
+
+/**
+ * Whether an attribute value could make CSS fetch a resource: a `url(`/`src(` function once CSS
+ * escapes (`u\72l(`, `\000075rl(`, `\u`) and comments are resolved, or, on an SVG or MathML
+ * element (where presentation attributes such as `fill`, `filter`, `mask` and `cursor` are CSS),
+ * any backslash at all, so no escape the decoder misses can spell one.
+ */
+function namesCssResource(element: Element, value: string): boolean {
+  if (element.namespaceURI !== XHTML_NAMESPACE && value.includes("\\")) return true;
+  return /(?:url|src)\s*\(/i.test(cssUnescape(value));
+}
+
+/** A CSS value with its comments removed and its escapes (hex, with an optional trailing
+ *  whitespace, or any escaped character) resolved. Deliberately loose: it only decides what to drop. */
+function cssUnescape(value: string): string {
+  return value
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\\(?:([0-9a-f]{1,6})[ \t\n\r\f]?|([\s\S]))/gi, (_match, hex: string | undefined, character: string | undefined) =>
+      hex === undefined ? (character ?? "") : String.fromCodePoint(Math.min(Number.parseInt(hex, 16), 0x10ffff) || 0xfffd),
+    );
+}
 
 const EXTERNAL_LINKS_ONLY_CONFIG: DOMPurifyConfig = {
   ...SANITIZE_CONFIG,
@@ -264,29 +303,30 @@ function isExternalOnly(url: string | null): url is string {
 /**
  * The external-only link policy, on one sanitised node of any kind (an `a`, an image map's
  * `area`, an SVG link, an `input` or a button): every attribute that fetches on render (`src`,
- * `srcset`, `poster`, `background`, …) and `ping` go, whatever their URL; a link (`a`, `area`)
- * keeps its href, and a submit or citation attribute its value, only as an absolute http(s) URL
- * `isSafeHref` accepts; no other element keeps an href. A link that keeps its href opens as an
- * external link (new tab, safe `rel`, and for an `a` its marker and a "(opens in new tab)"
- * note); one that loses it reads as plain text. So no markdown from outside deck (a path, a
- * fragment, a protocol-relative `//host`, another scheme) can point into deck, and none loads
- * anything (an image, a poster, a background) from anywhere when the page shows it.
+ * `srcset`, `poster`, `background`, …), `ping`, and any attribute naming a CSS resource (see
+ * `namesCssResource`) go, whatever their URL; an HTML link (`a`, `area`) keeps its href, and a
+ * submit or citation attribute its value, only as an absolute http(s) URL `isSafeHref` accepts;
+ * no other element keeps an href. A link that keeps its href opens as an external link (new tab,
+ * safe `rel`, and for an `a` its marker and a "(opens in new tab)" note); one that loses it
+ * reads as plain text. So no markdown from outside deck (a path, a fragment, a protocol-relative
+ * `//host`, another scheme) can point into deck, and it loads no image, media or other
+ * subresource when the page shows it.
  */
 function externalLinksOnly(node: Element): void {
-  const name = node.nodeName.toLowerCase();
-  const isLink = name === "a" || name === "area";
+  const isLink = isHtmlLink(node);
   const href = node.getAttribute("href") ?? node.getAttribute("xlink:href");
   for (const attribute of ["href", "xlink:href", "target", "rel", "ping", "download", ...FETCH_ATTRIBUTES]) node.removeAttribute(attribute);
   for (const attribute of RESOURCE_ATTRIBUTES) {
     if (node.hasAttribute(attribute) && !isExternalOnly(node.getAttribute(attribute))) node.removeAttribute(attribute);
   }
-  // Any other attribute that names a resource by CSS reference (`fill="url(…)"`, `filter`, `mask`) goes too.
-  for (const { name: attribute, value } of [...node.attributes]) if (/url\s*\(/i.test(value)) node.removeAttribute(attribute);
+  // Any other attribute that names a resource by CSS reference (`fill="url(…)"`, `filter`, `mask`), escaped or not, goes too.
+  // (A link's href is checked as a URL instead; it was taken off above and is set again below.)
+  for (const { name: attribute, value } of [...node.attributes]) if (namesCssResource(node, value)) node.removeAttribute(attribute);
   if (!isLink || !isExternalOnly(href)) return;
   node.setAttribute("href", href);
   node.setAttribute("target", "_blank");
   node.setAttribute("rel", "noopener noreferrer");
-  if (name !== "a") return;
+  if (node.nodeName.toLowerCase() !== "a") return;
   const marker = node.ownerDocument.createElement("span");
   marker.setAttribute("aria-hidden", "true");
   marker.textContent = " ↗";
@@ -305,9 +345,10 @@ export interface MarkdownRenderOptions {
   headingOffset?: number;
   /**
    * Keep only absolute http(s) links, each opened as an external link, and make every other
-   * link plain text; load no image or other resource (an image shows as its alt text): for
-   * markdown from outside deck (a widget a sidecar contributes), whose links, raw HTML or source
-   * data must not point into deck nor reach any other host when the page shows it.
+   * link plain text; load no image, media or other subresource (an image shows as its alt text,
+   * a video or audio as its fallback content): for markdown from outside deck (a widget a
+   * sidecar contributes), whose links, raw HTML or source data must not point into deck nor
+   * make the page fetch from another host when it shows them.
    */
   externalLinksOnly?: boolean;
 }

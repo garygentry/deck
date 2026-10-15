@@ -3,9 +3,9 @@ import { Callout, ErrorState, FragmentBoundary, LoadingState, Section } from "@/
 import { useUiManifest } from "@/data/index.js";
 import { entitySectionsSlot, getAllExtensions, groupEntitySections, type EntityRef, type EntitySection } from "@/registry/registry.js";
 import { useRegistryVersion } from "@/registry/use-registry.js";
-import { placeExtensions } from "@/shell/manifest-slot.js";
+import { placeExtensions } from "./manifest-slot.js";
 
-/** Props owned and exported by `components/EntitySections.tsx`. */
+/** Props of the shell's `EntitySections` host. */
 export interface EntitySectionsProps {
   /** Exact frozen shell entity reference passed unchanged to every fragment. */
   entity: EntityRef;

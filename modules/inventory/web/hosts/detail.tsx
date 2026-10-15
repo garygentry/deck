@@ -10,7 +10,7 @@ import {
   type ColumnDef,
 } from "@/ui";
 import { useRoute } from "@/shell/router";
-import { EntitySections } from "../components/EntitySections.js";
+import { EntitySections } from "@/shell/EntitySections.js";
 import { HOST_STATUS_UI, renderHostState, renderMarker } from "../components/HostStateChip.js";
 import { InventoryNotFound } from "../components/InventoryNotFound.js";
 import {

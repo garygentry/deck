@@ -1,8 +1,7 @@
 import { POLL_DEFAULTS } from "@deck/contract";
 import { BUILTIN_STATUS_KINDS } from "@deck/contract/modules/data-sources";
 import type { UiStatusKind } from "@deck/module-sdk";
-import type { Host } from "@deck/schema";
-import type { DeckConfig } from "@deck/server";
+import type { DeckConfigDocument as DeckConfig, Host } from "@deck/schema";
 import type { Group, PortalModuleConfig } from "../server/types.js";
 import { useMemo, useRef } from "react";
 import { useConfig, useProviders, useUiManifest, type UiManifestState } from "@/data/index.js";

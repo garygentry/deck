@@ -8,7 +8,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderEnvelope } from "@deck/contract";
-import type { DeckConfig } from "@deck/server";
+import type { DeckConfigDocument as DeckConfig } from "@deck/schema";
 import type { SourceManifest, SourceTreeNode } from "../../server/types.js";
 import type { EntityRef } from "@/registry/registry.js";
 

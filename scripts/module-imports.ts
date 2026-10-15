@@ -19,6 +19,11 @@
 // its package name, or through a shared test helper (apps/*/test) that itself reaches it: the
 // helper's edges count as the importing module's own.
 //
+// Known limit, by design: the kernel's own sources (apps/web/src, apps/server/src) are not
+// followed. The kernel loads modules legitimately (the registry discovers every web half), so a
+// module that imports a kernel file re-exporting another module's internals (`@/k.js` with
+// `export * from "…/modules/other/web/model.js"`) is not reported; kernel review owns that.
+//
 // Usage:
 //   bun scripts/module-imports.ts          # prints each violation; exits 1 when there are any
 
@@ -88,11 +93,14 @@ export function moduleReferences(source: string, fileName = "module.ts"): Module
   for (const ref of file.typeReferenceDirectives) found.push({ specifier: ref.fileName, form: "reference types" });
 
   const viNames = new Set(["vi", "vitest"]);
+  const viNamespaces = new Set<string>();
   const requireNames = new Set<string>();
   for (const statement of file.statements) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
     if (statement.moduleSpecifier.text !== "vitest") continue;
     const bindings = statement.importClause?.namedBindings;
+    // `import * as V from "vitest"`: `V.vi.mock(…)` and `V.vitest.mock(…)`.
+    if (bindings && ts.isNamespaceImport(bindings)) viNamespaces.add(bindings.name.text);
     if (bindings && ts.isNamedImports(bindings)) {
       for (const element of bindings.elements) {
         if (["vi", "vitest"].includes((element.propertyName ?? element.name).text)) viNames.add(element.name.text);
@@ -108,6 +116,13 @@ export function moduleReferences(source: string, fileName = "module.ts"): Module
   };
   collectRequires(file);
 
+  // `vi` or `vitest` under a local name, or read off a namespace import of vitest.
+  const isVi = (node: ts.Expression): boolean =>
+    (ts.isIdentifier(node) && viNames.has(node.text)) ||
+    (ts.isPropertyAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      viNamespaces.has(node.expression.text) &&
+      ["vi", "vitest"].includes(node.name.text));
   const argument = (node: ts.CallExpression, form: string): void => {
     const [first] = node.arguments;
     found.push({ specifier: first && ts.isStringLiteralLike(first) ? first.text : null, form });
@@ -135,12 +150,7 @@ export function moduleReferences(source: string, fileName = "module.ts"): Module
           isCreateRequireCall(callee.expression))
       ) {
         argument(node, "require.resolve");
-      } else if (
-        ts.isPropertyAccessExpression(callee) &&
-        ts.isIdentifier(callee.expression) &&
-        viNames.has(callee.expression.text) &&
-        VI_LOADERS.has(callee.name.text)
-      ) {
+      } else if (ts.isPropertyAccessExpression(callee) && VI_LOADERS.has(callee.name.text) && isVi(callee.expression)) {
         argument(node, `vi.${callee.name.text}`);
       } else if (isImportMetaGlob(callee)) {
         const [first] = node.arguments;

@@ -216,9 +216,11 @@ describe("cross-module imports go through a public entry and a declared dependen
       ].join("\n"),
       "modules/user/web/ref.ts": '/// <reference path="../../owner/web/model.ts" />\nexport {};\n',
       "modules/user/test/web/vitest.test.ts": 'import { vitest } from "vitest";\nvitest.mock("../../../owner/web/model.js");\n',
+      "modules/user/test/web/namespace.test.ts": 'import * as V from "vitest";\nV.vi.mock("../../../owner/web/model.js");\nV.vitest.doMock("../../../owner/web/public.js");\n',
     });
     expect(moduleImportViolations(repo)).toEqual([
       { file: "modules/user/server/req.ts", specifier: "../../owner/web/model.js", target: "owner", problem: "not-public" },
+      { file: "modules/user/test/web/namespace.test.ts", specifier: "../../../owner/web/model.js", target: "owner", problem: "not-public" },
       { file: "modules/user/test/web/vitest.test.ts", specifier: "../../../owner/web/model.js", target: "owner", problem: "not-public" },
       // The pattern's directory counts as well as each file it matches.
       { file: "modules/user/web/glob-array.ts", specifier: "../../owner/web/model.ts", target: "owner", problem: "not-public" },
@@ -250,7 +252,8 @@ describe("cross-module imports go through a public entry and a declared dependen
         "apps/web/test/clean-harness.ts": 'export { model } from "../../../modules/owner/web/public.js";\n',
         "modules/user/test/web/a.test.ts": 'import { model } from "@web-test/harness.js";\nimport { mount } from "@web-test/support/render.js";\n',
         "modules/user/test/web/b.test.ts": 'import { model } from "@web-test/clean-harness.js";\n',
-        // The kernel's own sources are not followed: they legitimately load modules.
+        // The kernel's own sources are not followed, even when one re-exports another module's
+        // internals: they legitimately load modules (a known, deliberate limit).
         "modules/user/web/kernel.ts": 'import { r } from "@/registry/registry.js";\n',
         "modules/user/web/alias-deep.ts": 'import { m } from "@/../../../modules/owner/web/model.js";\n',
       },

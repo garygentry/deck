@@ -332,6 +332,9 @@ importers:
       '@deck/drift':
         specifier: workspace:*
         version: link:../../packages/drift
+      '@deck/module-inventory':
+        specifier: workspace:*
+        version: link:../inventory
       '@deck/module-sdk':
         specifier: workspace:*
         version: link:../../packages/module-sdk
@@ -354,6 +357,9 @@ importers:
       '@deck/module-sdk':
         specifier: workspace:*
         version: link:../../packages/module-sdk
+      '@deck/module-sources':
+        specifier: workspace:*
+        version: link:../sources
       '@deck/schema':
         specifier: workspace:*
         version: link:../../packages/schema
@@ -396,9 +402,6 @@ importers:
       '@deck/schema':
         specifier: workspace:*
         version: link:../../packages/schema
-      '@deck/server':
-        specifier: workspace:*
-        version: link:../../apps/server
     devDependencies:
       '@testing-library/react':
         specifier: ^16.3.3
@@ -467,6 +470,9 @@ importers:
       '@deck/module-sdk':
         specifier: workspace:*
         version: link:../../packages/module-sdk
+      '@deck/module-sources':
+        specifier: workspace:*
+        version: link:../sources
       '@deck/schema':
         specifier: workspace:*
         version: link:../../packages/schema
@@ -492,6 +498,9 @@ importers:
         specifier: workspace:*
         version: link:../../packages/schema
     devDependencies:
+      '@deck/module-inventory':
+        specifier: workspace:*
+        version: link:../inventory
       '@testing-library/react':
         specifier: ^16.3.3
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -519,9 +528,6 @@ importers:
       '@deck/schema':
         specifier: workspace:*
         version: link:../../packages/schema
-      '@deck/server':
-        specifier: workspace:*
-        version: link:../../apps/server
     devDependencies:
       '@types/react':
         specifier: ^19.3.0
@@ -544,6 +550,9 @@ importers:
       '@deck/contract':
         specifier: workspace:*
         version: link:../../packages/contract
+      '@deck/module-http-json':
+        specifier: workspace:*
+        version: link:../http-json
       '@deck/module-sdk':
         specifier: workspace:*
         version: link:../../packages/module-sdk
@@ -591,9 +600,6 @@ importers:
       '@deck/schema':
         specifier: workspace:*
         version: link:../../packages/schema
-      '@deck/server':
-        specifier: workspace:*
-        version: link:../../apps/server
       hono:
         specifier: ^4.6.0
         version: 4.13.5

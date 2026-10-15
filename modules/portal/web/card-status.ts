@@ -1,10 +1,9 @@
-import type { Service } from "@deck/schema";
+import type { DeckConfigDocument as DeckConfig, Service } from "@deck/schema";
 import type { GroupItem, LinkItem, ServiceItem } from "../server/types.js";
 import type { FreshnessStamp, ProviderEnvelope } from "@deck/contract";
 import { BUILTIN_STATUS_KINDS } from "@deck/contract/modules/data-sources";
 import type { StatusConditionDecl, UiStatusKind } from "@deck/module-sdk";
 import { bindingProviderId, serviceOwner } from "@deck/schema/provider-ids";
-import type { DeckConfig } from "@deck/server";
 
 export interface GatusEndpoint {
   key: string;

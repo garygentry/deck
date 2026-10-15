@@ -45,7 +45,10 @@ function sourceFiles(dir: string): string[] {
   return files;
 }
 
-const FEATURE_SOURCES = sourceFiles(featureDir);
+// The shell's entity-sections host renders inventory's detail-page sections, so it is held to
+// the same boundaries as the feature's own files.
+const ENTITY_SECTIONS_HOST = join(here, "../src/shell/EntitySections.tsx");
+const FEATURE_SOURCES = [...sourceFiles(featureDir), ENTITY_SECTIONS_HOST];
 const FEATURE_TEXT = FEATURE_SOURCES.map((file) => readFileSync(file, "utf8"));
 
 // ---------------------------------------------------------------------------
@@ -113,8 +116,9 @@ describe("frozen snapshot provider result keys", () => {
 // ---------------------------------------------------------------------------
 
 describe("feature source security and contract boundaries", () => {
-  it("finds feature source files to scan", () => {
-    expect(FEATURE_SOURCES.length).toBeGreaterThan(0);
+  it("finds feature source files to scan, the shell's entity-sections host included", () => {
+    expect(FEATURE_SOURCES.length).toBeGreaterThan(1);
+    expect(FEATURE_TEXT[FEATURE_SOURCES.indexOf(ENTITY_SECTIONS_HOST)]).toContain("export function EntitySections");
   });
 
   it("never edits or deep-imports @deck/schema internals", () => {

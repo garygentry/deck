@@ -1,11 +1,13 @@
 # @deck/module-inventory
 
 deck's built-in `inventory` module: declared hosts and services beside the snapshot's observed
-reality. It contributes the `/hosts` and `/services` pages and their detail pages, whose entity
-sections host other modules' contributions (drift findings, for one). The estate's `hosts` and
+reality. It contributes the `/hosts` and `/services` pages and their detail pages, which render the
+shell's entity-sections host (`apps/web/src/shell/EntitySections.tsx`), where other modules attach
+their sections (drift findings, for one). The estate's `hosts` and
 `services` stay kernel config, since every module references them; this module only renders
 them, so it has no config section and no server code of its own. Its snapshot store
-(`web/inventory-store.ts`) and model (`web/model.ts`) are what the drift module reads.
+and model are what the drift module reads, through the public web entry `web/public.ts`: the only
+file another module may import.
 
 | Path | Holds |
 |---|---|

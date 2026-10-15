@@ -7,8 +7,7 @@
   "dependencies": {
     "@deck/contract": "workspace:*",
     "@deck/module-sdk": "workspace:*",
-    "@deck/schema": "workspace:*",
-    "@deck/server": "workspace:*"
+    "@deck/schema": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.3.0",

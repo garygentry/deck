@@ -51,7 +51,7 @@ vi.mock("@/shell/router", async (importOriginal) => {
 
 // Importing the feature entrypoint is the discovery action under test.
 import "../../../modules/inventory/web/index.js";
-import { EntitySections } from "../../../modules/inventory/web/components/EntitySections.js";
+import { EntitySections } from "../src/shell/EntitySections.js";
 import {
   formatFactValue,
   IntentReality,
@@ -392,8 +392,9 @@ describe("feature fragment-slot boundaries", () => {
   });
 
   it("never uses dangerouslySetInnerHTML in the fragment-slot and detail primitives", () => {
-    for (const name of ["components/EntitySections.tsx", "components/detail-shared.tsx"]) {
-      const source = readFileSync(`${featureDir}/${name}`, "utf8");
+    const shellHost = fileURLToPath(new URL("../src/shell/EntitySections.tsx", TEST_FILE_URL));
+    for (const file of [shellHost, `${featureDir}/components/detail-shared.tsx`]) {
+      const source = readFileSync(file, "utf8");
       expect(source).not.toContain("dangerouslySetInnerHTML");
     }
   });

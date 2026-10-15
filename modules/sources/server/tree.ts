@@ -16,8 +16,6 @@ import * as path from "node:path";
 
 import picomatch from "picomatch";
 
-import type { FILE_TREE_KIND } from "../../file-tree/server/index.js";
-import type { MARKDOWN_TREE_KIND } from "../../markdown-tree/server/index.js";
 import { confinePath } from "./confine.js";
 import { SourceFailure, normalizeSourceFailure } from "./errors.js";
 import { languageForPath } from "./language.js";
@@ -65,9 +63,10 @@ export interface SourceManifest {
 
 /**
  * The source kinds, one per data-source module (`markdown-tree`, `file-tree`). A source's
- * `kind` selects its module, and with it the web surface.
+ * `kind` selects its module, and with it the web surface. Those modules build on this one, so
+ * the kinds are spelled out here rather than imported from them.
  */
-export type SourceKind = typeof MARKDOWN_TREE_KIND | typeof FILE_TREE_KIND;
+export type SourceKind = "markdown-tree" | "file-tree";
 
 /**
  * The read-only view of one file. `content` is present ONLY when the file is neither

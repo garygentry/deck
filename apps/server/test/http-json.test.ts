@@ -738,49 +738,71 @@ describe("the http-json kind in an estate", () => {
     expect(validate([instance(extra)]).findings).toContainEqual(expect.objectContaining({ code: "HTTP_JSON_LITERAL_CREDENTIAL", severity: "error", path }));
   });
 
-  it("matches credential names by whole token", () => {
-    for (const name of ["api_key", "X-Api-Key", "X-API-Key", "APIKey", "apikey", "accessToken", "access_token", "Authorization", "Proxy-Authorization", "Cookie", "X-Auth-Token", "password", "client_secret", "sig", "key"]) {
-      expect(isCredentialName(name), name).toBe(true);
-    }
-    for (const name of ["author", "keys", "sort_key", "passed", "keyword", "Accept", "Content-Type", "X-Client", "monkey", "signal", "tokenizer"]) {
-      expect(isCredentialName(name), name).toBe(false);
-    }
-  });
-
   it.each([
-    // Case- and separator-insensitive spellings of the same name.
-    "pwd", "PWD", "passwd", "Password", "db_password", "dbPassword", "dbpassword", "pass",
-    "jwt", "X-JWT", "jwt_token", "bearer", "Bearer-Token",
-    "secret", "api_secret", "apisecret", "client_secret", "clientSecret", "clientsecret",
-    "token", "apitoken", "authtoken", "X-Auth-Token", "x_auth_token", "access_token", "refreshToken", "csrftoken",
-    "auth", "Authorization", "Proxy-Authorization",
-    "apikey", "api_key", "API-KEY", "X-Api-Key", "X_API_KEY", "x.api.key",
-    "access_key", "accessKey", "AccessKey", "accesskey", "access-key", "access.key", "AWS_ACCESS_KEY_ID",
+    // Words, any case or separator.
+    "auth", "AuTh", "Authorization", "Proxy-Authorization", "bearer", "Bearer-Token", "jwt", "X-JWT", "jwt_token",
+    "Cookie", "Set-Cookie", "credential", "credentials", "passphrase", "sig", "signature",
+    "session", "sessionId", "sessionid", "JSESSIONID", "PHPSESSID", "X-Session-Token",
+    // Endings, including plurals and run-together names.
+    "token", "tokens", "apitoken", "authtoken", "csrftoken", "X-Auth-Token", "x_auth_token", "access_token", "accessToken",
+    "refreshToken", "api_tokens", "secret", "secrets", "api_secret", "apisecret", "client_secret", "clientSecret",
+    "clientsecret", "myclientsecret", "client_secrets", "password", "Password", "PassWord", "passwords", "db_password",
+    "dbPassword", "dbpassword", "passwd", "pwd", "PWD", "dbpwd", "userpwd", "user_pwd",
+    // Trailing digits.
+    "password1", "secret2", "token2", "apiKey2", "api_key2",
+    // pass: whole name, last part, or a run-together ending.
+    "pass", "X-Pass", "db_pass", "DB_PASS", "smtp_pass", "userpass", "keypass", "storepass",
+    // Qualified keys, split or run together, with any prefix.
+    "apikey", "APIKey", "api_key", "API-KEY", "X-Api-Key", "X-API-Key", "X_API_KEY", "x.api.key", "xapikey",
+    "access_key", "accessKey", "AccessKey", "accesskey", "access-key", "access.key", "aCcess_kEy", "AWS_ACCESS_KEY_ID", "awsaccesskey",
     "secret_key", "secretKey", "private_key", "privatekey", "PRIVATE-KEY",
-    "Ocp-Apim-Subscription-Key", "ocp_apim_subscription_key", "subscription-key", "subscriptionkey",
-    "app_key", "appKey", "x-functions-key", "account_key", "master_key", "license_key", "signing_key",
-    "Cookie", "Set-Cookie", "session", "sessionId", "X-Session-Token",
-    "sig", "signature", "credential", "credentials", "passphrase", "key", "KEY",
+    "Ocp-Apim-Subscription-Key", "Ocp-Apim-SubScription-Key", "ocp_apim_subscription_key", "subscription-key", "xsubscriptionkey",
+    "app_key", "appKey", "application_key", "DD-APPLICATION-KEY", "consumer_key", "hmac_key", "ssh_key", "x-function-key",
+    "x-functions-key", "X-Gotify-Key", "account_key", "master_key", "license_key", "signing_key",
+    // A bare key.
+    "key", "KEY",
   ])("treats %s as a credential name", (name) => {
     expect(isCredentialName(name)).toBe(true);
   });
 
   it.each([
-    "author", "Authors", "keys", "key_id", "sort_key", "sortKey", "primary_key", "foreign-key", "keyword",
-    "monkey", "hotkey", "turnkey", "passed", "passive", "passport", "bypass", "pass_through", "compass",
-    "tokenizer", "tokens", "secretary", "sessions", "signal", "pwdx", "jwtish",
+    "author", "Authors", "au_th", "keys", "key_id", "sort_key", "sortKey", "primary_key", "foreign-key", "keyword", "X-Key-Id",
+    "monkey", "hotkey", "turnkey", "passed", "passive", "passport", "Passport", "bypass", "compass", "pass_through",
+    "passThrough", "pass_word", "tokenizer", "secretary", "sessions", "signal", "pwdx", "jwtish",
+    // Pagination and sync cursors.
+    "pageToken", "page_token", "nextPageToken", "nextpagetoken", "next_token", "NextToken", "syncToken", "synctoken",
+    "continuationToken", "cursor_token",
     "Accept", "Content-Type", "X-Client", "client_id", "User-Agent", "X-Request-Id",
   ])("does not treat %s as a credential name", (name) => {
     expect(isCredentialName(name)).toBe(false);
   });
 
   it.each([
-    ["header", { headers: { "Ocp-Apim-Subscription-Key": "abc" } }, "/integrations/0/headers/Ocp-Apim-Subscription-Key"],
-    ["query", { url: "http://ups.lan/s?access_key=abc" }, "/integrations/0/url"],
-    ["query", { url: "http://ups.lan/s?pwd=abc" }, "/integrations/0/url"],
-    ["body", { method: "POST", body: { jwt: "abc" } }, "/integrations/0/body"],
-  ])("refuses newly covered %s credential names", (_name, extra, path) => {
+    ["Ocp-Apim-Subscription-Key", { headers: { "Ocp-Apim-Subscription-Key": "abc" } }, "/integrations/0/headers/Ocp-Apim-Subscription-Key"],
+    ["Ocp-Apim-SubScription-Key", { headers: { "Ocp-Apim-SubScription-Key": "abc" } }, "/integrations/0/headers/Ocp-Apim-SubScription-Key"],
+    ["aCcess_kEy", { url: "http://ups.lan/s?aCcess_kEy=abc" }, "/integrations/0/url"],
+    ["access_key", { url: "http://ups.lan/s?access_key=abc" }, "/integrations/0/url"],
+    ["pwd", { url: "http://ups.lan/s?pwd=abc" }, "/integrations/0/url"],
+    ["DB_PASS", { method: "POST", body: { DB_PASS: "abc" } }, "/integrations/0/body"],
+    ["jwt", { method: "POST", body: { jwt: "abc" } }, "/integrations/0/body"],
+  ])("refuses the newly covered credential name %s in config", (_name, extra, path) => {
     expect(validate([instance(extra)]).findings).toContainEqual(expect.objectContaining({ code: "HTTP_JSON_LITERAL_CREDENTIAL", severity: "error", path }));
+  });
+
+  it("accepts pagination cursors named like tokens in config", () => {
+    const result = validate([instance({ url: "http://ups.lan/s?pageToken=abc&next_token=b" })]);
+    expect(result.findings.filter((finding) => finding.code === "HTTP_JSON_LITERAL_CREDENTIAL")).toEqual([]);
+  });
+
+  it.each([
+    ["header Ocp-Apim-SubScription-Key", "/ok", { "Ocp-Apim-SubScription-Key": "abc" }],
+    ["header aCcess_kEy", "/ok", { aCcess_kEy: "abc" }],
+    ["query aCcess_kEy", "/ok?aCcess_kEy=abc", undefined],
+  ])("refuses the mixed-case %s at the request boundary, before any request", async (_name, path, headers) => {
+    const error = await failure(new HttpJsonProvider("l", { url: fixture.url(path), ...(headers ? { headers } : {}) }));
+    expect(error).toMatchObject({ code: "credential" });
+    expect(error.message).not.toContain("abc");
+    expect(fixture.seen).toEqual([]);
   });
 
   it("refuses a literal credential at the request boundary too, before any request", async () => {

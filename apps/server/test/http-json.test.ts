@@ -805,19 +805,26 @@ describe("the http-json kind in an estate", () => {
       url: "http://ups.lan/s?pageToken=abc&next_token=b",
       headers: { "Next-Page-Token": "c" },
       method: "POST",
-      body: { nextPageToken: "d", max_tokens: 64 },
+      body: { nextPageToken: "d", max_tokens: 64, show_passwords: true },
     })]);
     expect(result.findings.filter((finding) => finding.code === "HTTP_JSON_LITERAL_CREDENTIAL")).toEqual([]);
   });
 
-  it("accepts a credential-like body key whose value is a number, boolean or null", () => {
-    const result = validate([instance({ method: "POST", body: { show_passwords: true, num_secrets: 3, options: { password: null } } })]);
+  it("accepts a credential-like body key whose value is a boolean or null", () => {
+    const result = validate([instance({ method: "POST", body: { show_passwords: true, options: { password: null } } })]);
     expect(result.findings.filter((finding) => finding.code === "HTTP_JSON_LITERAL_CREDENTIAL")).toEqual([]);
-    expect(credentialBodyKeys({ show_passwords: true, num_secrets: 3, password: null })).toEqual([]);
+    expect(credentialBodyKeys({ show_passwords: false, password: null })).toEqual([]);
   });
 
-  it("still refuses a credential-like body key whose value is a string, object or array", () => {
-    expect(credentialBodyKeys({ password: "abc", auth: { user: "u" }, secrets: ["s"] }).sort()).toEqual(["auth", "password", "secrets"]);
+  it("still refuses a credential-like body key whose value is a number, string, object or array", () => {
+    expect(credentialBodyKeys({ api_key: 12345678, password: "abc", auth: { user: "u" }, secrets: ["s"], num_secrets: 3 }).sort())
+      .toEqual(["api_key", "auth", "num_secrets", "password", "secrets"]);
+  });
+
+  it("refuses a numeric body credential { api_key: 12345678 } in config", () => {
+    expect(validate([instance({ method: "POST", body: { api_key: 12345678 } })]).findings).toContainEqual(
+      expect.objectContaining({ code: "HTTP_JSON_LITERAL_CREDENTIAL", severity: "error", path: "/integrations/0/body" }),
+    );
   });
 
   it("still refuses a numeric-looking credential in a header or query, which are always strings", () => {
@@ -852,8 +859,14 @@ describe("the http-json kind in an estate", () => {
     },
   );
 
-  it("sends a body whose credential-like keys hold only numbers, booleans or null", async () => {
-    const provider = new HttpJsonProvider("l", { url: fixture.url("/echo"), method: "POST", body: { max_tokens: 64, show_passwords: true, num_secrets: 3 } });
+  it("refuses a numeric body credential { api_key: 12345678 } at the request boundary, before any request", async () => {
+    const error = await failure(new HttpJsonProvider("l", { url: fixture.url("/echo"), method: "POST", body: { api_key: 12345678 } }));
+    expect(error).toMatchObject({ code: "credential", message: "body key api_key looks like a credential; credentials come from credentialEnv" });
+    expect(fixture.seen).toEqual([]);
+  });
+
+  it("sends a body whose credential-like keys hold only booleans or null, beside token counts", async () => {
+    const provider = new HttpJsonProvider("l", { url: fixture.url("/echo"), method: "POST", body: { max_tokens: 64, show_passwords: true, password: null } });
     await provider.fetch();
     expect(fixture.seen).toHaveLength(1);
   });

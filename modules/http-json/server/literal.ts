@@ -124,13 +124,9 @@ export function credentialHeaderNames(headers: unknown): string[] {
   return Object.keys(headers).filter(isCredentialName);
 }
 
-function isLiteralValue(value: unknown): boolean {
-  return value !== null && typeof value !== "number" && typeof value !== "boolean";
-}
-
 /**
- * The keys anywhere in a JSON body that look like credentials and hold a string, object or
- * array (not a number, boolean or null), once each. Iterative.
+ * The keys anywhere in a JSON body that look like credentials and hold a value that can carry
+ * one (anything but a boolean or null), once each. Iterative.
  */
 export function credentialBodyKeys(body: unknown): string[] {
   const found = new Set<string>();
@@ -142,8 +138,8 @@ export function credentialBodyKeys(body: unknown): string[] {
       for (const item of value) pending.push(item);
     } else if (value !== null && typeof value === "object") {
       for (const [key, child] of Object.entries(value)) {
-        // A credential is a string: a number, boolean or null (`num_secrets: 3`) is not one.
-        if (isLiteralValue(child) && isCredentialName(key)) found.add(key);
+        // A boolean or null (`show_passwords: true`) cannot hold a credential; a number can (`api_key: 12345678`).
+        if (child !== null && typeof child !== "boolean" && isCredentialName(key)) found.add(key);
         pending.push(child);
       }
     }

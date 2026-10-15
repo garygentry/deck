@@ -16,8 +16,8 @@ All notable changes to this project are documented here. The format is based on
   any prefix (`access_key`, `xapikey`, `AWS_ACCESS_KEY_ID`, `app_key`, `hmac_key`,
   `X-Gotify-Key`, `Ocp-Apim-Subscription-Key`). A name made only of pagination cursor words
   (`pageToken`, `next_token`, `syncToken`) is no longer refused, and a body key whose value is a
-  number, boolean or null (`max_tokens: 64`, `show_passwords: true`) is not a credential. An estate
-  config that wrote a newly covered name as a literal header, query parameter or string body value
+  boolean or null (`show_passwords: true`) is not a credential. An estate config that wrote a
+  newly covered name as a literal header, query parameter or body value
   now fails validation and boot with `HTTP_JSON_LITERAL_CREDENTIAL`: move the value to
   `credentialEnv` with `auth`. (#52)
   **Upgrading:** run `deck validate` with the new version against your estate config before

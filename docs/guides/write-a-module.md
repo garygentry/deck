@@ -255,8 +255,9 @@ data-source modules under `modules/`: `modules/docker` (integration instances wi
   entry, `web/public.ts` or `server/public.ts`, which exports exactly what other modules may
   use, and declares the edge as a dependency on `@deck/module-<id>` in its `package.json` (add
   the id to `dependsOn` too when your module cannot run without the other).
-  `apps/server/test/module-imports.test.ts` checks every cross-module import, type-only ones
-  included; `bun scripts/module-imports.ts` lists any offender.
+  `apps/server/test/module-imports.test.ts` checks every cross-module import, type-only ones,
+  globs, `vi.mock`, path aliases and the shared test helpers your tests import included, and
+  reports a load it cannot read statically; `bun scripts/module-imports.ts` lists any offender.
 
 ## Check it runs
 

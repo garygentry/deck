@@ -4,7 +4,7 @@ import { dirname, join, resolve } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { isPublicEntry, moduleImportViolations, moduleSpecifiers } from "../../../scripts/module-imports.js";
+import { isPublicEntry, moduleImportViolations, moduleReferences, moduleSpecifiers, UNVERIFIABLE } from "../../../scripts/module-imports.js";
 
 const REPO_ROOT = resolve(__dirname, "../../..");
 
@@ -36,6 +36,59 @@ describe("moduleSpecifiers", () => {
       "./augmented.js",
       "./mocked.js",
       "./actual.js",
+    ]);
+  });
+});
+
+describe("moduleReferences", () => {
+  it("walks globs, createRequire, triple-slash references and vitest under any name", () => {
+    const source = [
+      '/// <reference path="../../owner/web/model.ts" />',
+      '/// <reference types="@deck/module-owner" />',
+      'import { vi as v, vitest } from "vitest";',
+      'import { createRequire } from "node:module";',
+      'const one = import.meta.glob("../../owner/web/*.ts", { eager: true });',
+      'const many = import.meta.glob(["../../owner/web/a.ts", "!../../owner/web/b.ts"]);',
+      'const direct = createRequire(import.meta.url)("../../owner/direct.js");',
+      "const req = createRequire(import.meta.url);",
+      'const bound = req("../../owner/bound.js");',
+      'const where = req.resolve("../../owner/resolved.js");',
+      'v.mock("../../owner/aliased-vi.js");',
+      'vitest.doMock("../../owner/vitest.js");',
+    ].join("\n");
+    expect(moduleReferences(source).map(({ specifier, form }) => `${form} ${specifier}`)).toEqual([
+      "reference path ../../owner/web/model.ts",
+      "reference types @deck/module-owner",
+      "import vitest",
+      "import node:module",
+      "import.meta.glob ../../owner/web/*.ts",
+      "import.meta.glob ../../owner/web/a.ts",
+      "import.meta.glob !../../owner/web/b.ts",
+      "createRequire ../../owner/direct.js",
+      "createRequire ../../owner/bound.js",
+      "require.resolve ../../owner/resolved.js",
+      "vi.mock ../../owner/aliased-vi.js",
+      "vi.doMock ../../owner/vitest.js",
+    ]);
+  });
+
+  it("reports loads it cannot read statically as null", () => {
+    const source = [
+      'const a = import("../../owner/web/" + "model.js");',
+      "const b = import(`../../owner/web/${name}.js`);",
+      "const c = require(name);",
+      "const d = import.meta.glob(patterns);",
+      'const e = import.meta.glob(["../../owner/web/a.ts", pattern]);',
+      "vi.mock(name);",
+    ].join("\n");
+    expect(moduleReferences(source).map(({ specifier, form }) => `${form} ${specifier}`)).toEqual([
+      "import() null",
+      "import() null",
+      "require() null",
+      "import.meta.glob null",
+      "import.meta.glob ../../owner/web/a.ts",
+      "import.meta.glob null",
+      "vi.mock null",
     ]);
   });
 });
@@ -134,6 +187,81 @@ describe("cross-module imports go through a public entry and a declared dependen
     writeFileSync(join(repo, "modules/user/web/a.ts"), 'import { model } from "./linked/model.js";\n');
     expect(moduleImportViolations(repo)).toEqual([
       { file: "modules/user/web/a.ts", specifier: "./linked/model.js", target: "owner", problem: "not-public" },
+    ]);
+  });
+
+  it("follows a symlinked file into another module, imported by its .js name", () => {
+    const repo = fixtureRepo({}, {});
+    mkdirSync(join(repo, "modules/user/web"), { recursive: true });
+    symlinkSync(join(repo, "modules/owner/web/model.ts"), join(repo, "modules/user/web/linked.ts"), "file");
+    writeFileSync(join(repo, "modules/user/web/a.ts"), 'import { model } from "./linked.js";\n');
+    writeFileSync(join(repo, "modules/user/web/b.ts"), 'import { model } from "./linked";\n');
+    expect(moduleImportViolations(repo)).toEqual([
+      { file: "modules/user/web/a.ts", specifier: "./linked.js", target: "owner", problem: "not-public" },
+      { file: "modules/user/web/a.ts", specifier: "./linked.js", target: "owner", problem: "undeclared" },
+      { file: "modules/user/web/b.ts", specifier: "./linked", target: "owner", problem: "not-public" },
+      { file: "modules/user/web/b.ts", specifier: "./linked", target: "owner", problem: "undeclared" },
+    ]);
+  });
+
+  it("catches globs, createRequire, triple-slash references and vitest.mock into another module", () => {
+    const repo = fixtureRepo({
+      "modules/user/web/glob.ts": 'export const all = import.meta.glob("../../owner/web/*.ts", { eager: true });\n',
+      "modules/user/web/glob-array.ts": 'export const some = import.meta.glob(["../../owner/web/model.ts"]);\n',
+      "modules/user/web/glob-public.ts": 'export const ok = import.meta.glob("../../owner/web/public.ts");\n',
+      "modules/user/web/glob-empty.ts": 'export const none = import.meta.glob("../../owner/nothing-yet/*.ts");\n',
+      "modules/user/server/req.ts": [
+        'import { createRequire } from "node:module";',
+        'export const direct = createRequire(import.meta.url)("../../owner/web/model.js");',
+      ].join("\n"),
+      "modules/user/web/ref.ts": '/// <reference path="../../owner/web/model.ts" />\nexport {};\n',
+      "modules/user/test/web/vitest.test.ts": 'import { vitest } from "vitest";\nvitest.mock("../../../owner/web/model.js");\n',
+    });
+    expect(moduleImportViolations(repo)).toEqual([
+      { file: "modules/user/server/req.ts", specifier: "../../owner/web/model.js", target: "owner", problem: "not-public" },
+      { file: "modules/user/test/web/vitest.test.ts", specifier: "../../../owner/web/model.js", target: "owner", problem: "not-public" },
+      // The pattern's directory counts as well as each file it matches.
+      { file: "modules/user/web/glob-array.ts", specifier: "../../owner/web/model.ts", target: "owner", problem: "not-public" },
+      { file: "modules/user/web/glob-empty.ts", specifier: "../../owner/nothing-yet/*.ts", target: "owner", problem: "not-public" },
+      { file: "modules/user/web/glob.ts", specifier: "../../owner/web/*.ts", target: "owner", problem: "not-public" },
+      { file: "modules/user/web/ref.ts", specifier: "../../owner/web/model.ts", target: "owner", problem: "not-public" },
+    ]);
+  });
+
+  it("reports a load it cannot read statically", () => {
+    const repo = fixtureRepo({
+      "modules/user/web/lazy.ts": 'export const load = (name: string) => import("../../owner/web/" + name);\n',
+      "modules/user/web/glob.ts": "export const load = (p: string) => import.meta.glob(p);\n",
+    });
+    expect(moduleImportViolations(repo)).toEqual([
+      { file: "modules/user/web/glob.ts", specifier: UNVERIFIABLE, target: null, problem: "unverifiable" },
+      { file: "modules/user/web/lazy.ts", specifier: UNVERIFIABLE, target: null, problem: "unverifiable" },
+    ]);
+  });
+
+  it("resolves app path aliases, and counts a shared test helper's edges as the importer's", () => {
+    const tsconfig = JSON.stringify({ compilerOptions: { paths: { "@/*": ["src/*"], "@web-test/*": ["test/*"] } } });
+    const repo = fixtureRepo(
+      {
+        "apps/web/tsconfig.json": `// comments are allowed\n${tsconfig}`,
+        "apps/web/src/registry/registry.ts": 'export * from "../../../../modules/owner/web/model.js";\n',
+        "apps/web/test/support/render.ts": "export const mount = 1;\n",
+        "apps/web/test/harness.ts": 'import { mount } from "./support/render.js";\nexport { model } from "../../../modules/owner/web/model.js";\n',
+        "apps/web/test/clean-harness.ts": 'export { model } from "../../../modules/owner/web/public.js";\n',
+        "modules/user/test/web/a.test.ts": 'import { model } from "@web-test/harness.js";\nimport { mount } from "@web-test/support/render.js";\n',
+        "modules/user/test/web/b.test.ts": 'import { model } from "@web-test/clean-harness.js";\n',
+        // The kernel's own sources are not followed: they legitimately load modules.
+        "modules/user/web/kernel.ts": 'import { r } from "@/registry/registry.js";\n',
+        "modules/user/web/alias-deep.ts": 'import { m } from "@/../../../modules/owner/web/model.js";\n',
+      },
+      {},
+    );
+    expect(moduleImportViolations(repo)).toEqual([
+      { file: "modules/user/test/web/a.test.ts", via: "apps/web/test/harness.ts", specifier: "@web-test/harness.js", target: "owner", problem: "not-public" },
+      { file: "modules/user/test/web/a.test.ts", via: "apps/web/test/harness.ts", specifier: "@web-test/harness.js", target: "owner", problem: "undeclared" },
+      { file: "modules/user/test/web/b.test.ts", via: "apps/web/test/clean-harness.ts", specifier: "@web-test/clean-harness.js", target: "owner", problem: "undeclared" },
+      { file: "modules/user/web/alias-deep.ts", specifier: "@/../../../modules/owner/web/model.js", target: "owner", problem: "not-public" },
+      { file: "modules/user/web/alias-deep.ts", specifier: "@/../../../modules/owner/web/model.js", target: "owner", problem: "undeclared" },
     ]);
   });
 

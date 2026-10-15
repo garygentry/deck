@@ -8,7 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
-- Runtime modules can use Sparkline, StatusTimeline and Gauge from @deck/sdk.
+- **Charts in `@deck/sdk`**: runtime modules can use `Sparkline`, `StatusTimeline` and `Gauge`, with
+  their prop types (`ChartStatus`, `SparklineData`, `TimelineLane` and so on). The module API
+  (`DECK_API_VERSION`) is now `0.1.1`, an additive bump: a module that uses the charts declares
+  `deckApi: "^0.1.1"`, and `^0.1` modules still load (#80).
 
 ## [0.5.0] - 2026-10-14
 

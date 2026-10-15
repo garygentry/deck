@@ -6,6 +6,7 @@
   "type": "module",
   "dependencies": {
     "@deck/module-sdk": "workspace:*",
+    "@deck/module-sources": "workspace:*",
     "@deck/schema": "workspace:*"
   }
 }

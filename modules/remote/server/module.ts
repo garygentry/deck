@@ -8,8 +8,7 @@ import {
 } from "@deck/module-sdk";
 import deckSchema from "@deck/schema/deck.schema.json" with { type: "json" };
 
-import { urlProblem } from "../../http-json/server/literal.js";
-import { instanceRequest, integer, sharedInstanceProperties as shared } from "../../http-json/server/request-config.js";
+import { instanceRequest, integer, sharedInstanceProperties as shared, urlProblem } from "../../http-json/server/public.js";
 import { RUNTIME_PAGES } from "../../../apps/server/src/ui/runtime-pages.js";
 import { RemoteDirectory, type RemotePageConfig } from "./directory.js";
 import { REMOTE_MODULE_ID } from "./pages.js";

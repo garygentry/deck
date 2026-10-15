@@ -1,6 +1,6 @@
 import { defineServerModule, type ModuleManifest, type ServiceOffer, type ServiceRef } from "@deck/module-sdk";
 
-import type { SnapshotContent } from "../../snapshot/server/content.js";
+import type { SnapshotContent } from "../../snapshot/server/public.js";
 import { METRICS_PATH, metricsResponse } from "./route.js";
 
 /** The snapshot module's `snapshot/content` service; none is offered without a snapshot source. */

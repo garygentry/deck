@@ -1,9 +1,7 @@
 import type { Source } from "@deck/schema";
 
 import type { Provider, ProviderFetchContext, ProviderHealth } from "../../../apps/server/src/contract/index.js";
-import { normalizeSourceFailure } from "../../sources/server/errors.js";
-import type { SourceStore } from "../../sources/server/store.js";
-import type { SourceManifest } from "../../sources/server/tree.js";
+import { normalizeSourceFailure, type SourceManifest, type SourceStore } from "../../sources/server/public.js";
 
 /** The provider kind of the `file-tree` data-source module. */
 export const FILE_TREE_KIND = "file-tree";

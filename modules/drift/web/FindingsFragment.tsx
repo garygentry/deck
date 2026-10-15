@@ -14,7 +14,7 @@ import {
   StatusBadge,
   VisuallyHidden,
 } from "@/ui";
-import type { InventoryModel } from "../../inventory/web/model.js";
+import type { InventoryModel } from "../../inventory/web/public.js";
 import type { EntityRef } from "@/registry/registry.js";
 import {
   DRIFT_SEVERITY,
@@ -47,7 +47,7 @@ export interface FindingsFragmentProps {
 // Presentation boundary. A selection/render throw inside one fragment is caught
 // here and rendered as the fixed sanitized failure, emitting exactly one
 // allowlisted render-error diagnostic with no exception text. The outer boundary
-// in `EntitySections.tsx` remains the final isolation.
+// in the shell's `EntitySections` host remains the final isolation.
 // ---------------------------------------------------------------------------
 
 /** Local fixed-fallback boundary; never renders the caught exception. */

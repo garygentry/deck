@@ -40,6 +40,14 @@ describe("kernel-touch", () => {
     // The guardrail test is listed explicitly, so it counts despite the test exclusion.
     expect(isKernelPath("apps/web/test/ui-guardrails.test.ts")).toBe(true);
 
+    // The kernel's wire contract: every file of @deck/contract, but not a module's contract.
+    for (const file of ["index", "boot", "core", "widgets", "freshness", "poll"]) {
+      expect(isKernelPath(`packages/contract/src/${file}.ts`), file).toBe(true);
+    }
+    expect(isKernelPath("packages/contract/test/contract.test.ts")).toBe(false);
+    expect(isKernelPath("modules/portal/contract.ts")).toBe(false);
+    expect(isKernelPath("modules/snapshot/contract.ts")).toBe(false);
+
     expect(isKernelPath("modules/llm-usage/server/collector.ts")).toBe(false);
     // A per-kind provider directory beside the registry is a data-source module, not kernel. The
     // path is synthetic so the case outlives the built-ins moving out to modules/.

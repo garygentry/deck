@@ -17,6 +17,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Built-in modules reach each other only through a public entry**, `web/public.ts` or
+  `server/public.ts`, with a declared package dependency on `@deck/module-<id>`; a guard test
+  (`module-imports.test.ts`) enforces it for every import form, type-only ones and shared test
+  helpers included. The drift module now depends on inventory (`dependsOn: ["snapshot",
+  "inventory"]`), so `/api/modules` lists inventory before drift, and drift would be refused with
+  `MODULE_DEPENDENCY_MISSING` if inventory were. The entity-sections host moved from the inventory
+  module into the web shell (#67).
 - **Module server halves may not load `apps/server/src` at runtime**, by path or through
   `@deck/server`; a guard test enforces it, with type-only imports and augmentation still
   allowed (#62).

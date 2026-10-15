@@ -8,12 +8,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- `http-json`: the literal-credential name check now also catches `pwd`, `jwt`, `bearer`, `pass`
-  (as a whole name), qualified keys such as `access_key`, `secret_key`, `app_key` and
-  `Ocp-Apim-Subscription-Key`, and run-together names ending in `token`, `secret` or `password`
-  (`apitoken`, `dbpassword`). An estate config that wrote such a name as a literal header, query
-  parameter or body key now fails validation with `HTTP_JSON_LITERAL_CREDENTIAL`: move the value to
-  `credentialEnv` with `auth`. (#52)
+- `http-json`: the literal-credential name check reads each name both as written and split at
+  camelCase, ignoring case, separators and trailing digits. It now also catches `pwd`, `jwt`,
+  `bearer`, session ids (`JSESSIONID`, `PHPSESSID`), `pass` as a whole name or last part (`DB_PASS`,
+  `X-Pass`) or run-together ending (`userpass`), names ending in `token`, `secret`, `password` (and
+  their plurals), `passwd` or `pwd` (`apitoken`, `dbpassword`, `userpwd`), and qualified keys with
+  any prefix (`access_key`, `xapikey`, `AWS_ACCESS_KEY_ID`, `app_key`, `hmac_key`,
+  `X-Gotify-Key`, `Ocp-Apim-Subscription-Key`). Pagination cursors (`pageToken`, `next_token`,
+  `syncToken`) are not credentials. An estate config that wrote such a name as a literal header,
+  query parameter or body key now fails validation and boot with `HTTP_JSON_LITERAL_CREDENTIAL`:
+  move the value to `credentialEnv` with `auth`. (#52)
+  **Upgrading:** run `deck validate` with the new version against your estate config before
+  re-pinning.
 
 ## [0.5.0] - 2026-10-14
 

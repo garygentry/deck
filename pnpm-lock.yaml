@@ -277,9 +277,6 @@ importers:
 
   modules/actions:
     dependencies:
-      '@deck/contract':
-        specifier: workspace:*
-        version: link:../../packages/contract
       '@deck/module-sdk':
         specifier: workspace:*
         version: link:../../packages/module-sdk
@@ -317,9 +314,6 @@ importers:
 
   modules/docker:
     dependencies:
-      '@deck/contract':
-        specifier: workspace:*
-        version: link:../../packages/contract
       '@deck/module-sdk':
         specifier: workspace:*
         version: link:../../packages/module-sdk
@@ -366,18 +360,12 @@ importers:
 
   modules/gatus:
     dependencies:
-      '@deck/contract':
-        specifier: workspace:*
-        version: link:../../packages/contract
       '@deck/module-sdk':
         specifier: workspace:*
         version: link:../../packages/module-sdk
 
   modules/http-health:
     dependencies:
-      '@deck/contract':
-        specifier: workspace:*
-        version: link:../../packages/contract
       '@deck/module-sdk':
         specifier: workspace:*
         version: link:../../packages/module-sdk
@@ -525,6 +513,15 @@ importers:
       '@deck/contract':
         specifier: workspace:*
         version: link:../../packages/contract
+      '@deck/module-docker':
+        specifier: workspace:*
+        version: link:../docker
+      '@deck/module-gatus':
+        specifier: workspace:*
+        version: link:../gatus
+      '@deck/module-http-health':
+        specifier: workspace:*
+        version: link:../http-health
       '@deck/module-sdk':
         specifier: workspace:*
         version: link:../../packages/module-sdk

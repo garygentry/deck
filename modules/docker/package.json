@@ -5,7 +5,6 @@
   "description": "deck's built-in docker module: the `docker` data source that lists containers from a Docker Engine API endpoint.",
   "type": "module",
   "dependencies": {
-    "@deck/contract": "workspace:*",
     "@deck/module-sdk": "workspace:*"
   }
 }

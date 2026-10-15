@@ -5,7 +5,6 @@
   "description": "deck's built-in gatus module: the `gatus` data source that reads endpoint statuses from a Gatus instance.",
   "type": "module",
   "dependencies": {
-    "@deck/contract": "workspace:*",
     "@deck/module-sdk": "workspace:*"
   }
 }

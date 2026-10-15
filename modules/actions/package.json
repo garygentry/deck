@@ -5,7 +5,6 @@
   "description": "deck's built-in actions module: governed actions (runner allowlist, parameter validation, execution, audit), their routes and the Actions page.",
   "type": "module",
   "dependencies": {
-    "@deck/contract": "workspace:*",
     "@deck/module-sdk": "workspace:*",
     "hono": "^4.6.0"
   },

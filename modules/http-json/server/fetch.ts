@@ -7,9 +7,9 @@
  * authenticated one never follows them, so the credential never leaves the origin. A body over `maxBytes`, nested past
  * {@link HTTP_JSON_MAX_DEPTH}, or echoing the credential is refused, never returned.
  */
+import { POLL_DEFAULTS } from "@deck/contract";
 import type { EnvReader, ProviderFetchContext } from "@deck/module-sdk";
 
-import { POLL_DEFAULTS } from "../../../apps/server/src/contract/index.js";
 import { credentialBodyKeys, credentialHeaderNames, credentialQueryParams } from "./literal.js";
 
 /** How the credential `credentialEnv` names is sent. Without one, it is the raw `Authorization` value. */

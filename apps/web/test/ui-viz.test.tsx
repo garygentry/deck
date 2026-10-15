@@ -151,9 +151,9 @@ describe("ui/viz geometry", () => {
 });
 
 describe("Sparkline", () => {
-  it("renders a labelled img with one path and no tone by default", () => {
-    render(<Sparkline values={[1, 2, 3, 2, 4]} />);
-    const svg = screen.getByRole("img", { name: "sparkline" });
+  it("renders an img named by ariaLabel, with one path and no tone by default", () => {
+    render(<Sparkline values={[1, 2, 3, 2, 4]} ariaLabel="Requests per second" />);
+    const svg = screen.getByRole("img", { name: "Requests per second" });
     expect(svg).toHaveAttribute("data-slot", "sparkline");
     expect(svg).toHaveAttribute("viewBox", "0 0 120 32");
     expect(svg).not.toHaveAttribute("data-tone");
@@ -162,19 +162,19 @@ describe("Sparkline", () => {
   });
 
   it("carries the status tone; an outline entry draws dashed", () => {
-    const { rerender } = render(<Sparkline values={[1, 5, 3]} status={HEALTH.down} />);
-    let svg = screen.getByRole("img", { name: "sparkline" });
+    const { rerender } = render(<Sparkline values={[1, 5, 3]} status={HEALTH.down} ariaLabel="Restarts" />);
+    let svg = screen.getByRole("img", { name: "Restarts" });
     expect(svg).toHaveAttribute("data-tone", "danger");
     expect(svg.querySelector("path")).not.toHaveAttribute("stroke-dasharray");
 
-    rerender(<Sparkline values={[1, 5, 3]} status={HEALTH.suppressed} />);
-    svg = screen.getByRole("img", { name: "sparkline" });
+    rerender(<Sparkline values={[1, 5, 3]} status={HEALTH.suppressed} ariaLabel="Restarts" />);
+    svg = screen.getByRole("img", { name: "Restarts" });
     expect(svg).toHaveAttribute("data-tone", "neutral");
     expect(svg).toHaveAttribute("data-mark", "hatched");
     expect(svg.querySelector("path")).toHaveAttribute("stroke-dasharray", "4 3");
 
-    rerender(<Sparkline values={[1, 5, 3]} status={HEALTH.unknown} />);
-    svg = screen.getByRole("img", { name: "sparkline" });
+    rerender(<Sparkline values={[1, 5, 3]} status={HEALTH.unknown} ariaLabel="Restarts" />);
+    svg = screen.getByRole("img", { name: "Restarts" });
     expect(svg).toHaveAttribute("data-mark", "solid");
     expect(svg.querySelector("path")).not.toHaveAttribute("stroke-dasharray");
   });
@@ -189,6 +189,7 @@ describe("Sparkline", () => {
           { at: 3, value: 3 },
           { at: 4, value: 4 },
         ]}
+        ariaLabel="liveness history"
       />,
     );
     expect(screen.getByRole("img").querySelectorAll("path")).toHaveLength(2);
@@ -207,14 +208,14 @@ describe("Sparkline", () => {
   });
 
   it("marks a single plain value, as a single sample is marked", () => {
-    render(<Sparkline values={[42]} />);
+    render(<Sparkline values={[42]} ariaLabel="Restarts" />);
     const svg = screen.getByRole("img");
     expect(svg.querySelectorAll("path")).toHaveLength(0);
     expect(svg.querySelectorAll('[data-spark-point="single"]')).toHaveLength(1);
   });
 
   it("splits plain values at a non-finite gap", () => {
-    render(<Sparkline values={[1, 2, Number.NaN, 3, 4]} />);
+    render(<Sparkline values={[1, 2, Number.NaN, 3, 4]} ariaLabel="Restarts" />);
     const svg = screen.getByRole("img");
     expect(svg.querySelectorAll("path")).toHaveLength(2);
     expect(svg.outerHTML).not.toContain("NaN");

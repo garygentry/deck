@@ -20,11 +20,17 @@ const require = createRequire(TEST_FILE_URL);
 /** The SDK's runtime exports: adding one makes it part of the module API, so it is listed here on purpose. */
 const SDK_EXPORTS = [
   "Callout", "CardGrid", "CodeBlock", "DECK_API_VERSION", "DataTable", "Disclosure", "EmptyState", "ErrorState",
-  "ExternalLink", "FragmentBoundary", "FreshnessBadge", "HealthPill", "Icon", "KeyValue", "KeyValueList", "LinkTile",
+  "ExternalLink", "FragmentBoundary", "FreshnessBadge", "Gauge", "HealthPill", "Icon", "KeyValue", "KeyValueList", "LinkTile",
   "List", "ListGroup", "ListItem", "LoadingState", "Meter", "PageHeader", "Prose", "RelativeTime", "SafeRouteLink",
-  "Section", "StatGrid", "StatTile", "StatusBadge", "TONES", "TONE_ICON", "VisuallyHidden", "defineStatusMap",
+  "Section", "Sparkline", "StatGrid", "StatTile", "StatusBadge", "StatusTimeline", "TONES", "TONE_ICON", "VisuallyHidden", "defineStatusMap",
   "defineWebModule", "formatAge", "formatRelative", "formatTimestamp", "satisfiesDeckApi", "statusTone", "useConfig",
   "useProvider", "useProviders", "useUiManifest",
+];
+
+/** The chart types a module names its props with: part of the module API too. */
+const SDK_CHART_TYPES = [
+  "ChartStatus", "GaugeProps", "SparklineData", "SparklineProps", "SparklineSample", "StatusTimelineProps", "TimelineLane",
+  "TimelineSegment",
 ];
 
 describe("@deck/sdk", () => {
@@ -56,6 +62,16 @@ describe("@deck/sdk", () => {
     );
     // The bundle also re-exports types by name (ColumnDef, Tone, …): every runtime value is declared.
     expect(Object.keys(sdk).filter((name) => !exported.includes(name))).toEqual([]);
+  });
+
+  it("declares the chart types in index.d.ts, by name", () => {
+    const types = ts.createSourceFile("index.d.ts", readFileSync(fromWeb("../../packages/sdk/index.d.ts"), "utf8"), ts.ScriptTarget.Latest);
+    const typeExports = types.statements.flatMap((statement) =>
+      ts.isExportDeclaration(statement) && statement.isTypeOnly && statement.exportClause !== undefined && ts.isNamedExports(statement.exportClause)
+        ? statement.exportClause.elements.map((element) => element.name.text)
+        : [],
+    );
+    expect(typeExports).toEqual(expect.arrayContaining(SDK_CHART_TYPES));
   });
 
   it("shares each React entry point whole: every export of the package, by name, plus its default", async () => {

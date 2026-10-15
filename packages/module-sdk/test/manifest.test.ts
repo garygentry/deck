@@ -138,6 +138,14 @@ describe("deckApi", () => {
     expect(satisfiesDeckApi(range, version)).toBe(expected);
   });
 
+  it("is 0.1.1, an additive bump that keeps every ^0.1 module loading", () => {
+    // 0.1.1 added the viz charts to @deck/sdk: a module that uses them declares ^0.1.1.
+    expect(DECK_API_VERSION).toBe("0.1.1");
+    for (const range of ["^0", "^0.1", "^0.1.0", "^0.1.1", "0.1.1"]) expect(satisfiesDeckApi(range), range).toBe(true);
+    // An exact pin is exact, and a module written for a later API is refused.
+    for (const range of ["0.1.0", "^0.1.2", "^0.2"]) expect(satisfiesDeckApi(range), range).toBe(false);
+  });
+
   it("recognises supported ranges only", () => {
     expect(isDeckApiRange("^0.1")).toBe(true);
     expect(isDeckApiRange("1.2.3")).toBe(true);

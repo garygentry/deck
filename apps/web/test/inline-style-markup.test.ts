@@ -18,7 +18,8 @@ describe("neutralizeInlineStyles (HTML)", () => {
 
   it("never removes content past where a parser ends the element: unterminated, or markup before the end tag", () => {
     expect(neutralizeInlineStyles(`a<style>unterminated <p>kept</p>`)).toBe("aunterminated <p>kept</p>");
-    expect(neutralizeInlineStyles(`<style>x <p style="y">kept</p></style>`)).toBe(`x <p data-style="y">kept</p></style>`);
+    // Markup before the end tag: its extent depends on the parse, so the sanitiser decides.
+    expect(neutralizeInlineStyles(`<style>x <p style="y">kept</p></style>`)).toBe(`<style>x <p data-style="y">kept</p></style>`);
   });
 
   it("honours /> inside SVG and MathML, and returns to HTML after them", () => {

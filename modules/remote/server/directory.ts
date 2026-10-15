@@ -1,5 +1,5 @@
-import { canonicalize } from "../../../apps/server/src/config/canonical.js";
-import type { DeckConfig } from "../../../apps/server/src/contract/index.js";
+import { canonicalJson, type JsonValue } from "@deck/module-sdk";
+
 import type { RuntimePages, RuntimePageSource } from "../../../apps/server/src/ui/runtime-pages.js";
 import type { RemoteDescribe } from "./describe.js";
 import { remotePagesOf } from "./pages.js";
@@ -41,7 +41,7 @@ export interface RemoteContribution {
 export class RemoteDirectory implements RuntimePageSource {
   private readonly entries = new Map<string, RemoteContribution>();
   private readonly listeners = new Set<() => void>();
-  private canonical = canonicalize([] as unknown as DeckConfig);
+  private canonical = canonicalJson([]);
 
   /** Declare an integration, before any describe. */
   declare(instance: string, title: string, page: RemotePageConfig): void {
@@ -84,7 +84,7 @@ export class RemoteDirectory implements RuntimePageSource {
 
   private changed(): void {
     // Key order aside: a sidecar answering the same document reordered changes nothing.
-    const next = canonicalize(this.snapshot() as unknown as DeckConfig);
+    const next = canonicalJson(this.snapshot() as unknown as JsonValue);
     if (next === this.canonical) return;
     this.canonical = next;
     for (const listener of [...this.listeners]) {

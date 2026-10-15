@@ -12,9 +12,10 @@
  * Inside `<svg>` and `<math>`, `/>` closes an element.
  *
  * It is an approximation, so every uncertainty resolves toward keeping content: a style it
- * misses reaches the sanitiser, which drops it (the policy refuses it anyway, and only a
- * violation report results), while a `<style>` element is removed only through a matching end
- * tag with nothing but text before it. Lost content is never an acceptable trade for a report.
+ * misses (or leaves alone because its extent is unclear) reaches the sanitiser, which drops it
+ * (the policy refuses it anyway, and only a violation report results), while a `<style>`
+ * element is removed whole only through a matching end tag with nothing but text before it.
+ * Lost content is never an acceptable trade for a report.
  */
 
 /** Elements whose contents an HTML parser reads as text up to their own end tag (outside SVG and MathML). */
@@ -158,15 +159,16 @@ function findInlineStyles(markup: string, xml: boolean): Found {
           found.elements.push([open, tag.end]);
           continue;
         }
-        // The whole element only when its end tag follows with nothing but text before it (as an
-        // HTML parser's raw text or an SVG style's text ends there); otherwise only its start tag,
-        // and what follows is read on as markup.
+        // Removed whole only when its end tag follows with nothing but text before it (an HTML
+        // parser's raw text and an SVG style's text both end there). With no end tag, only the
+        // start tag goes (a parser would read the rest of the document into it). With markup
+        // before the end tag, its extent depends on the parse, so it is left for the sanitiser.
         const close = endTag(markup, tag.name, tag.end);
-        if (close !== null && !markup.slice(tag.end, close.index).includes("<")) {
+        if (close === null) {
+          found.elements.push([open, tag.end]);
+        } else if (!markup.slice(tag.end, close.index).includes("<")) {
           found.elements.push([open, close.end]);
           at = close.end;
-        } else {
-          found.elements.push([open, tag.end]);
         }
       } else if (!inForeign() && RAW_TEXT.has(local)) {
         // Text to its end tag (or to the end, as the parser reads it): nothing in it is markup.
@@ -187,7 +189,8 @@ export function hasInlineStyle(markup: string): boolean {
 
 /**
  * `html` with as few inline styles left for a parser to report as can be found safely: each
- * `<style>` element removed (whole when its extent is certain, else only its start tag), and each
+ * `<style>` element removed (whole when its extent is certain, only its start tag when it has no
+ * end tag, and left for the sanitiser when markup comes before its end tag), and each
  * `style` attribute renamed `data-style`, which a sanitiser that keeps no `data-*` attribute then
  * drops. Everything else, attribute values and text included, is kept byte for byte.
  */

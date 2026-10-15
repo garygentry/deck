@@ -6,12 +6,53 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Charts in `@deck/sdk`**: runtime modules can use `Sparkline`, `StatusTimeline` and `Gauge`, with
+  their prop types (`ChartStatus`, `SparklineData`, `TimelineLane` and so on). The module API
+  (`DECK_API_VERSION`) is now `0.1.1`, an additive bump: a module that uses the charts declares
+  `deckApi: "^0.1.1"`, and `^0.1` modules still load (#80).
+- **`settlesWithin` and `canonicalJson` in `@deck/module-sdk`**: a bounded wait on a promise
+  that never keeps the process alive, and key-order-insensitive JSON text (#62).
+
+### Changed
+
+- **Module server halves may not load `apps/server/src` at runtime**, by path or through
+  `@deck/server`; a guard test enforces it, with type-only imports and augmentation still
+  allowed (#62).
+- `http-json`: the literal-credential name check reads each name both as written and split at
+  camelCase, ignoring case, separators and trailing digits. It now also catches `pwd`, `jwt`,
+  `bearer`, session ids (`JSESSIONID`, `PHPSESSID`), `pass` as a whole name or last part (`DB_PASS`,
+  `X-Pass`) or run-together ending (`userpass`), names ending in `token`, `secret(s)`,
+  `password(s)`, `passwd` or `pwd` (`apitoken`, `dbpassword`, `userpwd`), and qualified keys with
+  any prefix (`access_key`, `xapikey`, `AWS_ACCESS_KEY_ID`, `app_key`, `hmac_key`,
+  `X-Gotify-Key`, `Ocp-Apim-Subscription-Key`). A name made only of pagination cursor words
+  (`pageToken`, `next_token`, `syncToken`) is no longer refused, and a body key whose value is a
+  boolean or null (`show_passwords: true`) is not a credential. An estate config that wrote a
+  newly covered name as a literal header, query parameter or body value
+  now fails validation and boot with `HTTP_JSON_LITERAL_CREDENTIAL`: move the value to
+  `credentialEnv` with `auth`. (#52)
+  **Upgrading:** run `deck validate` with the new version against your estate config before
+  re-pinning.
+
 ### Security
 
+- **Sidecar markdown loads no images or media** (`core/markdown` from a `remote` sidecar, under
+  its external-only link policy). Until now its images, and other elements and attributes that
+  load something (`picture`/`source`, `video`/`audio` sources and posters, `input type=image`,
+  `background`, SVG `image`, and CSS references such as `url()` or `image-set()` in SVG
+  attributes), could still load from any `http(s)` URL as the page rendered. That told the
+  image's host each viewer's IP address and when they looked, and could show content the
+  sidecar does not control. Now an image shows as its alt text, and a video or audio shows its
+  fallback content. Those elements and attributes are removed. An SVG or MathML attribute keeps
+  its value only when it has no quote or backslash and calls only colour, math (`calc`, `min`,
+  `max`, `clamp`), `var` or SVG transform functions. If your
+  sidecar showed remote badges or screenshots, they now appear as their alt text. Markdown in
+  your own config and docs is unchanged (#51).
 - The web shell's Content-Security-Policy no longer allows inline styles: `style-src` is
   `'self'` plus a per-response style nonce, which the page hands to the `<style>` elements the
-  UI library injects (the scroll lock behind modal overlays, scrollbar rules). The Markdown
-  sanitizer now drops `style` attributes, which the policy would refuse anyway. Styles a reverse
+  UI library injects (the scroll lock behind modal overlays, scrollbar rules). Markdown now
+  drops `style` attributes and raw `<style>` blocks, which the policy would refuse anyway. Styles a reverse
   proxy injects into deck's page (an inline `<style>` or a `style` attribute) no longer apply,
   and neither do a runtime module's own `<style>` elements or `style` attributes in markup it
   inserts; put a module's styles in its `web.css` (#53).

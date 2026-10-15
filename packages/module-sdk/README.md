@@ -110,6 +110,12 @@ failure too.
 kernel's scheduler applies (`TIMING_LIMITS`: whole milliseconds, at most `MAX_TIMER_MS`, a poll
 interval at least 1000 ms), for a kind whose config carries timing.
 
+Two small runtime helpers spare a server half from reaching into the kernel's files:
+`settlesWithin(promise, ms)` says whether a promise settles (either way) within `ms`, on a timer
+that never keeps the process alive (a bounded wait for a child to exit, say), and
+`canonicalJson(value)` renders a JSON value with its keys sorted at every depth, so two values
+that differ only in key order compare equal as text.
+
 Each offered provider must be of the handler's own kind. A provider that keeps its binding's or
 instance's own id follows the estate: a duplicate fails boot (`PROVIDER_DUPLICATE_ID`) as it
 always has. An id the module chooses itself must not be taken by any other provider. A built-in

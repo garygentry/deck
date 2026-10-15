@@ -375,6 +375,9 @@ importers:
 
   modules/http-json:
     dependencies:
+      '@deck/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
       '@deck/module-sdk':
         specifier: workspace:*
         version: link:../../packages/module-sdk

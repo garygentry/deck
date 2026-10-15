@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { apiErrorBody, type ServerModule, type UiManifest } from "@deck/module-sdk";
+import { apiErrorBody, settlesWithin, type ServerModule, type UiManifest } from "@deck/module-sdk";
 import type { Finding } from "@deck/schema";
 
 import { formatFindings, formatToolError } from "../cli/findings-format.js";
@@ -31,7 +31,6 @@ import { createModuleHost, startModules, type ModuleHost } from "../modules/host
 import { servedWebModules } from "./module-assets.js";
 import { checkPins, loadRuntimeModules, MODULES_ENABLED_ENV, NO_RUNTIME_MODULES, type RuntimeModules } from "../modules/runtime.js";
 import { parseBool } from "../config/env.js";
-import { settlesWithin } from "./settle.js";
 import { FORCE_CLOSE_WAIT_MS, resolveStopTimings, type StopTimings } from "./stop-timings.js";
 import { installShutdown, type ShutdownOptions } from "./shutdown.js";
 import { createApp, planningRouteTable, RESERVED_ROOT_PATHS, type AppDeps, type ProviderReader } from "./app.js";

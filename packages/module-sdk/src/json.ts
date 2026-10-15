@@ -106,9 +106,9 @@ export function canonicalJson(value: JsonValue): string {
 function sortKeys(value: JsonValue): JsonValue {
   if (Array.isArray(value)) return value.map(sortKeys);
   if (value !== null && typeof value === "object") {
-    const sorted: JsonObject = {};
-    for (const key of Object.keys(value).sort()) sorted[key] = sortKeys(value[key]!);
-    return sorted;
+    // `Object.fromEntries` defines own data properties, so an own `__proto__` key (as
+    // `JSON.parse` makes one) stays a key rather than becoming the copy's prototype.
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortKeys(value[key]!)])) as JsonObject;
   }
   return value;
 }

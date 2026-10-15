@@ -21,3 +21,29 @@ describe("canonicalJson", () => {
     expect(canonicalJson("s")).toBe('"s"\n');
   });
 });
+
+describe("canonicalJson with own __proto__ keys", () => {
+  const cases = {
+    "top level": '{"__proto__":{"t":"x"},"x":1}',
+    nested: '{"a":{"b":{"__proto__":{"t":"x"},"y":2}}}',
+    "inside an array": '{"list":[{"__proto__":[1,2]},{"__proto__":null}]}',
+  };
+
+  it.each(Object.entries(cases))("keeps the key and round-trips (%s)", (_, text) => {
+    const out = canonicalJson(JSON.parse(text));
+    expect(out).toContain('"__proto__"');
+    expect(canonicalJson(JSON.parse(out))).toBe(out);
+    expect(JSON.stringify(JSON.parse(out))).toBe(JSON.stringify(JSON.parse(text)));
+  });
+
+  it("gives different text for values that differ only under __proto__", () => {
+    expect(canonicalJson(JSON.parse('{"__proto__":{"t":"x"},"x":1}'))).not.toBe(canonicalJson({ x: 1 }));
+    expect(canonicalJson(JSON.parse('{"__proto__":{"t":"x"}}'))).not.toBe(canonicalJson(JSON.parse('{"__proto__":{"t":"y"}}')));
+    expect(canonicalJson(JSON.parse('{"a":[{"__proto__":1}]}'))).not.toBe(canonicalJson(JSON.parse('{"a":[{"__proto__":2}]}')));
+  });
+
+  it("never touches Object.prototype", () => {
+    canonicalJson(JSON.parse('{"__proto__":{"polluted":true}}'));
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+});

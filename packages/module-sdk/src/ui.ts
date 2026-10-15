@@ -217,8 +217,9 @@ export interface UiWidgetInstance {
   /**
    * `external` on a widget a module contributes at runtime (a sidecar's): every link it renders
    * from markdown (its content, raw HTML in it, or text from its source) keeps only an absolute
-   * http(s) href, shown as an external link; any other becomes plain text. It loads no image or
-   * other resource from anywhere (an image shows as its alt text). Absent otherwise.
+   * http(s) href, shown as an external link; any other becomes plain text. It loads no image,
+   * media or other subresource (an image shows as its alt text, a video or audio as its fallback
+   * content). Absent otherwise.
    */
   linkPolicy?: "external";
   /** Columns spanned, at most the section's. */

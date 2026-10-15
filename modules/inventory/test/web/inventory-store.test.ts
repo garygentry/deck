@@ -5,10 +5,10 @@ import { URL, fileURLToPath } from "node:url";
 // URL under the jsdom (web) transform; resolving against a plain const avoids that.
 const TEST_FILE_URL = import.meta.url;
 import { createElement as h } from "react";
-import { mount } from "./support/render.js";
-import { act } from "./support/render.js";
+import { mount } from "@web-test/support/render.js";
+import { act } from "@web-test/support/render.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { installEnv, type Env } from "./inventory-harness.js";
+import { installEnv, type Env } from "@web-test/inventory-harness.js";
 import {
   config,
   configResponse,
@@ -31,19 +31,19 @@ import {
   hostState,
   type FetchStub,
   type InventoryEndpoint,
-} from "./inventory-harness.js";
-import type { SnapshotClientState } from "../../../modules/inventory/web/inventory-store.js";
+} from "@web-test/inventory-harness.js";
+import type { SnapshotClientState } from "../../web/inventory-store.js";
 
 // ---------------------------------------------------------------------------
 // The store is a module singleton; a fresh module per test isolates its retained
 // generation, timer, controller, and interval owner. All fixtures are invented.
 // ---------------------------------------------------------------------------
 
-type Store = typeof import("../../../modules/inventory/web/inventory-store.js");
+type Store = typeof import("../../web/inventory-store.js");
 
 async function freshStore(): Promise<Store> {
   vi.resetModules();
-  return import("../../../modules/inventory/web/inventory-store.js");
+  return import("../../web/inventory-store.js");
 }
 
 /** Flush all pending fetch/decode microtasks and 0-delay work under real timers. */
@@ -171,7 +171,7 @@ describe("store lifecycle and concurrency", () => {
   it("L3: while other readers hold a failing config, polls report it without re-asking", async () => {
     vi.useFakeTimers();
     const store = await freshStore();
-    const { getQueryClient, configQuery } = await import("../src/data/index.js");
+    const { getQueryClient, configQuery } = await import("@/data/index.js");
     const { QueryObserver } = await import("@tanstack/react-query");
     const stub = stubAggregate(
       () => httpStatusResponse(503),
@@ -720,7 +720,7 @@ describe("compatibility and scope", () => {
   it("re-exports the compatibility surface from the legacy module path", async () => {
     vi.resetModules();
     const legacy = await import(
-      "../../../modules/inventory/web/use-inventory-data.js"
+      "../../web/use-inventory-data.js"
     );
     expect(typeof legacy.useInventoryData).toBe("function");
     expect(typeof legacy.InventoryDataProvider).toBe("function");
@@ -735,7 +735,7 @@ describe("compatibility and scope", () => {
   it("throws InventoryContextError with its fixed code", async () => {
     vi.resetModules();
     const legacy = await import(
-      "../../../modules/inventory/web/use-inventory-data.js"
+      "../../web/use-inventory-data.js"
     );
     const error = new legacy.InventoryContextError();
     expect(error.name).toBe("InventoryContextError");
@@ -746,7 +746,7 @@ describe("compatibility and scope", () => {
     const stub = availableAggregate();
     vi.resetModules();
     const legacy = await import(
-      "../../../modules/inventory/web/use-inventory-data.js"
+      "../../web/use-inventory-data.js"
     );
     const env: Env = installEnv();
     const tree = h(legacy.InventoryDataProvider, {
@@ -770,7 +770,7 @@ describe("compatibility and scope", () => {
     availableAggregate();
     vi.resetModules();
     const legacy = await import(
-      "../../../modules/inventory/web/use-inventory-data.js"
+      "../../web/use-inventory-data.js"
     );
     const env: Env = installEnv();
     const Probe = () => {
@@ -787,7 +787,7 @@ describe("compatibility and scope", () => {
   it("throws InventoryContextError when reading context outside a provider", async () => {
     vi.resetModules();
     const legacy = await import(
-      "../../../modules/inventory/web/use-inventory-data.js"
+      "../../web/use-inventory-data.js"
     );
     const env: Env = installEnv();
     const Probe = () => {
@@ -804,7 +804,7 @@ describe("compatibility and scope", () => {
   it("uses only the two fixed GET endpoints and no browser persistence API", () => {
     const storePath = fileURLToPath(
       new URL(
-        "../../../modules/inventory/web/inventory-store.ts",
+        "../../web/inventory-store.ts",
         TEST_FILE_URL,
       ),
     );

@@ -1,17 +1,17 @@
 // @vitest-environment jsdom
-import type { DeckConfig } from "@deck/server";
-import type { Action } from "../../../modules/actions/server/types.js";
+import type { DeckConfig } from "../../../../apps/server/src/contract/index.js";
+import type { Action } from "../../server/types.js";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { JSX } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ConfigState } from "../src/data/hooks.js";
+import type { ConfigState } from "@/data/hooks.js";
 
 // ActionsPage sources its config through `useConfig()` (via ConfigGate); mocking
 // it yields deterministic loading/error/ready views with no poll lifecycle.
 let configState: ConfigState;
-vi.mock("../src/data/hooks.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/data/hooks.js")>()),
+vi.mock("@/data/hooks.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/data/hooks.js")>()),
   useConfig: () => configState,
 }));
 
@@ -19,9 +19,9 @@ vi.mock("../src/data/hooks.js", async (importOriginal) => ({
 import {
   ActionsPage,
   ActionsPageBoundary,
-} from "../../../modules/actions/web/ActionsPage.js";
+} from "../../web/ActionsPage.js";
 // eslint-disable-next-line import/first
-import { beginRun, failRun, resetRun } from "../../../modules/actions/web/run-store.js";
+import { beginRun, failRun, resetRun } from "../../web/run-store.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures. The run store is a real module singleton; cases that need a

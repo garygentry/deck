@@ -6,8 +6,8 @@
 import { DRIFT_UI } from "@deck/contract/modules/drift";
 import { describe, expect, it } from "vitest";
 
-import { DRIFT_MANIFEST } from "../../../modules/drift/server/module.js";
-import { serverOnlyFields } from "./util/shared-ui.js";
+import { DRIFT_MANIFEST } from "../../server/module.js";
+import { serverOnlyFields } from "../../../../apps/server/test/util/shared-ui.js";
 
 describe("drift module", () => {
   it("takes its identity and UI contributions from the copy the web half registers against", () => {

@@ -6,8 +6,8 @@
 import { INVENTORY_UI } from "@deck/contract/modules/inventory";
 import { describe, expect, it } from "vitest";
 
-import { INVENTORY_MANIFEST } from "../../../modules/inventory/server/module.js";
-import { serverOnlyFields } from "./util/shared-ui.js";
+import { INVENTORY_MANIFEST } from "../../server/module.js";
+import { serverOnlyFields } from "../../../../apps/server/test/util/shared-ui.js";
 
 describe("inventory module", () => {
   it("takes its identity and UI contributions from the copy the web half registers against", () => {

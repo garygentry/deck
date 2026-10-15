@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import type { JSX } from "react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { InventoryData } from "../../../modules/inventory/web/use-inventory-data.js";
+import type { InventoryData } from "../../web/use-inventory-data.js";
 import {
   availableState,
   config,
@@ -14,13 +14,13 @@ import {
   observedService,
   serviceDecl,
   snapshotResult,
-} from "./inventory-harness.js";
+} from "@web-test/inventory-harness.js";
 
 // The mocked context drives the lists without polling (the real store never runs).
 let inventoryData: InventoryData;
-vi.mock("../../../modules/inventory/web/use-inventory-data.js", async (importOriginal) => {
+vi.mock("../../web/use-inventory-data.js", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("../../../modules/inventory/web/use-inventory-data.js")>();
+    await importOriginal<typeof import("../../web/use-inventory-data.js")>();
   return {
     ...actual,
     InventoryDataProvider: ({ children }: { children: unknown }) => children,
@@ -28,8 +28,8 @@ vi.mock("../../../modules/inventory/web/use-inventory-data.js", async (importOri
   };
 });
 
-import { HostsPage } from "../../../modules/inventory/web/hosts/list.js";
-import { ServicesPage } from "../../../modules/inventory/web/services/list.js";
+import { HostsPage } from "../../web/hosts/list.js";
+import { ServicesPage } from "../../web/services/list.js";
 
 // jsdom lacks APIs the Radix popover (facet filters) uses; stub them for this file.
 const restores: (() => void)[] = [];

@@ -3,8 +3,8 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createBunRunnerSpawner } from "../../../modules/actions/server/spawn.js";
-import { stubBun, unstubBun } from "./util/stub-bun.js";
+import { createBunRunnerSpawner } from "../../server/spawn.js";
+import { stubBun, unstubBun } from "../../../../apps/server/test/util/stub-bun.js";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const dec = (chunks: Uint8Array[]) =>
@@ -59,7 +59,7 @@ describe("createBunRunnerSpawner", () => {
 
   it("the source references Bun only within spawn(), never at module scope", () => {
     const src = readFileSync(
-      fileURLToPath(new URL("../../../modules/actions/server/spawn.ts", import.meta.url)),
+      fileURLToPath(new URL("../../server/spawn.ts", import.meta.url)),
       "utf8",
     );
     // The only executable `Bun.` reference is `Bun.spawn(` inside the spawn() body.

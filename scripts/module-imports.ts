@@ -10,11 +10,11 @@
 //
 // Every form that ties one file to another counts, type-only ones included (a type is coupling
 // too): imports and re-exports, `import x = require(…)`, `import()`, `require()` and
-// `createRequire(…)(…)` (and a `require` bound from it), `import("…")` types, `declare module "…"`
-// augmentation, `/// <reference path|types>`, `import.meta.glob` patterns and vitest's
-// `vi.mock`/`vitest.mock` family (under any local name imported from vitest). A load whose
-// target cannot be read statically (a non-literal `import()`, say) is reported as
-// `<unverifiable>`. A specifier reaches another module by relative path, by an app's path alias
+// `createRequire(…)(…)` (and a `require` bound from it), `import.meta.resolve`, `import("…")`
+// types, `declare module "…"` augmentation, `/// <reference path|types>`, `import.meta.glob`
+// patterns and vitest's `vi.mock`/`vitest.mock` family (under any local name imported from
+// vitest, by dot or by bracket). A load whose target cannot be read statically (a non-literal
+// `import()` or `vi[key]`, say) is reported as `<unverifiable>`. A specifier reaches another module by relative path, by an app's path alias
 // (`@/…`, `@web-test/…`, from the tsconfig `paths`), through a symlinked file or directory, by
 // its package name, or through a shared test helper (apps/*/test) that itself reaches it: the
 // helper's edges count as the importing module's own.
@@ -85,10 +85,25 @@ const EXTENSION_SWAPS: Record<string, readonly string[]> = {
 /** vitest calls that load or replace a module by specifier. */
 const VI_LOADERS = new Set(["mock", "doMock", "unmock", "doUnmock", "importActual", "importMock"]);
 
+/**
+ * One reference with the node that names it, for tools that need the position (the pure-move
+ * check compares a moved file's tokens with its specifiers set aside). `node` is the literal
+ * when `specifier` is read from one, else the argument as written (absent for a triple-slash
+ * directive, or a load with no argument).
+ */
+export interface ModuleReferenceNode extends ModuleReference {
+  node?: ts.Node;
+}
+
 /** Every reference `source` makes to another module, type-only ones included, in source order. */
 export function moduleReferences(source: string, fileName = "module.ts"): ModuleReference[] {
   const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, scriptKind(fileName));
-  const found: ModuleReference[] = [];
+  return moduleReferenceNodes(file).map(({ specifier, form }) => ({ specifier, form }));
+}
+
+/** {@link moduleReferences} over a parsed file, with each reference's node. */
+export function moduleReferenceNodes(file: ts.SourceFile): ModuleReferenceNode[] {
+  const found: ModuleReferenceNode[] = [];
   for (const ref of file.referencedFiles) found.push({ specifier: ref.fileName, form: "reference path" });
   for (const ref of file.typeReferenceDirectives) found.push({ specifier: ref.fileName, form: "reference types" });
 
@@ -125,18 +140,18 @@ export function moduleReferences(source: string, fileName = "module.ts"): Module
       ["vi", "vitest"].includes(node.name.text));
   const argument = (node: ts.CallExpression, form: string): void => {
     const [first] = node.arguments;
-    found.push({ specifier: first && ts.isStringLiteralLike(first) ? first.text : null, form });
+    found.push({ specifier: first && ts.isStringLiteralLike(first) ? first.text : null, form, node: first });
   };
   const visit = (node: ts.Node): void => {
     if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-      found.push({ specifier: node.moduleSpecifier.text, form: ts.isImportDeclaration(node) ? "import" : "export" });
+      found.push({ specifier: node.moduleSpecifier.text, form: ts.isImportDeclaration(node) ? "import" : "export", node: node.moduleSpecifier });
     } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
       const expression = node.moduleReference.expression;
-      found.push({ specifier: ts.isStringLiteral(expression) ? expression.text : null, form: "import = require" });
+      found.push({ specifier: ts.isStringLiteral(expression) ? expression.text : null, form: "import = require", node: expression });
     } else if (ts.isModuleDeclaration(node) && ts.isStringLiteral(node.name)) {
-      found.push({ specifier: node.name.text, form: "declare module" });
+      found.push({ specifier: node.name.text, form: "declare module", node: node.name });
     } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) && ts.isStringLiteral(node.argument.literal)) {
-      found.push({ specifier: node.argument.literal.text, form: "import type()" });
+      found.push({ specifier: node.argument.literal.text, form: "import type()", node: node.argument.literal });
     } else if (ts.isCallExpression(node)) {
       const callee = node.expression;
       if (callee.kind === ts.SyntaxKind.ImportKeyword) argument(node, "import()");
@@ -152,6 +167,13 @@ export function moduleReferences(source: string, fileName = "module.ts"): Module
         argument(node, "require.resolve");
       } else if (ts.isPropertyAccessExpression(callee) && VI_LOADERS.has(callee.name.text) && isVi(callee.expression)) {
         argument(node, `vi.${callee.name.text}`);
+      } else if (ts.isElementAccessExpression(callee) && isVi(callee.expression)) {
+        // `vi["doMock"](…)` is `vi.doMock(…)`; a key that cannot be read could be any loader.
+        const key = callee.argumentExpression;
+        if (!ts.isStringLiteralLike(key)) found.push({ specifier: null, form: "vi[…]", node: key });
+        else if (VI_LOADERS.has(key.text)) argument(node, `vi.${key.text}`);
+      } else if (isImportMeta(callee, ["resolve"])) {
+        argument(node, "import.meta.resolve");
       } else if (isImportMetaGlob(callee)) {
         const [first] = node.arguments;
         const patterns = first && ts.isArrayLiteralExpression(first) ? [...first.elements] : [first];
@@ -159,6 +181,7 @@ export function moduleReferences(source: string, fileName = "module.ts"): Module
           found.push({
             specifier: pattern && ts.isStringLiteralLike(pattern) ? pattern.text : null,
             form: "import.meta.glob",
+            node: pattern,
           });
         }
       }
@@ -167,6 +190,16 @@ export function moduleReferences(source: string, fileName = "module.ts"): Module
   };
   visit(file);
   return found;
+}
+
+/** `import.meta.<name>` for one of `names`. */
+function isImportMeta(node: ts.Expression, names: readonly string[]): boolean {
+  return (
+    ts.isPropertyAccessExpression(node) &&
+    names.includes(node.name.text) &&
+    ts.isMetaProperty(node.expression) &&
+    node.expression.keywordToken === ts.SyntaxKind.ImportKeyword
+  );
 }
 
 /** `createRequire(…)` or `x.createRequire(…)`. */
@@ -181,12 +214,7 @@ function isCreateRequireCall(node: ts.Node): boolean {
 
 /** `import.meta.glob` (or `globEager`). */
 function isImportMetaGlob(node: ts.Expression): boolean {
-  return (
-    ts.isPropertyAccessExpression(node) &&
-    ["glob", "globEager"].includes(node.name.text) &&
-    ts.isMetaProperty(node.expression) &&
-    node.expression.keywordToken === ts.SyntaxKind.ImportKeyword
-  );
+  return isImportMeta(node, ["glob", "globEager"]);
 }
 
 /** Every specifier `source` names a module by (the literal ones), in source order. */

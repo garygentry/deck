@@ -9,8 +9,8 @@ import {
   ACTIONS_ENV,
   DEFAULT_ACTION_TIMEOUT_MS,
   resolveActionsRuntime,
-} from "../../../modules/actions/server/runtime.js";
-import { loadRunners, lookupRunner } from "../../../modules/actions/server/runners.js";
+} from "../../server/runtime.js";
+import { loadRunners, lookupRunner } from "../../server/runners.js";
 
 /** A throwaway scratch dir cleaned up after each test. */
 const scratchDirs: string[] = [];
@@ -162,7 +162,7 @@ describe("lookupRunner", () => {
     // Source discipline: the name is used only as a Map key — no join()/resolve() calls
     // anywhere in runners.ts.
     const src = readFileSync(
-      fileURLToPath(new URL("../../../modules/actions/server/runners.ts", import.meta.url)),
+      fileURLToPath(new URL("../../server/runners.ts", import.meta.url)),
       "utf8",
     );
     expect(src).not.toMatch(/\bjoin\s*\(/);

@@ -8,12 +8,12 @@ import { Icon } from "@/ui";
 import type {
   AlertmanagerData,
   AlertmanagerResult,
-} from "../../../modules/monitoring/web/useAlertmanagerData.js";
+} from "../../web/useAlertmanagerData.js";
 import type {
   PrometheusData,
   PrometheusResult,
-} from "../../../modules/monitoring/web/usePrometheusData.js";
-import type { HealthSummary } from "../src/shell/health-header/health-summary.js";
+} from "../../web/usePrometheusData.js";
+import type { HealthSummary } from "@/shell/health-header/health-summary.js";
 
 // ---------------------------------------------------------------------------
 // Each fragment sources its own data through one hook. Mocking the hook yields a
@@ -22,19 +22,19 @@ import type { HealthSummary } from "../src/shell/health-header/health-summary.js
 // ---------------------------------------------------------------------------
 
 let alertView: AlertmanagerData;
-vi.mock("../../../modules/monitoring/web/useAlertmanagerData.js", () => ({
+vi.mock("../../web/useAlertmanagerData.js", () => ({
   useAlertmanagerData: () => alertView,
 }));
 
 let promView: PrometheusData;
-vi.mock("../../../modules/monitoring/web/usePrometheusData.js", () => ({
+vi.mock("../../web/usePrometheusData.js", () => ({
   usePrometheusData: () => promView,
 }));
 
-import { AlertsSummary } from "../../../modules/monitoring/web/AlertsSummary.js";
-import { MetricsSummary } from "../../../modules/monitoring/web/MetricsSummary.js";
-import { SummaryPresentationBoundary } from "../../../modules/monitoring/web/SummaryPresentationBoundary.js";
-import { HEADER_STATUS_PRESENTATION } from "../../../modules/monitoring/web/status.js";
+import { AlertsSummary } from "../../web/AlertsSummary.js";
+import { MetricsSummary } from "../../web/MetricsSummary.js";
+import { SummaryPresentationBoundary } from "../../web/SummaryPresentationBoundary.js";
+import { HEADER_STATUS_PRESENTATION } from "../../web/status.js";
 
 afterEach(() => {
   cleanup();

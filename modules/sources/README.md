@@ -23,6 +23,6 @@ here: each half compiles and is tested inside its host app. React, react-dom and
 dependencies (with dev dependencies for the tests): the app and its modules share one instance of
 each. The library only this module uses (picomatch, on the server) is its own dependency, not
 the host app's; the markdown pipeline's libraries (markdown-it, DOMPurify, highlight.js) belong
-to the web app, whose kernel holds the pipeline. Tests that drive the module through the kernel (the module host, the registry, the app, the
-config pipeline) stay in `apps/server/test` and `apps/web/test`, as do the tests that address the
-module's files by path string (`vi.mock`).
+to the web app, whose kernel holds the pipeline. Tests that drive the module through the kernel
+(the module host, the registry, the app, the config pipeline) stay in `apps/server/test` and
+`apps/web/test`.

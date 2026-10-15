@@ -3,6 +3,9 @@
   "version": "0.5.0",
   "private": true,
   "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=22.18"
+  },
   "workspaces": [
     "packages/*",
     "apps/*",

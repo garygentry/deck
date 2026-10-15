@@ -9,16 +9,16 @@ import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../modules/sources/web/use-source.js", async (importOriginal) => ({
+vi.mock("../../web/use-source.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useManifestLoad: () => {},
   useFileLoad: () => {},
   useSearchLoad: () => {},
 }));
 
-import { SourceBrowserReady } from "../../../modules/sources/web/SourceBrowserPage.js";
-import { MarkdownView } from "../../../modules/sources/web/components/MarkdownView.js";
-import { SearchResults } from "../../../modules/sources/web/components/SearchResults.js";
+import { SourceBrowserReady } from "../../web/SourceBrowserPage.js";
+import { MarkdownView } from "../../web/components/MarkdownView.js";
+import { SearchResults } from "../../web/components/SearchResults.js";
 import {
   getSourceBrowse,
   resetBrowse,
@@ -27,8 +27,8 @@ import {
   setFile,
   setManifest,
   setSearch,
-} from "../../../modules/sources/web/sources-store.js";
-import { envelope, fileNode, manifest, sourcesConfig } from "./support/sources.js";
+} from "../../web/sources-store.js";
+import { envelope, fileNode, manifest, sourcesConfig } from "@web-test/support/sources.js";
 
 afterEach(() => {
   cleanup();

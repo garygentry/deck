@@ -242,13 +242,15 @@ data-source modules under `modules/`: `modules/docker` (integration instances wi
   `apps/server/src/modules/builtin.ts` alone, plus `apps/web/src/ui/lib/icons.ts` if you added
   an icon. Anything more means the
   contract lacks something; say so in review rather than reaching around it.
-- **Kernel imports:** a server half may load anything at runtime except a file under
-  `apps/server/src`, whether by path (symlinks followed) or through `@deck/server`, so a kernel
-  refactor cannot break it. `import type`, `export type` and ambient `declare module` /
-  `declare global` augmentation are fine: they are erased before the code runs. A load the
-  guard cannot read (a non-literal `import()` or `require()`, `createRequire`,
-  `module.require`) counts as a violation. `apps/server/test/module-boundary.test.ts` enforces
-  this; `bun scripts/module-boundary.ts` lists any offender.
+- **Kernel imports:** a server half must not load a file under `apps/server/src` at runtime, so
+  a kernel refactor cannot break it. `apps/server/test/module-boundary.test.ts` rejects static
+  and dynamic imports, re-exports, `require` and the common loader APIs (`createRequire`,
+  `module.require`, `import.meta.require`/`resolve`) that resolve there, by path, through a
+  symlink or through `@deck/server`, and treats a load it cannot read statically as a
+  violation. `import type`, `export type` and ambient `declare module` / `declare global`
+  augmentation are fine: they are erased before the code runs. The guard is a review aid for
+  first-party modules, not a security boundary. `bun scripts/module-boundary.ts` lists any
+  offender.
 
 ## Check it runs
 

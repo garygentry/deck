@@ -51,8 +51,9 @@ dependencies. Then run `pnpm install` at the repository root to link it.
 
 Write the identity and UI contributions as a `WebModuleManifest` in
 `modules/backups/contract.ts`. Both halves import it by path (`../contract.js`). Keep it data:
-it may import types, and other modules' `contract.ts`, but no runtime code
-(`apps/server/test/module-contracts.test.ts` checks):
+it may import types from `@deck/module-sdk` and `@deck/schema`, the kernel's `@deck/contract`
+entries, the module's other root files and other modules' `contract.ts`, and nothing else
+(`apps/server/test/module-contracts.test.ts` checks every file at a module's root):
 
 ```ts
 import type { WebModuleManifest } from "@deck/module-sdk";

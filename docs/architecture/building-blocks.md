@@ -93,10 +93,11 @@ health without any upstream I/O.
 ### Drift projection
 
 The snapshot provider's cached generation feeds drift derivation, a library in its own package
-(`@deck/drift`, `packages/drift`) that the web runs in the browser. The snapshot payload and
-provider envelope types it reads, with the default poll timing, are the wire contract in
-`@deck/contract` (`packages/contract`), which the server and web both import, so the web bundle
-loads no server code.
+(`@deck/drift`, `packages/drift`) that the web runs in the browser. The snapshot payload types
+it reads are the snapshot module's (`modules/snapshot/contract.ts`, types only), and the provider
+envelope types, with the default poll timing, are the kernel's wire contract in `@deck/contract`
+(`packages/contract`), which the server and web both import, so the web bundle loads no server
+code.
 `deriveDriftProjection` takes the observed snapshot and an explicit clock and produces an immutable
 view: drift findings grouped by host then service, coverage rows per host, waiver state judged
 against the clock, and summary counts.

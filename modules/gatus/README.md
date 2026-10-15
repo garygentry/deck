@@ -9,7 +9,7 @@ portal reads for card status. The binding's status vocabulary is
 
 | Path | Holds |
 |---|---|
-| `contract.ts` | `GATUS_STATUS`, the binding's status vocabulary: the manifest's `providerKinds[].status`, and the public entry the portal's web half reads it through (data only, so the web bundle loads it) |
+| `contract.ts` | `GATUS_STATUS_KIND`, the binding's status vocabulary as the UI manifest lists it (kind, module, fixed provider id, status): `server/module.ts` builds its `providerKinds` entry from it, and the portal's `modules/portal/status-kinds.ts` reads it through this public entry. Data only, so the web bundle loads it |
 | `server/` | the server half; `server/module.ts` is what `apps/server/src/modules/builtin.ts` lists, `server/index.ts` is the provider and `server/instance.schema.json` is the integration instance schema |
 
 The module is server-only: it has no config section (so no `schema.json`) and no web half (its

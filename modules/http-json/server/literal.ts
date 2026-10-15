@@ -4,13 +4,26 @@
  * `credentialEnv` instead. Shared by config validation and the request boundary.
  */
 
-/** Words that name a credential wherever they appear as a whole token of a name. */
+/**
+ * Words that name a credential wherever they appear as a whole token of a name, and compounds
+ * that do so when written as one token (`apikey`) or as adjacent tokens (`api_key`, `X-Api-Key`,
+ * `AccessKey`, `Ocp-Apim-Subscription-Key`). Matching is case- and separator-insensitive.
+ */
 const CREDENTIAL_TOKENS: ReadonlySet<string> = new Set([
-  "apikey", "auth", "authorization", "cookie", "credential", "credentials", "passphrase",
-  "passwd", "password", "secret", "session", "sig", "signature", "token",
+  "auth", "authorization", "bearer", "cookie", "credential", "credentials", "jwt", "passphrase",
+  "passwd", "password", "pwd", "secret", "session", "sig", "signature", "token",
+  // Compounds: a key or secret qualified by what it is (a bare `key` only counts alone).
+  "accesskey", "accountkey", "apikey", "appkey", "authkey", "clientkey", "clientsecret",
+  "encryptionkey", "functionskey", "licensekey", "masterkey", "privatekey", "secretkey",
+  "sharedkey", "signingkey", "subscriptionkey",
 ]);
-/** Token pairs that name a credential together (`api_key`, `X-Api-Key`, `accessToken`). */
-const CREDENTIAL_PAIRS: ReadonlySet<string> = new Set(["api key", "access token", "private key", "client secret"]);
+/** Names that are a credential only as the whole name: `key=…` or `pass=…`, not `sort_key` or `pass_through`. */
+const CREDENTIAL_SOLO: ReadonlySet<string> = new Set(["key", "pass"]);
+/**
+ * Endings that mark a single run-together token as a credential (`apitoken`, `authtoken`,
+ * `dbpassword`, `clientsecret`). Not `key`: `monkey`, `hotkey` and `turnkey` are not credentials.
+ */
+const CREDENTIAL_SUFFIXES: readonly string[] = ["token", "secret", "password", "passwd"];
 
 /** A name's tokens: split on `_`, `-`, `.` and whitespace, and at camelCase boundaries; lowercased. */
 function tokens(name: string): string[] {
@@ -22,15 +35,24 @@ function tokens(name: string): string[] {
     .map((token) => token.toLowerCase());
 }
 
+function isCredentialToken(token: string): boolean {
+  return CREDENTIAL_TOKENS.has(token) || CREDENTIAL_SUFFIXES.some((suffix) => token.endsWith(suffix));
+}
+
 /**
- * Whether a header, query parameter or body key name suggests a credential. Whole tokens
- * only, so `author`, `keys`, `sort_key` or `passed` are not credentials, while `api_key`,
- * `X-Api-Key`, `accessToken`, `Authorization` and a bare `key` are.
+ * Whether a header, query parameter or body key name suggests a credential. A name matches when
+ * one of its tokens, or two adjacent tokens joined, is a credential word or compound, or when a
+ * token ends in a credential word. Whole tokens only, so `author`, `keys`, `sort_key`, `passed`,
+ * `passive`, `tokenizer` and `monkey` are not credentials, while `api_key`, `X-Api-Key`,
+ * `accessToken`, `Authorization`, `pwd`, `jwt`, `access_key`, `Ocp-Apim-Subscription-Key` and a
+ * bare `key` or `pass` are.
  */
 export function isCredentialName(name: string): boolean {
   const parts = tokens(name);
-  if (parts.length === 1 && parts[0] === "key") return true;
-  return parts.some((part, index) => CREDENTIAL_TOKENS.has(part) || CREDENTIAL_PAIRS.has(`${part} ${parts[index + 1]}`));
+  if (parts.length === 1 && CREDENTIAL_SOLO.has(parts[0]!)) return true;
+  return parts.some(
+    (part, index) => isCredentialToken(part) || (index + 1 < parts.length && CREDENTIAL_TOKENS.has(part + parts[index + 1])),
+  );
 }
 
 /** Why `url` is not a pollable http(s) URL for the runtime's parser, or null. */

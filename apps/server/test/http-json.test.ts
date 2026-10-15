@@ -747,6 +747,42 @@ describe("the http-json kind in an estate", () => {
     }
   });
 
+  it.each([
+    // Case- and separator-insensitive spellings of the same name.
+    "pwd", "PWD", "passwd", "Password", "db_password", "dbPassword", "dbpassword", "pass",
+    "jwt", "X-JWT", "jwt_token", "bearer", "Bearer-Token",
+    "secret", "api_secret", "apisecret", "client_secret", "clientSecret", "clientsecret",
+    "token", "apitoken", "authtoken", "X-Auth-Token", "x_auth_token", "access_token", "refreshToken", "csrftoken",
+    "auth", "Authorization", "Proxy-Authorization",
+    "apikey", "api_key", "API-KEY", "X-Api-Key", "X_API_KEY", "x.api.key",
+    "access_key", "accessKey", "AccessKey", "accesskey", "access-key", "access.key", "AWS_ACCESS_KEY_ID",
+    "secret_key", "secretKey", "private_key", "privatekey", "PRIVATE-KEY",
+    "Ocp-Apim-Subscription-Key", "ocp_apim_subscription_key", "subscription-key", "subscriptionkey",
+    "app_key", "appKey", "x-functions-key", "account_key", "master_key", "license_key", "signing_key",
+    "Cookie", "Set-Cookie", "session", "sessionId", "X-Session-Token",
+    "sig", "signature", "credential", "credentials", "passphrase", "key", "KEY",
+  ])("treats %s as a credential name", (name) => {
+    expect(isCredentialName(name)).toBe(true);
+  });
+
+  it.each([
+    "author", "Authors", "keys", "key_id", "sort_key", "sortKey", "primary_key", "foreign-key", "keyword",
+    "monkey", "hotkey", "turnkey", "passed", "passive", "passport", "bypass", "pass_through", "compass",
+    "tokenizer", "tokens", "secretary", "sessions", "signal", "pwdx", "jwtish",
+    "Accept", "Content-Type", "X-Client", "client_id", "User-Agent", "X-Request-Id",
+  ])("does not treat %s as a credential name", (name) => {
+    expect(isCredentialName(name)).toBe(false);
+  });
+
+  it.each([
+    ["header", { headers: { "Ocp-Apim-Subscription-Key": "abc" } }, "/integrations/0/headers/Ocp-Apim-Subscription-Key"],
+    ["query", { url: "http://ups.lan/s?access_key=abc" }, "/integrations/0/url"],
+    ["query", { url: "http://ups.lan/s?pwd=abc" }, "/integrations/0/url"],
+    ["body", { method: "POST", body: { jwt: "abc" } }, "/integrations/0/body"],
+  ])("refuses newly covered %s credential names", (_name, extra, path) => {
+    expect(validate([instance(extra)]).findings).toContainEqual(expect.objectContaining({ code: "HTTP_JSON_LITERAL_CREDENTIAL", severity: "error", path }));
+  });
+
   it("refuses a literal credential at the request boundary too, before any request", async () => {
     const byHeader = await failure(new HttpJsonProvider("l", { url: fixture.url("/ok"), headers: { "X-Api-Key": "abc" } }));
     expect(byHeader).toMatchObject({ code: "credential", message: "header X-Api-Key names a credential; credentials come from credentialEnv" });

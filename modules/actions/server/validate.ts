@@ -3,8 +3,8 @@ import type { ValidatableAction } from "../params.js";
 import type { Action } from "./config.generated.js";
 
 /**
- * The governed-actions parameter validator, shared with the web through
- * `@deck/contract/actions`. The route imports it from here.
+ * The governed-actions parameter validator, shared with the web through the module's
+ * `params.ts`. The route imports it from here.
  */
 export {
   validateActionParams,

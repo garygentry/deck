@@ -59,7 +59,7 @@
     { "id": "s-module-sdk", "path": "packages/module-sdk/src/{manifest,server,web,ui,ui-rules,version}.ts, packages/module-sdk/README.md", "type": "api", "note": "The module contract: ModuleManifest (identity, enabledBy, env, config, providerKinds, services, contributes, health, dataDir), the ServerModuleContext services, defineServerModule/defineWebModule, the UI id/slot/path rules and DECK_API_VERSION 0.1.1." },
     { "id": "s-module-host", "path": "apps/server/src/modules/**, apps/server/src/server/boot.ts, scripts/kernel-touch.ts, apps/server/test/kernel-names.test.ts", "type": "api", "note": "Module host: runtime module loading, config composition, planning (enable, order, refuse), init with an injected context, route mounting; BUILTIN_MODULES (19 built-ins); KERNEL_PATHS and the no-feature-names guard." },
     { "id": "s-compose", "path": "packages/schema/src/compose/**", "type": "schema", "note": "composeConfig: the kernel schema plus module sections, per-kind instance schemas, ownership, identity, unique, references and finding codes; deck validate composes the same way." },
-    { "id": "s-ui-manifest", "path": "apps/server/src/ui/**, packages/contract/src/modules/**, apps/server/test/golden/ui/**", "type": "api", "note": "UI manifest resolution (GET /api/ui): extension tree, ui config overrides, config pages, widget types, status maps, hot reload (live.ts), sidecar pages; built-ins' shared UI contributions and the core slots and widget types." },
+    { "id": "s-ui-manifest", "path": "apps/server/src/ui/**, packages/contract/src/core.ts, packages/contract/src/widgets.ts, modules/*/contract.ts, apps/server/test/golden/ui/**", "type": "api", "note": "UI manifest resolution (GET /api/ui): extension tree, ui config overrides, config pages, widget types, status maps, hot reload (live.ts), sidecar pages; built-ins' shared UI contributions and the core slots and widget types." },
     { "id": "s-web-modules", "path": "apps/web/src/{registry,runtime,sdk,data}/**, apps/web/src/shell/config-page/**, apps/web/src/features/core-widgets/**", "type": "entrypoint", "note": "Web half registration (registerWebModule), runtime web halves over the import map, @deck/sdk, the TanStack Query data layer, config pages and the core widget renderers." },
     { "id": "s-extension-examples", "path": "examples/modules/**, examples/sidecars/**, examples/dashboard/**, packages/sdk/**", "type": "config", "note": "The runtime module template (hello) and example (maintenance), the NUT UPS sidecar, the no-code dashboard overlay, and the @deck/sdk build-time package (types, Tailwind preset, deck-module lint)." },
     { "id": "s-remote", "path": "modules/remote/server/**, packages/schema/schema/remote-describe.schema.json", "type": "api", "note": "The remote provider protocol v1: data and describe endpoints, describe validation (widget allowlist, bounds, link and markdown policy), sidecar pages and findings." },
@@ -585,7 +585,7 @@
         { "heading": "Hide or move what modules add", "intent": "ui.extensions overrides, replace semantics and their pitfalls.", "sourceRefs": ["s-ui-manifest"] },
         { "heading": "Apply and check", "intent": "deck validate, hot reload, reload findings, troubleshooting.", "sourceRefs": ["s-ui-manifest", "s-cli"] }
       ],
-      "verification": "Built-in ids taken from packages/contract/src/modules/*.ts; examples run against a dev server and checked in GET /api/ui and the browser."
+      "verification": "Built-in ids taken from modules/*/contract.ts; examples run against a dev server and checked in GET /api/ui and the browser."
     },
     {
       "id": "h11",
@@ -669,7 +669,7 @@
       "sourceRefs": ["s-ui-manifest", "s-web-modules", "s-remote"],
       "status": "drafted",
       "priority": 2,
-      "verification": "Moved from the estate config reference's ui section; options checked against packages/contract/src/modules/widgets.ts and the sidecar allowlist against the remote reference."
+      "verification": "Moved from the estate config reference's ui section; options checked against packages/contract/src/widgets.ts and the sidecar allowlist against the remote reference."
     },
     {
       "id": "e4",

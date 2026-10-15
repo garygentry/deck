@@ -45,7 +45,7 @@ An unknown source id, or one of a kind no running module serves, yields `404` `S
 
 ## Web UI
 
-The sources module's manifest declares the UI as data, in `@deck/contract/modules/sources` (`SOURCES_UI`), which the server manifest spreads in. It contributes two pages, listed in the `knowledge` nav group, and an owned-configs `entity-section` on each detail page:
+The sources module's manifest declares the UI as data, in `modules/sources/contract.ts` (`SOURCES_UI`), which the server manifest spreads in. It contributes two pages, listed in the `knowledge` nav group, and an owned-configs `entity-section` on each detail page:
 
 - `/docs` (nav label "Docs") — the `markdown-tree` browser: a tree view, rendered Markdown with a table of contents and syntax highlighting, and search.
 - `/configs` (nav label "Configs") — the `file-tree` browser: verbatim file viewing with a notice that content is shown exactly as stored, no redaction.

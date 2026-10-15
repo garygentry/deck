@@ -185,12 +185,13 @@ degraded.
 | Path | Holds |
 |---|---|
 | `schema.json` | its `modules.<id>` config section schema, if it has one |
+| `contract.ts` | the data both halves share, if it has any: its UI contributions (the data half of its manifest), a data source's status vocabulary. Data only, so the web bundle loads it |
 | `server/` | its server half; `server/module.ts` exports the module the server's static built-in list (`apps/server/src/modules/builtin.ts`) imports |
 | `web/` | its web half; `web/index.ts` registers it, and the web app discovers every `modules/*/web/index.ts` |
 | `test/server/`, `test/web/` | its unit tests, run by the host app's test suite (`apps/server`, `apps/web`) |
 
-There is no `module.json`: a built-in's manifest is TypeScript (the data half in
-`@deck/contract/modules/<id>`, which the web loads too, spread into `server/module.ts`). Only a
+There is no `module.json`: a built-in's manifest is TypeScript (the data half in its
+`contract.ts`, which the web loads too, spread into `server/module.ts`). Only a
 runtime module ships its manifest as JSON (`deck-module.json`). The package declares its own
 dependencies, at the host apps' ranges, except the packages that must be one instance across the
 app (React, react-dom, react-query, vitest): those are peer dependencies, with dev dependencies for
@@ -199,8 +200,8 @@ typecheck or test script of its own, because both halves compile inside their ho
 half may import the app's `@/` modules, which runtime modules reach through `@deck/sdk` instead).
 The host apps' source guards (the UI guardrails, server-type imports, the select-engine graph, the
 icon scan, the DECK_* env scan) cover module halves too. A module reaches another module's code
-only through that module's public entry, `web/public.ts` or `server/public.ts`, which exports
-exactly what other modules may use, and declares the edge in its `package.json` (a dependency on
+only through that module's public entry, `web/public.ts`, `server/public.ts` or `contract.ts`,
+which exports exactly what other modules may use, and declares the edge in its `package.json` (a dependency on
 `@deck/module-<id>`), plus `dependsOn` when it cannot run without the other module;
 `apps/server/test/module-imports.test.ts` holds every cross-module import to both. Tests that drive the module through the
 kernel (the module host, the app, the config pipeline) stay in the host app's `test/`. Every

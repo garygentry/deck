@@ -6,7 +6,7 @@
  * component takes NO props. Composes the five presentational components
  * (ActionList, ParamForm, ConfirmStep, RunOutput, AuditHistory) with the
  * singleton run store (via `useRun`) and the shared `validateActionParams`.
- * Every type resolves from `@deck/server`, `@deck/contract/actions` and the feature's own modules — never
+ * Every type resolves from `@deck/server`, the module's `params.ts` and the feature's own modules — never
  * `@deck/schema`.
  */
 

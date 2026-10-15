@@ -25,6 +25,7 @@ modules/backups/
   package.json       # @deck/module-backups: its own dependencies, no build or test script
   README.md          # what it does, and where its operator docs are
   schema.json        # the modules.backups section's JSON Schema
+  contract.ts        # the UI part of its manifest, shared by both halves
   server/
     module.ts        # the server half: defineServerModule(manifest, init, …)
     config.generated.ts
@@ -37,7 +38,7 @@ modules/backups/
     web/             # run by @deck/web's test suite
 ```
 
-The UI part of its manifest is data in `packages/contract/src/modules/backups.ts`, so the
+The UI part of its manifest is data in `contract.ts`, so the
 browser bundle can read it without loading server code. A built-in has no `module.json`: its
 manifest is TypeScript.
 
@@ -49,8 +50,9 @@ dependencies. Then run `pnpm install` at the repository root to link it.
 ## Declare what it adds to the UI
 
 Write the identity and UI contributions as a `WebModuleManifest` in
-`packages/contract/src/modules/backups.ts`. The contract package exports every file there as
-`@deck/contract/modules/<name>`, so both halves can import it:
+`modules/backups/contract.ts`. Both halves import it by path (`../contract.js`). Keep it data:
+it may import types, and other modules' `contract.ts`, but no runtime code
+(`apps/server/test/module-contracts.test.ts` checks):
 
 ```ts
 import type { WebModuleManifest } from "@deck/module-sdk";
@@ -86,7 +88,7 @@ Every key is in the [module manifest reference](../reference/module-manifest.md)
 section, env vars, routes), and gives the `init` that runs once at boot:
 
 ```ts
-import { BACKUPS_UI } from "@deck/contract/modules/backups";
+import { BACKUPS_UI } from "../contract.js";
 import { defineServerModule, type JsonSchema, type ModuleManifest } from "@deck/module-sdk";
 
 import type { Backups } from "./config.generated.js";
@@ -176,7 +178,7 @@ an invalid section is caught before deploy.
 app discovers every `modules/*/web/index.ts`:
 
 ```ts
-import { BACKUPS_UI } from "@deck/contract/modules/backups";
+import { BACKUPS_UI } from "../contract.js";
 import { defineWebModule } from "@deck/module-sdk";
 
 import { registerWebModule } from "@/registry/web-module.js";
@@ -252,8 +254,8 @@ data-source modules under `modules/`: `modules/docker` (integration instances wi
   first-party modules, not a security boundary. `bun scripts/module-boundary.ts` lists any
   offender.
 - **Other modules' code:** a built-in may import another built-in only through its public
-  entry, `web/public.ts` or `server/public.ts`, which exports exactly what other modules may
-  use, and declares the edge as a dependency on `@deck/module-<id>` in its `package.json` (add
+  entry, `web/public.ts`, `server/public.ts` or `contract.ts`, which exports exactly what other
+  modules may use, and declares the edge as a dependency on `@deck/module-<id>` in its `package.json` (add
   the id to `dependsOn` too when your module cannot run without the other).
   `apps/server/test/module-imports.test.ts` checks every cross-module import, type-only ones,
   globs, `vi.mock`, path aliases and the shared test helpers your tests import included, and

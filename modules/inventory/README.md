@@ -11,13 +11,14 @@ file another module may import.
 
 | Path | Holds |
 |---|---|
+| `contract.ts` | the data half of its manifest (pages, nav entries), which `server/module.ts` spreads in and `web/index.ts` registers against; data only, so the web bundle loads it too |
 | `server/` | the server half; `server/module.ts` is what `apps/server/src/modules/builtin.ts` lists |
 | `web/` | the web half; `web/index.ts` registers it, discovered by `apps/web/src/registry/discover.ts` |
 | `test/server/`, `test/web/` | unit tests, run by `@deck/server` and `@deck/web`'s test suites |
 
 There is no `schema.json` (inventory has no `modules.inventory` section) and no `module.json`: a
 built-in's manifest is TypeScript. Its data half (pages, nav entries) is
-`@deck/contract/modules/inventory`, which the web loads too, and `server/module.ts` spreads it into
+`contract.ts`, which the web loads too, and `server/module.ts` spreads it into
 the server manifest, adding `dependsOn: ["snapshot"]`. There is no build or test script here:
 each half compiles and is tested inside its host app. React, react-dom and vitest are peer
 dependencies, and react-query a shared one, each with a dev dependency for the tests: the app and

@@ -144,12 +144,12 @@ and [ADR-006](../architecture/decisions/adr-006-config-driven-ui.md).
 
 | Module | Where it lives | How deck finds it |
 | --- | --- | --- |
-| A built-in | `modules/<id>/`: `schema.json`, `server/`, `web/`, `test/server/`, `test/web/` | `apps/server/src/modules/builtin.ts` imports `server/module.ts`; the web app discovers every `modules/*/web/index.ts` |
+| A built-in | `modules/<id>/`: `schema.json`, `contract.ts`, `server/`, `web/`, `test/server/`, `test/web/` | `apps/server/src/modules/builtin.ts` imports `server/module.ts`; the web app discovers every `modules/*/web/index.ts` |
 | A runtime module | `$DECK_MODULES_DIR/<id>/`: `deck-module.json`, an optional server entry, `web.js`, `web.css` | Read at boot; its code is imported only while `DECK_MODULES_ENABLED` is on |
 | A sidecar | Anywhere on deck's network | A `remote` entry in `integrations[]` |
 
 A built-in's manifest is TypeScript, not a `module.json`. The part of it the browser needs
-(pages, nav entries, extensions) lives in `@deck/contract/modules/<id>`, so the web bundle never
+(pages, nav entries, extensions) lives in its `contract.ts`, so the web bundle never
 loads server code. A runtime module ships its whole manifest as `deck-module.json`.
 
 ## Choosing how to extend deck

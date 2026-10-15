@@ -187,7 +187,7 @@ config can address an extension by id.
 | `entity:host/sections`, `entity:service/sections` (entity-section) | `registry.ts` (core) | a manifest `entity-section` extension | host and service detail pages |
 
 The registry declares every core slot when it loads, from the list the server's UI manifest
-gives core (`SHELL_SLOTS` in `@deck/contract/modules/core`), so nothing has to load before a
+gives core (`SHELL_SLOTS` in `@deck/contract/core`), so nothing has to load before a
 feature that attaches to one. The shell's slot modules only hand out typed handles
 (`HealthHeaderSlot` types the status pills' payload).
 
@@ -196,11 +196,11 @@ feature that attaches to one. The shell's slot modules only hand out typed handl
 A module's UI contributions are data in its manifest: each page's path, title and icon, each
 nav entry's group, each extension's slot, order and config, and the name of the component that
 renders it. For a built-in module the server's manifest spreads that part in from
-`@deck/contract/modules/<id>`, a data-only module the browser bundle can load (the web never
-loads server code). The feature's `index.ts` pairs it with a component table and registers it:
+the module's `contract.ts`, a data-only file the browser bundle can load (the web never
+loads server code). The web half's `index.ts` pairs it with a component table and registers it:
 
 ```ts
-import { LLM_USAGE_UI } from "@deck/contract/modules/llm-usage";
+import { LLM_USAGE_UI } from "../contract.js";
 import { defineWebModule } from "@deck/module-sdk";
 import { registerWebModule } from "@/registry/web-module.js";
 
@@ -234,7 +234,7 @@ nav (the manifest's sidebar, and the fallback nav as the page's `navOrder`), nev
 
 Moving a feature onto it:
 1. Move the module's `id`, `version`, `deckApi` and `contributes` to
-   `packages/contract/src/modules/<id>.ts`, and spread it into the server manifest.
+   the module's `contract.ts` (`modules/<id>/contract.ts`), and spread it into the server manifest.
 2. Replace the feature's `register*` calls with one `registerWebModule` per module it serves,
    and delete the placement constants (paths, slots, orders, group headings) from the web.
    Check the component table with `satisfies` against each slot's component contract (a pill
@@ -395,7 +395,7 @@ source), `options` (already checked against the type's options schema at boot), 
 the placed `widget`. A module declares its types in `contributes.widgetTypes` (`type`,
 `optionsSchema`, `component`, optionally the provider `sources` it renders) and puts the
 components in its table; `registerWebModule` registers them (`registerWidgetType`). Deck's own
-types are `CORE_WIDGET_TYPES` in `@deck/contract/modules/core`, registered by
+types are `CORE_WIDGET_TYPES` in `@deck/contract/core`, registered by
 `features/core-widgets`: `core/stat`, `stat-grid`, `meter`, `key-value`, `list`, `table`,
 `status-grid`, `link-tiles`, `markdown`, `embed`, `health-pills` and `json`. Their option schemas are
 data in two copies that a test keeps equal: the contract's (`modules/widgets.ts`, so the browser
@@ -460,8 +460,8 @@ checks its `up` conditions, so a new data source drives cards with no portal cod
 (`useProviders`): its shown groups, hidden services and hosts left out. It is loading only until
 the config and the manifest first settle; a provider still being read leaves its own cards
 "Checking" (`pending`), and ids added later never bring the skeleton back. It falls back
-to the built-in kinds' declarations (`@deck/contract/modules/data-sources`) when the manifest
-cannot be read.
+to the built-in kinds' declarations (`BUILTIN_STATUS_KINDS` in `modules/portal/status-kinds.ts`,
+built from each data source's `contract.ts`) when the manifest cannot be read.
 
 ### Runtime modules' web halves
 

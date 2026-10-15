@@ -13,7 +13,7 @@ Where the manifest lives:
 - **A built-in module** writes it in TypeScript and exports it from its server half
   (`defineServerModule(manifest, init, …)`). The part the browser needs, its identity and
   `contributes` without `routes` (`WebModuleManifest`), lives in
-  `packages/contract/src/modules/<id>.ts`, which the server manifest spreads in and the web
+  `modules/<id>/contract.ts`, which the server manifest spreads in and the web
   half registers. A built-in has no `module.json`.
 - **A runtime module** ships it as `deck-module.json` in its directory under
   `DECK_MODULES_DIR`. The file is at most 64 KiB and nested at most 32 levels, and its `id`
@@ -209,7 +209,7 @@ The [widget types reference](widget-types.md) lists the types deck and its built
 ## Example
 
 The built-in `llm-usage` module's manifest, the UI part from
-`packages/contract/src/modules/llm-usage.ts` spread into the server's:
+`modules/llm-usage/contract.ts` spread into the server's:
 
 ```ts
 export const LLM_USAGE_UI: WebModuleManifest = {

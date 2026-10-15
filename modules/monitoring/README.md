@@ -7,12 +7,13 @@ manifest.
 
 | Path | Holds |
 |---|---|
+| `contract.ts` | the data half of its manifest (page and pills), which `server/module.ts` spreads in and `web/index.ts` registers against; data only, so the web bundle loads it too |
 | `server/` | the server half; `server/module.ts` is what `apps/server/src/modules/builtin.ts` lists |
 | `web/` | the web half; `web/index.ts` registers it, discovered by `apps/web/src/registry/discover.ts` |
 | `test/web/` | unit tests, run by `@deck/web`'s test suite |
 
 There is no `module.json`: a built-in's manifest is TypeScript. Its data half (page and pills) is
-`@deck/contract/modules/monitoring`, which the web loads too, and `server/module.ts` spreads it
+`contract.ts`, which the web loads too, and `server/module.ts` spreads it
 into the server manifest. There is no build or test script here: each half compiles and is tested
 inside its host app. React and vitest are peer dependencies (with dev dependencies for the tests):
 the app and its modules share one instance of each. Tests that drive the module through the

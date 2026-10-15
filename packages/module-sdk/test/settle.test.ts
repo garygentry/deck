@@ -38,18 +38,15 @@ describe("settlesWithin", () => {
   });
 
   it("unrefs its timer so a pending wait never keeps the process alive", async () => {
-    const unref = vi.fn();
-    const realSetTimeout = globalThis.setTimeout;
-    const spy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number) => {
-      const timer = realSetTimeout(fn, ms);
-      const realUnref = (timer as { unref?: () => unknown }).unref?.bind(timer);
-      return Object.assign(timer, { unref: () => (unref(), realUnref?.()) });
-    }) as typeof setTimeout);
+    const timer = { unref: vi.fn() };
+    vi.spyOn(globalThis, "setTimeout").mockReturnValue(timer as unknown as ReturnType<typeof setTimeout>);
+    const cleared = vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => {});
     try {
-      await settlesWithin(Promise.resolve(), 1_000);
-      expect(unref).toHaveBeenCalledTimes(1);
+      await expect(settlesWithin(Promise.resolve(), 1_000)).resolves.toBe(true);
+      expect(timer.unref).toHaveBeenCalledTimes(1);
+      expect(cleared).toHaveBeenCalledWith(timer);
     } finally {
-      spy.mockRestore();
+      vi.restoreAllMocks();
     }
   });
 });

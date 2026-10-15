@@ -6,6 +6,7 @@
   "type": "module",
   "dependencies": {
     "@deck/contract": "workspace:*",
+    "@deck/module-http-json": "workspace:*",
     "@deck/module-sdk": "workspace:*",
     "@deck/schema": "workspace:*",
     "markdown-it": "^14.3.2"

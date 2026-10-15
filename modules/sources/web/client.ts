@@ -17,16 +17,12 @@
  */
 
 import type { ProviderEnvelope } from "@deck/contract";
-import type { DeckConfig } from "@deck/server";
+import type { DeckConfigDocument as DeckConfig } from "@deck/schema";
 import type { FileReadResult, SourceManifest, SourceSearchResult } from "../server/types.js";
 
 import { setFile, setManifest, setSearch } from "./sources-store.js";
 
-/**
- * One declared source (`DeckConfig.sources[]`). `Source` is not re-exported by the `@deck/server`
- * contract barrel, so it is derived from `DeckConfig` here rather than imported from
- * `@deck/schema` (which the web half never imports).
- */
+/** One declared source (`DeckConfig.sources[]`), derived from the config document type. */
 export type Source = NonNullable<DeckConfig["sources"]>[number];
 
 /**

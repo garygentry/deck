@@ -16,7 +16,7 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import type { ProviderEnvelope } from "@deck/contract";
-import type { DeckConfig } from "@deck/server";
+import type { DeckConfigDocument as DeckConfig } from "@deck/schema";
 import type { SourceManifest, SourceTreeNode } from "../server/types.js";
 import { useConfig } from "@/data";
 import { EmptyState, ErrorState, FreshnessBadge, List, ListItem, LoadingState } from "@/ui";

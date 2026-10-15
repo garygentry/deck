@@ -9,8 +9,10 @@ import { defineServerModule, type ModuleManifest } from "@deck/module-sdk";
 export const DRIFT_MANIFEST: ModuleManifest = {
   // Identity and UI contributions are shared with the web half.
   ...DRIFT_UI,
-  // Drift is derived from the snapshot provider: without the snapshot module there is nothing to show.
-  dependsOn: ["snapshot"],
+  // Drift is derived from the snapshot provider: without the snapshot module there is nothing to
+  // show. Its web half reads that snapshot through the inventory module's store and resolves
+  // entity links through inventory's model (`modules/inventory/web/public.ts`).
+  dependsOn: ["snapshot", "inventory"],
 };
 
 export const driftModule = defineServerModule(DRIFT_MANIFEST, () => {});

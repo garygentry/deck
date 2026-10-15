@@ -2,7 +2,7 @@ import type { ObservedService, Service } from "@deck/schema";
 import type { JSX, ReactNode } from "react";
 import { PageHeader, SafeRouteLink } from "@/ui";
 import { useRoute } from "@/shell/router";
-import { EntitySections } from "../components/EntitySections.js";
+import { EntitySections } from "@/shell/EntitySections.js";
 import { SERVICE_STATE_UI, SERVICE_STATUS_UI, renderMarker } from "../components/HostStateChip.js";
 import { InventoryNotFound } from "../components/InventoryNotFound.js";
 import { SnapshotStatus } from "../components/SnapshotStatus.js";

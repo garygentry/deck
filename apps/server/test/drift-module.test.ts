@@ -17,7 +17,7 @@ describe("drift module", () => {
   });
 
   it("keeps its server-only fields out of the shared copy", () => {
-    expect(DRIFT_MANIFEST.dependsOn).toEqual(["snapshot"]);
+    expect(DRIFT_MANIFEST.dependsOn).toEqual(["snapshot", "inventory"]);
     expect(serverOnlyFields(DRIFT_UI)).toEqual([]);
   });
 });

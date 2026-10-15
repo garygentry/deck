@@ -4,8 +4,8 @@ import {
   findService,
   hostHref,
   serviceHref,
-} from "../../inventory/web/model.js";
-import type { InventoryModel } from "../../inventory/web/model.js";
+} from "../../inventory/web/public.js";
+import type { InventoryModel } from "../../inventory/web/public.js";
 import type { DriftGenerationState } from "./store.js";
 
 // Helpers shared by the drift page, the entity fragments and the header summary,

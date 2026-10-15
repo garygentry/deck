@@ -170,7 +170,8 @@ section (its schema, layer ownership, group-id rules and service references). Th
 exposition is the built-in `metrics` module: it owns `DECK_METRICS_ENABLED`, declares `/metrics`
 as a root path, and reads the provider registry's poll statistics through its module context.
 A built-in declares `dependsOn` on a module whose provider or service it consumes and cannot do
-without: drift and inventory depend on `snapshot`. A module that only enriches its view when
+without, or whose code it imports: drift and inventory depend on `snapshot`, and drift on
+`inventory`, whose web store and model it reads. A module that only enriches its view when
 another is present (the portal's card status from any kind that declares `status`, monitoring's integration
 cards) does not, so switching that source off leaves it running. The dependant is ordered after
 its dependencies, and is dropped (MODULE_DEPENDENCY_MISSING) when one is refused at planning:
@@ -197,7 +198,11 @@ its tests, and a unit test holds each to the host's copy. It has no entry points
 typecheck or test script of its own, because both halves compile inside their host app (the web
 half may import the app's `@/` modules, which runtime modules reach through `@deck/sdk` instead).
 The host apps' source guards (the UI guardrails, server-type imports, the select-engine graph, the
-icon scan, the DECK_* env scan) cover module halves too. Tests that drive the module through the
+icon scan, the DECK_* env scan) cover module halves too. A module reaches another module's code
+only through that module's public entry, `web/public.ts` or `server/public.ts`, which exports
+exactly what other modules may use, and declares the edge in its `package.json` (a dependency on
+`@deck/module-<id>`), plus `dependsOn` when it cannot run without the other module;
+`apps/server/test/module-imports.test.ts` holds every cross-module import to both. Tests that drive the module through the
 kernel (the module host, the app, the config pipeline) stay in the host app's `test/`. Every
 built-in is co-located; `apps/server/src/providers` holds only the registry and the provider
 wiring.

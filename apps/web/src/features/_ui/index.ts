@@ -15,3 +15,16 @@ if (import.meta.env.DEV) {
     nav: false,
   });
 }
+
+// The overlay lab (every overlay behind a trigger) is for development too, and for the
+// Content-Security-Policy E2E, which builds the shell with VITE_DECK_OVERLAY_LAB=true to open
+// every overlay under the policy. A release build sets no such variable, so it is dropped there.
+if (import.meta.env.DEV || import.meta.env.VITE_DECK_OVERLAY_LAB === "true") {
+  registerPage({
+    id: "page:ui-workbench/overlays",
+    path: "/_ui/overlays",
+    label: "Overlay lab",
+    component: lazy(() => import("./OverlayLab.js").then((m) => ({ default: m.OverlayLab }))),
+    nav: false,
+  });
+}

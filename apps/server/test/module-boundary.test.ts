@@ -85,7 +85,7 @@ describe("runtimeImports", () => {
       "const made = createRequire(import.meta.url);",
     ].join("\n");
     const unverifiable = runtimeImports(source).filter((i) => i.specifier === null).map((i) => i.use);
-    expect(unverifiable).toEqual(["createRequire", "import()", "require()", "module.require()", "createRequire"]);
+    expect(unverifiable).toEqual(["createRequire", "import()", "require()", ".require", "createRequire"]);
     // An aliased import is caught at the import, since the call names only the alias.
     expect(runtimeImports('import { createRequire as cr } from "module";\nconst r = cr(import.meta.url);\n')).toContainEqual({
       specifier: null,
@@ -163,13 +163,86 @@ describe("module server halves never load kernel internals at runtime", () => {
     expect(found.map((v) => `${v.file} ${v.use}`)).toEqual([
       "modules/bad/server/create-require.ts createRequire",
       "modules/bad/server/create-require.ts createRequire",
-      "modules/bad/server/module-require.cjs module.require()",
+      "modules/bad/server/module-require.cjs .require",
       "modules/bad/server/template.ts import()",
       "modules/bad/server/variable.ts require()",
     ]);
     // An unverifiable load can never be allowlisted.
     const entry = { file: "modules/bad/server/variable.ts", specifier: UNVERIFIABLE, uses: ["require()"], reason: "x" };
     expect(checkModuleBoundary(repo, [entry]).violations).toHaveLength(5);
+  });
+
+  const K = "../../../apps/server/src/log/logger.js";
+  // One fixture per loader form the guard cannot follow; each must be reported, unverifiable.
+  const LOADER_FORMS: [string, string, string][] = [
+    ["require as a value", "form.ts", `const r = require;\nexport const x = r("${K}");\n`],
+    ["comma-call require", "form.ts", `export const x = (0, require)("${K}");\n`],
+    ["require.call", "form.ts", `export const x = require.call(null, "${K}");\n`],
+    ["require.resolve", "form.ts", `export const x = require.resolve("${K}");\n`],
+    ["globalThis.require", "form.ts", `export const x = globalThis.require("${K}");\n`],
+    ["import.meta.require", "form.ts", `export const x = import.meta.require("${K}");\n`],
+    ["import.meta.resolve", "form.ts", `export const x = import.meta.resolve("${K}");\n`],
+    ["import.meta.resolveSync", "form.ts", `export const x = import.meta.resolveSync("${K}");\n`],
+    ["module.require", "form.cjs", `module.exports = module.require("${K}");\n`],
+    ['module["require"]', "form.cjs", `module.exports = module["require"]("${K}");\n`],
+    ["computed module access", "form.cjs", `const k = "req" + "uire";\nmodule.exports = module[k]("${K}");\n`],
+    ["computed import.meta access", "form.ts", `const k = "require";\nexport const x = (import.meta as any)[k]("${K}");\n`],
+    ["Module.createRequire", "form.ts", `import Module from "node:module";\nexport const r = Module.createRequire(import.meta.url);\n`],
+    ['Module["createRequire"]', "form.ts", `import Module from "node:module";\nexport const r = Module["createRequire"](import.meta.url);\n`],
+    ["computed node:module access", "form.ts", `import * as M from "module";\nconst k = "create" + "Require";\nexport const r = (M as any)[k](import.meta.url);\n`],
+    ["destructured createRequire", "form.ts", `import Module from "node:module";\nconst { createRequire: mk } = Module;\nexport const r = mk(import.meta.url);\n`],
+    ["createRequire imported under an alias", "form.ts", `import { createRequire as mk } from "node:module";\nexport const r = mk(import.meta.url);\n`],
+    ["createRequire re-exported under an alias", "form.ts", `export { createRequire as mk } from "node:module";\n`],
+    ["node:module re-exported wholesale", "form.ts", `export * from "node:module";\n`],
+    ["createRequire re-exported locally", "form.ts", `import Module from "node:module";\nconst createRequire = Module.createRequire;\nexport { createRequire };\n`],
+  ];
+
+  it.each(LOADER_FORMS)("reports %s as unverifiable", (_, name, text) => {
+    const repo = fixtureRepo({ [`modules/bad/server/${name}`]: text });
+    const found = moduleBoundaryViolations(repo);
+    expect(found.length).toBeGreaterThan(0);
+    expect(found.some((v) => v.specifier === UNVERIFIABLE)).toBe(true);
+    expect(checkModuleBoundary(repo, []).violations.length).toBe(found.length);
+  });
+
+  it("leaves ordinary members named like loaders' neighbours alone", () => {
+    const source = [
+      "export const meta = import.meta.url;",
+      'export const exp = module["exports"];',
+      "export const cfg = { require: true, resolve: 1 };",
+      "export class C { require() {} }",
+      "type R = typeof require;",
+      'export const ok = require("./local.js");',
+    ].join("\n");
+    expect(runtimeImports(source).filter((i) => i.specifier === null)).toEqual([]);
+  });
+
+  it("reports a file symlinked into the kernel, whatever specifier names it", () => {
+    const repo = fixtureRepo({
+      "modules/bad/server/index.ts": 'import { logger } from "./k.js";\nexport { logger };\n',
+    });
+    symlinkSync(join(repo, "apps/server/src/log/logger.ts"), join(repo, "modules/bad/server/k.ts"));
+    expect(moduleBoundaryViolations(repo)).toEqual([
+      { file: "modules/bad/server/k.ts", specifier: "apps/server/src/log/logger.ts", use: "symlink" },
+    ]);
+  });
+
+  it("reports a directory symlinked into the kernel and does not scan through it", () => {
+    const repo = fixtureRepo({ "modules/bad/server/index.ts": 'export { logger } from "./kernel/logger.js";\n' });
+    symlinkSync(join(repo, "apps/server/src/log"), join(repo, "modules/bad/server/kernel"), "dir");
+    expect(moduleBoundaryViolations(repo)).toEqual([
+      { file: "modules/bad/server/kernel", specifier: "apps/server/src/log", use: "symlink" },
+      { file: "modules/bad/server/index.ts", specifier: "./kernel/logger.js", use: "export { logger }" },
+    ]);
+  });
+
+  it("ignores a symlink that points elsewhere", () => {
+    const repo = fixtureRepo({
+      "modules/good/shared/util.ts": "export const u = 1;\n",
+      "modules/good/server/index.ts": 'export { u } from "./util.js";\n',
+    });
+    symlinkSync(join(repo, "modules/good/shared/util.ts"), join(repo, "modules/good/server/util.ts"));
+    expect(moduleBoundaryViolations(repo)).toEqual([]);
   });
 
   it("follows a symlinked path into the kernel", () => {

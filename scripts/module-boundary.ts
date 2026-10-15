@@ -3,16 +3,21 @@
 //
 // A module's server half (modules/<id>/server/**) builds on @deck/module-sdk and the wire
 // contract. Loading a file under apps/server/src at runtime ties the module to the kernel's
-// private layout, so a kernel refactor breaks it. Type-only imports are erased before the code
-// runs, so `import type`, `export type`, imports whose every specifier is `type`, `typeof
-// import(...)` and ambient `declare module "…"` / `declare global` augmentation stay allowed.
-// A load the guard cannot check (a non-literal `import()` or `require()`, `createRequire`,
-// `module.require`) fails closed: it is reported as unverifiable.
+// private layout, so a kernel refactor breaks it.
+//
+// The guard rejects static and dynamic imports, re-exports, `require` and the common loader
+// APIs (`createRequire`, `module.require`, `import.meta.require`/`resolve`) that resolve into
+// apps/server/src by path, through a symlink or through @deck/server, and treats a load it
+// cannot read statically as a violation. Type-only imports and ambient `declare module "…"` /
+// `declare global` augmentation are erased before the code runs, so they stay allowed.
+//
+// It is a review aid that keeps first-party modules honest, not a security boundary: code set
+// on reaching the kernel (eval, `new Function`, `process.binding`, …) can, and is out of scope.
 //
 // Usage:
 //   bun scripts/module-boundary.ts          # prints each violation; exits 1 when there are any
 
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
 import ts from "typescript";
@@ -89,11 +94,18 @@ const SOURCE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs",
  * The loads `source` makes at runtime: static imports and re-exports that are not type-only,
  * `import x = require(...)`, `import(...)` and `require(...)`. Ambient `declare module "…"` and
  * `declare global` blocks are augmentation, never loaded; an executable `namespace` body runs,
- * so it is scanned. A load whose target cannot be read statically has a null specifier.
+ * so it is scanned. A load whose target cannot be read statically has a null specifier: a
+ * non-literal `import()`/`require()`, `require` used other than as a direct call, `createRequire`
+ * by name (imported, re-exported, destructured), any `.require`/`.createRequire` member (dot or
+ * string-literal bracket), `import.meta.require`/`resolve`/`resolveSync`, and computed access on
+ * `module`, `import.meta` or a node:module namespace.
  */
 export function runtimeImports(source: string, fileName = "module.ts"): RuntimeImport[] {
   const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, scriptKind(fileName));
   const found: RuntimeImport[] = [];
+  const unverifiable = (use: string): void => void found.push({ specifier: null, use });
+  // Local names bound to the node:module namespace, plus the CommonJS `module` object.
+  const loaderObjects = new Set(["module", ...nodeModuleBindings(file)]);
 
   const visit = (node: ts.Node): void => {
     if (ts.isModuleDeclaration(node) && isAmbientAugmentation(node)) return;
@@ -105,8 +117,7 @@ export function runtimeImports(source: string, fileName = "module.ts"): RuntimeI
       const bindings = node.importClause?.namedBindings;
       if (!node.importClause?.isTypeOnly && bindings && ts.isNamedImports(bindings)) {
         for (const element of bindings.elements) {
-          const imported = (element.propertyName ?? element.name).text;
-          if (imported === "createRequire" && !element.isTypeOnly) found.push({ specifier: null, use: "createRequire" });
+          if (!element.isTypeOnly && isLoaderName((element.propertyName ?? element.name).text)) unverifiable("createRequire");
         }
       }
       return;
@@ -114,6 +125,16 @@ export function runtimeImports(source: string, fileName = "module.ts"): RuntimeI
     if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
       const use = exportUse(node);
       if (use !== null) found.push({ specifier: node.moduleSpecifier.text, use });
+      // `export { createRequire as mk } from "node:module"` (or `export *` of it) hands another
+      // file a require under a name this guard does not know.
+      const clause = node.exportClause;
+      if (!node.isTypeOnly && clause && ts.isNamedExports(clause)) {
+        for (const element of clause.elements) {
+          if (!element.isTypeOnly && isLoaderName((element.propertyName ?? element.name).text)) unverifiable("createRequire");
+        }
+      } else if (!node.isTypeOnly && isNodeModule(node.moduleSpecifier.text)) {
+        unverifiable("createRequire");
+      }
       return;
     }
     if (ts.isImportEqualsDeclaration(node) && !node.isTypeOnly && ts.isExternalModuleReference(node.moduleReference)) {
@@ -124,20 +145,113 @@ export function runtimeImports(source: string, fileName = "module.ts"): RuntimeI
     if (ts.isCallExpression(node)) {
       const callee = node.expression;
       const [first] = node.arguments;
-      const literal = first && ts.isStringLiteralLike(first) ? first.text : null;
+      const literal = node.arguments.length === 1 && first && ts.isStringLiteralLike(first) ? first.text : null;
       if (callee.kind === ts.SyntaxKind.ImportKeyword) found.push({ specifier: literal, use: "import()" });
       else if (ts.isIdentifier(callee) && callee.text === "require") found.push({ specifier: literal, use: "require()" });
-      else if (isPropertyCall(callee, "module", "require")) found.push({ specifier: null, use: "module.require()" });
     }
-    // Any reference to createRequire (imported, called, read off `module`) builds a require the
-    // guard cannot follow.
-    if (ts.isIdentifier(node) && node.text === "createRequire" && !isInTypePosition(node)) {
-      found.push({ specifier: null, use: "createRequire" });
+    // `require` anywhere but as the direct callee above: a value use (`const r = require`,
+    // `(0, require)(…)`, `require.call`, `require.resolve`) the guard cannot follow.
+    if (ts.isIdentifier(node) && node.text === "require" && !isDirectCallee(node) && !isNameOnly(node)) {
+      unverifiable("require");
+    }
+    // createRequire by name (called, destructured, re-exported locally).
+    if (ts.isIdentifier(node) && node.text === "createRequire" && !isNameOnly(node)) unverifiable("createRequire");
+    // `x.require`, `x["createRequire"]`, `import.meta.resolve`, …: a loader read off an object.
+    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+      const property = accessedName(node);
+      const object = unwrap(node.expression);
+      const onImportMeta = isImportMeta(object);
+      if (property !== null && onImportMeta && IMPORT_META_LOADERS.has(property)) unverifiable(`import.meta.${property}`);
+      else if (property !== null && isLoaderName(property)) unverifiable(`.${property}`);
+      else if (property === null && (onImportMeta || (ts.isIdentifier(object) && loaderObjects.has(object.text)))) {
+        unverifiable("computed loader access");
+      }
     }
     ts.forEachChild(node, visit);
   };
   visit(file);
   return found;
+}
+
+/** `import.meta` properties that load or resolve a module. */
+const IMPORT_META_LOADERS = new Set(["require", "resolve", "resolveSync"]);
+
+function isLoaderName(name: string): boolean {
+  return name === "require" || name === "createRequire";
+}
+
+function isNodeModule(specifier: string): boolean {
+  return specifier === "module" || specifier === "node:module";
+}
+
+/** Names a file binds to the node:module namespace (`import M from`, `import * as M from`, `import M = require`). */
+function nodeModuleBindings(file: ts.SourceFile): string[] {
+  const names: string[] = [];
+  for (const statement of file.statements) {
+    if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
+      if (!isNodeModule(statement.moduleSpecifier.text) || statement.importClause?.isTypeOnly) continue;
+      const clause = statement.importClause;
+      if (clause?.name) names.push(clause.name.text);
+      if (clause?.namedBindings && ts.isNamespaceImport(clause.namedBindings)) names.push(clause.namedBindings.name.text);
+    } else if (
+      ts.isImportEqualsDeclaration(statement) &&
+      ts.isExternalModuleReference(statement.moduleReference) &&
+      ts.isStringLiteral(statement.moduleReference.expression) &&
+      isNodeModule(statement.moduleReference.expression.text)
+    ) {
+      names.push(statement.name.text);
+    }
+  }
+  return names;
+}
+
+/** The property a member access reads: its name, a string-literal key, or null when computed. */
+function accessedName(node: ts.PropertyAccessExpression | ts.ElementAccessExpression): string | null {
+  if (ts.isPropertyAccessExpression(node)) return node.name.text;
+  return ts.isStringLiteralLike(node.argumentExpression) ? node.argumentExpression.text : null;
+}
+
+/** `expr` without wrapping parentheses and type assertions (`(x as any)`, `x!`, `<T>x`). */
+function unwrap(expr: ts.Expression): ts.Expression {
+  while (
+    ts.isParenthesizedExpression(expr) ||
+    ts.isAsExpression(expr) ||
+    ts.isNonNullExpression(expr) ||
+    ts.isTypeAssertionExpression(expr) ||
+    ts.isSatisfiesExpression(expr)
+  ) {
+    expr = expr.expression;
+  }
+  return expr;
+}
+
+function isImportMeta(node: ts.Expression): boolean {
+  return ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword && node.name.text === "meta";
+}
+
+/** `require(…)` with the identifier as the callee itself (the call branch handles it). */
+function isDirectCallee(node: ts.Identifier): boolean {
+  return ts.isCallExpression(node.parent) && node.parent.expression === node;
+}
+
+/**
+ * An identifier that only names something rather than reading the binding: a member name
+ * (`x.require`, handled as an access), an object or class member's key, or a type position.
+ */
+function isNameOnly(node: ts.Identifier): boolean {
+  const parent = node.parent;
+  if (ts.isPropertyAccessExpression(parent) && parent.name === node) return true;
+  if (
+    (ts.isPropertyAssignment(parent) ||
+      ts.isMethodDeclaration(parent) ||
+      ts.isPropertyDeclaration(parent) ||
+      ts.isPropertySignature(parent) ||
+      ts.isMethodSignature(parent)) &&
+    parent.name === node
+  ) {
+    return true;
+  }
+  return isInTypePosition(node);
 }
 
 function scriptKind(fileName: string): ts.ScriptKind {
@@ -151,15 +265,6 @@ function scriptKind(fileName: string): ts.ScriptKind {
 function isAmbientAugmentation(node: ts.ModuleDeclaration): boolean {
   if (ts.isStringLiteral(node.name)) return true; // A quoted name is always ambient.
   return (node.flags & ts.NodeFlags.GlobalAugmentation) !== 0;
-}
-
-function isPropertyCall(callee: ts.Expression, object: string, property: string): boolean {
-  return (
-    ts.isPropertyAccessExpression(callee) &&
-    ts.isIdentifier(callee.expression) &&
-    callee.expression.text === object &&
-    callee.name.text === property
-  );
 }
 
 /** Whether an identifier sits inside a type (e.g. `typeof createRequire` in a type annotation). */
@@ -253,15 +358,30 @@ function isWithin(path: string, dir: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !rel.startsWith(sep) && !/^[a-zA-Z]:/.test(rel));
 }
 
-/** Every source file under each `modules/<id>/server` directory of `repoRoot`. */
-export function moduleServerFiles(repoRoot: string): string[] {
+/**
+ * Every source file under each `modules/<id>/server` directory of `repoRoot`, and every
+ * symlink there (file or directory) whose target is inside the kernel's internals: a link
+ * loads the kernel file whatever specifier names it, so it is reported and not followed.
+ */
+export function scanModuleServers(repoRoot: string): { files: string[]; kernelLinks: string[] } {
   const modulesDir = join(repoRoot, "modules");
-  if (!existsSync(modulesDir)) return [];
   const files: string[] = [];
+  const kernelLinks: string[] = [];
+  if (!existsSync(modulesDir)) return { files, kernelLinks };
+  const kernel = resolve(repoRoot, KERNEL_SERVER_SRC);
+  const kernels = [kernel, realpathDeep(kernel)];
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir)) {
       if (entry === "node_modules") continue;
       const path = join(dir, entry);
+      if (lstatSync(path).isSymbolicLink()) {
+        if (!existsSync(path)) continue; // A dangling link loads nothing.
+        const target = realpathSync(path);
+        if (kernels.some((k) => isWithin(target, k))) {
+          kernelLinks.push(path);
+          continue;
+        }
+      }
       if (statSync(path).isDirectory()) walk(path);
       else if (SOURCE_EXTENSIONS.some((ext) => entry.endsWith(ext)) && !/\.d\.[cm]?ts$/.test(entry)) files.push(path);
     }
@@ -270,14 +390,20 @@ export function moduleServerFiles(repoRoot: string): string[] {
     const serverDir = join(modulesDir, id, "server");
     if (existsSync(serverDir) && statSync(serverDir).isDirectory()) walk(serverDir);
   }
-  return files.sort();
+  return { files: files.sort(), kernelLinks: kernelLinks.sort() };
 }
 
 /** Every runtime import from a module server half into the kernel's internals, allowlisted or not. */
 export function moduleBoundaryViolations(repoRoot: string): BoundaryViolation[] {
   const packages = kernelPackageNames(repoRoot);
   const violations: BoundaryViolation[] = [];
-  for (const path of moduleServerFiles(repoRoot)) {
+  const { files, kernelLinks } = scanModuleServers(repoRoot);
+  const repoPath = (path: string) => relative(repoRoot, path).split(sep).join("/");
+  for (const link of kernelLinks) {
+    const target = relative(realpathDeep(repoRoot), realpathSync(link)).split(sep).join("/");
+    violations.push({ file: repoPath(link), specifier: target, use: "symlink" });
+  }
+  for (const path of files) {
     const file = relative(repoRoot, path).split(sep).join("/");
     for (const { specifier, use } of runtimeImports(readFileSync(path, "utf8"), path)) {
       if (specifier === null) violations.push({ file, specifier: UNVERIFIABLE, use });

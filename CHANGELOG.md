@@ -6,6 +6,35 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Charts in `@deck/sdk`**: runtime modules can use `Sparkline`, `StatusTimeline` and `Gauge`, with
+  their prop types (`ChartStatus`, `SparklineData`, `TimelineLane` and so on). The module API
+  (`DECK_API_VERSION`) is now `0.1.1`, an additive bump: a module that uses the charts declares
+  `deckApi: "^0.1.1"`, and `^0.1` modules still load (#80).
+- **`settlesWithin` and `canonicalJson` in `@deck/module-sdk`**: a bounded wait on a promise
+  that never keeps the process alive, and key-order-insensitive JSON text (#62).
+
+### Changed
+
+- **Module server halves may not load `apps/server/src` at runtime**, by path or through
+  `@deck/server`; a guard test enforces it, with type-only imports and augmentation still
+  allowed (#62).
+- `http-json`: the literal-credential name check reads each name both as written and split at
+  camelCase, ignoring case, separators and trailing digits. It now also catches `pwd`, `jwt`,
+  `bearer`, session ids (`JSESSIONID`, `PHPSESSID`), `pass` as a whole name or last part (`DB_PASS`,
+  `X-Pass`) or run-together ending (`userpass`), names ending in `token`, `secret(s)`,
+  `password(s)`, `passwd` or `pwd` (`apitoken`, `dbpassword`, `userpwd`), and qualified keys with
+  any prefix (`access_key`, `xapikey`, `AWS_ACCESS_KEY_ID`, `app_key`, `hmac_key`,
+  `X-Gotify-Key`, `Ocp-Apim-Subscription-Key`). A name made only of pagination cursor words
+  (`pageToken`, `next_token`, `syncToken`) is no longer refused, and a body key whose value is a
+  boolean or null (`show_passwords: true`) is not a credential. An estate config that wrote a
+  newly covered name as a literal header, query parameter or body value
+  now fails validation and boot with `HTTP_JSON_LITERAL_CREDENTIAL`: move the value to
+  `credentialEnv` with `auth`. (#52)
+  **Upgrading:** run `deck validate` with the new version against your estate config before
+  re-pinning.
+
 ### Security
 
 - **Sidecar markdown loads no images or media** (`core/markdown` from a `remote` sidecar, under

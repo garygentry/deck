@@ -2,7 +2,7 @@
  * The kernel's module API version. Modules declare a compatible range in `deckApi`.
  * It stays at 0.x until the contract freezes; on 0.x every minor bump may break.
  */
-export const DECK_API_VERSION = "0.1.0";
+export const DECK_API_VERSION = "0.1.1";
 
 type Triple = [number, number, number];
 

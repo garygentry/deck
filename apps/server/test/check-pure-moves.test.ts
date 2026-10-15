@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -241,6 +241,149 @@ describe("check-pure-moves", () => {
       git("branch", "-f", "base");
       moveTest(extra + mocks(atNew));
       expect(check().status).toBe(0);
+    });
+  });
+
+  describe("every way a file names a path relative to itself", () => {
+    const OLD = "apps/server/test/probe.test.ts";
+    const NEW = "modules/grow/test/server/probe.test.ts";
+    /** Padding so git pairs the move whatever the probe lines are. */
+    const PAD = Array.from({ length: 40 }, (_, index) => `export const padding${index} = "line ${index}".length;`).join("\n");
+    const atOld = (path: string) => `../src/${path}`;
+    const atNew = (path: string) => `../../../../apps/server/src/${path}`;
+
+    /** Commit `before` at OLD as the base, move it to NEW as `after`, and check. */
+    const probe = (before: string, after: string) => {
+      if (existsSync(join(repo, NEW))) git("rm", "-q", NEW);
+      write(OLD, `${before}\n${PAD}\n`);
+      git("add", ".");
+      git("commit", "-qm", "probe");
+      git("branch", "-f", "base");
+      mkdirSync(join(repo, "modules/grow/test/server"), { recursive: true });
+      git("mv", OLD, NEW);
+      write(NEW, `${after}\n${PAD}\n`);
+      git("add", "-A");
+      git("commit", "-qm", "move probe");
+      return check();
+    };
+    /** The same lines before and after, with each path spelled for where the file is. */
+    const spelled = (lines: (at: (path: string) => string) => string) => probe(lines(atOld), lines(atNew));
+    const passes = (result: ReturnType<typeof check>) => expect(result.status, result.stdout).toBe(0);
+    const fails = (result: ReturnType<typeof check>, text?: string) => {
+      expect(result.status, result.stdout).toBe(1);
+      expect(result.stdout).toMatch(/NOT PURE\s+apps\/server\/test\/probe\.test\.ts/);
+      if (text !== undefined) expect(result.stdout).toContain(text);
+    };
+
+    describe("file URLs, by WHATWG URL resolution", () => {
+      it("keeps a directory's trailing slash: `x/` and `x` differ as a base", () => {
+        fails(probe(`new URL("${atOld("shared/")}", import.meta.url);`, `new URL("${atNew("shared")}", import.meta.url);`));
+        passes(spelled((at) => `new URL("${at("shared/")}", import.meta.url);`));
+      });
+
+      it("fails a file named with a trailing slash, which does not read (ENOTDIR)", () => {
+        fails(probe(`new URL("${atOld("grow/a.ts")}", import.meta.url);`, `new URL("${atNew("grow/a.ts/")}", import.meta.url);`));
+      });
+
+      it("decodes percent-escapes: `%61.ts` is `a.ts`", () => {
+        passes(probe(`new URL("${atOld("grow/a.ts")}", import.meta.url);`, `new URL("${atNew("grow/%61.ts")}", import.meta.url);`));
+        fails(probe(`new URL("${atOld("grow/b.ts")}", import.meta.url);`, `new URL("${atNew("grow/%61.ts")}", import.meta.url);`));
+      });
+
+      it("resolves against `new globalThis.URL` and a `./` directory URL", () => {
+        fails(probe(`new globalThis.URL("${atOld("grow/a.ts")}", import.meta.url);`, `new globalThis.URL("${atOld("grow/a.ts")}", import.meta.url);`));
+        passes(spelled((at) => `new globalThis.URL("${at("grow/a.ts")}", new URL("./", import.meta.url));`));
+      });
+
+      it.each([
+        ["a parameter", (at: (path: string) => string) => `const HERE = import.meta.url;\nexport function f(HERE: string) { return new URL("${at("grow/a.ts")}", HERE); }`],
+        ["a block const", (at: (path: string) => string) => `const HERE = import.meta.url;\n{ const HERE = "https://example.invalid/x/"; new URL("${at("grow/a.ts")}", HERE); }`],
+      ])("does not trust a file-URL const that %s shadows", (_name, lines) => {
+        fails(probe(lines(atOld), lines(atNew)), "import.meta.url");
+      });
+
+      it("trusts an unshadowed const, but not a `let` or a destructured `url`", () => {
+        passes(spelled((at) => `const HERE = import.meta.url;\nnew URL("${at("grow/a.ts")}", HERE);`));
+        fails(spelled((at) => `let HERE = import.meta.url;\nnew URL("${at("grow/a.ts")}", HERE);`), "import.meta.url");
+        fails(spelled((at) => `const { url } = import.meta;\nnew URL("${at("grow/a.ts")}", url);`), "import.meta");
+      });
+    });
+
+    describe("paths joined to the file's directory", () => {
+      const anchors = [
+        ["a const bound to dirname(fileURLToPath(import.meta.url))", "const here = dirname(fileURLToPath(import.meta.url));\n", "here"],
+        ["a const bound to fileURLToPath(new URL(\".\", import.meta.url))", 'const here = fileURLToPath(new URL(".", import.meta.url));\n', "here"],
+        ["import.meta.dirname", "", "import.meta.dirname"],
+        ["__dirname", "", "__dirname"],
+      ];
+
+      it.each(anchors)("resolves join/resolve from %s", (_name, prelude, anchor) => {
+        passes(spelled((at) => `${prelude}join(${anchor}, "${at("grow/a.ts")}");\nresolve(${anchor}, "${at("grow")}", "a.ts");`));
+        fails(probe(`${prelude}join(${anchor}, "${atOld("grow/a.ts")}");`, `${prelude}join(${anchor}, "${atOld("grow/a.ts")}");`));
+        fails(probe(`${prelude}join(${anchor}, "${atOld("grow/a.ts")}");`, `${prelude}join(${anchor}, "${atNew("grow/b.ts")}");`));
+      });
+
+      it("resolves from import.meta.filename / __filename as the file's own path", () => {
+        passes(spelled((at) => `join(import.meta.filename, "..", "${at("grow/a.ts")}");\nresolve(__filename, "../${at("grow/a.ts")}");`));
+      });
+
+      it("fails the reviewer's probe: unchanged joins from a moved file", () => {
+        const probeText = [
+          'import { dirname, join } from "node:path";',
+          'import { fileURLToPath } from "node:url";',
+          "const here = dirname(fileURLToPath(import.meta.url));",
+          'export const diagnostics = join(here, "../src/grow/a.ts");',
+          'export const tokens = join(import.meta.dirname, "../src/shared/helper.ts");',
+        ].join("\n");
+        fails(probe(probeText, probeText), 'path "../src/grow/a.ts" → "../src/grow/a.ts" loads modules/grow/test/src/grow/a.ts, not apps/server/src/grow/a.ts');
+      });
+
+      it.each([
+        ["used as a value", "const here = dirname(fileURLToPath(import.meta.url));\nreaddirSync(here);", "here (bound to the file's location)"],
+        ["joined to a non-literal", "join(__dirname, name);", "join() from the file's location"],
+        ["read some other way", "export const env = import.meta.env;", "import.meta.env"],
+        ["a bare __filename", "export const self = __filename;", "__filename"],
+      ])("fails a location read %s", (_name, line, text) => {
+        fails(probe(line, line), text);
+      });
+
+      it("allows them all in a move within one directory", () => {
+        const line = "const here = dirname(fileURLToPath(import.meta.url));\nreaddirSync(here);\nexport const env = import.meta.env;";
+        write(OLD, `${line}\n${PAD}\n`);
+        git("add", ".");
+        git("commit", "-qm", "probe");
+        git("branch", "-f", "base");
+        git("mv", OLD, "apps/server/test/probed.test.ts");
+        git("commit", "-qm", "rename");
+        passes(check());
+      });
+    });
+
+    describe("the module-imports guard's forms, shared with it", () => {
+      it.each([
+        ["vi by bracket", (at: (path: string) => string) => `vi["doMock"]("${at("grow/a.js")}", () => ({}));`],
+        ["vi under another name", (at: (path: string) => string) => `import { vi as v } from "vitest";\nv.mock("${at("grow/a.js")}");`],
+        ["a vitest namespace", (at: (path: string) => string) => `import * as V from "vitest";\nV.vi.importActual("${at("grow/a.js")}");`],
+        ["createRequire(import.meta.url)", (at: (path: string) => string) => `const req = createRequire(import.meta.url);\nreq("${at("grow/a.js")}");\nreq.resolve("${at("grow/b.js")}");`],
+        ["require.resolve", (at: (path: string) => string) => `require.resolve("${at("grow/a.js")}");`],
+        ["import.meta.resolve", (at: (path: string) => string) => `import.meta.resolve("${at("grow/a.js")}");`],
+        ["import.meta.glob", (at: (path: string) => string) => `import.meta.glob(["${at("grow/*.ts")}", "!${at("grow/b.ts")}"]);`],
+      ])("checks %s: rewritten passes, unchanged fails", (_name, lines) => {
+        passes(spelled(lines));
+        fails(probe(lines(atOld), lines(atOld)));
+      });
+
+      it("fails a vi[key] with a non-literal key", () => {
+        fails(spelled((at) => `vi[key]("${at("grow/a.js")}");`), "vi[…]");
+      });
+
+      it("fails a createRequire whose base is not the file", () => {
+        fails(spelled((at) => `const req = createRequire(join(root, "package.json"));\nreq("${at("grow/a.js")}");`), "createRequire (its base is not this file)");
+      });
+
+      it("fails a triple-slash reference path", () => {
+        fails(probe(`/// <reference path="${atOld("grow/a.ts")}" />`, `/// <reference path="${atOld("grow/a.ts")}" />`), "/// <reference path>");
+      });
     });
   });
 

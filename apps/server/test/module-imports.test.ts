@@ -91,6 +91,22 @@ describe("moduleReferences", () => {
       "vi.mock null",
     ]);
   });
+
+  it("reads vitest loaders by bracket, and import.meta.resolve", () => {
+    const source = [
+      'vi["doMock"]("../../owner/bracket.js");',
+      "vitest['unmock']('../../owner/quoted.js');",
+      'vi["fn"]("../../owner/not-a-loader.js");',
+      'vi[key]("../../owner/unknown-key.js");',
+      'const where = import.meta.resolve("../../owner/resolved.js");',
+    ].join("\n");
+    expect(moduleReferences(source).map(({ specifier, form }) => `${form} ${specifier}`)).toEqual([
+      "vi.doMock ../../owner/bracket.js",
+      "vi.unmock ../../owner/quoted.js",
+      "vi[…] null",
+      "import.meta.resolve ../../owner/resolved.js",
+    ]);
+  });
 });
 
 describe("isPublicEntry", () => {

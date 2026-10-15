@@ -6,6 +6,8 @@
  */
 import { MAX_ICON_BYTES } from "@deck/module-sdk";
 
+import { hasInlineStyle } from "./inline-style-markup.js";
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 /** The elements an icon may hold: shapes, grouping, paint servers, clipping and text alternatives. */
@@ -69,7 +71,8 @@ class Refused extends Error {}
  * - markup over the size bound, not well-formed XML, with a doctype, or not rooted in an SVG `<svg>`;
  * - any element outside the allowlist, such as `<style>`, `<script>`, `<a>`, `<image>`,
  *   `<feImage>` or `<foreignObject>`;
- * - a `style` or event-handler attribute;
+ * - a `style` or event-handler attribute (a `style` attribute or `<style>` element is found in
+ *   the markup before it is parsed: parsing one is a policy violation in the page);
  * - an `href` or `xlink:href`, on any element, to anything but a local `#id`;
  * - a `url(` anywhere but a URL-valued presentation attribute holding exactly `url(#id)`;
  * - a backslash in any attribute (a CSS escape);
@@ -78,6 +81,9 @@ class Refused extends Error {}
  */
 export function sanitizeIconSvg(markup: string): SVGSVGElement | null {
   if (typeof markup !== "string" || new TextEncoder().encode(markup).length > MAX_ICON_BYTES) return null;
+  // Refused before parsing: under the page's Content-Security-Policy, parsing a `style`
+  // attribute or a `<style>` element (even into this detached document) is reported.
+  if (hasInlineStyle(markup)) return null;
   const parsed = new DOMParser().parseFromString(markup, "image/svg+xml");
   const root = parsed.documentElement;
   if (parsed.doctype !== null || parsed.getElementsByTagName("parsererror").length > 0 || root.localName !== "svg") return null;

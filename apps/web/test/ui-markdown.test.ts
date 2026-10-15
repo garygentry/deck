@@ -159,6 +159,40 @@ describe("markdown.ts — sanitization — the XSS boundary", () => {
     }
   });
 
+  it("drops only real style attributes and <style> elements: 'style' in values and text survives byte for byte", () => {
+    const doc = [
+      'See [the guide](https://example.org/style/guide "A style guide") and ![a style](https://example.org/style.png).',
+      "",
+      '<a href="https://example.org/style/x?style=1" title=\'style="x"\' style="color: red">raw link</a>',
+      "",
+      '<img src="https://example.org/img/style.png" alt="a style guide > b" style=color:red>',
+      "",
+      "<p data-x='>' style='color:red'>after a quoted &gt;</p>",
+      "",
+      "Inline <span>style</span> words, <style>p { color: red }</style>, and `<b style=\"x\">code</b>`.",
+      "",
+      "<style>",
+      "p { color: red }",
+      "</style>",
+    ].join("\n");
+    for (const external of [false, true]) {
+      const html = external ? renderMarkdown(doc, undefined, { externalLinksOnly: true }) : renderMarkdown(doc, ctx("index.md"));
+      const parsed = parse(html);
+      expect(parsed.querySelector("[style], [data-style], style")).toBeNull();
+      expect(parsed.body.textContent).not.toContain("color: red");
+      const hrefs = [...parsed.querySelectorAll("a")].map((anchor) => anchor.getAttribute("href"));
+      expect(hrefs).toEqual(["https://example.org/style/guide", "https://example.org/style/x?style=1"]);
+      expect(parsed.querySelector('a[title="A style guide"]')).not.toBeNull();
+      expect(parsed.querySelectorAll("a")[1]!.getAttribute("title")).toBe('style="x"');
+      expect([...parsed.querySelectorAll("img")].map((image) => image.getAttribute("src"))).toEqual(["https://example.org/style.png", "https://example.org/img/style.png"]);
+      expect(parsed.querySelectorAll("img")[1]!.getAttribute("alt")).toBe("a style guide > b");
+      expect(parsed.body.textContent).toContain("after a quoted >");
+      expect(parsed.body.textContent).toContain("Inline style words");
+      // Code keeps its text: it is escaped, never markup.
+      expect(parsed.querySelector("code")?.textContent).toBe('<b style="x">code</b>');
+    }
+  });
+
   it("aligns table columns by class, not by a style attribute", () => {
     const html = renderMarkdown(["| L | C | R | N |", "| :- | :-: | -: | - |", "| 1 | 2 | 3 | 4 |"].join("\n"));
     const cells = [...parse(html).querySelectorAll("th, td")];

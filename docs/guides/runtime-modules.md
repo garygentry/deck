@@ -128,7 +128,10 @@ wherever an icon goes. A module has at most 64 icons of at most 16 KiB each, and
 
 `deck validate` and boot refuse a manifest whose icons break the plainest of these rules. In
 the browser, deck rebuilds each icon from that allowlist and renders the fallback icon in
-place of any that breaks one. Ids inside an icon are made unique to each place it renders.
+place of any that breaks one. An icon with a `style` attribute or a `<style>` element is
+refused before it is even parsed, since parsing one is a violation of deck's
+Content-Security-Policy; the word "style" in an attribute value, a comment or a `<title>` is
+fine. Ids inside an icon are made unique to each place it renders.
 
 The browser needs JSON module imports for the example's manifest import: Chrome or Edge 123,
 Firefox 138 or Safari 17.2 and later. A module that inlines its manifest needs only import

@@ -66,12 +66,13 @@ test.beforeAll(async () => {
   await new Promise<void>((resolve) => helper.listen(0, "127.0.0.1", resolve));
   helperOrigin = `http://127.0.0.1:${(helper.address() as AddressInfo).port}`;
 
-  // Raw HTML with a style attribute (dropped before any parse), an aligned table column (a class,
-  // not a style attribute), and highlighted code.
+  // Raw HTML with a style attribute and a <style> block (both dropped before any parse), an
+  // aligned table column (a class, not a style attribute), and highlighted code.
   const markdown = [
     "Runbook notes.",
     `![status](${helperOrigin}/logo.svg)`,
     '<p style="color: red">Styled note</p>',
+    "<style>\nmain { outline: 3px solid red; }\n</style>",
     "| Host | Uptime |\n| - | -: |\n| nas-01 | 42d |",
     "```js\nconst answer = 42;\n```",
   ].join("\n\n");
@@ -184,7 +185,8 @@ for (const colorScheme of ["light", "dark"] as const) {
       expect(await page.locator('[data-brand-mark="logo"]').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
       // Raw HTML keeps its text but not its style attribute, and code is highlighted (by class).
       await expect(page.locator('[data-slot="prose"]').getByText("Styled note")).toBeVisible();
-      expect(await page.locator('[data-slot="prose"] [style]').count()).toBe(0);
+      expect(await page.locator('[data-slot="prose"] [style], [data-slot="prose"] style').count()).toBe(0);
+      await expect(page.locator('[data-slot="prose"]')).not.toContainText("outline");
       await expect(page.locator('[data-slot="prose"] pre [class^="hljs-"]').first()).toBeVisible();
       await expect(page.locator('[data-slot="prose"] td', { hasText: "42d" })).toHaveCSS("text-align", "right");
       // The runtime module's web half (an import-mapped ESM chunk) rendered its page.

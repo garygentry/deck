@@ -18,6 +18,7 @@ import MarkdownIt from "markdown-it";
 import taskLists from "markdown-it-task-lists";
 
 import { highlightCode } from "./highlight.js";
+import { neutralizeInlineStyles } from "./inline-style-markup.js";
 
 /** Context the renderer needs to rewrite relative links/images against the current doc. */
 export interface MarkdownRenderContext {
@@ -95,9 +96,10 @@ const md: MarkdownIt = new MarkdownIt({
  * reaches a parser:
  * - a table column's alignment, which markdown-it writes as `style="text-align:…"`, becomes a
  *   class (`text-left`, `text-center`, `text-right`);
- * - a `style` attribute in raw HTML is renamed `data-style` before the sanitizer parses it, and
- *   the sanitizer drops it (no `data-*` attribute survives). Raw HTML this misses (say an
- *   attribute split by a `>` inside a quoted value) is still sanitized; it only adds a report.
+ * - in the rendered HTML, before anything parses it, raw HTML's `style` attributes are renamed
+ *   `data-style` (the sanitizer then drops them: no `data-*` attribute survives) and raw
+ *   `<style>` elements are removed whole (`neutralizeInlineStyles`, which reads tags as a parser
+ *   does, so attribute values and text are kept byte for byte).
  */
 const ALIGN_CLASS: Readonly<Record<string, string>> = { left: "text-left", center: "text-center", right: "text-right" };
 md.core.ruler.push("deck_align_classes", (state) => {
@@ -108,10 +110,6 @@ md.core.ruler.push("deck_align_classes", (state) => {
     if (align !== undefined) token.attrJoin("class", ALIGN_CLASS[align]!);
   }
 });
-const renameStyleAttributes = (html: string) => html.replace(/<[a-zA-Z][^>]*>/g, (tag) => tag.replace(/([\s"'/])style(?=[\s=/>])/gi, "$1data-style"));
-for (const rule of ["html_block", "html_inline"] as const) {
-  md.renderer.rules[rule] = (tokens, idx) => renameStyleAttributes(tokens[idx]!.content);
-}
 
 /** markdown-it's per-render `env`: the caller's document context, if any. */
 interface RenderEnv {
@@ -176,7 +174,7 @@ export function renderMarkdown(
   options: MarkdownRenderOptions = {},
 ): string {
   const env: RenderEnv = context === undefined ? {} : { context };
-  const rendered = md.render(markdown, env);
+  const rendered = neutralizeInlineStyles(md.render(markdown, env));
   const html = options.headingOffset === undefined ? rendered : demoteHeadings(rendered, options.headingOffset);
   // The sanitiser runs last: nothing parses, changes or re-serialises its output. The link
   // policy runs inside it, on the very nodes it returns, for this call only (it is synchronous).

@@ -144,11 +144,11 @@ export function OverlayLab() {
       </Section>
       <Section title="Scroll area">
         <ScrollArea aria-label="Scrolled lines" className="h-40 w-64 rounded-md border">
-          <ul className="p-3 text-sm">
+          <div className="p-3 text-sm">
             {LINES.map((line) => (
-              <li key={line}>{line}</li>
+              <p key={line}>{line}</p>
             ))}
-          </ul>
+          </div>
         </ScrollArea>
       </Section>
       <div aria-hidden="true" className="h-[200vh]" />

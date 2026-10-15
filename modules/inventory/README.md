@@ -13,15 +13,14 @@ file another module may import.
 |---|---|
 | `server/` | the server half; `server/module.ts` is what `apps/server/src/modules/builtin.ts` lists |
 | `web/` | the web half; `web/index.ts` registers it, discovered by `apps/web/src/registry/discover.ts` |
-| `test/web/` | unit tests, run by `@deck/web`'s test suite |
+| `test/server/`, `test/web/` | unit tests, run by `@deck/server` and `@deck/web`'s test suites |
 
 There is no `schema.json` (inventory has no `modules.inventory` section) and no `module.json`: a
 built-in's manifest is TypeScript. Its data half (pages, nav entries) is
 `@deck/contract/modules/inventory`, which the web loads too, and `server/module.ts` spreads it into
 the server manifest, adding `dependsOn: ["snapshot"]`. There is no build or test script here:
 each half compiles and is tested inside its host app. React, react-dom and vitest are peer
-dependencies (with dev dependencies for the tests): the app and its modules share one instance of
-each. Tests that drive the module through the kernel (the module host, the registry, the app
-shell) stay in `apps/server/test` and `apps/web/test`, as do the tests that address the module's
-files by path string (`vi.mock`, `new URL`) and the shared `inventory-harness.ts` the drift tests
-use too.
+dependencies, and react-query a shared one, each with a dev dependency for the tests: the app and
+its modules share one instance of each. Tests that drive the module through the kernel (the
+registry, the app shell, its entity sections) stay in `apps/web/test`, as does the shared
+`inventory-harness.ts` that the drift and monitoring tests use too.

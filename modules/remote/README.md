@@ -11,6 +11,7 @@ The kind is not bindable.
 | Path | Holds |
 |---|---|
 | `server/` | the server half; `server/module.ts` is what `apps/server/src/modules/builtin.ts` lists, `server/provider.ts` is the provider, `server/describe.ts` checks a describe answer, `server/directory.ts` holds each instance's page settings, last good describe and latest problem and `server/pages.ts` turns them into pages |
+| `test/server/` | unit tests, run by `@deck/server`'s test suite |
 
 The module is server-only: it has no config section (so no `schema.json`) and no web half (its
 pages render through the kernel's config pages). There is no `module.json`: a built-in's manifest
@@ -18,7 +19,7 @@ is TypeScript. There is no build or test script here: the server half compiles a
 inside `apps/server`. Requests, URL checks and credential handling are the `http-json` module's
 (`modules/http-json/server`), imported by path. `markdown-it` renders sidecar markdown here
 only, but `apps/server` still declares it: the host's declaration is what the module-deps guard
-compares this module's copy against, so the server and its modules keep one instance. Its tests stay in `apps/server/test`:
-`remote.test.ts` and `remote-sidecar-example.test.ts` drive the module through the kernel (the
-registry, scheduler, app, config pipeline and UI manifest), and `remote-describe-throws.test.ts`
-mocks a module file with `vi.mock`, whose path is not a module specifier a pure move may rewrite.
+compares this module's copy against, so the server and its modules keep one instance. vitest is
+a peer dependency (with a dev dependency for the tests), shared the same way. The tests that
+drive the module through the kernel (the registry, scheduler, app, config pipeline and UI
+manifest) stay in `apps/server/test`: `remote.test.ts` and `remote-sidecar-example.test.ts`.

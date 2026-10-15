@@ -17,6 +17,4 @@ into the server manifest. There is no build or test script here: each half compi
 inside its host app. React and vitest are peer dependencies (with dev dependencies for the tests):
 the app and its modules share one instance of each. Tests that drive the module through the
 kernel stay in the apps: `apps/server/test/monitoring-module.test.ts` (with metrics) and
-`apps/web/test/alerts-registration.test.ts` (the registry and header slot). So do
-`alerts-summary` and `monitoring-page`, whose `vi.mock` paths are not module specifiers to the
-pure-move check.
+`apps/web/test/alerts-registration.test.ts` (the registry and header slot).

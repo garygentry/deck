@@ -481,8 +481,9 @@ manifest lists it under the module's `web` (`script`, optional `styles`).
   cache. `apps/web/scripts/check-web-build.mjs` checks in CI that the built page keeps the map
   ahead of every module script.
 - **`@deck/sdk`** is `sdk/index.ts`: `defineWebModule`, the data hooks (`useProvider`,
-  `useProviders`, `useConfig`, `useUiManifest`), `Icon` and the tones, and a curated set of
-  `@/ui` patterns. It exports no primitives. `packages/sdk` publishes its types (generated from
+  `useProviders`, `useConfig`, `useUiManifest`), `Icon` and the tones, a curated set of
+  `@/ui` patterns, and the viz charts (`Sparkline`, `StatusTimeline`, `Gauge`, with their prop
+  and input types; never their geometry or mark helpers). It exports no primitives. `packages/sdk` publishes its types (generated from
   this entry), the Tailwind preset and the lint rules modules build against.
 - **Checks.** A module whose web half was built for another `deckApi`, or for another id or
   version than the server loaded, or that imports a name the SDK or React does not export, is

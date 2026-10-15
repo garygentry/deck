@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Runtime modules can use Sparkline, StatusTimeline and Gauge from @deck/sdk.
+
 ## [0.5.0] - 2026-10-14
 
 Upgrading from 0.3.x: apply 0.4.0's Migration (schemaVersion 2 via `deck config migrate`) and then

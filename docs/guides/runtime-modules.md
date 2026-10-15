@@ -95,7 +95,7 @@ import map, so a module renders with deck's React and reads deck's data:
 | Specifier | What it is |
 | --- | --- |
 | `react`, `react-dom`, `react/jsx-runtime` | The React deck runs. A module must never bundle its own. |
-| `@deck/sdk` | deck's module API: `defineWebModule`; the data hooks `useProvider`, `useProviders`, `useConfig` and `useUiManifest`; `Icon`, the tones (`TONES`, `defineStatusMap`, `statusTone`); and deck's display patterns (`PageHeader`, `Section`, `KeyValueList`, `DataTable`, `StatusBadge`, `HealthPill`, `EmptyState`, `ErrorState`, `LoadingState` and the like). |
+| `@deck/sdk` | deck's module API: `defineWebModule`; the data hooks `useProvider`, `useProviders`, `useConfig` and `useUiManifest`; `Icon`, the tones (`TONES`, `defineStatusMap`, `statusTone`); and deck's display patterns (`PageHeader`, `Section`, `KeyValueList`, `DataTable`, `StatusBadge`, `HealthPill`, `EmptyState`, `ErrorState`, `LoadingState` and the like); and deck's charts (`Sparkline`, `StatusTimeline`, `Gauge`). |
 
 `@deck/sdk` does not export deck's low-level UI primitives (its buttons, dialogs, menus and
 so on): build from the patterns, which carry deck's look and accessibility. For a module's own
@@ -236,6 +236,20 @@ letters, lowercased; see [Start from the template](#start-from-the-template)):
 ```
 
 Every class then carries the prefix: `hello:flex hello:gap-6 hello:bg-muted hello:rounded-md`.
+
+The charts are patterns too. `Sparkline`, `StatusTimeline` and `Gauge` take a status-map entry
+(or the map, for `StatusTimeline`) and draw in its tone with deck's own classes, so they need
+nothing from the module's stylesheet. Each carries its reading as text: a `Gauge` is a meter and
+needs `ariaLabel`; a `StatusTimeline` needs `formatTime` for its text alternative; say a
+`Sparkline`'s state in its `ariaLabel` or beside it.
+
+```tsx
+import { Gauge, Sparkline, StatusTimeline } from "@deck/sdk";
+
+<Gauge ariaLabel="Disk usage" value={used} status={DISK[state]} />
+<Sparkline values={latencies} status={HEALTH[state]} ariaLabel={`Latency, ${HEALTH[state].label}`} />
+<StatusTimeline lanes={lanes} statusMap={HEALTH} domainStart={from} domainEnd={to} formatTime={(t) => new Date(t * 1000).toLocaleTimeString()} />
+```
 
 - **Utilities only.** deck's page already has Tailwind's Preflight and base styles.
 - **deck's tokens only.** Colours (`hello:bg-card`, `hello:text-status-warn-fg`), the corner

@@ -9,13 +9,8 @@ import {
   type ValidationResult,
 } from "@deck/schema";
 
-import {
-  POLL_DEFAULTS,
-  type Provider,
-  type ProviderFetchContext,
-  type ProviderHealth,
-} from "../../../apps/server/src/contract/index.js";
-import type { HostState, SnapshotProviderResult } from "@deck/contract";
+import type { Provider, ProviderFetchContext, ProviderHealth } from "../../../apps/server/src/contract/index.js";
+import { POLL_DEFAULTS, type HostState, type SnapshotProviderResult } from "@deck/contract";
 import { logger, type SnapshotReadEvent } from "../../../apps/server/src/log/logger.js";
 import { SNAPSHOT_READ_MESSAGES, SnapshotReadFailure, normalizeSnapshotFailure } from "./errors.js";
 import { deriveHostStates, parseStaleAfterMs } from "./freshness.js";

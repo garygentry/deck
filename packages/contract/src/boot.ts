@@ -76,6 +76,23 @@ void listsAreComplete;
 export const BOOT_ELEMENT_ID = "deck-boot";
 
 /**
+ * The `property` of the `<meta>` element whose `nonce` is the page's style nonce (the name
+ * Vite's own runtime reads too). The server writes it in beside the boot object; the web hands
+ * the nonce to the libraries that inject `<style>` elements, which the page's policy then allows.
+ */
+export const STYLE_NONCE_PROPERTY = "csp-nonce";
+
+/**
+ * The page's style nonce, or `undefined` when it carries none (the dev server sends no policy).
+ * Read from the `nonce` property: a browser hides the attribute once the element is in the page.
+ */
+export function readStyleNonce(doc: { querySelector(selectors: string): { nonce?: string; getAttribute(name: string): string | null } | null }): string | undefined {
+  const meta = doc.querySelector(`meta[property="${STYLE_NONCE_PROPERTY}"]`);
+  const nonce = meta?.nonce || meta?.getAttribute("nonce");
+  return nonce === null || nonce === undefined || nonce === "" ? undefined : nonce;
+}
+
+/**
  * The boot object in a document, read leniently: a missing or empty element (the dev server),
  * unparsable JSON or a malformed field gives the field's default (absent).
  */

@@ -13,7 +13,7 @@ async function loadFreshFeature() {
   await import("../../../modules/drift/web/index.js");
   const registry = await import("../src/registry/registry.js");
   const { HealthHeaderSlot } = await import("../src/shell/health-header/slot.js");
-  const { DRIFT_UI } = await import("@deck/contract/modules/drift");
+  const { DRIFT_UI } = await import("../../../modules/drift/contract.js");
   return { registry, HealthHeaderSlot, DRIFT_UI };
 }
 

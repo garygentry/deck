@@ -1,4 +1,4 @@
-import { SOURCES_UI } from "@deck/contract/modules/sources";
+import { SOURCES_UI } from "../contract.js";
 import { defineWebModule } from "@deck/module-sdk";
 import type { ComponentType } from "react";
 

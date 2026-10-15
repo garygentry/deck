@@ -1,6 +1,6 @@
 import type { ModuleManifest, ProviderKindDecl, UiManifest } from "@deck/module-sdk";
-import { BUILTIN_STATUS_KINDS } from "@deck/contract/modules/data-sources";
-import { PORTAL_UI } from "@deck/contract/modules/portal";
+import { BUILTIN_STATUS_KINDS } from "../../../modules/portal/status-kinds.js";
+import { PORTAL_UI } from "../../../modules/portal/contract.js";
 import { validate } from "@deck/schema";
 import { describe, expect, it } from "vitest";
 

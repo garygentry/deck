@@ -1,7 +1,7 @@
 import type { Service } from "@deck/schema";
 import type { LinkItem, ServiceItem } from "../../server/types.js";
 import type { FreshnessState, ProviderEnvelope } from "@deck/contract";
-import { BUILTIN_STATUS_KINDS } from "@deck/contract/modules/data-sources";
+import { BUILTIN_STATUS_KINDS } from "../../status-kinds.js";
 import type { UiStatusKind } from "@deck/module-sdk";
 import { describe, expect, test } from "vitest";
 import {

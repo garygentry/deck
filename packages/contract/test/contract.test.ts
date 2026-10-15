@@ -4,15 +4,15 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 // `../src/index.js` and `../src/actions.js` are the package's `.` and `./actions` exports.
-import { validateActionParams } from "../src/actions.js";
+import { validateActionParams } from "../../../modules/actions/params.js";
 import { POLL_DEFAULTS } from "../src/index.js";
-import { ACTIONS_UI } from "../src/modules/actions.js";
-import { DRIFT_UI } from "../src/modules/drift.js";
-import { INVENTORY_UI } from "../src/modules/inventory.js";
-import { LLM_USAGE_UI } from "../src/modules/llm-usage.js";
-import { MONITORING_UI } from "../src/modules/monitoring.js";
-import { PORTAL_UI } from "../src/modules/portal.js";
-import { SOURCES_UI } from "../src/modules/sources.js";
+import { ACTIONS_UI } from "../../../modules/actions/contract.js";
+import { DRIFT_UI } from "../../../modules/drift/contract.js";
+import { INVENTORY_UI } from "../../../modules/inventory/contract.js";
+import { LLM_USAGE_UI } from "../../../modules/llm-usage/contract.js";
+import { MONITORING_UI } from "../../../modules/monitoring/contract.js";
+import { PORTAL_UI } from "../../../modules/portal/contract.js";
+import { SOURCES_UI } from "../../../modules/sources/contract.js";
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "../src");
 const MODULE_SDK = resolve(dirname(fileURLToPath(import.meta.url)), "../../module-sdk");

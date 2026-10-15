@@ -1,5 +1,5 @@
 import { POLL_DEFAULTS } from "@deck/contract";
-import { BUILTIN_STATUS_KINDS } from "@deck/contract/modules/data-sources";
+import { BUILTIN_STATUS_KINDS } from "../status-kinds.js";
 import type { UiStatusKind } from "@deck/module-sdk";
 import type { DeckConfigDocument as DeckConfig, Host } from "@deck/schema";
 import type { Group, PortalModuleConfig } from "../server/types.js";

@@ -1,4 +1,4 @@
-import { PORTAL_UI } from "@deck/contract/modules/portal";
+import { PORTAL_UI } from "../contract.js";
 import { defineWebModule } from "@deck/module-sdk";
 
 import { registerWebModule } from "@/registry/web-module.js";

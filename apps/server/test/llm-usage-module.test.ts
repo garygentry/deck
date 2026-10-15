@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { LLM_USAGE_UI } from "@deck/contract/modules/llm-usage";
+import { LLM_USAGE_UI } from "../../../modules/llm-usage/contract.js";
 import type { Logger } from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

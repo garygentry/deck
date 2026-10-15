@@ -245,7 +245,7 @@ describe("the llm-usage web half", () => {
     await import("../../../modules/portal/web/index.js");
     await import("../../../modules/llm-usage/web/index.js");
     const registry = await import("../src/registry/registry.js");
-    const { LLM_USAGE_UI } = await import("@deck/contract/modules/llm-usage");
+    const { LLM_USAGE_UI } = await import("../../../modules/llm-usage/contract.js");
     const { LlmUsageSummary } = await import("../../../modules/llm-usage/web/LlmUsageSummary.js");
     const { LlmUsagePortalCard } = await import("../../../modules/llm-usage/web/LlmUsagePortalCard.js");
     const { LlmUsagePage } = await import("../../../modules/llm-usage/web/LlmUsagePage.js");
@@ -272,7 +272,7 @@ describe("the inventory web half", () => {
     vi.resetModules();
     await import("../../../modules/inventory/web/index.js");
     const registry = await import("../src/registry/registry.js");
-    const { INVENTORY_UI } = await import("@deck/contract/modules/inventory");
+    const { INVENTORY_UI } = await import("../../../modules/inventory/contract.js");
     const pages = await import("../../../modules/inventory/web/pages.js");
 
     const ours = registry.getAllExtensions().filter(({ module }) => module === "inventory");

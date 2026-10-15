@@ -12,10 +12,10 @@
 
 import type { ReactNode, JSX } from "react";
 import { useEffect, useState } from "react";
-import type { ResolvedParams } from "@deck/contract/actions";
+import type { ResolvedParams } from "../params.js";
 import type { DeckConfig } from "../../../apps/server/src/contract/index.js";
 import type { Action } from "../server/types.js";
-import { validateActionParams } from "@deck/contract/actions";
+import { validateActionParams } from "../params.js";
 import { Callout, ConfigGate, PageErrorBoundary } from "@/ui";
 import { ActionList } from "./components/ActionList.js";
 import { ParamForm, initialParamValues } from "./components/ParamForm.js";

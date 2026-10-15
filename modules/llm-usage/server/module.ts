@@ -1,4 +1,4 @@
-import { LLM_USAGE_UI } from "@deck/contract/modules/llm-usage";
+import { LLM_USAGE_UI } from "../contract.js";
 import { defineServerModule, type JsonSchema, type ModuleManifest } from "@deck/module-sdk";
 
 import { LlmUsageCollector, type CollectorDeps } from "./collector.js";

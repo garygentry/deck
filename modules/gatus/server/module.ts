@@ -1,4 +1,4 @@
-import { GATUS_STATUS } from "@deck/contract/modules/data-sources";
+import { GATUS_STATUS } from "../../portal/status-kinds.js";
 import { defineServerModule, type JsonSchema, type ModuleManifest } from "@deck/module-sdk";
 
 import { GatusProvider } from "./index.js";

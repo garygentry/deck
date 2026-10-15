@@ -1,4 +1,4 @@
-import { ACTIONS_UI } from "@deck/contract/modules/actions";
+import { ACTIONS_UI } from "../contract.js";
 import { defineWebModule } from "@deck/module-sdk";
 import type { ComponentType } from "react";
 

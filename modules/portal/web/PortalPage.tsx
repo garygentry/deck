@@ -1,4 +1,4 @@
-import { PORTAL_UI } from "@deck/contract/modules/portal";
+import { PORTAL_UI } from "../contract.js";
 import type { FunctionComponent } from "react";
 import { PageHeader, usePageHeadingId } from "@/ui";
 import { PageLayoutSections, usePageLayout } from "@/shell/config-page/layout.js";

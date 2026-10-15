@@ -1,4 +1,4 @@
-import { MONITORING_UI } from "@deck/contract/modules/monitoring";
+import { MONITORING_UI } from "../contract.js";
 import { defineWebModule } from "@deck/module-sdk";
 import type { ComponentType } from "react";
 

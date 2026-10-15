@@ -11,7 +11,7 @@
  * the exported mutators, which are the only writers.
  */
 
-import type { ParamError } from "@deck/contract/actions";
+import type { ParamError } from "../params.js";
 import type { ActionOutcome, ActionRunEvent } from "../server/types.js";
 
 /** Metadata for a pre-run refusal surfaced after an invoke. */

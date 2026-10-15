@@ -1,4 +1,4 @@
-import { DRIFT_UI } from "@deck/contract/modules/drift";
+import { DRIFT_UI } from "../contract.js";
 import { defineWebModule } from "@deck/module-sdk";
 import type { ComponentType } from "react";
 

@@ -1,4 +1,4 @@
-import { SOURCES_UI } from "@deck/contract/modules/sources";
+import { SOURCES_UI } from "../contract.js";
 import { defineServerModule, type DisabledRouteDecl, type ModuleManifest, type ServiceOffer } from "@deck/module-sdk";
 
 import { SOURCE_MESSAGES } from "./errors.js";

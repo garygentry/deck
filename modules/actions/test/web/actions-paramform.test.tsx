@@ -2,8 +2,8 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { validateActionParams } from "@deck/contract/actions";
-import type { ParamError } from "@deck/contract/actions";
+import { validateActionParams } from "../../params.js";
+import type { ParamError } from "../../params.js";
 import type { Action } from "../../server/types.js";
 
 import {

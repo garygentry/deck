@@ -5,7 +5,7 @@
  */
 export type { Action, ActionParam, ActionsModuleConfig } from "./config.generated.js";
 export type { ActionOutcome, ActionRunEvent, StructuredRunnerInput } from "./events.js";
-export type { ActionParamValue, ParamError, ResolvedParams, ValidateResult } from "@deck/contract/actions";
+export type { ActionParamValue, ParamError, ResolvedParams, ValidateResult } from "../params.js";
 export type { AuditDetail, AuditEntry, AuditListItem, AuditTarget } from "./audit.js";
 
 /**

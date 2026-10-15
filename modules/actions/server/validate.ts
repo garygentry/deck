@@ -1,4 +1,4 @@
-import type { ValidatableAction } from "@deck/contract/actions";
+import type { ValidatableAction } from "../params.js";
 
 import type { Action } from "./config.generated.js";
 
@@ -12,7 +12,7 @@ export {
   type ParamError,
   type ResolvedParams,
   type ValidateResult,
-} from "@deck/contract/actions";
+} from "../params.js";
 
 /**
  * Compile-time check: the validator's structural input must accept every declared action.

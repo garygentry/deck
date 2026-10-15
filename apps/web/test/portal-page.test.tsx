@@ -6,7 +6,7 @@ import type { JsonObject, UiPage, UiWidgetInstance } from "@deck/module-sdk";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { BUILTIN_STATUS_KINDS } from "@deck/contract/modules/data-sources";
+import { BUILTIN_STATUS_KINDS } from "../../../modules/portal/status-kinds.js";
 import type { GatusResult, PortalData } from "../../../modules/portal/web/card-status.js";
 
 let portalData: PortalData;
@@ -32,7 +32,7 @@ import {
   EndpointStatusSummary,
 } from "../../../modules/portal/web/EndpointStatusSummary.js";
 import { CARD_STATUS, PortalCard } from "../../../modules/portal/web/PortalCard.js";
-import { PORTAL_SUMMARY_SLOT, PORTAL_UI } from "@deck/contract/modules/portal";
+import { PORTAL_SUMMARY_SLOT, PORTAL_UI } from "../../../modules/portal/contract.js";
 import { getAllExtensions, getPages, getSlot, registerCard } from "../src/registry/registry.js";
 import { getQueryClient, resetQueryClient } from "../src/data/query-client.js";
 import { queryKeys } from "../src/data/index.js";

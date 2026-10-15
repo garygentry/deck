@@ -202,3 +202,168 @@ describe("renderMarkdown: external links only, checked as the page parses it", (
     expect(html).not.toContain("/api/x");
   });
 });
+
+describe("renderMarkdown: external links only loads no resource", () => {
+  const external = (markdown: string): string => renderMarkdown(markdown, undefined, { externalLinksOnly: true });
+
+  it("shows a markdown image as its alt text, loading nothing (an image link keeps its name)", () => {
+    const html = external('![build status](https://res.example/badge.png) and [![docs badge](https://res.example/d.svg)](https://ok.example/) and <img src="https://res.example/r.png" alt="raw <alt>">');
+    const doc = parse(html);
+    expect(doc.querySelector("img")).toBeNull();
+    expect(doc.body.textContent).toContain("build status");
+    expect(doc.body.textContent).toContain("raw <alt>");
+    expect(doc.querySelector('a[href="https://ok.example/"]')?.textContent).toContain("docs badge");
+    expect(html).not.toContain("res.example");
+  });
+
+  it("leaves nothing for an image with no alt text", () => {
+    const html = external('before<img src="https://res.example/pixel.gif">after');
+    expect(parse(html).body.textContent?.trim()).toBe("beforeafter");
+  });
+
+  // Every way markdown's raw HTML could make the page fetch on render; each names res.example.
+  const vectors: ReadonlyArray<readonly [string, string]> = [
+    ["img src/srcset/lowsrc", '<img src="https://res.example/a.png" srcset="https://res.example/b.png 2x" lowsrc="https://res.example/c.png" alt="a">'],
+    ["picture/source", '<picture><source srcset="https://res.example/a.webp" type="image/webp"><img src="https://res.example/a.png" alt="p"></picture>'],
+    ["video src/poster/source/track", '<video src="https://res.example/v.mp4" poster="https://res.example/p.png"><source src="https://res.example/v.webm"><track src="https://res.example/t.vtt">fallback</video>'],
+    ["audio src/source", '<audio src="https://res.example/a.mp3"><source src="https://res.example/a.ogg"></audio>'],
+    ["input type=image", '<input type="image" src="https://res.example/i.png" alt="go">'],
+    ["background attributes", '<table background="https://res.example/t.png"><tr><td background="https://res.example/td.png">x</td></tr></table>'],
+    ["style attribute url()", '<p style="background-image:url(https://res.example/s.png)">s</p>'],
+    ["style element", "<style>@import url(https://res.example/s.css); p{background:url(https://res.example/s.png)}</style>"],
+    ["link/meta/base", '<link rel="stylesheet" href="https://res.example/l.css"><link rel="preload" as="image" href="https://res.example/l.png"><meta http-equiv="refresh" content="0;url=https://res.example/"><base href="https://res.example/">'],
+    ["svg image href/xlink:href", '<svg><image href="https://res.example/a.svg"></image><image xlink:href="https://res.example/b.svg"></image></svg>'],
+    ["svg feImage/use/pattern/textPath", '<svg><filter><feImage href="https://res.example/f.png"></feImage></filter><use href="https://res.example/u.svg#i"></use><pattern href="https://res.example/p.svg#p"></pattern><text><textPath href="https://res.example/t.svg#p">t</textPath></text></svg>'],
+    ["svg style and url() reference", '<svg><style>@import url(https://res.example/s.css);</style><rect fill="url(https://res.example/g.svg#g)"></rect></svg>'],
+    ["embedding elements", '<iframe src="https://res.example/f.html"></iframe><object data="https://res.example/o.swf"></object><embed src="https://res.example/e.swf">'],
+  ];
+
+  it.each(vectors)("drops %s", (_name, raw) => {
+    const html = external(raw);
+    expect(html).not.toContain("res.example");
+    const doc = parse(html);
+    expect(doc.querySelector("img, picture source, video, audio, track, image, link, meta, base, style, iframe, object, embed, [src], [srcset], [poster], [background], [style]")).toBeNull();
+  });
+
+  // CSS escapes and comments that spell url( in an SVG presentation attribute (CSS reads `u\72l(` as `url(`).
+  const escaped: ReadonlyArray<readonly [string, string]> = [
+    ["filter, hex escape", String.raw`<svg><rect width="1" height="1" filter="u\72l(/api/config#x)"></rect></svg>`],
+    ["filter, six-digit escape and space", String.raw`<svg><rect width="1" height="1" filter="\000075rl(https://res.example/f.svg#x)"></rect></svg>`],
+    ["fill, escaped plain characters", String.raw`<svg><rect width="1" height="1" fill="\u\r\l(https://res.example/g.svg#g)"></rect></svg>`],
+    ["fill, escaped parenthesis", String.raw`<svg><rect width="1" height="1" fill="url\28 https://res.example/g.svg#g)"></rect></svg>`],
+    ["mask, escape and comment", String.raw`<svg><rect width="1" height="1" mask="U\52 L/**/(/api/config#m)"></rect></svg>`],
+    ["stroke, clip-path, markers and cursor", String.raw`<svg><path d="M0 0" stroke="u\rl(/api/a)" clip-path="u\rl(/api/b)" marker-start="u\rl(/api/c)" marker-mid="u\rl(/api/d)" marker-end="u\rl(/api/e)" cursor="u\rl(/api/f), auto"></path></svg>`],
+  ];
+
+  it.each(escaped)("drops a CSS resource reference spelled with escapes: %s", (_name, raw) => {
+    const html = external(raw);
+    expect(html).not.toMatch(/res\.example|\/api\//);
+    expect(html).not.toContain("\\");
+    const shape = parse(html).querySelector("rect, path");
+    expect(shape, "the shape itself stays").not.toBeNull();
+    for (const attribute of ["filter", "fill", "mask", "stroke", "clip-path", "marker-start", "marker-mid", "marker-end", "cursor"]) {
+      expect(shape?.hasAttribute(attribute), attribute).toBe(false);
+    }
+  });
+
+  // CSS functions other than url( that fetch (image-set takes a bare string), and a quoted string on its own.
+  const functionValues: ReadonlyArray<readonly [string, string]> = [
+    ["image-set", `image-set("https://res.example/a.png" 1x)`],
+    ["-webkit-image-set", `-webkit-image-set("https://res.example/b.png" 1x)`],
+    ["image()", `image("https://res.example/c.png")`],
+    ["cross-fade()", `cross-fade(50% image-set("https://res.example/d.png"), red)`],
+    ["element()", `element(#res-example)`],
+    ["paint()", `paint(res-example)`],
+    ["image-set, unquoted with a nested function", `IMAGE-SET(rgb(0 0 0) 1x, image(res-example))`],
+    ["a quoted string on its own", `"https://res.example/e.png"`],
+  ];
+  const functionVectors = ["mask", "filter", "fill", "stroke"].flatMap((attribute) =>
+    functionValues.map(([name, value]) => [`${attribute}: ${name}`, attribute, value] as const),
+  );
+
+  it.each(functionVectors)("drops an SVG attribute calling a CSS function off the allowlist: %s", (_name, attribute, value) => {
+    const element = document.createElement("div");
+    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    rect.setAttribute(attribute, value);
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.append(rect);
+    element.append(svg);
+    const html = external(element.innerHTML);
+    expect(html).not.toContain("res.example");
+    expect(html).not.toContain("res-example");
+    expect(parse(html).querySelector("rect")?.hasAttribute(attribute)).toBe(false);
+  });
+
+  it("keeps SVG attributes that call only allowlisted functions", () => {
+    const html = external(
+      '<svg><rect width="1" height="1" fill="rgb(1 2 3)" stroke="OKLCH(70% 0.1 200)" stroke-width="calc(1px + 2px)" transform="rotate(45) translate(1, 2) scale(2)"></rect>' +
+        '<path d="M0 0 L1 1" fill="oklch(62.8% 0.25 29.23 / 0.5)" opacity="0.5"></path></svg>',
+    );
+    const doc = parse(html);
+    expect(doc.querySelector("rect")?.getAttribute("fill")).toBe("rgb(1 2 3)");
+    expect(doc.querySelector("rect")?.getAttribute("stroke")).toBe("OKLCH(70% 0.1 200)");
+    expect(doc.querySelector("rect")?.getAttribute("transform")).toBe("rotate(45) translate(1, 2) scale(2)");
+    expect(doc.querySelector("path")?.getAttribute("fill")).toBe("oklch(62.8% 0.25 29.23 / 0.5)");
+    expect(doc.querySelector("path")?.getAttribute("d")).toBe("M0 0 L1 1");
+  });
+
+  it("keeps a video's and an audio's fallback content: text, links, and images as alt text", () => {
+    const html = external(
+      '<video src="https://res.example/v.mp4" poster="https://res.example/p.png">Download the <a href="https://ok.example/v.mp4">recording</a> <img src="https://res.example/i.png" alt="still frame"></video>' +
+        '<audio src="https://res.example/a.mp3"><source src="https://res.example/a.ogg">Listen <em>elsewhere</em></audio>',
+    );
+    const doc = parse(html);
+    expect(doc.querySelector("video, audio, source, img")).toBeNull();
+    expect(doc.body.textContent).toContain("Download the");
+    expect(doc.body.textContent).toContain("still frame");
+    expect(doc.querySelector('a[href="https://ok.example/v.mp4"]')?.textContent).toContain("recording");
+    expect(doc.querySelector("em")?.textContent).toBe("elsewhere");
+    expect(html).not.toContain("res.example");
+  });
+
+  it("keeps an href only on an HTML link, so no unnamed link is left focusable", () => {
+    const html = external(
+      '<svg><a href="https://ok.example/"><image href="https://res.example/i.svg"></image></a><a xlink:href="https://ok.example/x"><rect width="1" height="1"></rect></a></svg>' +
+        '[named](https://ok.example/n)',
+    );
+    const doc = parse(html);
+    expect(doc.querySelector("svg [href], svg [*|href]")).toBeNull();
+    const links = [...doc.querySelectorAll("a[href], area[href]")];
+    expect(links.map((link) => link.getAttribute("href"))).toEqual(["https://ok.example/n"]);
+    for (const link of links) expect(link.textContent?.trim()).not.toBe("");
+  });
+
+  it("does not take a link's href for a CSS reference", () => {
+    const html = external("[changelog](https://ok.example/src(1)/url(2))");
+    expect(attr(html, "a", "href")).toBe("https://ok.example/src(1)/url(2)");
+  });
+
+  it("keeps an image input's alt, with nothing to load", () => {
+    const doc = parse(external(vectors[4][1]));
+    expect(doc.querySelector('input[type="image"]')?.getAttribute("alt")).toBe("go");
+  });
+
+  it("re-checks the page's parse for an attribute that fetches", async () => {
+    const DOMPurify = (await import("dompurify")).default;
+    const real = DOMPurify.sanitize.bind(DOMPurify);
+    // Stand in for a parser difference: the policy pass keeps returning an element that fetches.
+    const spy = vi.spyOn(DOMPurify, "sanitize").mockImplementation(((html: string, config?: { ALLOWED_TAGS?: unknown }) =>
+      Array.isArray(config?.ALLOWED_TAGS) && config.ALLOWED_TAGS.length === 0 ? real(html, config as never) : '<input type="image" src="https://res.example/i.png" alt="go">') as never);
+    try {
+      expect(external("x")).toBe("");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("leaves operator markdown's images and media exactly as before", () => {
+    const html = renderMarkdown(
+      '![ext](https://cdn.example.com/a.png)\n\n<img src="https://cdn.example.com/b.png" srcset="https://cdn.example.com/b2.png 2x" alt="b">\n\n<video src="https://cdn.example.com/v.mp4" poster="https://cdn.example.com/p.png"></video>',
+      ctx("index.md"),
+    );
+    expect(attr(html, "p > img", "src")).toBe("https://cdn.example.com/a.png");
+    expect(attr(html, 'img[alt="b"]', "srcset")).toBe("https://cdn.example.com/b2.png 2x");
+    expect(attr(html, "video", "poster")).toBe("https://cdn.example.com/p.png");
+    expect(attr(renderMarkdown("![logo](img/logo.png)", ctx("guides/index.md")), "img", "src")).toBe("/asset/guides/img/logo.png");
+  });
+});

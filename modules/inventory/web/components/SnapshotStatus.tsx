@@ -115,7 +115,7 @@ function AvailableStatus({ snapshot }: AvailableStatusProps): JSX.Element {
         <FreshnessBadge freshness={snapshot.envelope.freshness} />
         <p className="text-muted-foreground">
           {"Last successful snapshot read: "}
-          <time dateTime={result.lastReadAt} data-snapshot-read-at="">
+          <time dateTime={result.lastReadAt} data-snapshot-read-at="" className="whitespace-nowrap tabular-nums">
             {result.lastReadAt}
           </time>
         </p>

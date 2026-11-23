@@ -60,6 +60,7 @@ const HOST_COLUMNS: ColumnDef<HostRow>[] = [
       {
         id: "declared-services",
         header: "Declared services",
+        meta: { align: "end" },
         cell: ({ row }) =>
           row.original.declared !== null ? String(row.original.declaredServiceCount) : LIST_CELLS.notDeclared,
       },
@@ -79,6 +80,7 @@ const HOST_COLUMNS: ColumnDef<HostRow>[] = [
       {
         id: "observed-services",
         header: "Observed services",
+        meta: { align: "end" },
         cell: ({ row }) =>
           row.original.reality === "available" ? String(row.original.observedServiceCount) : LIST_CELLS.noSnapshot,
       },

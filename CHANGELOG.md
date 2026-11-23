@@ -22,6 +22,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **ui-floors checks in CI**: `pnpm --filter @deck/web test:ui-floors` runs the static ui-floors
+  checks (theme contrast, source lint over `apps/web` and the modules' web halves) in the
+  `node-pnpm` job, which now sets up Bun for them. `apps/web/ui-floors.json` also lists the pages
+  for a screenshot sweep. Text that used `break-all` (IDs, paths, matchers) uses `wrap-anywhere`,
+  so it breaks only where it would otherwise overflow.
+
 - **Built-in modules reach each other only through a public entry**, `web/public.ts` or
   `server/public.ts`, with a declared package dependency on `@deck/module-<id>`; a guard test
   (`module-imports.test.ts`) enforces it for every import form, type-only ones and shared test

@@ -563,6 +563,14 @@ the `style=` allowlist, `data-slot` roots, no `data-icon`, and no legacy tokens.
 themselves live in `@deck/sdk/lint` (`packages/sdk/lint`), which `deck-module lint` also runs
 on a runtime module's web half, so deck and its modules are held to one set of rules.
 
+[ui-floors](https://github.com/garygentry/ui-floors) adds checks for a sound baseline:
+`pnpm --filter @deck/web test:ui-floors` (in CI) checks theme contrast and lints `apps/web`
+and the modules' web halves (no `transition-all`, no `break-all`, fonts with fallbacks, and so
+on). Its screenshot sweep reads the rendered pages, at phone and desktop widths in both
+schemes: run `pnpm start`, then `ui-floors sweep` from `apps/web`, and read every screenshot.
+`apps/web/ui-floors.json` holds the page list and deck's settings; every opinion is an error,
+and the body text range is deck's 13 to 14 px.
+
 ## Testing and visual baselines
 
 - **Unit:** Vitest with jsdom and React Testing Library, asserting roles, names and ARIA states

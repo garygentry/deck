@@ -51,7 +51,7 @@ export function SearchResults({ search, query, onOpen }: SearchResultsProps): JS
                     className="text-muted-foreground"
                   />
                 }
-                title={<span className="font-mono text-xs break-all">{matchLabel(match)}</span>}
+                title={<span className="font-mono text-xs wrap-anywhere">{matchLabel(match)}</span>}
                 description={
                   match.kind === "content" && match.snippet != null ? (
                     <span className="text-xs break-words">{match.snippet}</span>

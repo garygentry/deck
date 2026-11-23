@@ -92,7 +92,7 @@ function JsonNode({ value }: { readonly value: ReadonlyJsonValue }): JSX.Element
           <dt className="text-muted-foreground">
             <code>{JSON.stringify(key)}</code>
           </dt>
-          <dd className="m-0 min-w-0 break-all">
+          <dd className="m-0 min-w-0 wrap-anywhere">
             <JsonNode value={entries[key] as ReadonlyJsonValue} />
           </dd>
         </div>
@@ -156,7 +156,7 @@ function EvidenceInner({ label, value, limits }: EvidenceValueProps): JSX.Elemen
 
   return (
     <div
-      className="flex min-w-0 flex-col gap-1 font-mono text-xs break-all"
+      className="flex min-w-0 flex-col gap-1 font-mono text-xs wrap-anywhere"
       data-drift-evidence={label}
     >
       <p className="font-sans text-xs font-semibold break-normal text-muted-foreground">{label}</p>

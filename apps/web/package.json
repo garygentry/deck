@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
-    "test": "pnpm test:unit; unit=$?; pnpm test:e2e && exit $unit",
+    "test:ui-floors": "ui-floors static --config ui-floors.json",
+    "test": "pnpm test:unit; unit=$?; pnpm test:ui-floors; floors=$?; pnpm test:e2e && [ $unit -eq 0 ] && [ $floors -eq 0 ]",
     "build": "vite build",
     "dev": "vite"
   },
@@ -56,6 +57,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@garygentry/ui-floors": "0.1.0",
     "@playwright/test": "^1",
     "@tailwindcss/oxide": "^4.3.3",
     "@tailwindcss/typography": "^0.5.20",

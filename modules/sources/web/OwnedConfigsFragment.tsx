@@ -160,7 +160,7 @@ function OwnedSourceGroup({ source }: { readonly source: Source }): JSX.Element 
           <ListItem
             key={path}
             href={configsHref(source.id, path)}
-            title={<span className="font-mono text-xs break-all">{path}</span>}
+            title={<span className="font-mono text-xs wrap-anywhere">{path}</span>}
           />
         ))}
       </List>

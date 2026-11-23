@@ -2202,6 +2202,8 @@ declare module "@tanstack/react-table" {
         headerClassName?: string;
         /** `"end"` right-aligns (numbers). */
         align?: "start" | "end";
+        /** The column's label in a stacked phone layout; defaults to a string `header`. */
+        label?: string;
     }
 }
 /** Where `scrollToIndex` places the row; `"auto"` scrolls only as far as needed. */
@@ -2290,6 +2292,13 @@ interface DataTableProps<T> {
     /** Header cells stick to the top of the scroll region (bound its height via `className`). Default `true`. */
     stickyHeader?: boolean;
     /**
+     * How the table fits a phone (480 px wide or less). `"stack"` (the default) shows each row as a
+     * block: the first cell as its heading, then each other cell under its column's label, so no
+     * column hides off the edge. `"scroll"` keeps the columns and scrolls sideways, for a matrix
+     * that reads only as a grid. A virtualized table always scrolls (its rows need a steady height).
+     */
+    phoneLayout?: "stack" | "scroll";
+    /**
      * Classes for the root (`data-slot="data-table"`), which is the scroll region with or
      * without `virtualize`, e.g. `max-h-96` for a sticky header.
      */
@@ -2333,7 +2342,7 @@ interface DataTableProps<T> {
  * convention, the empty row and horizontal scrolling in a focusable, labelled
  * region. Figures are tabular (`tabular-nums`).
  */
-declare function DataTable<T>({ columns, data, caption, captionHidden, getRowId, rowLink, linkAs: LinkAs, rowDomId, rowHeader, empty, density, stickyHeader, className, focusable, virtualize, ref, }: DataTableProps<T>): React.JSX.Element;
+declare function DataTable<T>({ columns, data, caption, captionHidden, getRowId, rowLink, linkAs: LinkAs, rowDomId, rowHeader, empty, density, stickyHeader, phoneLayout, className, focusable, virtualize, ref, }: DataTableProps<T>): React.JSX.Element;
 
 type ListVariant = "plain" | "divided" | "card";
 interface ListProps {

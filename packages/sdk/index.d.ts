@@ -2174,7 +2174,7 @@ declare function FreshnessBadge({ freshness, now, tickMs, tooltip, ...props }: F
 interface HealthPillProps extends Omit<ComponentProps<"a">, "href" | "children" | "title"> {
     tone: Tone;
     icon: IconName | (string & {});
-    /** Short visible text; truncates in narrow headers (the tooltip shows it in full). */
+    /** Short visible text; truncates in narrow headers, with more room from `xl` (the tooltip shows it in full). */
     label: string;
     /** The owning page. */
     href: string;

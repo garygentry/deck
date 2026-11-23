@@ -225,6 +225,13 @@ describe("useFacetFilters", () => {
 });
 
 describe("<SearchInput>", () => {
+  it("turns off autocomplete and spellcheck, which only get in the way of a filter query", () => {
+    render(<SearchInput label="Search hosts" />);
+    const box = screen.getByRole("searchbox", { name: "Search hosts" });
+    expect(box).toHaveAttribute("autocomplete", "off");
+    expect(box).toHaveAttribute("spellcheck", "false");
+  });
+
   it("is a labelled searchbox with a clear button and Escape-to-clear", async () => {
     const user = userEvent.setup();
     const onValueChange = vi.fn();

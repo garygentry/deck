@@ -104,6 +104,8 @@ export function SearchInput({
           ref={inputRef}
           id={inputId}
           type="search"
+          autoComplete="off"
+          spellCheck={false}
           value={draft}
           placeholder={placeholder}
           aria-keyshortcuts={shortcut ? "/" : undefined}

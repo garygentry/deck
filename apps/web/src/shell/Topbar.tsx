@@ -12,8 +12,13 @@ export function Topbar({ title }: { title: string | undefined }) {
       className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-4"
     >
       <SidebarTrigger aria-label="Toggle navigation" />
-      <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-5" />
-      {title && <span className="hidden truncate text-sm font-medium sm:inline">{title}</span>}
+      {title && (
+        <>
+          {/* The divider separates the toggle from the title, so it hides with the title on phones. */}
+          <Separator orientation="vertical" className="mr-1 hidden data-[orientation=vertical]:h-5 sm:block" />
+          <span className="hidden truncate text-sm font-medium sm:inline">{title}</span>
+        </>
+      )}
       <div className="ml-auto flex min-w-0 items-center gap-2">
         <HealthHeaderRegion />
         <TopbarActions />

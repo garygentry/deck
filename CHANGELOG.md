@@ -47,6 +47,19 @@ All notable changes to this project are documented here. The format is based on
   **Upgrading:** run `deck validate` with the new version against your estate config before
   re-pinning.
 
+### Fixed
+
+- **UI baseline fixes** from a ui-floors baseline pass:
+  - controls set `touch-action: manipulation` (a base rule in `app.css`), so a tap acts at once;
+  - `SearchInput` turns off autocomplete and spellcheck;
+  - `Button`, `TabsTrigger` and the sidebar rail name the properties they transition instead of `transition-all`;
+  - the page sets `theme-color` for light and dark, matching the background;
+  - `DataTable` group headers start-align with the columns under them;
+  - `StatTile` values line up across a row when a label wraps;
+  - `HealthPill` has more room from `xl`, so the topbar drift summary truncates less;
+  - the topbar divider hides with the page title on phones;
+  - the hosts table end-aligns its service counts, and the snapshot read time no longer breaks mid-timestamp.
+
 ### Security
 
 - **Sidecar markdown loads no images or media** (`core/markdown` from a `remote` sidecar, under

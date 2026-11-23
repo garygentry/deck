@@ -159,6 +159,38 @@ describe("DataTable", () => {
     render(<DataTable caption="Hosts" columns={FLAT} data={HOSTS} getRowId={(r) => r.key} density="comfortable" />);
     expect(screen.getByRole("region")).toHaveAttribute("data-density", "comfortable");
   });
+
+  it("stacks on phones by default: each cell after the row header carries its column's label", () => {
+    render(<DataTable caption="Hosts" columns={GROUPED} data={HOSTS} getRowId={(r) => r.key} />);
+    expect(screen.getByRole("region")).toHaveAttribute("data-phone-layout", "stack");
+    const row = screen.getByRole("rowheader", { name: "nas-01" }).closest("tr")!;
+    expect(row).toHaveAttribute("role", "row");
+    const cells = within(row).getAllByRole("cell");
+    expect(cells.map((c) => c.getAttribute("data-label"))).toEqual(["Kind", "Declared services", "Observed services"]);
+    // The label is CSS-generated, so a cell's text is still just its value.
+    expect(cells.map((c) => c.textContent)).toEqual(["Bare metal", "6", "6"]);
+    expect(screen.getByRole("table")).toHaveAttribute("role", "table");
+  });
+
+  it("labels a cell from meta.label when the header is not a string, and skips a column with neither", () => {
+    const columns: ColumnDef<Host>[] = [
+      { accessorKey: "name", header: "Host" },
+      { accessorKey: "kind", header: () => <span>Kind</span>, meta: { label: "Kind" } },
+      { accessorKey: "declared", header: () => <span>Declared</span> },
+    ];
+    render(<DataTable caption="Hosts" columns={columns} data={HOSTS} getRowId={(r) => r.key} />);
+    const row = screen.getByRole("rowheader", { name: "nas-01" }).closest("tr")!;
+    const [kind, declared] = within(row).getAllByRole("cell");
+    expect(kind).toHaveAttribute("data-label", "Kind");
+    expect(declared).not.toHaveAttribute("data-label");
+  });
+
+  it('keeps the columns with phoneLayout="scroll"', () => {
+    render(<DataTable caption="Hosts" columns={FLAT} data={HOSTS} getRowId={(r) => r.key} phoneLayout="scroll" />);
+    expect(screen.getByRole("region")).toHaveAttribute("data-phone-layout", "scroll");
+    expect(screen.getByRole("table")).not.toHaveAttribute("role");
+    expect(screen.getByRole("region").querySelector("[data-label]")).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

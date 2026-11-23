@@ -210,6 +210,8 @@ describe("@/ui DataTable virtualize", () => {
     expect(vp).toHaveAttribute("role", "region");
     expect(vp).toHaveAccessibleName("Hosts");
     expect(screen.getByRole("table")).toHaveAttribute("aria-rowcount", "1001");
+    // A virtualized table keeps its columns on phones: stacked rows would break the steady row height.
+    expect(vp.querySelector("[data-label]")).toBeNull();
     // The header row is row 1.
     expect(within(screen.getByRole("table")).getAllByRole("row")[0]).toHaveAttribute("aria-rowindex", "1");
 

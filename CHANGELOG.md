@@ -15,6 +15,11 @@ All notable changes to this project are documented here. The format is based on
 - **`settlesWithin` and `canonicalJson` in `@deck/module-sdk`**: a bounded wait on a promise
   that never keeps the process alive, and key-order-insensitive JSON text (#62).
 
+- **`DataTable` stacks rows on phones**: at 480 px and below each row becomes a block, its row
+  header as the heading and each other cell under its column's label, so no column hides off
+  the edge of a scroll box. `phoneLayout="scroll"` keeps the columns; a virtualized table always
+  scrolls. A column whose `header` is not a string names itself with `meta.label`.
+
 ### Changed
 
 - **ui-floors checks in CI**: `pnpm --filter @deck/web test:ui-floors` runs the static ui-floors

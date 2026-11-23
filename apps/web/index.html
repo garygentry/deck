@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- The browser chrome follows the page background: --background in styles/theme.css. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fafafa" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0b" />
     <title>Deck</title>
     <!-- The boot object (DeckBoot in @deck/contract): the server writes it in; empty under Vite dev. -->
     <script type="application/json" id="deck-boot"></script>

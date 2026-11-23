@@ -50,8 +50,9 @@ export function StatTile({
   className,
 }: StatTileProps) {
   const body = (
-    <dl className="m-0 flex flex-col gap-1">
-      <dt className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+    // The label takes the spare height, so values line up across a row of tiles when one label wraps.
+    <dl className="m-0 flex h-full flex-col gap-1">
+      <dt className="flex flex-1 items-start gap-1.5 text-xs font-medium text-muted-foreground">
         {icon !== undefined ? <Icon name={icon} size={14} className={TONE_VALUE[tone]} /> : null}
         {label}
       </dt>

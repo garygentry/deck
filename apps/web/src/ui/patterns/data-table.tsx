@@ -416,7 +416,7 @@ export function DataTable<T>({
           cellPad,
           "bg-muted text-xs font-medium text-muted-foreground",
           stickyHeader && "sticky top-0 z-10",
-          !leaf && "border-x text-center",
+          !leaf && "border-x",
           leaf && alignClass(column),
           column.columnDef.meta?.headerClassName,
         )}

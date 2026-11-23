@@ -513,7 +513,10 @@ renders with external links only.
 2. Compose it from `@/ui`: `PageHeader` for the single `h1`, `Section` for each `h2` region, and
    the pattern that fits the content (`DataTable`, `List`, `CardGrid`, `KeyValueList`, …).
    Use `LoadingState`, `EmptyState` and `ErrorState` (or `ConfigGate`) for the non-happy
-   paths, and `PageErrorBoundary` around the page.
+   paths, and `PageErrorBoundary` around the page. On phones (480 px and below) a `DataTable`
+   stacks each row into a block: the row header as its heading, then each cell under its
+   column's label (a string `header`, or `meta.label`). Pass `phoneLayout="scroll"` for a
+   matrix that reads only as a grid; a virtualized table always scrolls.
 3. Map domain states with `defineStatusMap`; render them with `StatusBadge`.
 4. For keyboard list navigation use `useListNavigation`. Its editable-field guard and
    modifier-key passthrough are built in. A `DataTable` with `virtualize` renders only a window

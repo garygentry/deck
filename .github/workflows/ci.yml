@@ -40,6 +40,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # The web unit run does not need Bun, but keep parity of the toolchain simple.
+      # The ui-floors checks do: the package ships TypeScript and runs on Bun.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -60,6 +64,8 @@ jobs:
           pnpm --filter @deck/server test
           pnpm --filter @deck/web test:unit
           pnpm --filter deck-module-hello test
+      - name: UI floors, static checks (contrast and source lint)
+        run: pnpm --filter @deck/web test:ui-floors
 
   web-e2e:
     # Playwright e2e, sharded across runners. The suite is workers:1 /

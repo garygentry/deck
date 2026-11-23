@@ -245,7 +245,7 @@ export function AuditHistory({
                     {item.timestamp}
                   </time>
                   <span className="whitespace-nowrap">Runner: {item.runner}</span>
-                  {target !== null ? <span className="break-all">Target: {target}</span> : null}
+                  {target !== null ? <span className="wrap-anywhere">Target: {target}</span> : null}
                   {showsExitCode(item.outcome) && item.exitStatus !== null ? (
                     <span className="font-mono whitespace-nowrap">Exit code {item.exitStatus}</span>
                   ) : null}

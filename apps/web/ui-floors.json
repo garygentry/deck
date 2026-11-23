@@ -1,0 +1,37 @@
+{
+  "$comment": "ui-floors checks (https://github.com/garygentry/ui-floors). Every opinion is an error, as the estate profile sets them. Body text is 14 px, 13 px on phones (styles/app.css): bodyPx says so. `pnpm --filter @deck/web test:ui-floors` runs the static checks; `ui-floors sweep --base http://127.0.0.1:8080` sweeps a running `pnpm start`.",
+  "stack": "react-tailwind",
+  "base": "http://127.0.0.1:8080",
+  "pages": [
+    { "path": "/", "ready": "main h1" },
+    { "path": "/hosts", "ready": "main h1" },
+    { "path": "/services", "ready": "main h1" },
+    { "path": "/drift", "ready": "main h1" },
+    { "path": "/usage", "ready": "main h1" },
+    { "path": "/monitoring", "ready": "main h1" },
+    { "path": "/configs", "ready": "main h1" },
+    { "path": "/docs", "ready": "main h1" },
+    { "path": "/no-such-page", "ready": "main" }
+  ],
+  "out": "test-results/ui-floors",
+  "rules": {
+    "body-size": "error",
+    "line-length": "error",
+    "numeric-columns": "error",
+    "hidden-columns": "error",
+    "touch-action": "error",
+    "search-input": "error",
+    "theme-color": "error",
+    "dark-theme": "error",
+    "literal-colour": "error",
+    "transition-all": "error",
+    "break-all": "error",
+    "remote-font": "error",
+    "font-fallback": "error",
+    "budget": "error"
+  },
+  "floors": { "bodyPx": [13, 14] },
+  "contrast": { "files": ["src/styles/theme.css"] },
+  "lint": { "include": ["src", "index.html", "../../modules"], "exclude": ["dist", "test"], "tokenFiles": ["src/styles/theme.css"] },
+  "budget": false
+}

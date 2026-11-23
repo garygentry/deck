@@ -77,11 +77,11 @@ function FindingRowView({
     { label: "Severity", value: StatusBadge.fromMap(DRIFT_SEVERITY, finding.severity) },
     { label: "Waiver", value: StatusBadge.fromMap(DRIFT_WAIVER, finding.waiverState, { variant: "dot" }) },
     { label: "Category", value: finding.category },
-    { label: "Finding", value: <code className="font-mono text-xs break-all">{finding.id}</code> },
+    { label: "Finding", value: <code className="font-mono text-xs wrap-anywhere">{finding.id}</code> },
     { label: "Host", value: finding.host },
     ...(finding.service !== null ? [{ label: "Service", value: finding.service }] : []),
     ...(finding.path !== null
-      ? [{ label: "Path", value: <code className="font-mono text-xs break-all">{finding.path}</code> }]
+      ? [{ label: "Path", value: <code className="font-mono text-xs wrap-anywhere">{finding.path}</code> }]
       : []),
   ];
 

@@ -222,8 +222,8 @@ function SilenceList({ silences }: { silences: readonly ActiveSilence[] }): JSX.
         {silences.map((s) => (
           <ListItem
             key={s.id}
-            title={<span className="font-mono break-all">{s.matchers}</span>}
-            description={<span className="font-mono text-xs break-all">{s.id}</span>}
+            title={<span className="font-mono wrap-anywhere">{s.matchers}</span>}
+            description={<span className="font-mono text-xs wrap-anywhere">{s.id}</span>}
             meta={
               <span>
                 ends{" "}

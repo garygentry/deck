@@ -295,12 +295,12 @@ export function LinksSection({ links, reality }: { links: readonly DeclaredLink[
               {isSafeHref(link.href) ? (
                 <a
                   href={link.href}
-                  className="rounded-sm font-medium break-all text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  className="rounded-sm font-medium wrap-anywhere text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 >
                   {link.title}
                 </a>
               ) : (
-                <span className="font-medium break-all">{link.title}</span>
+                <span className="font-medium wrap-anywhere">{link.title}</span>
               )}
             </li>
           ))}

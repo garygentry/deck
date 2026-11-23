@@ -189,7 +189,7 @@ describe("core/table", () => {
     expect(within(table).getAllByRole("columnheader").map((header) => header.textContent)).toEqual(["Outlet", "Draw", "state"]);
     expect(within(table).getAllByRole("rowheader").map((cell) => cell.textContent)).toEqual(["nas-01", "lab-pi"]);
     const [first, second] = within(table).getAllByRole("row").slice(1);
-    expect(within(first!).getByText("1,234.5 W")).toHaveClass("text-right");
+    expect(within(first!).getByText("1,234.5 W").closest("td")).toHaveClass("text-right");
     expect(within(second!).getByText("None")).toBeInTheDocument();
     expect(table.querySelector('[data-slot="status-badge"][data-tone="danger"]')).toHaveTextContent("stopped");
   });

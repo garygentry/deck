@@ -182,8 +182,8 @@ importers:
         specifier: ^4.13.0
         version: 4.13.0(playwright-core@1.63.0)
       '@garygentry/ui-floors':
-        specifier: 0.1.0
-        version: 0.1.0(playwright@1.63.0)
+        specifier: 0.1.1
+        version: 0.1.1(playwright@1.63.0)
       '@playwright/test':
         specifier: ^1
         version: 1.63.0
@@ -1082,8 +1082,8 @@ packages:
   '@fontsource-variable/geist@5.3.0':
     resolution: {integrity: sha512-j0m+vLQuG5XAYoHtGCVu0spvlGreR3EzpECUVzkFmI1mTVnAO38l/NEPDCFgZ177JxzYJCLSmTQibIiYPilGrA==}
 
-  '@garygentry/ui-floors@0.1.0':
-    resolution: {integrity: sha512-LJhwLkf5L/gwdtvP5ZWqWO+VtVw2YbQQsLgQt7T18YEUwOxdwd1IoDs+KaPc0QePBPEkGesd2WUc/2aY5i94YQ==}
+  '@garygentry/ui-floors@0.1.1':
+    resolution: {integrity: sha512-zGA66qyRq4kuz2jMauhJ7XZBFoGXMnQaaySWc5BT5xk+yy+YqemzQo9Wi7H2DOm69jgZyM1d7xbo+utGZkVGwA==}
     engines: {bun: '>=1.4'}
     hasBin: true
     peerDependencies:
@@ -3260,7 +3260,7 @@ snapshots:
 
   '@fontsource-variable/geist@5.3.0': {}
 
-  '@garygentry/ui-floors@0.1.0(playwright@1.63.0)':
+  '@garygentry/ui-floors@0.1.1(playwright@1.63.0)':
     dependencies:
       playwright: 1.63.0
 

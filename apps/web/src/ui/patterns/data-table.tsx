@@ -307,6 +307,8 @@ const STACK_ROOT_CLASS = cn(
   "max-[480px]:[&_tbody>tr]:block max-[480px]:[&_tbody>tr]:py-1.5",
   "max-[480px]:[&_tbody>tr>*]:block max-[480px]:[&_tbody>tr>*]:h-auto max-[480px]:[&_tbody>tr>*]:min-w-0 max-[480px]:[&_tbody>tr>*]:py-1 max-[480px]:[&_tbody>tr>*]:whitespace-normal",
   "max-[480px]:[&_tbody>tr>[data-stack-cell]]:grid max-[480px]:[&_tbody>tr>[data-stack-cell]]:grid-cols-[minmax(6rem,38%)_minmax(0,1fr)] max-[480px]:[&_tbody>tr>[data-stack-cell]]:items-baseline max-[480px]:[&_tbody>tr>[data-stack-cell]]:gap-x-3 max-[480px]:[&_tbody>tr>[data-stack-cell]]:text-left",
+  // A cell with nothing in it (no actions on this row, say) drops out rather than show a bare label.
+  "max-[480px]:[&_tbody>tr>[data-stack-cell]:has(>span:empty)]:hidden",
   "max-[480px]:[&_tbody>tr>[data-stack-cell]]:before:content-[attr(data-label)_/_''] [&_tbody>tr>[data-stack-cell]]:before:text-xs [&_tbody>tr>[data-stack-cell]]:before:font-medium [&_tbody>tr>[data-stack-cell]]:before:text-muted-foreground",
 );
 

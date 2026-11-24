@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **`DataTable` on phones drops an empty cell** instead of showing its column's label with nothing
+  beside it (a row with no actions, say).
+
 ## [0.6.0] - 2026-11-24
 
 ### Added

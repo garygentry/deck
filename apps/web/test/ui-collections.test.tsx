@@ -185,6 +185,18 @@ describe("DataTable", () => {
     expect(declared).not.toHaveAttribute("data-label");
   });
 
+  it("leaves an empty cell's value wrapper empty, so the stacked layout can drop the cell", () => {
+    const columns: ColumnDef<Host>[] = [
+      { accessorKey: "name", header: "Host" },
+      { id: "actions", header: "Actions", cell: () => null },
+    ];
+    render(<DataTable caption="Hosts" columns={columns} data={HOSTS} getRowId={(r) => r.key} />);
+    const row = screen.getByRole("rowheader", { name: "nas-01" }).closest("tr")!;
+    const [actions] = within(row).getAllByRole("cell");
+    expect(actions).toHaveAttribute("data-label", "Actions");
+    expect(actions!.querySelector(":scope > span:empty")).not.toBeNull();
+  });
+
   it('keeps the columns with phoneLayout="scroll"', () => {
     render(<DataTable caption="Hosts" columns={FLAT} data={HOSTS} getRowId={(r) => r.key} phoneLayout="scroll" />);
     expect(screen.getByRole("region")).toHaveAttribute("data-phone-layout", "scroll");

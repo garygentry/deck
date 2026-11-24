@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-24
+
 ### Added
 
 - **Charts in `@deck/sdk`**: runtime modules can use `Sparkline`, `StatusTimeline` and `Gauge`, with
@@ -583,7 +585,8 @@ docs/configs — driven entirely by an estate config you author.
 - Source file access is confined to the source root (rejects `..`, absolute paths, NUL bytes,
   and symlink escapes); rendered markdown passes a single DOMPurify sanitize boundary.
 
-[Unreleased]: https://github.com/garygentry/deck/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/garygentry/deck/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/garygentry/deck/releases/tag/v0.6.0
 [0.5.0]: https://github.com/garygentry/deck/releases/tag/v0.5.0
 [0.4.0]: https://github.com/garygentry/deck/releases/tag/v0.4.0
 [0.3.2]: https://github.com/garygentry/deck/releases/tag/v0.3.2
